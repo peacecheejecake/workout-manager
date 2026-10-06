@@ -345,6 +345,7 @@ final class HealthKitWorkoutState {
                     snapshot.registryRevision != priorRevision || !changed
                 else { throw HealthKitWorkoutStateError.corruptState }
             }
+            try reconcilePendingClaims(ordered, installationId: active.installationId)
             if changed {
                 try execute("DELETE FROM registered_cursor")
                 try execute("DELETE FROM cursor")
@@ -369,6 +370,68 @@ final class HealthKitWorkoutState {
         }
         registrationVerified = true
         return changed
+    }
+
+    /// A fresh complete owner snapshot retires invalid claims without losing valid tombstones.
+    /// Mixed requests become new commands at the same queue position; their old idempotency
+    /// keys are never reused with different bytes. Unknown legacy requests remain quarantined.
+    /// The caller owns the registry/outbox transaction and has checked account and consent.
+    private func reconcilePendingClaims(
+        _ claims: [HealthKitWorkoutClaim], installationId: UUID
+    ) throws {
+        let epochs = Dictionary(uniqueKeysWithValues: claims.map { ($0.sampleId, $0.claimEpoch) })
+        let pendingCount = try withStatement("SELECT COUNT(*) FROM pending") { statement -> Int in
+            guard try rowOrDone(statement) else { throw HealthKitWorkoutStateError.corruptState }
+            return Int(sqlite3_column_int(statement, 0))
+        }
+        guard pendingCount <= 256 else { throw HealthKitWorkoutStateError.corruptState }
+        let batches = try pendingBatches()
+        for batch in batches {
+            guard let json = try JSONSerialization.jsonObject(with: batch.body) as? [String: Any],
+                let events = json["events"] as? [[String: Any]]
+            else { throw HealthKitWorkoutStateError.corruptState }
+            guard json["schemaVersion"] as? Int == 2 else { continue }
+            var retained: [[String: Any]] = []
+            for event in events {
+                guard let sampleText = event["sampleId"] as? String,
+                    let sample = UUID(uuidString: sampleText),
+                    let epochText = event["claimEpoch"] as? String,
+                    let epoch = UUID(uuidString: epochText),
+                    let kind = event["kind"] as? String, ["upsert", "delete"].contains(kind)
+                else { throw HealthKitWorkoutStateError.corruptState }
+                if epochs[sample] == epoch { retained.append(event) }
+            }
+            guard retained.count != events.count else { continue }
+            if retained.isEmpty {
+                try withStatement("DELETE FROM pending WHERE batch_id=? AND installation_id=?") {
+                    statement in
+                    try bind(Self.key(batch.batchId), at: 1, in: statement)
+                    try bind(Self.key(installationId), at: 2, in: statement)
+                    try stepDone(statement)
+                }
+            } else {
+                let replacement = UUID()
+                var replacementJSON = json
+                replacementJSON["batchId"] = Self.key(replacement)
+                replacementJSON["events"] = retained
+                let body = try JSONSerialization.data(
+                    withJSONObject: replacementJSON, options: [.sortedKeys])
+                guard body.count <= 65_536 else { throw HealthKitWorkoutStateError.batchTooLarge }
+                // UPDATE preserves sequence and the original permanent rejection reason.
+                try withStatement(
+                    "UPDATE pending SET batch_id=?,event_count=?,body=?,body_sha256=? WHERE batch_id=? AND installation_id=?"
+                ) { statement in
+                    try bind(Self.key(replacement), at: 1, in: statement)
+                    sqlite3_bind_int(statement, 2, Int32(retained.count))
+                    try bind(body, at: 3, in: statement)
+                    try bind(Data(SHA256.hash(data: body)), at: 4, in: statement)
+                    try bind(Self.key(batch.batchId), at: 5, in: statement)
+                    try bind(Self.key(installationId), at: 6, in: statement)
+                    try stepDone(statement)
+                }
+            }
+            guard sqlite3_changes(db) == 1 else { throw HealthKitWorkoutStateError.corruptState }
+        }
     }
 
     func registeredScopes() throws -> [HealthKitWorkoutScope] {

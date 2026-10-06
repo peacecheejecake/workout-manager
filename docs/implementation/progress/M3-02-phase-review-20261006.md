@@ -1,6 +1,6 @@
 # M3-02 phase · 계정별 HealthKit 등록/해제 검토 준비
 
-상태: **실행 가능한 로컬 phase 검증 완료 / 독립 검토 대기 / main 미병합**. 이 문서는 M3-02j–p의 로컬 구현·준비와 실제 운영·기기 수용을 구분한다. baseline main `173d8d6e5fac4f6304ad3762e3c9dd8a6e0bae24`, 제품 코드 freeze HEAD `1887073ac7b97059da31f363bb50f19558fd01ed`, 최종 시험 입력 freeze HEAD `bd625ee8e8b4bea6bb7132db8c5e673c65d2508d`. 두 HEAD 사이에는 공유 E2E 시험과 기록/graph만 바뀌었고 runtime은 동일하다. 아래 기록을 포함한 최종 phase HEAD를 별도로 고정한 뒤 전체 diff를 fresh context-less gpt-6-sol high 읽기 전용 reviewer에게 제출한다.
+상태: **실행 가능한 로컬 phase 검증 완료 / 1차 REQUEST_CHANGES / P1 로컬 수정 검증 완료 / 독립 재검토 대기 / main 미병합**. 이 문서는 M3-02j–p의 로컬 구현·준비와 실제 운영·기기 수용을 구분한다. baseline main `173d8d6e5fac4f6304ad3762e3c9dd8a6e0bae24`, 제품 코드 freeze HEAD `1887073ac7b97059da31f363bb50f19558fd01ed`, 최종 시험 입력 freeze HEAD `bd625ee8e8b4bea6bb7132db8c5e673c65d2508d`. 두 HEAD 사이에는 공유 E2E 시험과 기록/graph만 바뀌었고 runtime은 동일하다. 아래 기록을 포함한 최종 phase HEAD를 별도로 고정한 뒤 전체 diff를 fresh context-less gpt-6-sol high 읽기 전용 reviewer에게 제출한다.
 
 ## 실행 가능한 로컬 작업과 외부 조건
 
@@ -38,3 +38,21 @@ clean HEAD `bd625ee8e8b4bea6bb7132db8c5e673c65d2508d`에서 `isolated-r5` **309�
 두 회차 증거는 `/private/tmp/wm-m3-phase-identity-isolated-r5.log`, `/private/tmp/wm-m3-phase-identity-isolated-r6.log`, `/private/tmp/wm-m3-phase-identity-two-round-proof-20261006.md`다. 이전 문단의 진행 중 표현은 그 회차 시점의 기록이다. 최종 검토 대상은 이 기록 커밋을 포함한 phase HEAD 전체이며 검토 결과는 그 HEAD의 annotated review tag에 보존한다.
 
 최종 기록의 generated 재확인에서 잘못 쓴 `pnpm generated:check`는 명령 부재 exit254였다. 저장소 script명을 확인해 `pnpm check:generated`로 재실행한 실제 exit0과 원본 오류 로그를 따로 보존했다. DAG225개/의존 상태·로컬 링크·diff 검사도 통과했다.
+
+## 독립 전체 phase 검토 1차 · REQUEST_CHANGES
+
+Fresh context-less Codex `gpt-6-sol high` read-only reviewer가 base `173d8d6e5fac4f6304ad3762e3c9dd8a6e0bae24` → phase HEAD `3331134ab6414f8d4a70da3b4f7cc8bad096842f` 전체116파일·untracked0·clean을 검토 완료했다. 독립 실행은 HEAD/status·`git diff --check` exit0와 r5/r6 원본 로그의309통과/12skip 확인이며, 전체 DB/Swift/browser 검사 결과는 root 제공 증거로 구분했다.
+
+- **P1 / NOT FIXED:** `HealthKitWorkoutState.swift:348–368`은 등록 UUID/epoch 변경 뒤 old pending을 유지하고 `:386–399`는 stale claim 배치를 업로드 불가로 판단한다. `HealthKitWorkoutCollector.swift:442–450`는 첫 배치에서 중단해 후속 정상 운동도 동기화하지 않는다. 같은 A 계정에 X/Y 등록 → offline X 배치 → X 개별 해제 ACK → fresh 목록Y 순서로 재현되며 A/B 전환·X 새 epoch에서도 해결되지 않는다. 삭제 대상 payload도 로컬에 남는다. `HealthKitWorkoutManagementViewController.swift:193–208`에 정리 경로가 없다. 인증된 fresh registry 이후 안전한 stale pending 정리/남은 운동 재수집과 실제 순서 회귀 시험이 필요하다. 혼합 배치의 유효 운동 tombstone과 immutable idempotency body/order를 보존하는지 추가 검증한다.
+
+다른 구체적 결함은 검출하지 않았으며 이전 whole-phase finding은 없다. 위 P1을 수정·실제 검증한 다음 fresh 독립 전체 phase 재검토를 받는다. 승인 전에는 main에 병합하지 않는다. 외부 운영/기기 gate와 이전 실패·skip은 유지한다.
+
+## P1 수정·검증 · 재검토 대기
+
+**P1 / FIXED (root 평가, 독립 재검토 필요):** `applyRegisteredSnapshot`의 동일 계정·동의·완전한 registry 및 revision 검증 transaction 안에서 v2 pending UUID/epoch를 대조한다. 전부 stale인 배치는 삭제하고 mixed 배치는 유효 event(삭제 tombstone 포함)만 새 batchId/body/hash로 원래 sequence 위치에 원자 저장한다. 기존 key에 다른 body를 쓰지 않고 유효 original batch의 bytes/key/order와 영구 거절 pause, unknown v1 quarantine을 유지한다. 새 epoch로 oldevent를 재귀속하지 않는다. registered anchor/known reset 후 남은 outbox를 drain하고 새 scope로 재수집할 수 있다. pending SQL COUNT256상한을 읽기 전에 검사한다. 서버 receipt는 tenant/installation/batch key의 digest를 고정하고 sequence는 native SQLite 내부다. raw dedup·delete dominance가 기존 수신 경계에 있으며 서버 코드는 변경하지 않았다.
+
+실제 State harness **92단언**(기존68+신규24)이 통과했다. X/Y offline→A/B/A→fresh Y 목록, mixed tombstone 필드/새key/sequence, 유효 retry bytes, 늦은 old ACK 무효, 재시작 stable replacement, Y후속수집, 재등록epoch·empty목록·paused/legacy, account/consent/revision 거절 및 SQLite second-write failure rollback/verifiedfalse를 확인한다. root가 diff와 원본 로그를 읽고 별도 cache/output으로 State92를 직접 다시 compile/run해 actual exit0을 확인했다(`/private/tmp/wm-m3-p1-root-state.log`). 관련 pages117/uploader33/selection124/management72까지 합계 **438단언** actualpass이며 마지막COUNT 선검사 뒤 State92와 iOS compile을 다시 실행했다.
+
+Production13 Swift arm64 iOS15 Release/DEBUG unsigned compile/link 각각exit0, root가 두 actual LC_BUILD_VERSION의 IOS/minos15.0/sdk27.0을 읽었다. strict swift-format은 HEADbaseline93진단/최종93진단으로 기존 포맷 한계이며 전체 통과가 아니다. 새 helper/sequence는 formatter 적용, 기존 clang sysroot 경고 유지. source SHA256 State `ccd5e9120b51ce4796d8cde88e210e7f94d8fa9707afc4780ce6de460116395e`, harness `85248464834c9f3eceabe4364b36bc6681addf72a3013a9b604e0831e184af3c`. 로그는 `/private/tmp/wm-m3-p1-*`. 실제 기기/HealthKit I/O/AWS 호출은 없다.
+
+이번 수정은 Swift State/harness와 기록뿐이다. 전체 JS/계약/DB/identity/build 입력은3331134a(시험freeze bd625ee8)와 동일하며 위 전체 검증 결과를 그 입력의 증거로 유지한다. Swift 변경은 새 합성 순서와 실제 iOS compiler로 직접 검증했다. 최종 기록의 generated/format/diff를 재확인하고 새 HEAD 전체를 fresh context-less gpt-6-sol high reviewer에게 제출한다. 이 root FIXED 평가는 독립 승인이나 main 병합이 아니다.

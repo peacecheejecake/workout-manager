@@ -35,11 +35,182 @@ struct HealthKitWorkoutStateHarness {
         guard let anchor else { return nil }
         return try NSKeyedArchiver.archivedData(withRootObject: anchor, requiringSecureCoding: true)
     }
+    static func reconciliationSequences(_ directory: URL) throws {
+        let account = "synthetic_reconcile_a"
+        let other = "synthetic_reconcile_b"
+        let x = HealthKitWorkoutClaim(sampleId: UUID(), claimEpoch: UUID())
+        let y = HealthKitWorkoutClaim(sampleId: UUID(), claimEpoch: UUID())
+        func upsert(_ claim: HealthKitWorkoutClaim) -> HealthKitWorkoutEvent {
+            .upsert(
+                .init(
+                    sampleId: claim.sampleId, sourceBundleId: "synthetic.fixture",
+                    sourceVersion: nil,
+                    activityType: 37, observedFrom: "2026-09-20T01:00:00Z",
+                    observedTo: "2026-09-20T01:30:00Z",
+                    durationSeconds: 1800, distanceMeters: nil, energyKilocalories: nil))
+        }
+        let url = directory.appendingPathComponent("reconcile.sqlite")
+        let state = try HealthKitWorkoutState(databaseURL: url)
+        let installation = try state.activate(accountId: account)
+        try state.applyConsentRevision(1)
+        let scope = try register(state, account, [x, y])
+        try state.requestReconciliation()
+        _ = try state.beginReconciliationAfterOutboxDrain()
+        let staleId = UUID()
+        let mixedId = UUID()
+        let validId = UUID()
+        try state.stagePage(
+            batchId: staleId, events: [upsert(x)], nextAnchor: HKQueryAnchor(fromValue: 1),
+            scopeKey: scope)
+        try state.stagePage(
+            batchId: mixedId, events: [upsert(x), .delete(sampleId: y.sampleId)],
+            nextAnchor: HKQueryAnchor(fromValue: 2), scopeKey: scope)
+        try state.stagePage(
+            batchId: validId, events: [upsert(y)], nextAnchor: HKQueryAnchor(fromValue: 3),
+            scopeKey: scope)
+        let original = try state.pendingBatches()
+        state.invalidateRegistrationVerification()
+        try require(
+            try state.pendingBatches().map(\.body) == original.map(\.body)
+                && !state.batchMayUpload(original[0]),
+            "offline preserves uncertain ACK bytes and fences upload")
+        _ = try state.activate(accountId: other)
+        try state.applyConsentRevision(1)
+        _ = try register(state, other, [], revision: 2)
+        try require(
+            try state.pendingBatches().isEmpty,
+            "other account snapshot cannot read/reconcile owner queue"
+        )
+        _ = try state.activate(accountId: account)
+        try require(
+            try state.pendingBatches().map(\.body) == original.map(\.body),
+            "A B A retains offline queue until authenticated A snapshot")
+        try denied("foreign snapshot cannot clean queue", expected: .invalidInput) {
+            _ = try register(state, other, [y], revision: 2)
+        }
+        try denied("wrong consent cannot clean queue", expected: .invalidInput) {
+            _ = try register(state, account, [y], revision: 2, consent: 2)
+        }
+        try denied("same revision removal cannot clean queue", expected: .corruptState) {
+            _ = try register(state, account, [y])
+        }
+        try require(
+            try state.pendingBatches().map(\.body) == original.map(\.body)
+                && state.registeredClaims().count == 2 && !state.batchMayUpload(original[0]),
+            "invalid snapshots preserve registry/queue and disable verification")
+        // A failing second write must roll back the preceding stale-batch deletion as well.
+        let digest = SHA256.hash(data: Data(account.utf8)).map { String(format: "%02x", $0) }
+            .joined()
+        var pointer: OpaquePointer?
+        let scopedURL = directory.appendingPathComponent("reconcile-account-\(digest).sqlite")
+        guard sqlite3_open(scopedURL.path, &pointer) == SQLITE_OK, let pointer else {
+            throw HarnessFailure.failed("reconcile fixture open")
+        }
+        defer { sqlite3_close(pointer) }
+        guard
+            sqlite3_exec(
+                pointer,
+                "CREATE TRIGGER fail_pending_update BEFORE UPDATE ON pending BEGIN SELECT RAISE(ABORT,'synthetic'); END",
+                nil, nil, nil) == SQLITE_OK
+        else { throw HarnessFailure.failed("failure fixture trigger") }
+        try denied("partial write rolls back", expected: .storageFailure) {
+            _ = try register(state, account, [y], revision: 2)
+        }
+        try require(
+            try state.pendingBatches().map(\.body) == original.map(\.body)
+                && state.registeredClaims().count == 2 && !state.batchMayUpload(original[0]),
+            "failed reconciliation atomic and fail closed")
+        guard sqlite3_exec(pointer, "DROP TRIGGER fail_pending_update", nil, nil, nil) == SQLITE_OK
+        else { throw HarnessFailure.failed("remove failure fixture") }
+        let yScope = try register(state, account, [y], revision: 2)
+        let reconciled = try state.pendingBatches()
+        try require(
+            reconciled.count == 2 && reconciled[0].batchId != mixedId
+                && reconciled[0].batchId != staleId
+                && reconciled[0].eventCount == 1,
+            "stale removed and mixed assigned new key at original queue position")
+        guard
+            let oldJSON = try JSONSerialization.jsonObject(with: original[1].body)
+                as? [String: Any],
+            let newJSON = try JSONSerialization.jsonObject(with: reconciled[0].body)
+                as? [String: Any],
+            let oldEvents = oldJSON["events"] as? [[String: Any]],
+            let newEvents = newJSON["events"] as? [[String: Any]], newEvents.count == 1
+        else { throw HarnessFailure.failed("mixed replacement shape") }
+        try require(
+            NSDictionary(dictionary: oldEvents[1]) == NSDictionary(dictionary: newEvents[0])
+                && newEvents[0]["kind"] as? String == "delete",
+            "valid tombstone exact fields retained")
+        try require(
+            reconciled[1].batchId == validId && reconciled[1].body == original[2].body
+                && reconciled[0].body != original[1].body,
+            "valid immutable retry preserved after replacement ordering")
+        try require(
+            try reconciled.allSatisfy { try state.batchMayUpload($0) }
+                && state.anchor(scopeKey: yScope) == nil
+                && state.knownSample(sampleId: x.sampleId) == nil,
+            "remaining owner queue drains with fresh predicate anchor")
+        try require(
+            try !state.acknowledge(
+                batchId: mixedId, installationId: installation, acceptedCount: 2),
+            "late old ACK cannot delete replacement")
+        let restarted = try HealthKitWorkoutState(databaseURL: url)
+        _ = try restarted.activate(accountId: account)
+        try require(
+            try restarted.pendingBatches().map(\.body) == reconciled.map(\.body)
+                && !restarted.batchMayUpload(reconciled[0]),
+            "restart preserves replacement stable key/body but requires new server snapshot")
+        _ = try register(restarted, account, [y], revision: 2)
+        try require(
+            try restarted.pendingBatches().map(\.body) == reconciled.map(\.body),
+            "same fresh snapshot never remints replacement key")
+        for batch in reconciled {
+            try require(
+                try restarted.acknowledge(
+                    batchId: batch.batchId, installationId: installation,
+                    acceptedCount: batch.eventCount),
+                "remaining valid exact ACK")
+        }
+        try restarted.stagePage(
+            batchId: UUID(), events: [upsert(y)], nextAnchor: HKQueryAnchor(fromValue: 4),
+            scopeKey: yScope)
+        try require(
+            try restarted.pendingBatches().count == 1
+                && restarted.batchMayUpload(restarted.pendingBatches()[0]),
+            "remaining Y collects and uploads after stale X removal")
+        let newY = HealthKitWorkoutClaim(sampleId: y.sampleId, claimEpoch: UUID())
+        _ = try register(restarted, account, [newY], revision: 3)
+        try require(
+            try restarted.pendingBatches().isEmpty,
+            "old epoch data removed rather than reassigned to new registration")
+        try denied("backwards list cannot restore old epoch", expected: .corruptState) {
+            _ = try register(restarted, account, [y], revision: 2)
+        }
+        _ = try register(restarted, account, [newY], revision: 3)
+        let pausedScope = try register(restarted, account, [x, newY], revision: 4)
+        let pausedId = UUID()
+        try restarted.stagePage(
+            batchId: pausedId, events: [upsert(x), .delete(sampleId: newY.sampleId)],
+            nextAnchor: HKQueryAnchor(fromValue: 5), scopeKey: pausedScope)
+        try restarted.pause(batchId: pausedId, reason: .conflict)
+        _ = try register(restarted, account, [newY], revision: 5)
+        let paused = try restarted.pendingBatches()[0]
+        try require(
+            try paused.batchId != pausedId && paused.pauseReason == .conflict
+                && !restarted.batchMayUpload(paused),
+            "mixed permanent rejection stays fail closed after stale cleanup")
+        _ = try register(restarted, account, [], revision: 6)
+        try require(
+            try restarted.pendingBatches().isEmpty && restarted.registeredScopes().isEmpty,
+            "fully removed claims release stale paused payload with no collection")
+    }
+
     static func main() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
             "wm-registered-state-\(UUID())")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
+        try reconciliationSequences(directory)
         let db = directory.appendingPathComponent("state.sqlite")
         let account = "synthetic_owner_a"
         let other = "synthetic_owner_b"
@@ -186,7 +357,7 @@ struct HealthKitWorkoutStateHarness {
             changedScope != scope && restarted.anchor(scopeKey: changedScope) == nil
                 && !restarted.batchMayUpload(pending), "re-registration resets anchor and fences old epoch")
         try require(
-            try restarted.pendingBatches()[0].body == pending.body, "stale epoch body never rewritten")
+            try restarted.pendingBatches().isEmpty, "stale epoch payload retired without rewriting old key")
         try denied("backwards revision rejected", expected: .corruptState) {
             _ = try register(restarted, account, claims, revision: 1)
         }
@@ -302,6 +473,10 @@ struct HealthKitWorkoutStateHarness {
         _ = try fixture.applyConsentRevision(1)
         try require(try fixture.activate(accountId: account) == fixtureInstallation && fixture.pendingBatches()[0].body == legacy, "first consent migration retains legacy receipt and bytes")
         try require(try fixture.pendingBatches()[0].isPaused && !fixture.batchMayUpload(fixture.pendingBatches()[0]), "migration never activates v1 upload")
+        _ = try register(fixture, account, [], revision: 2)
+        try require(
+            try fixture.pendingBatches()[0].body == legacy && fixture.pendingBatches()[0].isPaused,
+            "fresh empty registry cannot reinterpret unknown legacy membership")
         guard sqlite3_exec(pointer, "UPDATE pending SET body=x'00'", nil, nil, nil) == SQLITE_OK else {
             throw HarnessFailure.failed("corruption write")
         }
