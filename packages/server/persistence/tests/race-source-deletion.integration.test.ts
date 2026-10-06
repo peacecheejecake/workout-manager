@@ -98,6 +98,13 @@ async function seedSource(
     "INSERT INTO identity_private.account(athlete_id,issuer,subject) VALUES($1::uuid,'https://synthetic.test',$2) ON CONFLICT(athlete_id) DO NOTHING",
     [athleteId, randomUUID()],
   );
+  // Explicit permission for this synthetic source owner's new race records.
+  await tenant(athleteId, (client) =>
+    client.query(
+      "INSERT INTO consent(athlete_id,kind,granted,revision) VALUES($1,'app',true,1) ON CONFLICT DO NOTHING",
+      [athleteId],
+    ),
+  );
   await tenant(athleteId, async (client) => {
     await client.query(
       'INSERT INTO activity_canonical(athlete_id,id,revision,original) VALUES($1,$2,1,\'{"title":"Synthetic source"}\'::jsonb)',

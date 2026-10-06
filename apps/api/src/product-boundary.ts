@@ -1,3 +1,4 @@
+import { AppConsentRequiredError } from '@workout/server-persistence/app-admission';
 import { z } from 'zod';
 import { PersistenceConflict } from '@workout/server-persistence/repositories';
 export class ProductRequestError extends Error {
@@ -21,6 +22,7 @@ export async function command<T>(
     return await operation();
   } catch (error) {
     if (error instanceof PersistenceConflict) throw new ProductRequestError(409, error.code);
+    if (error instanceof AppConsentRequiredError) throw new ProductRequestError(409, error.code);
     throw translate(error) ?? error;
   }
 }

@@ -31,6 +31,7 @@ import {
   type TrainingBest,
 } from '@workout/contracts/races';
 import type { Database, Transaction } from './database.js';
+import { lockAppAdmission, requireAppAdmission } from './app-admission.js';
 import {
   raceCollectionStampSchema,
   raceListQuerySchema,
@@ -191,7 +192,7 @@ export function createRaceRepository(
     return database.tenant(athleteId, async (tx) => {
       // Shared with the existing Course/Activity/Plan command lock. Together with row
       // locks this validates referenced liveness before the atomic ledger commit.
-      await tx.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [athleteId]);
+      await lockAppAdmission(tx);
       const receipt = await tx.query(
         'SELECT request_hash,result FROM race_command_receipt WHERE athlete_id=$1 AND idempotency_key=$2',
         [athleteId, idempotencyKey],
@@ -201,6 +202,8 @@ export function createRaceRepository(
           throw new PersistenceConflict('IDEMPOTENCY_CONFLICT');
         return raceCommandResultSchema.parse(receipt.rows[0]['result']);
       }
+      // Completed receipts survive revocation; fresh core plan/actual writes do not.
+      await requireAppAdmission(tx);
       let previousRevision = 0;
       if (id !== null) {
         const rows = await tx.query(

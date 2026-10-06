@@ -93,6 +93,12 @@ async function account(): Promise<string> {
     "INSERT INTO identity_private.account(athlete_id,issuer,subject) VALUES($1::uuid,'https://synthetic.test',$2)",
     [athlete, randomUUID()],
   );
+  // Explicit synthetic account permission for new race plan/actual fixture writes.
+  await tenant(sourceOwner, athlete, (client) =>
+    client.query("INSERT INTO consent(athlete_id,kind,granted,revision) VALUES($1,'app',true,1)", [
+      athlete,
+    ]),
+  );
   return athlete;
 }
 function pg(program: string, args: string[]) {

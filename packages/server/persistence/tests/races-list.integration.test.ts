@@ -124,6 +124,7 @@ describe('race lists on real PostgreSQL', () => {
     'paginates %s by UUID with same-timestamp rows and preserves typed partial values',
     async (kind) => {
       const athlete = randomUUID();
+      await grantApp(athlete);
       const fixed = createRaceRepository(database, { now: () => new Date('2026-10-06T00:00:00Z') });
       for (let i = 0; i < 5; i++) {
         const idempotencyKey = randomUUID();
@@ -185,6 +186,7 @@ describe('race lists on real PostgreSQL', () => {
   );
   it('accepts limit1 and limit100, defaults to50, and holds the command lock while reading the page stamp and rows', async () => {
     const athlete = randomUUID();
+    await grantApp(athlete);
     for (let index = 0; index < 51; index++) await create('race-event', athlete);
     expect((await repository.listRaceEvents(athlete)).items).toHaveLength(50);
     expect((await repository.listRaceEvents(athlete, { limit: 1 })).items).toHaveLength(1);
@@ -230,6 +232,7 @@ describe('race lists on real PostgreSQL', () => {
   it('returns absent heads without inventing collection state or writing anything', async () => {
     const athlete = randomUUID(),
       before = await snapshot(athlete);
+    await grantApp(athlete);
     for (const kind of kinds)
       expect(await list(kind, athlete)).toEqual({
         schemaVersion: 1,
@@ -244,6 +247,8 @@ describe('race lists on real PostgreSQL', () => {
   it('isolates two actual tenants with unfiltered RLS reads and rejects foreign, missing, wrong-kind and stale cursors', async () => {
     const first = randomUUID(),
       second = randomUUID();
+    await grantApp(first);
+    await grantApp(second);
     const a = await create('race-event', first),
       b = await create('race-event', second);
     const page = await repository.listRaceEvents(first),
@@ -314,6 +319,7 @@ describe('race lists on real PostgreSQL', () => {
   it('validates request bounds and unknown keys before reading', async () => {
     const athlete = randomUUID(),
       before = await snapshot(athlete);
+    await grantApp(athlete);
     for (const limit of [0, 101, 1.5])
       await expect(repository.listRaceEvents(athlete, { limit })).rejects.toThrow();
     await expect(
@@ -328,6 +334,7 @@ describe('race lists on real PostgreSQL', () => {
     const athlete = randomUUID(),
       activityId = randomUUID(),
       sourceId = randomUUID();
+    await grantApp(athlete);
     await admin.query(
       "INSERT INTO activity_canonical(athlete_id,id,revision,original) VALUES($1,$2,1,'{}')",
       [athlete, activityId],
@@ -412,3 +419,22 @@ describe('race lists on real PostgreSQL', () => {
     expect(await snapshot(athlete)).toEqual(before);
   });
 });
+
+/** Explicit synthetic athlete permission for tests creating core plan/actual records. */
+async function grantApp(athlete: string, pool: Pool = admin) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query("SELECT set_config('app.athlete_id',$1,true)", [athlete]);
+    await client.query(
+      "INSERT INTO consent(athlete_id,kind,granted,revision) VALUES($1,'app',true,1) ON CONFLICT DO NOTHING",
+      [athlete],
+    );
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}

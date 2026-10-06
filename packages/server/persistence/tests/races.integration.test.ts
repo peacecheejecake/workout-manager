@@ -149,6 +149,7 @@ describe('race ledger transactions', () => {
   it('creates all three ledgers with same-tenant references, preserving null, zero and local/offset values', async () => {
     const athlete = randomUUID(),
       refs = await seedReferences(athlete);
+    await grantApp(athlete);
     const event = await repository.createRaceEvent(athlete, {
       idempotencyKey: randomUUID(),
       values: { ...eventValues(), course: refs.course, planVersionId: refs.planId },
@@ -194,6 +195,7 @@ describe('race ledger transactions', () => {
   it('serializes concurrent duplicate creates and preserves the original minimal receipt after edits', async () => {
     const athlete = randomUUID(),
       input = { idempotencyKey: randomUUID(), values: resultValues() };
+    await grantApp(athlete);
     const [one, two] = await Promise.all([
       repository.createRaceResult(athlete, input),
       repository.createRaceResult(athlete, input),
@@ -246,6 +248,7 @@ describe('race ledger transactions', () => {
 
   it('competing updates commit one revision and atomically reject the stale peer for every ledger', async () => {
     const athlete = randomUUID();
+    await grantApp(athlete);
     const event = await repository.createRaceEvent(athlete, {
       idempotencyKey: randomUUID(),
       values: eventValues(),
@@ -307,6 +310,8 @@ describe('race ledger transactions', () => {
       other = randomUUID(),
       refs = await seedReferences(owner),
       foreign = await seedReferences(other);
+    await grantApp(owner);
+    await grantApp(other);
     const foreignEvent = await repository.createRaceEvent(other, {
       idempotencyKey: randomUUID(),
       values: eventValues(),
@@ -362,6 +367,7 @@ describe('race ledger transactions', () => {
   it('retains identifier-only historical references without recreating deleted Course/private activity content', async () => {
     const athlete = randomUUID(),
       refs = await seedReferences(athlete);
+    await grantApp(athlete);
     const input = {
       idempotencyKey: randomUUID(),
       values: { ...eventValues(), course: refs.course },
@@ -404,6 +410,7 @@ describe('race ledger transactions', () => {
   it('rejects old/new linked Plan date changes, including unlink attempts, with no Plan writes', async () => {
     const athlete = randomUUID(),
       refs = await seedReferences(athlete);
+    await grantApp(athlete);
     const linked = await repository.createRaceEvent(athlete, {
       idempotencyKey: randomUUID(),
       values: { ...eventValues(), planVersionId: refs.planId },
@@ -442,6 +449,7 @@ describe('race ledger transactions', () => {
 
   it('rejects client verification and invalidates a trusted pre-existing official review on correction', async () => {
     const athlete = randomUUID();
+    await grantApp(athlete);
     const invalid = {
       idempotencyKey: randomUUID(),
       values: { ...resultValues(), source: { ...resultValues().source, verifiedAt: fixedTime } },
@@ -483,6 +491,8 @@ describe('race ledger transactions', () => {
   it('enforces two-tenant RLS for direct unfiltered reads and cross-tenant mutation', async () => {
     const owner = randomUUID(),
       other = randomUUID();
+    await grantApp(owner);
+    await grantApp(other);
     const event = await repository.createRaceEvent(owner, {
       idempotencyKey: randomUUID(),
       values: eventValues(),
@@ -554,6 +564,7 @@ describe('race ledger transactions', () => {
 
   it('rolls back ledger, history, collection head and receipt on real transaction outbox failure', async () => {
     const athlete = randomUUID();
+    await grantApp(athlete);
     const broken: Database = {
       ...database,
       tenant: (id, operation) =>
@@ -589,6 +600,8 @@ describe('race ledger transactions', () => {
     const athlete = randomUUID(),
       other = randomUUID(),
       input = { idempotencyKey: randomUUID(), values: eventValues() };
+    await grantApp(athlete);
+    await grantApp(other);
     const event = await repository.createRaceEvent(athlete, input);
     await repository.updateRaceEvent(athlete, event.id, {
       idempotencyKey: randomUUID(),
@@ -635,6 +648,7 @@ describe('race ledger transactions', () => {
 
   it('rolls back a correction of an existing ledger and refuses exhausted head or entity revisions', async () => {
     const athlete = randomUUID();
+    await grantApp(athlete);
     const original = await repository.createRaceEvent(athlete, {
       idempotencyKey: randomUUID(),
       values: eventValues(),
@@ -737,6 +751,7 @@ describe('race ledger transactions', () => {
       restored = createDatabase({ connectionString: appUrl.toString() });
       const races = createRaceRepository(restored);
       const athlete = randomUUID();
+      await grantApp(athlete, owner);
       const input = { idempotencyKey: randomUUID(), values: eventValues() };
       const initial = await races.createRaceEvent(athlete, input);
       await races.createRaceResult(athlete, {
@@ -792,3 +807,22 @@ describe('race ledger transactions', () => {
     }
   });
 });
+
+/** Explicit synthetic athlete permission for tests creating core plan/actual records. */
+async function grantApp(athlete: string, pool: Pool = admin) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query("SELECT set_config('app.athlete_id',$1,true)", [athlete]);
+    await client.query(
+      "INSERT INTO consent(athlete_id,kind,granted,revision) VALUES($1,'app',true,1) ON CONFLICT DO NOTHING",
+      [athlete],
+    );
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
