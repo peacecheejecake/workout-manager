@@ -1,3 +1,4 @@
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
@@ -84,10 +85,9 @@ async function readPreference(page: Page, key: string) {
   return value;
 }
 
-async function setupLayout(page: Page) {
+async function setupLayout(page: Page, session: Awaited<ReturnType<typeof login>>) {
   page.setDefaultTimeout(5000);
   page.setDefaultNavigationTimeout(5000);
-  const session = await login(page);
   cleanupSessions.set(page, session);
   const note = `Synthetic layout health note ${randomUUID()}`;
   const response = await page.request.post('/bff/v1/check-ins', {
@@ -148,7 +148,9 @@ const activeDrag = (page: Page) => page.locator('[data-dashboard-dragging="true"
 test('layout preferences apply locally, reload, cancel and reset without saving domain records', async ({
   page,
 }) => {
-  const fixture = await setupLayout(page);
+  const scenarioSession = await login(page);
+  await grantAppProcessingForScenario(page);
+  const fixture = await setupLayout(page, scenarioSession);
   await page.setViewportSize({ width: 1440, height: 1000 });
   await fixture.open();
   const region = layout(page);
@@ -193,7 +195,9 @@ test('layout preferences apply locally, reload, cancel and reset without saving 
 test('pointer moves and width changes cancel safely while breakpoint drafts and mode preferences survive', async ({
   page,
 }) => {
-  const fixture = await setupLayout(page);
+  const scenarioSession = await login(page);
+  await grantAppProcessingForScenario(page);
+  const fixture = await setupLayout(page, scenarioSession);
   await page.setViewportSize({ width: 1440, height: 1000 });
   await fixture.open();
   const region = layout(page);
@@ -308,7 +312,9 @@ test('pointer moves and width changes cancel safely while breakpoint drafts and 
 test('account-specific layout storage contains only preferences and cannot inherit another users draft', async ({
   page,
 }) => {
-  const fixture = await setupLayout(page);
+  const scenarioSession = await login(page);
+  await grantAppProcessingForScenario(page);
+  const fixture = await setupLayout(page, scenarioSession);
   await page.setViewportSize({ width: 1440, height: 1000 });
   await fixture.open();
   const region = layout(page);
@@ -387,7 +393,9 @@ test.describe('touch layout alternatives', () => {
   test('touch swiping widget content scrolls in edit mode and tap controls apply a local preference', async ({
     page,
   }) => {
-    const fixture = await setupLayout(page);
+    const scenarioSession = await login(page);
+    await grantAppProcessingForScenario(page);
+    const fixture = await setupLayout(page, scenarioSession);
     await fixture.open();
     const region = layout(page);
     await region.getByRole('button', { name: '배치 편집', exact: true }).tap();
@@ -457,7 +465,9 @@ test.describe('touch layout alternatives', () => {
 test('dragging a taller last-row widget into the first row commits the order across apply and reload', async ({
   page,
 }) => {
-  const fixture = await setupLayout(page);
+  const scenarioSession = await login(page);
+  await grantAppProcessingForScenario(page);
+  const fixture = await setupLayout(page, scenarioSession);
   // Keep both differently sized rows visible so this verifies sorting, not autoscroll timing.
   await page.setViewportSize({ width: 1440, height: 3000 });
   await fixture.open();

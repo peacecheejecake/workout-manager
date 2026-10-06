@@ -1,3 +1,4 @@
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
@@ -66,6 +67,7 @@ test('dashboard separates planned and actual data across DST and tracks correcti
 }) => {
   expect((await request.get(endpoint)).status()).toBe(401);
   const headers = await login(page, 'Bob');
+  await grantAppProcessingForScenario(page);
   const read = async () => {
     const response = await page.request.get(endpoint, { headers });
     expect(response.status()).toBe(200);

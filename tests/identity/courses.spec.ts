@@ -1,3 +1,4 @@
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';
 import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
@@ -120,6 +121,7 @@ test('cuts a course from a stored recording, exports it and reclaims it with the
   page,
 }) => {
   const headers = await login(page);
+  await grantAppProcessingForScenario(page);
   // M2-01k-o: a protected area another spec left over this course would make its export a
   // refused trim; this spec is about cutting, exporting and reclaiming, so it starts clean.
   await clearProtectedAreas(page, headers);
@@ -231,6 +233,7 @@ test('leaves the recording byte-identical through every course write made from i
   page,
 }) => {
   const headers = await login(page);
+  await grantAppProcessingForScenario(page);
   // Its own recording, about 2 km from the protected areas other specs leave on this
   // account, so the privacy trim below depends only on the area this test creates.
   const origin = [127.0, 37.58] as const;
@@ -431,6 +434,7 @@ test('keeps the course screens usable at 320px, by keyboard and during an IME co
   page,
 }) => {
   const headers = await login(page);
+  await grantAppProcessingForScenario(page);
   const activity = await storeTrack(page, headers);
   await page.setViewportSize({ width: 320, height: 720 });
 
@@ -504,6 +508,7 @@ test('keeps the course screens usable at 320px, by keyboard and during an IME co
  */
 test('edits waypoints, reviews the computed route and only then saves it', async ({ page }) => {
   const headers = await login(page);
+  await grantAppProcessingForScenario(page);
   const activity = await storeTrack(page, headers);
 
   await page.goto(routeAddress(activity.activityId));
@@ -627,6 +632,7 @@ test('composes the course screen at 767/768 and 1279/1280 and in a 420px pane', 
   page,
 }) => {
   const headers = await login(page);
+  await grantAppProcessingForScenario(page);
   const activity = await storeTrack(page, headers);
   await page.goto(routeAddress(activity.activityId));
   const panel = page.getByRole('region', { name: '저장된 경로', exact: true });
@@ -740,6 +746,7 @@ test('keeps an unsaved draft and asks before replacing it with a change made els
   context,
 }) => {
   const headers = await login(page);
+  await grantAppProcessingForScenario(page);
   const activity = await storeTrack(page, headers);
   await page.goto(routeAddress(activity.activityId));
   const panel = page.getByRole('region', { name: '저장된 경로', exact: true });

@@ -1,3 +1,4 @@
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';
 import { identityMobileOrigin, identityWebOrigin } from '../../scripts/fixtures/identity-ports';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
@@ -235,6 +236,7 @@ for (const shell of shells) {
       page,
     }) => {
       const headers = await login(page);
+      await grantAppProcessingForScenario(page);
       // Six fresh documents, each waiting for the renderer to settle.
       test.setTimeout(90_000);
       const name = `지도 렌더 ${shell.name} ${randomUUID().slice(0, 8)}`;
@@ -306,6 +308,7 @@ for (const shell of shells) {
 
     test('draws each course on switching between two far-apart courses', async ({ page }) => {
       const headers = await login(page);
+      await grantAppProcessingForScenario(page);
       const suffix = randomUUID().slice(0, 8);
       await importCourse(page, headers, `서울 코스 ${suffix}`, seoul);
       await importCourse(page, headers, `부산 코스 ${suffix}`, busan);
@@ -332,6 +335,7 @@ for (const shell of shells) {
       // Three screens, each held to the kit's 10 s render deadline before it may say so.
       test.setTimeout(120_000);
       const headers = await login(page);
+      await grantAppProcessingForScenario(page);
       const name = `워커 없음 ${shell.name} ${randomUUID().slice(0, 8)}`;
       await importCourse(page, headers, name, seoul);
       const activityId = await storeTrack(page, headers);
@@ -384,6 +388,7 @@ for (const shell of shells) {
 
     test('draws the stored track and the local preview', async ({ page }) => {
       const headers = await login(page);
+      await grantAppProcessingForScenario(page);
       const activityId = await storeTrack(page, headers);
       await page.setViewportSize({ width: 1280, height: 900 });
       await page.goto(`${shell.origin}/activities?selected=${activityId}&detailTab=route`);
@@ -401,6 +406,7 @@ for (const shell of shells) {
 
     test('names a browser without WebGL as its own state', async ({ page }) => {
       const headers = await login(page);
+      await grantAppProcessingForScenario(page);
       const name = `WebGL 없음 ${shell.name} ${randomUUID().slice(0, 8)}`;
       await importCourse(page, headers, name, seoul);
       await withoutWebGl(page);
@@ -453,6 +459,7 @@ for (const shell of shells) {
     }) => {
       test.setTimeout(90_000);
       const headers = await login(page);
+      await grantAppProcessingForScenario(page);
       const name = `확인 대기 ${shell.name} ${randomUUID().slice(0, 8)}`;
       await importCourse(page, headers, name, seoul);
       await recordMapStatuses(page);
@@ -484,6 +491,7 @@ for (const shell of shells) {
      */
     test('keeps the viewport the user chose across a resize', async ({ page }) => {
       const headers = await login(page);
+      await grantAppProcessingForScenario(page);
       const name = `크기 조절 ${shell.name} ${randomUUID().slice(0, 8)}`;
       await importCourse(page, headers, name, seoul);
       await recordMapStatuses(page);

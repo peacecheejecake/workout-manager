@@ -1,3 +1,4 @@
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
@@ -153,6 +154,7 @@ test('dashboard graph and table preserve known zero, missing values and check-in
   page,
 }) => {
   const headers = await login(page);
+  await grantAppProcessingForScenario(page);
   const reports = await seedReports(page, headers);
   try {
     await page.goto(dashboardUrl);

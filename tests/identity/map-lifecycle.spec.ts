@@ -1,3 +1,4 @@
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';
 import { identityMobileOrigin, identityWebOrigin } from '../../scripts/fixtures/identity-ports';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
@@ -305,6 +306,7 @@ for (const shell of shells) {
   test.describe(`${shell.name} shell (${shell.origin})`, () => {
     test('loads the map code only when a map mounts', async ({ page }) => {
       const headers = await login(page);
+      await grantAppProcessingForScenario(page);
       const tracked = await storeTrack(page, headers);
       const bare = await bareActivity(page, headers);
       const courseName = `지연 로딩 ${shell.name} ${randomUUID().slice(0, 8)}`;
@@ -362,6 +364,7 @@ for (const shell of shells) {
     }) => {
       test.setTimeout(90_000);
       const headers = await login(page);
+      await grantAppProcessingForScenario(page);
       const tracked = await storeTrack(page, headers);
       await instrumentLifecycle(page);
       await recordMapStatuses(page);
@@ -468,6 +471,7 @@ for (const shell of shells) {
     }) => {
       test.setTimeout(90_000);
       const headers = await login(page);
+      await grantAppProcessingForScenario(page);
       const tracked = await storeTrack(page, headers);
       await recordMapStatuses(page);
       await page.setViewportSize({ width: 390, height: 900 });
@@ -511,6 +515,7 @@ for (const shell of shells) {
     }) => {
       test.setTimeout(90_000);
       const headers = await login(page);
+      await grantAppProcessingForScenario(page);
       const tracked = await storeTrack(page, headers);
       const pending = await storeTrack(page, headers);
       const withTiles = await basemapDeployed(page, shell.origin);
@@ -584,6 +589,7 @@ for (const shell of shells) {
       page,
     }) => {
       const headers = await login(page);
+      await grantAppProcessingForScenario(page);
       const name = `코스 수명 ${shell.name} ${randomUUID().slice(0, 8)}`;
       const courseId = await importCourse(page, headers, name);
       // The S13 list cards (M2-01k-a) hold a blob URL per stored picture for as long as the
@@ -632,6 +638,7 @@ for (const shell of shells) {
     test('releases the map when the account signs out in another tab', async ({ page }) => {
       test.setTimeout(90_000);
       const headers = await login(page);
+      await grantAppProcessingForScenario(page);
       const tracked = await storeTrack(page, headers);
       const withTiles = await basemapDeployed(page, shell.origin);
       await instrumentLifecycle(page);
@@ -678,6 +685,7 @@ for (const shell of shells) {
     }) => {
       test.setTimeout(90_000);
       const headers = await login(page);
+      await grantAppProcessingForScenario(page);
       const shown = await storeTrack(page, headers);
       const late = await storeTrack(page, headers);
       await instrumentLifecycle(page);
@@ -738,6 +746,7 @@ for (const shell of shells) {
     }) => {
       test.setTimeout(90_000);
       const headers = await login(page);
+      await grantAppProcessingForScenario(page);
       const shown = await storeTrack(page, headers);
       const late = await storeTrack(page, headers);
       await instrumentLifecycle(page);
@@ -873,6 +882,7 @@ for (const shell of shells) {
       }) => {
         test.setTimeout(90_000);
         const headers = await login(page);
+        await grantAppProcessingForScenario(page);
         const tracked = await storeTrack(page, headers);
         await page.setViewportSize({ width: 1280, height: 900 });
         const delivered: number[] = [];
@@ -907,6 +917,7 @@ for (const shell of shells) {
     test('attempts no request to another origin on any map screen', async ({ page }) => {
       test.setTimeout(120_000);
       const headers = await login(page);
+      await grantAppProcessingForScenario(page);
       const tracked = await storeTrack(page, headers);
       const name = `외부 요청 ${shell.name} ${randomUUID().slice(0, 8)}`;
       const courseId = await importCourse(page, headers, name);
