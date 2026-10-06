@@ -1,5 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
+import {
+  identityApiPort,
+  identityGarminPort,
+  identityMobilePort,
+  identityOidcPort,
+  identityWebPort,
+} from './fixtures/identity-ports.ts';
 
 // Explicit file-focused commands retain the Playwright CLI. A full run gives
 // permission and restore lifecycle scenarios their own fresh disposable fixture.
@@ -9,10 +16,20 @@ const suites = focused ? [null] : ['general', 'app-consent', 'ai-settings-lifecy
 let interrupted = false;
 
 async function run(suite) {
-  const env = { ...process.env, IDENTITY_E2E_RUN_ID: randomUUID() };
+  const env = {
+    ...process.env,
+    IDENTITY_E2E_RUN_ID: randomUUID(),
+    WORKOUT_IDENTITY_WEB_PORT: String(identityWebPort),
+    WORKOUT_IDENTITY_MOBILE_PORT: String(identityMobilePort),
+    WORKOUT_IDENTITY_API_PORT: String(identityApiPort),
+    WORKOUT_IDENTITY_OIDC_PORT: String(identityOidcPort),
+    WORKOUT_IDENTITY_GARMIN_PORT: String(identityGarminPort),
+  };
   if (suite) {
     env.IDENTITY_E2E_SUITE = suite;
     env.IDENTITY_E2E_AI_SETTINGS_LIFECYCLE = suite === 'ai-settings-lifecycle' ? 'on' : 'off';
+    env.IDENTITY_E2E_AI_SETTINGS_LIFECYCLE_SPEC_ONLY =
+      suite === 'ai-settings-lifecycle' ? '1' : '0';
   }
   const child = spawn(
     'pnpm',
