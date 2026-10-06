@@ -30,7 +30,8 @@ const domainLabel: Record<PlanDomain, string> = {
   recovery: '회복',
   routine_schedule: '루틴 일정',
 };
-type Phase = 'idle' | 'sending' | 'uncertain' | 'conflict' | 'unsupported' | 'approved';
+type Phase =
+  'idle' | 'sending' | 'uncertain' | 'conflict' | 'admission_blocked' | 'unsupported' | 'approved';
 type ApprovalCommand = {
   candidateId: string;
   request: IntegratedApprovalV023;
@@ -44,6 +45,26 @@ export interface IntegratedCandidateReviewWorkspaceProps {
   /** Optional host/test cache; a standalone workspace owns one when omitted. */
   queryClient?: QueryClient;
 }
+
+const knownCandidateErrors = new Set([
+  'UNSUPPORTED_SCHEMA_VERSION',
+  'CANDIDATE_UNAVAILABLE',
+  'CANDIDATE_DIGEST_MISMATCH',
+  'CANDIDATE_MISMATCH',
+  'CANDIDATE_NOT_APPROVABLE',
+  'CANDIDATE_LIMIT_REACHED',
+  'STALE_BASIS',
+  'AI_CONSENT_REQUIRED',
+  'INVALID_PROJECTION',
+  'INVALID_PARTIAL_SELECTION',
+  'IDEMPOTENCY_CONFLICT',
+  'INVALID_REQUEST',
+  'UNAUTHENTICATED',
+  'FORBIDDEN',
+  'APP_CONSENT_REQUIRED',
+  'STALE_APP_ADMISSION',
+  'APP_BINDING_UNAVAILABLE',
+]);
 
 class IntegratedCandidateRequestError extends Error {
   constructor(
@@ -78,7 +99,9 @@ function createIntegratedCandidateApi(transport: AuthenticatedTransport) {
       const error = z.object({ error: z.object({ code: z.string() }) }).safeParse(reply.body);
       throw new IntegratedCandidateRequestError(
         reply.status,
-        error.success ? error.data.error.code : 'REQUEST_FAILED',
+        error.success && knownCandidateErrors.has(error.data.error.code)
+          ? error.data.error.code
+          : 'REQUEST_FAILED',
       );
     }
     return schema.parse(reply.body);
@@ -324,7 +347,13 @@ function IntegratedCandidateReview({
       await invalidateRelatedQueries();
     } catch (error) {
       if (signal.aborted) return;
-      if (
+      const admissionMessage = appAdmissionMessage(error);
+      if (admissionMessage) {
+        pending.current = null;
+        setReviewed(false);
+        setPhase('admission_blocked');
+        setFeedback(admissionMessage);
+      } else if (
         error instanceof IntegratedCandidateRequestError &&
         error.code === 'UNSUPPORTED_SCHEMA_VERSION'
       ) {
@@ -409,7 +438,13 @@ function IntegratedCandidateReview({
         </button>
       ) : null}
       {feedback ? (
-        <p role={phase === 'conflict' || phase === 'unsupported' ? 'alert' : 'status'}>
+        <p
+          role={
+            phase === 'conflict' || phase === 'admission_blocked' || phase === 'unsupported'
+              ? 'alert'
+              : 'status'
+          }
+        >
           {feedback}
         </p>
       ) : null}
@@ -420,4 +455,18 @@ function IntegratedCandidateReview({
       ) : null}
     </section>
   );
+}
+
+function appAdmissionMessage(error: unknown): string | null {
+  if (!(error instanceof IntegratedCandidateRequestError)) return null;
+  switch (error.code) {
+    case 'APP_CONSENT_REQUIRED':
+      return '앱 데이터 처리 동의가 필요합니다. 초안과 후보는 유지했습니다. 동의 상태를 확인해 주세요.';
+    case 'STALE_APP_ADMISSION':
+      return '앱 데이터 처리 동의가 변경되어 요청을 적용하지 않았습니다. 초안과 후보는 유지했습니다. 동의 상태와 최신 근거를 확인해 주세요.';
+    case 'APP_BINDING_UNAVAILABLE':
+      return '이 요청의 앱 데이터 처리 동의 기준을 확인할 수 없어 적용하지 않았습니다. 초안과 후보는 유지했습니다. 최신 근거를 다시 확인해 주세요.';
+    default:
+      return null;
+  }
 }

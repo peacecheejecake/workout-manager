@@ -199,6 +199,7 @@ const reply = (body: unknown, status = 200) =>
 function setup(
   behavior: {
     approval?: 'lost-once' | 'conflict';
+    failureCode?: string;
     partial?: 'lost-once';
     online?: boolean;
     candidate?: typeof candidate;
@@ -221,6 +222,8 @@ function setup(
         return reply(child);
       if (input.method === 'POST') {
         writes.push(input);
+        if (behavior.failureCode)
+          return reply({ error: { code: behavior.failureCode, detail: 'private source' } }, 409);
         if (input.path.endsWith('/partials')) {
           partialCount += 1;
           if (behavior.partial === 'lost-once' && partialCount === 1)
@@ -394,4 +397,33 @@ describe('joint candidate review', () => {
     );
     expect(writes).toHaveLength(0);
   });
+});
+
+it.each([
+  ['APP_CONSENT_REQUIRED', '앱 데이터 처리 동의가 필요합니다.'],
+  ['STALE_APP_ADMISSION', '앱 데이터 처리 동의가 변경되어'],
+  ['APP_BINDING_UNAVAILABLE', '앱 데이터 처리 동의 기준을 확인할 수 없어'],
+] as const)(
+  'retains the joint candidate on %s without applying either domain',
+  async (code, message) => {
+    const { user, writes } = setup({ failureCode: code });
+    await screen.findByText(/훈련 제목: 기준 훈련/);
+    await user.click(screen.getByRole('checkbox', { name: /이 후보의 훈련·영양 변경/ }));
+    await user.click(screen.getByRole('button', { name: '이 후보 전체 승인' }));
+    expect(await screen.findByText(new RegExp(message))).toBeTruthy();
+    expect(writes).toHaveLength(1);
+    expect(screen.getByText(/훈련 제목: 기준 훈련/)).toBeTruthy();
+    expect(screen.queryByText(/서버에서 훈련·영양 계획의 원자적 적용을 확인했습니다/)).toBeNull();
+    expect(screen.queryByText(/private source/)).toBeNull();
+    expect(screen.queryByText(/기준이 변경됐거나 요청이 거절됐습니다/)).toBeNull();
+  },
+);
+it('does not display an arbitrary joint server error code', async () => {
+  const { user, writes } = setup({ failureCode: 'PRIVATE_TOKEN_secret' });
+  await screen.findByText(/훈련 제목: 기준 훈련/);
+  await user.click(screen.getByRole('checkbox', { name: /이 후보의 훈련·영양 변경/ }));
+  await user.click(screen.getByRole('button', { name: '이 후보 전체 승인' }));
+  expect(await screen.findByText(/候補|후보가 적용되지 않았습니다/)).toBeTruthy();
+  expect(writes).toHaveLength(1);
+  expect(screen.queryByText(/PRIVATE_TOKEN|private source/)).toBeNull();
 });

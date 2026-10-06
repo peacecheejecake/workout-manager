@@ -28,6 +28,11 @@ export class CoachingRequestError extends Error {
   }
 }
 const idSchema = z.uuid().transform((v) => v.toLowerCase());
+const appCodes = new Set([
+  'APP_CONSENT_REQUIRED',
+  'STALE_APP_ADMISSION',
+  'APP_BINDING_UNAVAILABLE',
+]);
 const known = new Set([
   'THREAD_NOT_FOUND',
   'PLAN_VERSION_NOT_FOUND',
@@ -60,7 +65,9 @@ export function createCoachingApi(transport: AuthenticatedTransport) {
     if (reply.status < 200 || reply.status >= 300) {
       const parsed = z.object({ error: z.object({ code: z.string() }) }).safeParse(reply.body);
       const code =
-        parsed.success && known.has(parsed.data.error.code)
+        parsed.success &&
+        (known.has(parsed.data.error.code) ||
+          (reply.status === 409 && appCodes.has(parsed.data.error.code)))
           ? parsed.data.error.code
           : 'REQUEST_FAILED';
       throw new CoachingRequestError(reply.status, code);

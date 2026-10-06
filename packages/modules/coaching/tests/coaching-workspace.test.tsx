@@ -79,7 +79,15 @@ function makeThread(id = threadId) {
 function fixture(initialRevision = 1) {
   let thread = { ...makeThread(), revision: initialRevision };
   const posts: TransportRequest[] = [];
-  let nextFailure: 'conflict' | 'unknown' | 'server' | 'malformed' | null = null;
+  let nextFailure:
+    | 'conflict'
+    | 'unknown'
+    | 'server'
+    | 'malformed'
+    | 'APP_CONSENT_REQUIRED'
+    | 'STALE_APP_ADMISSION'
+    | 'APP_BINDING_UNAVAILABLE'
+    | null = null;
   let delayList: Promise<void> | null = null;
   const respond = async (input: TransportRequest) => {
     const path = input.path;
@@ -88,6 +96,15 @@ function fixture(initialRevision = 1) {
     if (input.method === 'POST') {
       const { signal: _signal, ...sent } = input;
       posts.push(structuredClone(sent));
+      if (
+        nextFailure === 'APP_CONSENT_REQUIRED' ||
+        nextFailure === 'STALE_APP_ADMISSION' ||
+        nextFailure === 'APP_BINDING_UNAVAILABLE'
+      ) {
+        const code = nextFailure;
+        nextFailure = null;
+        return { status: 409, body: { error: { code } } };
+      }
       if (nextFailure === 'conflict') {
         nextFailure = null;
         thread = { ...thread, revision: thread.revision + 1 };
@@ -495,3 +512,37 @@ it('ignores an in-flight review completion after the selected thread changes', a
   expect(screen.getByRole('button', { name: '사용자 메시지 저장' })).toBeDisabled();
   expect(screen.getByRole('button', { name: '최신 기록 확인 후 다시 검토' })).toBeVisible();
 });
+
+it.each([
+  [
+    'APP_CONSENT_REQUIRED',
+    '앱 저장·처리 동의가 필요합니다. 계정에서 동의 상태를 확인하세요. 초안은 유지됩니다.',
+  ],
+  [
+    'STALE_APP_ADMISSION',
+    '앱 동의 상태가 변경되었습니다. 이전 검토를 다시 확인하세요. 초안은 유지됩니다.',
+  ],
+  [
+    'APP_BINDING_UNAVAILABLE',
+    '앱 처리 허용 근거를 확인할 수 없습니다. 계정과 최신 자료를 다시 확인하세요. 초안은 유지됩니다.',
+  ],
+] as const)(
+  'keeps a message draft after %s without a revision-conflict recovery or grant',
+  async (code, message) => {
+    const f = fixture(),
+      user = userEvent.setup();
+    render(<Harness transport={f.transport} />);
+    await user.type(await ready(), 'Retained consent draft');
+    f.fail(code);
+    await user.click(screen.getByRole('button', { name: '사용자 메시지 저장' }));
+    await screen.findByText(message);
+    expect(screen.getByRole('textbox', { name: '사용자 메시지' })).toHaveValue(
+      'Retained consent draft',
+    );
+    expect(
+      screen.queryByRole('button', { name: '최신 기록 확인 후 다시 검토' }),
+    ).not.toBeInTheDocument();
+    expect(f.posts).toHaveLength(1);
+    expect(f.posts.some((r) => r.path.includes('/consents/'))).toBe(false);
+  },
+);

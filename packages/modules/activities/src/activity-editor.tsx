@@ -241,6 +241,29 @@ function Workspace({
       const result = await transport.request({ ...command, signal: controller.signal });
       if (!active.current || controller.signal.aborted) return;
       if (result.status === 409) {
+        const appFailure = z
+          .object({
+            error: z.object({
+              code: z.enum([
+                'APP_CONSENT_REQUIRED',
+                'STALE_APP_ADMISSION',
+                'APP_BINDING_UNAVAILABLE',
+              ]),
+            }),
+          })
+          .safeParse(result.body);
+        if (appFailure.success) {
+          actions.phase('conflict');
+          actions.edit();
+          setMessage(
+            appFailure.data.error.code === 'APP_CONSENT_REQUIRED'
+              ? '앱 저장·처리 동의가 필요합니다. 계정에서 동의 상태를 확인하세요. 초안은 유지됩니다.'
+              : appFailure.data.error.code === 'STALE_APP_ADMISSION'
+                ? '앱 동의 상태가 변경되었습니다. 이전 검토를 다시 확인하세요. 초안은 유지됩니다.'
+                : '앱 처리 허용 근거를 확인할 수 없습니다. 계정과 최신 자료를 다시 확인하세요. 초안은 유지됩니다.',
+          );
+          return;
+        }
         actions.phase('conflict');
         setMessage(
           '기록이 변경되었거나 요청이 충돌했습니다. 작성 내용은 유지됩니다. 최신 기록을 확인하세요.',

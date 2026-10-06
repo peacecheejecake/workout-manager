@@ -744,3 +744,39 @@ it('clears selected session while preserving lens, view, and actual page URL sta
   expect(next.get('actualPage')).toBe('2');
   expect(next.get('period')).toBe('block');
 });
+
+it.each([
+  [
+    'APP_CONSENT_REQUIRED',
+    '앱 저장·처리 동의가 필요합니다. 계정에서 동의 상태를 확인하세요. 초안은 유지됩니다.',
+  ],
+  [
+    'STALE_APP_ADMISSION',
+    '앱 동의 상태가 변경되었습니다. 이전 검토를 다시 확인하세요. 초안은 유지됩니다.',
+  ],
+  [
+    'APP_BINDING_UNAVAILABLE',
+    '앱 처리 허용 근거를 확인할 수 없습니다. 계정과 최신 자료를 다시 확인하세요. 초안은 유지됩니다.',
+  ],
+] as const)(
+  'preserves a planning draft for %s without presenting revision CAS recovery',
+  async (code, message) => {
+    const user = userEvent.setup(),
+      transport = host(async () => reply({ error: { code } }, 409));
+    render(<StatefulHost {...base} transport={transport} />);
+    await user.click(await screen.findByRole('button', { name: '계획 초안 편집' }));
+    await user.type(draftEditor().getByRole('textbox', { name: '계획 제목' }), ' retained');
+    await user.click(draftEditor().getByRole('button', { name: '변경 미리보기' }));
+    await user.click(preview().getByRole('button', { name: '확인하고 계획 버전 저장' }));
+    await screen.findByText(message);
+    expect(draftEditor().getByRole('textbox', { name: '계획 제목' })).toHaveValue(
+      '봄 시즌 retained',
+    );
+    expect(screen.queryByText(/다른 변경과 충돌/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/저장 완료/)).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: '최신 버전을 기준으로 내 초안 다시 검토' }),
+    ).not.toBeInTheDocument();
+    expect(transport.spy.mock.calls.filter(([r]) => r.method === 'PUT')).toHaveLength(1);
+  },
+);

@@ -177,7 +177,21 @@ function Workspace({
       void client.invalidateQueries({ queryKey: prefix }).catch(() => undefined);
     } catch (error) {
       if (controller.signal.aborted) return;
-      if (error instanceof CoachingRequestError && error.status === 409) {
+      if (
+        error instanceof CoachingRequestError &&
+        error.status === 409 &&
+        ['APP_CONSENT_REQUIRED', 'STALE_APP_ADMISSION', 'APP_BINDING_UNAVAILABLE'].includes(
+          error.code,
+        )
+      ) {
+        actions.reject(
+          error.code === 'APP_CONSENT_REQUIRED'
+            ? '앱 저장·처리 동의가 필요합니다. 계정에서 동의 상태를 확인하세요. 초안은 유지됩니다.'
+            : error.code === 'STALE_APP_ADMISSION'
+              ? '앱 동의 상태가 변경되었습니다. 이전 검토를 다시 확인하세요. 초안은 유지됩니다.'
+              : '앱 처리 허용 근거를 확인할 수 없습니다. 계정과 최신 자료를 다시 확인하세요. 초안은 유지됩니다.',
+        );
+      } else if (error instanceof CoachingRequestError && error.status === 409) {
         actions.reject(
           '상담 기록이 변경되었거나 요청이 충돌했습니다. 최신 기록을 확인하고 초안을 다시 검토하세요.',
           command.kind === 'append' ? command.threadId : 'new',

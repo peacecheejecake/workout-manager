@@ -161,3 +161,24 @@ describe('coaching run retrieval preflight adapter', () => {
     expect(f.request).not.toHaveBeenCalled();
   });
 });
+
+it.each(['APP_CONSENT_REQUIRED', 'STALE_APP_ADMISSION', 'APP_BINDING_UNAVAILABLE'])(
+  'retains finite %s only at the real409 boundary',
+  async (code) => {
+    const input = {
+      planVersionId: id,
+      title: thread.title,
+      scope: thread.scope,
+      message: message.content,
+      idempotencyKey: 'same',
+    };
+    await expect(fixture({ error: { code } }, 409).api.create(input)).rejects.toMatchObject({
+      status: 409,
+      code,
+    });
+    await expect(fixture({ error: { code } }, 403).api.create(input)).rejects.toMatchObject({
+      status: 403,
+      code: 'REQUEST_FAILED',
+    });
+  },
+);

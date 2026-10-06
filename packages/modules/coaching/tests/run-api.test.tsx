@@ -92,3 +92,12 @@ describe('coaching run API boundary', () => {
     });
   });
 });
+
+it.each(['APP_CONSENT_REQUIRED', 'STALE_APP_ADMISSION', 'APP_BINDING_UNAVAILABLE'] as const)(
+  'preserves finite run admission error %s',
+  async (code) => {
+    await expect(
+      fixture({ error: { code, detail: 'private source' } }, 409).api.read(threadId, runId),
+    ).rejects.toMatchObject({ status: 409, code });
+  },
+);

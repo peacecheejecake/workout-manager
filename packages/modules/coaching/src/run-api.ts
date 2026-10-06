@@ -21,6 +21,9 @@ import {
 
 const uuid = z.uuid().transform((value) => value.toLowerCase());
 const knownErrors = new Set([
+  'APP_CONSENT_REQUIRED',
+  'STALE_APP_ADMISSION',
+  'APP_BINDING_UNAVAILABLE',
   'THREAD_NOT_FOUND',
   'RUN_NOT_FOUND',
   'EVIDENCE_UNAVAILABLE',

@@ -380,6 +380,13 @@ function IntakeFormView({
         `/nutrition/logs?date=${encodeURIComponent(dayInTimezone(content.occurredAt, clock.timezone))}`,
       );
     } catch (error) {
+      const admissionMessage = appAdmissionMessage(error);
+      if (admissionMessage) {
+        key.current = null;
+        newId.current = null;
+        setNotice(admissionMessage);
+        return;
+      }
       if (!record && !createSent) {
         key.current = null;
         newId.current = null;
@@ -669,4 +676,18 @@ function IntakeFormView({
       ) : null}
     </section>
   );
+}
+
+function appAdmissionMessage(error: unknown): string | null {
+  if (!(error instanceof NutritionRequestError)) return null;
+  switch (error.code) {
+    case 'APP_CONSENT_REQUIRED':
+      return '앱 데이터 처리 동의가 필요합니다. 입력은 유지됐으며 저장되지 않았습니다. 동의 상태를 확인해 주세요.';
+    case 'STALE_APP_ADMISSION':
+      return '앱 데이터 처리 동의가 변경되어 이 요청은 저장되지 않았습니다. 입력을 유지했습니다. 동의 상태와 최신 자료를 확인해 주세요.';
+    case 'APP_BINDING_UNAVAILABLE':
+      return '이 요청의 앱 데이터 처리 동의 기준을 확인할 수 없어 저장하지 않았습니다. 입력을 유지했습니다. 최신 자료를 다시 확인해 주세요.';
+    default:
+      return null;
+  }
 }

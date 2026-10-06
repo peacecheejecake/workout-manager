@@ -106,8 +106,22 @@ function PlanningLifetime(props: PlanningWorkspaceProps) {
     </QueryClientProvider>
   );
 }
+function appProcessingCode(value: unknown): string | null {
+  if (typeof value !== 'object' || value === null || !('error' in value)) return null;
+  const error = value.error;
+  if (typeof error !== 'object' || error === null || !('code' in error)) return null;
+  const code = error.code;
+  return code === 'APP_CONSENT_REQUIRED' ||
+    code === 'STALE_APP_ADMISSION' ||
+    code === 'APP_BINDING_UNAVAILABLE'
+    ? code
+    : null;
+}
 class PlanRequestError extends Error {
-  constructor(readonly status: number) {
+  constructor(
+    readonly status: number,
+    readonly appCode: string | null = null,
+  ) {
     super(`PLAN_REQUEST_${status}`);
   }
 }
@@ -173,7 +187,10 @@ function Planner({
         }),
       );
       if (response.status !== 200 && response.status !== 201)
-        throw new PlanRequestError(response.status);
+        throw new PlanRequestError(
+          response.status,
+          response.status === 409 ? appProcessingCode(response.body) : null,
+        );
       return planSnapshotSchema.parse(response.body);
     },
     onSuccess: async () => {
@@ -279,7 +296,9 @@ function Planner({
     projectionSource && !missingPeriod ? projectPlan(projectionSource, url.lens) : [];
   const operationToday =
     explicitToday ?? sessionOperationDate(referenceInstant, projectionSource?.timezone ?? 'UTC');
-  const isConflict = save.error instanceof PlanRequestError && save.error.status === 409;
+  const appError = save.error instanceof PlanRequestError ? save.error.appCode : null;
+  const isConflict =
+    save.error instanceof PlanRequestError && save.error.status === 409 && appError === null;
   function edit(update: (value: PlanDraft) => PlanDraft) {
     setOperationFeedback(null);
     actions.edit(update);
@@ -333,9 +352,15 @@ function Planner({
       {save.isSuccess ? <p role="status">계획 버전 {save.data.version} 저장 완료</p> : null}
       {save.isError ? (
         <StatusNotice state={isConflict ? 'stale' : 'error'}>
-          {isConflict
-            ? '다른 변경과 충돌했습니다. 초안을 유지했습니다. 최신 계획을 불러와 비교한 뒤 다시 검토하세요.'
-            : '저장 결과를 확인할 수 없습니다. 초안을 유지했습니다. 같은 확인 버튼으로 재시도하면 동일 요청 키를 사용합니다.'}
+          {appError === 'APP_CONSENT_REQUIRED'
+            ? '앱 저장·처리 동의가 필요합니다. 계정에서 동의 상태를 확인하세요. 초안은 유지됩니다.'
+            : appError === 'STALE_APP_ADMISSION'
+              ? '앱 동의 상태가 변경되었습니다. 이전 검토를 다시 확인하세요. 초안은 유지됩니다.'
+              : appError === 'APP_BINDING_UNAVAILABLE'
+                ? '앱 처리 허용 근거를 확인할 수 없습니다. 계정과 최신 자료를 다시 확인하세요. 초안은 유지됩니다.'
+                : isConflict
+                  ? '다른 변경과 충돌했습니다. 초안을 유지했습니다. 최신 계획을 불러와 비교한 뒤 다시 검토하세요.'
+                  : '저장 결과를 확인할 수 없습니다. 초안을 유지했습니다. 같은 확인 버튼으로 재시도하면 동일 요청 키를 사용합니다.'}
         </StatusNotice>
       ) : null}
       {isConflict ? (

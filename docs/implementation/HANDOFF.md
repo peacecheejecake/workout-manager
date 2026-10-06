@@ -293,3 +293,7 @@ M3-02l은 2026-10-05 로컬 서버·계약 수용을 완료했다. 개별 해제
 ## S22 확정 처리 정책과 후속 실행 · 2026-10-06
 
 사용자는 app 동의를 핵심 계획·실제기록·대화 저장/처리 허가로 정의하고, 철회 후 새 처리 금지·기존 조회/export/delete 허용을 승인했다. 부재는 false/revision0이며 자동 동의하지 않는다. generic provider는 호환 기록만 유지하고 HealthKit/Garmin 개별 허가를 유지한다. 새 M2-01k-v-a~f가 공통 admission·직접 처리·versioned basis·영양/회복/루틴·provider worker·UI/native 연결을 분리한다. 준비 대조는 읽기 전용이며 실제 gate 완료가 아니다. 독립 library/gallery/course authoring 전체를 이 동의 목적으로 임의 확대하지 않으며, actual 첨부·코칭 retrieval의 core 처리 경계는 포함한다. 기존 성공 receipt는 새로운 app gate 이전에 재반환하되 AI/HK 철회·redaction 의미를 우회하지 않는다. 같은 tenant lock0→기존 domain lock 순서를 지켜 철회와 처리 거래를 직렬화한다. strict manifest v1/v2에 필드를 임의 추가하지 않고 명시 version compatibility를 만든다. 완료/전체 검증/phase review 전 main에 넣지 않는다.
+
+## S22 처리 경계·화면 로컬 수용 · 2026-10-07
+
+M2-01k-v-a~f의 각 로컬 구현·수용이 완료됐다. Root 통합 화면RTL274/274와 두Host 실제Chrome E2E4/4를 확인했고 native fixed app 계약은 별도M3-02q 로컬55시험/Swift40/SDK로 추적한다. 운영 제공자·기기·전체 backup/복원·생리학 결과가 아니다. M2-01k 부모와 phase 전체 검사·fresh context-less 독립 검토는 다음 단계이며 최신HEAD 검토 이전 main에 넣지 않는다. 과거 검토 승인과 전체 gate 기록은 그때의 고정입력에만 적용한다.

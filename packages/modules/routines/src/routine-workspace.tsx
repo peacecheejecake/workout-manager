@@ -1345,6 +1345,8 @@ function StepControls({
 }
 
 function displayError(error: unknown) {
+  const admissionMessage = appAdmissionMessage(error);
+  if (admissionMessage) return admissionMessage;
   if (error instanceof RoutineRequestError) {
     if (error.status === 409)
       return '다른 기기에서 변경됐습니다. 새로고침 후 최신 상태를 확인하세요.';
@@ -1353,4 +1355,18 @@ function displayError(error: unknown) {
   }
   if (error instanceof ZodError) return '입력 형식과 고정 버전 ID를 확인해 주세요.';
   return '연결 상태를 확인하고 다시 시도하세요.';
+}
+
+function appAdmissionMessage(error: unknown): string | null {
+  if (!(error instanceof RoutineRequestError)) return null;
+  switch (error.code) {
+    case 'APP_CONSENT_REQUIRED':
+      return '앱 데이터 처리 동의가 필요합니다. 입력은 유지됐으며 저장되지 않았습니다. 동의 상태를 확인해 주세요.';
+    case 'STALE_APP_ADMISSION':
+      return '앱 데이터 처리 동의가 변경되어 이 요청은 저장되지 않았습니다. 입력을 유지했습니다. 동의 상태와 최신 자료를 확인해 주세요.';
+    case 'APP_BINDING_UNAVAILABLE':
+      return '이 요청의 앱 데이터 처리 동의 기준을 확인할 수 없어 저장하지 않았습니다. 입력을 유지했습니다. 최신 자료를 다시 확인해 주세요.';
+    default:
+      return null;
+  }
 }
