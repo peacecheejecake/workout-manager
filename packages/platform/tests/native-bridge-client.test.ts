@@ -509,3 +509,115 @@ describe('native bridge client', () => {
     expect(client.getCapabilities()).toEqual({ ...capabilities, 'app.openSettings': false });
   });
 });
+
+const selectionId = '11111111-1111-4111-8111-111111111111';
+const selectionStatus = {
+  state: 'choosing',
+  registeredCount: null,
+  selectedCount: 2,
+  resultCount: null,
+};
+function selectionClient(status: unknown = selectionStatus, enabled = true) {
+  const calls: unknown[] = [];
+  const client = clientWith(async (request) => {
+    calls.push(request);
+    if (request.kind === 'hello')
+      return {
+        kind: 'hello.result',
+        version: 3,
+        id: request.id,
+        capabilities: {
+          ...capabilities,
+          'auth.transport': true,
+          'healthkit.workouts': true,
+          ...(enabled ? { 'healthkit.workouts.selection': true } : {}),
+        },
+      };
+    return {
+      kind: 'command.result',
+      version: 3,
+      id: request.id,
+      method: request.method,
+      ...(request.method === 'healthkit.workouts.select'
+        ? { status: 'opened', selectionId }
+        : {
+            status: request.method === 'healthkit.workouts.cancelSelection' ? 'cancelled' : status,
+          }),
+    };
+  });
+  return { client, calls };
+}
+
+describe('native workout selection client', () => {
+  it('uses only fixed commands and an opaque screen handle, without health candidate data', async () => {
+    const { client, calls } = selectionClient();
+    await client.connect();
+    expect(await client.selectHealthKitWorkouts()).toEqual({
+      ok: true,
+      value: { status: 'opened', selectionId },
+    });
+    expect(await client.healthKitWorkoutSelectionStatus(selectionId)).toEqual({
+      ok: true,
+      value: selectionStatus,
+    });
+    expect(await client.cancelHealthKitWorkoutSelection(selectionId)).toEqual({
+      ok: true,
+      value: 'cancelled',
+    });
+    expect(calls.slice(1)).toEqual([
+      expect.objectContaining({ method: 'healthkit.workouts.select', payload: {} }),
+      expect.objectContaining({
+        method: 'healthkit.workouts.selectionStatus',
+        payload: { selectionId },
+      }),
+      expect.objectContaining({
+        method: 'healthkit.workouts.cancelSelection',
+        payload: { selectionId },
+      }),
+    ]);
+  });
+  it('treats an absent additive capability as unsupported and sends no commands', async () => {
+    const { client, calls } = selectionClient(selectionStatus, false);
+    await client.connect();
+    expect(await client.selectHealthKitWorkouts()).toEqual({ ok: false, code: 'UNAVAILABLE' });
+    expect(await client.healthKitWorkoutSelectionStatus(selectionId)).toEqual({
+      ok: false,
+      code: 'UNAVAILABLE',
+    });
+    expect(await client.cancelHealthKitWorkoutSelection(selectionId)).toEqual({
+      ok: false,
+      code: 'UNAVAILABLE',
+    });
+    expect(calls).toHaveLength(1);
+  });
+  it.each([
+    { ...selectionStatus, sampleId: selectionId },
+    { ...selectionStatus, raw: { duration: 120 } },
+    { ...selectionStatus, selectedCount: 51 },
+    { ...selectionStatus, registeredCount: -1 },
+    { ...selectionStatus, resultCount: 51 },
+    { ...selectionStatus, state: 'permission_granted' },
+  ])('rejects leaked or invalid selection status %j', async (status) => {
+    const { client } = selectionClient(status);
+    await client.connect();
+    expect(await client.healthKitWorkoutSelectionStatus(selectionId)).toEqual({
+      ok: false,
+      code: 'INVALID_REPLY',
+    });
+  });
+  it('rejects invalid handles before dispatch and honors an aborted owner request', async () => {
+    const { client, calls } = selectionClient();
+    await client.connect();
+    expect(await client.cancelHealthKitWorkoutSelection('not-a-uuid')).toEqual({
+      ok: false,
+      code: 'INVALID_REQUEST',
+    });
+    const controller = new AbortController();
+    controller.abort();
+    expect(await client.selectHealthKitWorkouts(controller.signal)).toEqual({
+      ok: false,
+      code: 'CANCELLED',
+    });
+    expect(calls).toHaveLength(1);
+  });
+});

@@ -148,6 +148,21 @@ final class HealthKitWorkoutCollector {
         #endif
     }
 
+    /** An explicit registration ACK is followed by the existing complete-list collection fence. */
+    func registrationsDidChange(ownerAthleteId: String, consentRevision: Int) throws {
+        guard let state = availableState() else { throw HealthKitCollectionFailure.unavailable }
+        _ = try state.activate(accountId: ownerAthleteId)
+        _ = try state.applyConsentRevision(consentRevision)
+        // The explicit attribution/registration action also requests collection of the registered set.
+        try state.requestReconciliation()
+        generation += 1
+        stopObservers()
+        state.invalidateRegistrationVerification()
+        completedScopes.removeAll()
+        scopeOffset = 0
+        scheduleCollection()
+    }
+
     private func invalidateOwner() {
         generation += 1
         activeAccountId = nil

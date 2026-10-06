@@ -267,9 +267,11 @@ final class NativeAuth: NSObject, ASWebAuthenticationPresentationContextProvidin
     private var authenticationSession: ASWebAuthenticationSession?
     private var authenticationContinuation: CheckedContinuation<URL, Error>?
     private var busy = false
+    private var selectionCredentialIdentity: (sessionId: String, accessToken: String, id: UUID)?
 
     private func clearCredential() throws {
         try credentialStore.delete()
+        selectionCredentialIdentity = nil
         // No token, athlete ID, or health data crosses this local signal.
         NotificationCenter.default.post(name: .nativeAuthCredentialInvalidated, object: nil)
     }
@@ -606,6 +608,98 @@ final class NativeAuth: NSObject, ASWebAuthenticationPresentationContextProvidin
                                                      installationId: installationId,
                                                      batchId: batchId, eventCount: eventCount)
     }
+
+    /** Native UI lifetime context; credentials never leave the auth boundary. */
+    func healthKitSelectionContext() async throws -> HealthKitWorkoutSelectionContext {
+        try Task.checkCancellation()
+        guard !busy, let credential = try credentialStore.read(), credential.expiresAt > Date() else {
+            throw HealthKitWorkoutSelectionError.unauthorized
+        }
+        let revision: Int
+        switch try await healthKitConsent() {
+        case .granted(let value):
+            guard (1...2_147_483_647).contains(value) else { throw HealthKitWorkoutSelectionError.invalidReply }
+            revision = value
+        case .notGranted: throw HealthKitWorkoutSelectionError.consentRequired
+        case .authenticationRequired: throw HealthKitWorkoutSelectionError.unauthorized
+        }
+        try Task.checkCancellation()
+        guard !busy, let current = try credentialStore.read(),
+            current.sessionId == credential.sessionId, current.accessToken == credential.accessToken,
+            current.athleteId == credential.athleteId, current.expiresAt > Date()
+        else {
+            throw HealthKitWorkoutSelectionError.unauthorized
+        }
+        if selectionCredentialIdentity?.sessionId != credential.sessionId
+            || selectionCredentialIdentity?.accessToken != credential.accessToken
+        {
+            selectionCredentialIdentity = (credential.sessionId, credential.accessToken, UUID())
+        }
+        guard let identity = selectionCredentialIdentity?.id else { throw HealthKitWorkoutSelectionError.unauthorized }
+        return .init(
+            ownerAthleteId: credential.athleteId, sessionId: credential.sessionId,
+            consentRevision: revision, credentialIdentity: identity)
+    }
+
+    func validateHealthKitSelectionContext(_ context: HealthKitWorkoutSelectionContext) async throws {
+        let current = try await healthKitSelectionContext()
+        guard current.ownerAthleteId == context.ownerAthleteId, current.sessionId == context.sessionId,
+            current.credentialIdentity == context.credentialIdentity
+        else { throw HealthKitWorkoutSelectionError.unauthorized }
+        guard current.consentRevision == context.consentRevision else {
+            throw HealthKitWorkoutSelectionError.consentRequired
+        }
+    }
+
+    /** Fixed, declared registration POST; no candidate or generic body arrives from WebView. */
+    func registerHealthKitWorkouts(_ input: HealthKitWorkoutRegistrationRequest) async throws
+        -> HealthKitWorkoutRegistrationSnapshot
+    {
+        try await validateHealthKitSelectionContext(input.context)
+        if !input.isRetry {
+            let currentRegistry = try await fetchHealthKitRegisteredWorkouts(
+                ownerAthleteId: input.context.ownerAthleteId, consentRevision: input.context.consentRevision)
+            try await validateHealthKitSelectionContext(input.context)
+            guard currentRegistry.registryRevision == input.expectedRegistryRevision else {
+                throw HealthKitWorkoutSelectionError.conflict
+            }
+        }
+        // A response-loss replay retains its original expected head/body/key; the server resolves idempotency atomically.
+        guard Self.isConfigured, let configuration, !busy,
+            let credential = try credentialStore.read(), credential.athleteId == input.context.ownerAthleteId,
+            credential.sessionId == input.context.sessionId, credential.expiresAt > Date()
+        else {
+            throw HealthKitWorkoutSelectionError.unauthorized
+        }
+        try Task.checkCancellation()
+        var request = URLRequest(url: configuration.apiURL("/bff/v1/healthkit/workout-registrations"))
+        request.httpMethod = "POST"
+        request.httpBody = input.body
+        request.setValue("Bearer \(credential.accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("no-store", forHTTPHeaderField: "Cache-Control")
+        let (status, response) = try await BoundedNativeRequest(limit: 16_384).send(request)
+        try Task.checkCancellation()
+        guard !busy, let current = try credentialStore.read(),
+            current.sessionId == credential.sessionId, current.accessToken == credential.accessToken,
+            current.athleteId == input.context.ownerAthleteId, current.expiresAt > Date()
+        else {
+            throw HealthKitWorkoutSelectionError.unauthorized
+        }
+        switch status {
+        case 200: break
+        case 401: throw HealthKitWorkoutSelectionError.unauthorized
+        case 403: throw HealthKitWorkoutSelectionError.consentRequired
+        case 409: throw HealthKitWorkoutSelectionError.conflict
+        case 408, 429, 500...599: throw HealthKitWorkoutSelectionError.offline
+        default: throw HealthKitWorkoutSelectionError.unavailable
+        }
+        let snapshot = try input.validatedReply(response)
+        try await validateHealthKitSelectionContext(input.context)
+        return snapshot
+    }
+
 
     /** Fixed native-only registry transport. Neither sample IDs nor epochs enter WebView. */
     func fetchHealthKitRegisteredWorkouts(ownerAthleteId: String, consentRevision: Int) async throws

@@ -28,6 +28,8 @@ export const nativeBridgeCapabilitiesSchema = z.strictObject({
   'healthkit.read': z.literal(false),
   /** Device support only; this says nothing about OS read access or server consent. */
   'healthkit.workouts': z.boolean(),
+  /** Additive v3 capability; absent on older hosts means selection unavailable. */
+  'healthkit.workouts.selection': z.boolean().optional(),
   'auth.transport': z.boolean(),
 });
 
@@ -42,6 +44,9 @@ const nativeBridgeCommandMethodSchema = z.enum([
   'api.healthkitConsent.write',
   'healthkit.workouts.requestAccess',
   'healthkit.workouts.status',
+  'healthkit.workouts.select',
+  'healthkit.workouts.selectionStatus',
+  'healthkit.workouts.cancelSelection',
 ]);
 
 export const nativeBridgeReadPathSchema = z.enum([
@@ -95,6 +100,28 @@ export const nativeBridgeHealthKitStatusSchema = z.strictObject({
   pauseReason: z.enum(['forbidden', 'conflict', 'rejected']).nullable(),
 });
 
+/** Native-only candidate data never enters this status surface. Null counts mean unverified. */
+export const nativeBridgeHealthKitSelectionStatusSchema = z.strictObject({
+  state: z.enum([
+    'idle',
+    'loading',
+    'choosing',
+    'confirming',
+    'registering',
+    'registered',
+    'refresh_pending',
+    'cancelled',
+    'offline',
+    'conflict',
+    'consent_required',
+    'unauthorized',
+    'unavailable',
+  ]),
+  registeredCount: z.number().int().min(0).max(10_000).nullable(),
+  selectedCount: z.number().int().min(0).max(50),
+  resultCount: z.number().int().min(0).max(50).nullable(),
+});
+
 export const nativeBridgeSessionSchema = z.discriminatedUnion('state', [
   z.strictObject({ state: z.literal('signed_out') }),
   z.strictObject({
@@ -130,8 +157,15 @@ export const nativeBridgeRequestSchema = z.union([
       'auth.signOut',
       'healthkit.workouts.requestAccess',
       'healthkit.workouts.status',
+      'healthkit.workouts.select',
     ]),
     payload: z.strictObject({}),
+  }),
+  z.strictObject({
+    ...requestBase,
+    method: z.enum(['healthkit.workouts.selectionStatus', 'healthkit.workouts.cancelSelection']),
+    // Opaque native UI lifetime handle; never a HealthKit sample identifier.
+    payload: z.strictObject({ selectionId: z.uuid() }),
   }),
   z.strictObject({
     ...requestBase,
@@ -272,6 +306,22 @@ export const nativeBridgeReplySchema = z.union([
     status: nativeBridgeHealthKitStatusSchema,
   }),
   z.strictObject({
+    ...replyBase,
+    method: z.literal('healthkit.workouts.select'),
+    status: z.literal('opened'),
+    selectionId: z.uuid(),
+  }),
+  z.strictObject({
+    ...replyBase,
+    method: z.literal('healthkit.workouts.cancelSelection'),
+    status: z.literal('cancelled'),
+  }),
+  z.strictObject({
+    ...replyBase,
+    method: z.literal('healthkit.workouts.selectionStatus'),
+    status: nativeBridgeHealthKitSelectionStatusSchema,
+  }),
+  z.strictObject({
     kind: z.literal('error'),
     version: z.literal(nativeBridgeVersion),
     id: requestIdSchema,
@@ -288,6 +338,9 @@ export type NativeBridgeReadPath = z.infer<typeof nativeBridgeReadPathSchema>;
 export type NativeBridgeActivityReadPath = z.infer<typeof nativeBridgeActivityReadPathSchema>;
 export type NativeBridgeHealthKitDecision = z.infer<typeof nativeBridgeHealthKitDecisionSchema>;
 export type NativeBridgeHealthKitStatus = z.infer<typeof nativeBridgeHealthKitStatusSchema>;
+export type NativeBridgeHealthKitSelectionStatus = z.infer<
+  typeof nativeBridgeHealthKitSelectionStatusSchema
+>;
 export type NativeBridgeHealthKitConsentWrite = z.infer<
   typeof nativeBridgeHealthKitConsentWriteSchema
 >;

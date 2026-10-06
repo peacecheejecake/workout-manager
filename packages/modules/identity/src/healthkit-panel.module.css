@@ -27,3 +27,16 @@
   outline: 2px solid var(--accent, #6256b8);
   outline-offset: 3px;
 }
+
+.selection {
+  min-width: 0;
+  margin-block: var(--space-4, 16px);
+  padding: var(--space-4, 16px);
+  border: 1px solid var(--border, #b7bfcd);
+  border-radius: var(--radius-control, 12px);
+}
+
+.selection button {
+  max-width: 100%;
+  white-space: normal;
+}

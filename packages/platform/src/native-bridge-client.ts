@@ -11,6 +11,7 @@ import {
   type NativeBridgeSession,
   type NativeBridgeHealthKitConsentWrite,
   type NativeBridgeHealthKitStatus,
+  type NativeBridgeHealthKitSelectionStatus,
 } from '@workout/contracts/native-bridge';
 
 const signInTimeoutMs = 10 * 60_000;
@@ -338,6 +339,66 @@ export function createNativeBridgeClient({
     return { ok: true, value: reply.status };
   }
 
+  async function selectHealthKitWorkouts(
+    signal?: AbortSignal,
+  ): Promise<NativeBridgeClientResult<{ status: 'opened'; selectionId: string }>> {
+    if (
+      !capabilities?.['healthkit.workouts.selection'] ||
+      !capabilities['healthkit.workouts'] ||
+      !capabilities['auth.transport']
+    ) {
+      return { ok: false, code: 'UNAVAILABLE' };
+    }
+    const result = await exchange(
+      {
+        kind: 'command',
+        version: nativeBridgeVersion,
+        id: createId(),
+        method: 'healthkit.workouts.select',
+        payload: {},
+      },
+      signal,
+      networkTimeoutMs,
+    );
+    if (!result.ok) return result;
+    const reply = nativeBridgeReplySchema.parse(result.value);
+    if (reply.kind !== 'command.result' || reply.method !== 'healthkit.workouts.select') {
+      return { ok: false, code: 'INVALID_REPLY' };
+    }
+    return { ok: true, value: { status: reply.status, selectionId: reply.selectionId } };
+  }
+
+  async function selectionCommand(
+    method: 'healthkit.workouts.cancelSelection' | 'healthkit.workouts.selectionStatus',
+    selectionId: string,
+    signal?: AbortSignal,
+  ): Promise<NativeBridgeClientResult<'cancelled' | NativeBridgeHealthKitSelectionStatus>> {
+    if (
+      !capabilities?.['healthkit.workouts.selection'] ||
+      !capabilities['healthkit.workouts'] ||
+      !capabilities['auth.transport']
+    ) {
+      return { ok: false, code: 'UNAVAILABLE' };
+    }
+    const result = await exchange(
+      {
+        kind: 'command',
+        version: nativeBridgeVersion,
+        id: createId(),
+        method,
+        payload: { selectionId },
+      },
+      signal,
+      networkTimeoutMs,
+    );
+    if (!result.ok) return result;
+    const reply = nativeBridgeReplySchema.parse(result.value);
+    if (reply.kind !== 'command.result' || reply.method !== method || !('status' in reply)) {
+      return { ok: false, code: 'INVALID_REPLY' };
+    }
+    return { ok: true, value: reply.status };
+  }
+
   return {
     connect,
     openSettings,
@@ -352,6 +413,11 @@ export function createNativeBridgeClient({
       workoutCommand('healthkit.workouts.requestAccess', signal),
     healthKitWorkoutStatus: (signal?: AbortSignal) =>
       workoutCommand('healthkit.workouts.status', signal),
+    selectHealthKitWorkouts,
+    healthKitWorkoutSelectionStatus: (selectionId: string, signal?: AbortSignal) =>
+      selectionCommand('healthkit.workouts.selectionStatus', selectionId, signal),
+    cancelHealthKitWorkoutSelection: (selectionId: string, signal?: AbortSignal) =>
+      selectionCommand('healthkit.workouts.cancelSelection', selectionId, signal),
     getCapabilities: () => capabilities,
   };
 }

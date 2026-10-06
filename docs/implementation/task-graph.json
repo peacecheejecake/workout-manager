@@ -2082,7 +2082,7 @@
       "title": "HealthKit 운동 선택 UI·native bridge",
       "dependsOn": ["M3-02j", "M3-02m"],
       "kind": "task",
-      "status": "not_started",
+      "status": "completed",
       "scope": "운동 후보를 기기 안에서만 제한적으로 보여 주고 계정·업로드 범위의 명시 선택·확인을 제공한다. 미선택 원본·UUID의 서버/WebView 반출을 막고 등록 대기·충돌·offline·권한 미확인·접근성·IME 상태를 검증한다.",
       "evidence": "docs/implementation/progress/M3-02n.md"
     },
