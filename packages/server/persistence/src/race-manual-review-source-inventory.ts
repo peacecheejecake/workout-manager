@@ -270,6 +270,41 @@ const bodylessMetadata = new Map<string, z.ZodType>([
     ]),
   ],
 ]);
+// Exact catalog producer metadata: no recovery body or new deletion identity.
+const recoveryMethodMetadata = z
+  .strictObject({
+    requested: z.strictObject({
+      kind: z.literal('recovery_method'),
+      ref: z.strictObject({ id: uuid, versionId: uuid }),
+    }),
+    state: z.enum(['current', 'historical', 'unavailable']),
+    reason: z.literal('owned_version_unavailable').nullable(),
+    content: z.strictObject({ digest: z.string().regex(/^[a-f0-9]{64}$/) }).nullable(),
+    currentHead: z.strictObject({ aggregate_id: uuid, version_id: uuid }).nullable(),
+    provenance: z
+      .strictObject({
+        source: z.literal('user_recorded'),
+        reviewState: z.literal('unreviewed'),
+        reviewedAt: z.null(),
+      })
+      .nullable(),
+  })
+  .superRefine((row, ctx) => {
+    const unavailable = row.state === 'unavailable';
+    const valid = unavailable
+      ? row.reason === 'owned_version_unavailable' &&
+        row.content === null &&
+        row.currentHead === null &&
+        row.provenance === null
+      : row.reason === null &&
+        row.content !== null &&
+        row.provenance !== null &&
+        (row.currentHead === null || row.currentHead.aggregate_id === row.requested.ref.id) &&
+        (row.state === 'current'
+          ? row.currentHead?.version_id === row.requested.ref.versionId
+          : row.currentHead?.version_id !== row.requested.ref.versionId);
+    if (!valid) ctx.addIssue({ code: 'custom', message: 'INVALID_RECOVERY_METHOD_METADATA' });
+  });
 const protectedFields = new Set([
   'record',
   'original',
@@ -366,8 +401,17 @@ export function mapRaceManualReviewSourceInventory(raw: unknown) {
           blocked(path, 'unsupported_copied_body');
         return;
       }
-      const row = object(value),
-        exact = identify(row);
+      const row = object(value);
+      if (
+        /^context\.sourcePermissionManifest\.catalog\[\d+\]$/.test(path) &&
+        typeof row['requested'] === 'object' &&
+        row['requested'] !== null &&
+        object(row['requested'])['kind'] === 'recovery_method'
+      ) {
+        recoveryMethodMetadata.parse(row);
+        return;
+      }
+      const exact = identify(row);
       if (exact) {
         const key = keyOf(exact.ref),
           bytes = canonical(exact.body),

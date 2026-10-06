@@ -7,6 +7,7 @@ import { createRecoveryRepository } from '../src/recovery-core.js';
 import { recoveryMethodVersionSchema } from '@workout/contracts/recovery-core';
 import { captureRaceImpactSourcePermissions } from '../src/race-plan-impact-source-permissions.js';
 import { impactDependencyDigest } from '../src/race-plan-impact-dependencies.js';
+import { mapRaceManualReviewSourceInventory } from '../src/race-manual-review-source-inventory.js';
 import { lockAppAdmission } from '../src/app-admission.js';
 import { createConsentRepository } from '../src/repositories.js';
 import {
@@ -298,4 +299,23 @@ it('keeps unsupported checkin content and the generic membership missing flag un
     },
   ]);
   expect(result.complete).toBe(false);
+});
+
+it('maps real public-created recovery catalog metadata without granting storage or copying method content', async () => {
+  const athlete = await account();
+  const record = await method(athlete);
+  const manifest = await capture(athlete, [
+    { kind: 'recovery_method', ref: { id: record.methodId, versionId: record.versionId } },
+  ]);
+  const result = mapRaceManualReviewSourceInventory({
+    status: 'blocked',
+    storage: 'not_persisted',
+    sourceCompleteness: 'unverified',
+    approvalAllowed: false,
+    context: { athleteId: athlete, sourcePermissionManifest: manifest },
+  });
+  expect(result.inventoryState).toBe('mapped');
+  expect(result.refs).toEqual([]);
+  expect(result.storageAllowed).toBe(false);
+  expect(JSON.stringify(manifest)).not.toContain('Personal record');
 });

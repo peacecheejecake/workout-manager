@@ -523,3 +523,48 @@ it('accepts only exact bodyless producer metadata shapes at their captured conte
     ).inventoryState,
   ).toBe('blocked');
 });
+
+it('accepts exact unreviewed recovery catalog provenance only at the producer path', () => {
+  const row = {
+    requested: { kind: 'recovery_method', ref: { id: one, versionId: two } },
+    state: 'current',
+    reason: null,
+    content: { digest: 'a'.repeat(64) },
+    currentHead: { aggregate_id: one, version_id: two },
+    provenance: { source: 'user_recorded', reviewState: 'unreviewed', reviewedAt: null },
+  };
+  const wrap = (entry: unknown) => envelope({ sourcePermissionManifest: { catalog: [entry] } });
+  const result = mapRaceManualReviewSourceInventory(wrap(row));
+  expect(result.inventoryState).toBe('mapped');
+  expect(result.refs).toEqual([]);
+  expect(result.storageAllowed).toBe(false);
+  expect(
+    mapRaceManualReviewSourceInventory(wrap({ ...row, state: 'historical', currentHead: null }))
+      .inventoryState,
+  ).toBe('mapped');
+  expect(
+    mapRaceManualReviewSourceInventory(
+      wrap({
+        ...row,
+        state: 'unavailable',
+        reason: 'owned_version_unavailable',
+        content: null,
+        currentHead: null,
+        provenance: null,
+      }),
+    ).inventoryState,
+  ).toBe('mapped');
+  for (const entry of [
+    { ...row, record: event() },
+    { ...row, content: { digest: 'a'.repeat(64), body: event() } },
+    { ...row, provenance: { ...row.provenance, reviewState: 'reviewed' } },
+    { ...row, currentHead: { aggregate_id: three, version_id: two } },
+    { ...row, state: 'historical' },
+    { ...row, state: 'unavailable' },
+    { ...row, requested: { ...row.requested, kind: 'checkin_template' } },
+  ])
+    expect(mapRaceManualReviewSourceInventory(wrap(entry)).inventoryState).toBe('blocked');
+  expect(
+    mapRaceManualReviewSourceInventory(envelope({ actuals: { catalog: [row] } })).inventoryState,
+  ).toBe('blocked');
+});
