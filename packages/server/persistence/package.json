@@ -72,7 +72,8 @@
     "./resource-retrieval": "./src/resource-retrieval.ts",
     "./course-thumbnails": "./src/course-thumbnails.ts",
     "./routing-admission": "./src/routing-admission.ts",
-    "./healthkit-registration-audit": "./src/healthkit-registration-audit.ts"
+    "./healthkit-registration-audit": "./src/healthkit-registration-audit.ts",
+    "./app-admission": "./src/app-admission.ts"
   },
   "devDependencies": {
     "@types/pg": "8.23.1",

@@ -835,3 +835,7 @@ M1-06b 공식 수집이 Web 출시의 필수 조건이었다. 2026-09-27 결정�
 선행 조건은 [활성 그래프](task-graph.json)를 따른다.
 
 최소 병렬화는 M0-02 뒤 frontend/backend 분리다. 더 빠르게 진행하려고 승인 transaction·공유 schema·migration을 독립 구현 두 벌로 만드는 방식은 사용하지 않는다.
+
+## S22 확정 후속 처리 gate · 2026-10-06
+
+M2-01k-v-a~f는 app 처리 의미 확정 뒤 새 admission·직접 저장·basis 호환·영양/회복/루틴·provider worker·UI/native 경계를 각각 검증한다. v-a 공통 helper가 completed, v-b 직접 처리 연결은 in_progress, 나머지는 not_started이며 부모 M2-01k의 의존에 포함한다. generic provider는 호환 원장만 유지한다.
