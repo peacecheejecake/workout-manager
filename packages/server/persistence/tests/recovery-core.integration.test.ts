@@ -12,13 +12,22 @@ import { createRecoveryRepository, RecoveryReferenceError } from '../src/recover
 
 const adminUrl = process.env['TEST_DATABASE_ADMIN_URL'];
 const runtimeUrl = process.env['TEST_DATABASE_URL'];
-if (!adminUrl || !runtimeUrl) throw new Error('Run pnpm test:integration with isolated PostgreSQL');
+const ownerUrl = process.env['TEST_DATABASE_OWNER_URL'];
+if (!adminUrl || !runtimeUrl || !ownerUrl)
+  throw new Error('Run pnpm test:integration with isolated PostgreSQL');
 const admin = new Pool({ connectionString: adminUrl });
+// Protected maintenance uses the actual plain schema owner; admin remains inspector.
+const maintenanceOwner = new Pool({ connectionString: ownerUrl });
 let database: Database;
 let restoreGeneration: string;
 
 beforeAll(async () => {
   await migrate(adminUrl);
+  const ownerIdentity = await maintenanceOwner.query(`SELECT
+    current_user=pg_get_userbyid(relowner) AS owner_matches,
+    (SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname=current_user) AS unsafe
+    FROM pg_class WHERE oid='public.restore_generation'::regclass`);
+  expect(ownerIdentity.rows).toEqual([{ owner_matches: true, unsafe: false }]);
   // This isolated task worktree precedes 023/024. The root integrator registers
   // 025 in migrate.ts after merging the three tasks.
   const installed = await admin.query(
@@ -54,6 +63,7 @@ beforeAll(async () => {
 });
 afterAll(async () => {
   await database?.close();
+  await maintenanceOwner.end();
   await admin.end();
 });
 
@@ -227,13 +237,13 @@ it('keeps rest selection separate from actuals and enforces tenant ownership, re
   expect(saved.durationSeconds).toBeNull();
   expect(await repo.createAction(owner, action)).toEqual(saved);
   try {
-    await admin.query('SELECT public.rotate_restore_generation()');
+    await maintenanceOwner.query('SELECT public.rotate_restore_generation()');
     await expect(repo.createAction(owner, action)).rejects.toMatchObject({
       code: 'STALE_RESTORE_GENERATION',
     });
     expect((await repo.workspace(owner)).actions).toHaveLength(1);
   } finally {
-    await admin.query(
+    await maintenanceOwner.query(
       'UPDATE public.restore_generation SET generation_id=$1 WHERE singleton=true',
       [restoreGeneration],
     );

@@ -12,8 +12,12 @@ import { createNutritionRepository } from '../src/nutrition-core.js';
 
 const adminUrl = process.env['TEST_DATABASE_ADMIN_URL'];
 const runtimeUrl = process.env['TEST_DATABASE_URL'];
-if (!adminUrl || !runtimeUrl) throw new Error('Run pnpm test:integration with isolated PostgreSQL');
+const ownerUrl = process.env['TEST_DATABASE_OWNER_URL'];
+if (!adminUrl || !runtimeUrl || !ownerUrl)
+  throw new Error('Run pnpm test:integration with isolated PostgreSQL');
 const admin = new Pool({ connectionString: adminUrl });
+// Protected maintenance uses the actual plain schema owner; admin remains inspector.
+const maintenanceOwner = new Pool({ connectionString: ownerUrl });
 // These command fixtures represent an explicitly granted app processing purpose.
 async function grantedAthlete(): Promise<string> {
   const athlete = randomUUID();
@@ -32,6 +36,11 @@ const makeRepository = () =>
   });
 beforeAll(async () => {
   await migrate(adminUrl);
+  const ownerIdentity = await maintenanceOwner.query(`SELECT
+    current_user=pg_get_userbyid(relowner) AS owner_matches,
+    (SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname=current_user) AS unsafe
+    FROM pg_class WHERE oid='public.restore_generation'::regclass`);
+  expect(ownerIdentity.rows).toEqual([{ owner_matches: true, unsafe: false }]);
   await grantNutritionCore(adminUrl, 'workout_runtime');
   await grantOperations(adminUrl, 'workout_runtime');
   await admin.query('GRANT USAGE ON SCHEMA public TO workout_runtime');
@@ -46,6 +55,7 @@ beforeAll(async () => {
 });
 afterAll(async () => {
   await database?.close();
+  await maintenanceOwner.end();
   await admin.end();
 });
 
@@ -485,7 +495,7 @@ describe('M1b-01 nutrition persistence', () => {
     const savedFood = await repository.saveFood(athlete, food());
     const request = intake(savedFood.versionId);
     const saved = await repository.createIntake(athlete, request);
-    const client = await admin.connect();
+    const client = await maintenanceOwner.connect();
     try {
       await client.query('BEGIN');
       await client.query('SELECT public.rotate_restore_generation()');
@@ -495,8 +505,9 @@ describe('M1b-01 nutrition persistence', () => {
     }
     expect(await repository.createIntake(athlete, request)).toEqual(saved);
     try {
-      const rotated = (await admin.query('SELECT public.rotate_restore_generation() AS id')).rows[0]
-        ?.id as string;
+      const rotated = (
+        await maintenanceOwner.query('SELECT public.rotate_restore_generation() AS id')
+      ).rows[0]?.id as string;
       await expect(repository.createIntake(athlete, request)).rejects.toMatchObject({
         code: 'STALE_RESTORE_GENERATION',
       });
@@ -532,7 +543,7 @@ describe('M1b-01 nutrition persistence', () => {
         ).rows[0]?.count,
       ).toBe(0);
     } finally {
-      await admin.query(
+      await maintenanceOwner.query(
         'UPDATE public.restore_generation SET generation_id=$1 WHERE singleton=true',
         [restoreGeneration],
       );

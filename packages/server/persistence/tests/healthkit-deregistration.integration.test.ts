@@ -12,14 +12,23 @@ import { grantHealthKitIngestion, grantOperations, migrate } from '../src/migrat
 
 const adminUrl = process.env['TEST_DATABASE_ADMIN_URL'];
 const runtimeUrl = process.env['TEST_DATABASE_URL'];
-if (!adminUrl || !runtimeUrl) throw new Error('Run isolated real PostgreSQL integration harness');
+const ownerUrl = process.env['TEST_DATABASE_OWNER_URL'];
+if (!adminUrl || !runtimeUrl || !ownerUrl)
+  throw new Error('Run isolated real PostgreSQL integration harness');
 const admin = new Pool({ connectionString: adminUrl });
+// Protected maintenance uses the actual plain schema owner; admin remains inspector.
+const maintenanceOwner = new Pool({ connectionString: ownerUrl });
 let database: Database;
 let finalizerDatabase: Database;
 const finalizerRole = `hk_test_finalizer_${randomUUID().replaceAll('-', '')}`;
 
 beforeAll(async () => {
   await migrate(adminUrl);
+  const ownerIdentity = await maintenanceOwner.query(`SELECT
+    current_user=pg_get_userbyid(relowner) AS owner_matches,
+    (SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname=current_user) AS unsafe
+    FROM pg_class WHERE oid='public.restore_generation'::regclass`);
+  expect(ownerIdentity.rows).toEqual([{ owner_matches: true, unsafe: false }]);
   await grantOperations(adminUrl, 'workout_runtime');
   await grantHealthKitIngestion(adminUrl, 'workout_runtime');
   await admin.query('GRANT SELECT,INSERT,UPDATE ON consent TO workout_runtime');
@@ -40,6 +49,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await finalizerDatabase?.close();
   await database?.close();
+  await maintenanceOwner.end();
   await admin.end();
 });
 
@@ -139,7 +149,7 @@ describe('M3-02l product HealthKit deregistration', () => {
         );
       return JSON.stringify(value);
     }
-    const client = await admin.connect();
+    const client = await maintenanceOwner.connect();
     try {
       await client.query('BEGIN');
       await client.query("SELECT set_config('app.athlete_id',$1,true)", [athlete]);
@@ -156,6 +166,9 @@ describe('M3-02l product HealthKit deregistration', () => {
         ],
       );
       await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
     } finally {
       client.release();
     }
@@ -718,7 +731,7 @@ describe('M3-02l product HealthKit deregistration', () => {
       return JSON.stringify(value);
     }
     const digest = createHash('sha256').update(canonical(historical)).digest('hex');
-    const client = await admin.connect();
+    const client = await maintenanceOwner.connect();
     try {
       await client.query('BEGIN');
       await client.query("SELECT set_config('app.athlete_id',$1,true)", [athlete]);
@@ -729,6 +742,9 @@ describe('M3-02l product HealthKit deregistration', () => {
         [athlete, historical.installationId, historical.batchId, digest],
       );
       await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
     } finally {
       client.release();
     }

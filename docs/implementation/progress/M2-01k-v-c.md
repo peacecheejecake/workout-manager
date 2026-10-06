@@ -173,3 +173,11 @@ Full runner의 historical race_event setup 오류는 grantOperations가98 이전
 최신 exporter를 호출하는 추가13파일의 producer version 기대값/좁히기를33으로 맞췄으며 기존 artifact2–32를 변경하지 않았다. 최신 app binding fixture는 registry104와 실제100 파일 ID를 함께 확인한다. Course sharing의 protected 유지 작업은 실제 plain owner·tenant·global shared lock으로 수행하고 admin 검사와 runtime 권한은 유지했다. 단일 Activity positive scenario만 synthetic app consent를 명시 준비한다. 삭제 chain104/103/100/98 prefix와 원래059–048 suffix, live plain owner·inner EXECUTE 금지·103 global→delegate→budget scrub 및 원래 lifecycle→command→DELETE 순서 검증을 유지했다.
 
 최종 실제 PG13파일155/155, fail0/skip0(`/private/tmp/wm-export33-drift-pg-20261007-run3.log`), persistence/API TS·변경 lint/format/diff exit0. 이전154/1 두 회차(권한 없는 consent repo 호출, 과거 chain 파서)도 별도 보존한다. Root가 최종 source diff·SHA·실제 로그와 cleanup을 대조했다. 생산 SQL/보호 조건·실제 제공자는 바꾸거나 호출하지 않았다. 다른 fixture의 명시 app consent와 owner 작업은 별도 검증 중이며 전체 통합의 기존 실패를 이 집중 통과로 대체하지 않는다.
+
+## 2026-10-07 protected maintenance and synthetic collection fixture regression
+
+HealthKit historical receipt v1/v2 owner seed·nutrition/recovery restore-generation rotation만 실제 plain owner 연결로 이동했다. Admin 검사와 기존 runtime 거절·unknown receipt·idempotency/generation/rollback 수용은 유지한다. 실제 PG3파일19/19(skip0), `/private/tmp/wm-owner-maintenance-actual-r2-20261007.log`; 첫18/1 회차도 보존한다. 역할은 live restore_generation table owner·non-super/non-bypass를 실제 확인했고 source SQL/정책은 변경하지 않았다.
+
+별도 PG3파일31/31(skip0), `/private/tmp/wm-c-bounded-fixtures-pg-20261007-run1.log`: Garmin scripted collector의 양성 import fixture3개만 명시 합성 app head를 준비해 개별 provider 동의와 구분했다. 공식 Garmin/실환경 호출 증거가 아니다. Purge 권한 함수의 정확한10개 roster에서099의 renamed implementation 식별자를 갱신하고 owner/ACL 조건을 유지했다. Suppression event FK child096/099 두 개를 정확하게 확인하며 불완전 TRUNCATE의 FK 거절과 전체 FK roster/CASCADE에서 실제 immutable guard 거절을 별도 검증했다. Constraint/trigger bypass를 사용하지 않았다.
+
+Root는 두 실제 로그·source diff·SHA·cleanup과 집중 TS/lint/format을 확인했다. 최신 export 소비자·owner maintenance의 이 집중 수용은 이전 전체1099pass/336fail/16skip을 대체하지 않는다. Plain-owner window의 행 읽기 bound는 실제 원인/성능 조사 중이며 작은 통과 기준으로 바꾸지 않는다.
