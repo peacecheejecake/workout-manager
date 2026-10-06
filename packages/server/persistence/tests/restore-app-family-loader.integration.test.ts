@@ -102,7 +102,7 @@ beforeAll(async () => {
   for (const name of Object.values(names)) {
     await admin.query(`CREATE DATABASE "${name}" OWNER "${roles.owner}"`);
     await grants.migrate(url(name), 101);
-    await grants.migrate(url(name));
+    await grants.migrate(url(name), 102);
     const pool = new Pool({ connectionString: url(name), max: 6 });
     pools.push(pool);
     if (name === names.source) sourcePool = pool;

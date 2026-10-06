@@ -119,3 +119,21 @@ Root 실제 정식 config 3파일 combined **68/68, skip0 = 암호/parser unit29
 초기102 family 회차 run1=9pass/6fail(fixture timezone·존재하지 않는 binding revision 조회), run2=10/5(actual SQL100 run/candidate/integrated binding에 없는 created_at을 새 validator가 요구), run3=12/5(수정 전 shared UUID/text parameter inference)를 보존했다. 원본 timestamp를 만들거나 정상 schema를 완화하지 않았다. 새 validator의 잘못된 created_at3키를 제거하고 실제 column roster 회귀를 추가했으며 stage의 erasure parameter만 explicit text cast로 수정했다. run4의17과run5의18 및 stage r4의37은 각 입력/수용 범위가 다르므로 과거 private50이나 다른 source hash 결과로 합산하지 않는다.
 
 이 시험의 source signer/nonce/schema/proof는 합성 independently supplied 입력이다. 전체 account baseline/consent baseline/private receipts·outbox·HK/resources/AI budget tail 및 파일·독립 provisioner/witness·processing checkpoint/외부 authority/모든writer 연결·reopen/운영 복원은 아직 미구현 또는 미수용이다. 현재 admissionAllowed:false, complete:false이며 C는 in_progress다. Phase 전체 gate·독립 검토·main 병합·운영 적용 증거가 아니다.
+
+## Target102 registry 검사와 정식103 예산 회계 준비 · 2026-10-07
+
+Signed family stage는 global CLOSED exact revision/nonce/incarnation·generation 검사 다음 actual max(schema_migrations.version)이 독립 입력 targetSchemaVersion102와 같은지 검사한다. 이후 target이면 metadata/row staging 전에 APP_FAMILY_TARGET_SCHEMA_MISMATCH로 거절한다. Agent normal registry102 시험38/38(unit29 + actual PG9)은 기존37과 구분한다. 신규 metadata103 삽입 negative는 실제103 설치 증거가 아니다. 정식103 등록 뒤 기존 loader102 시험은 migrate(...,102)를 명시해 historical target 수용을 유지하며 latest103 loader 호환성을 주장하지 않는다.
+
+새 `103_global_openai_budget.sql`을 normal registry에 등록했다. 원본 private budget101 v3 bytes·역사 증거는 보존한다. FX/가격 정의·기본 disabled activation·Seoul 월5만원 합산 counter·reservation·append journal은 owner-only FORCE RLS다. worker grant는 reserve/begin/settle EXECUTE뿐이다. 새 reservation/dispatch는 정식101 CLOSED gate에서 거절되며 기존 terminal accounting receipt replay와 retained liability settlement는 가능하다. 처리가 재개됐다는 뜻은 아니다. 실제 vendor 가격·FX·키는 seed하지 않았다.
+
+Database transaction은 timeout/search_path 설정 뒤 global shared (77210,1)을 lifecycle/tenant/domain lock 전에 획득한다. native lock은 historical schema93에도 사용 가능하지만 processing permission은 아니다. critical owner-role 거절 roster에 control/budget table을 추가했다. 세 budget SQL entry도 global-first이며 plain function-owner와 여섯 table owner 일치를 검사한다. account erase는 기존 wrapper의 direct grantee ACL까지 제거한 뒤 global-first wrapper에서 athlete/run 연결만 scrub하고 금액·journal을 환급하지 않는다.
+
+Typed v2 port는 strict flat replay/settlement DTO, tx-injected reserve/begin/settle, request/output digest 비교를 제공한다. completeFreshness는 아직 실제 production full-manifest comparator가 아닌 same-transaction injection seam이다. begin 결과는 caller의 confirmed COMMIT 전에 HTTP 허가로 사용할 수 없다. provider/network 호출은 없다.
+
+Agent actual103 수용17/17(skip0)은 actual PG16 + DTO unit1이다. 정상 fresh001→103/upgrade102→103 checksum, CLOSED 새처리 거절·zero newhold/journal, retained receipt/unknown full debit/release 제한·rollback·counter 보존·foreign 거절, erase/no refund/inner privilege 거절, actual pg_locks 양방향 및 owner REASSIGN/retarget를 검증했다. 로그 `/private/tmp/wm-registered-global-budget-pg-20261007-run1.log`.
+
+Root 현재 source의 네 시험 파일 combined86/86(skip0): crypto/parser29 + budget DTO1 + actual PG56. 로그 `/private/tmp/wm-root-budget103-combined-20261007.log`; 전용 socket cluster는 stopped/removed. 이전 root loader 회귀69/69는 별도 로그 `/private/tmp/wm-root-loader102-after103-allowed-20261007.log`로 보존한다. 최초 sandbox initdb 공유 메모리 거절(exit1)도 `/private/tmp/wm-root-loader102-after103-20261007.log`에 남는다. 최초 format exit1은 Database query format만 수정했다. 병렬104 test 준비 파일의 아직 없는 import/helper로 consumer TS exit2가 발생해 그 준비 파일은 bytes/hash를 보존하여 private tmp 대기로 옮겼으며 실패 로그를 보존한다. 최종 consumer TS/lint/format 결과는 아래에서 별도로 기록한다.
+
+전체 source103 inventory·authenticated baseline/full budget tail·외부 monotonic witness·generation ACK·processing reopening·production same-tx freshness·실제 usage/price/FX/키/provider 시험은 미완료다. 기존 coverage minimum93과 schema100 candidate를 latest103 complete proof로 승격하지 않는다. C status는 in_progress이고 admissionAllowed:false/CLOSED를 유지한다. phase 검토/main 병합은 수행하지 않았다.
+
+최종 current persistence consumer TS·7개 TS 파일 ESLint·변경 파일 Prettier·git diff check는 exit0이다. 로그는 `/private/tmp/wm-budget103-root-ts-clean-20261007.log`, `wm-budget103-root-lint-clean-20261007.log`, `wm-budget103-root-format-clean-20261007.log`이며, 문서 format 최초 실패도 보존했다. Full phase gates와 독립 phase review는 이 회차의 범위가 아니다.

@@ -506,7 +506,7 @@ describe('app family actual SQL102 owner transaction adapter (minimal SQL fixtur
         `CREATE ROLE "${role}" LOGIN PASSWORD 'isolated' NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE`,
       );
     await admin.query(`CREATE DATABASE "${name}" OWNER "${ownerRole}"`);
-    await migrate(url(ownerRole));
+    await migrate(url(ownerRole), 102);
     ownerPool = new Pool({ connectionString: url(ownerRole) });
     runtimePool = new Pool({ connectionString: url(runtimeRole) });
     prepared = fixture();
@@ -655,6 +655,32 @@ describe('app family actual SQL102 owner transaction adapter (minimal SQL fixtur
       }),
     ).rejects.toThrow();
     expect(await count()).toBe(0);
+  });
+  it('rejects target migration103 metadata for independently expected target102 before staging', async () => {
+    await expect(
+      transaction(async (c) => {
+        await c.query('INSERT INTO public.schema_migrations(version,checksum) VALUES(103,$1)', [
+          'f'.repeat(64),
+        ]);
+        await stageVerifiedAppFamilyArtifactIn(
+          c,
+          handle,
+          prepared.authority.expected,
+          randomUUID(),
+        );
+      }),
+    ).rejects.toThrow('APP_FAMILY_TARGET_SCHEMA_MISMATCH');
+    expect(await count()).toBe(0);
+    expect(
+      Number(
+        (await ownerPool.query('SELECT max(version) n FROM public.schema_migrations')).rows[0].n,
+      ),
+    ).toBe(102);
+    expect(
+      Number(
+        (await ownerPool.query('SELECT count(*)::int n FROM wm_app_load.descriptor')).rows[0].n,
+      ),
+    ).toBe(0);
   });
   it('rejects a genuinely advanced CLOSED global revision and rolls back the close receipt too', async () => {
     const before = Number(

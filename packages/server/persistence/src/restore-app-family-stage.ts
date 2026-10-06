@@ -61,6 +61,16 @@ async function assertTarget(client: AppFamilyOwnerQueryPort, identity: AppFamily
     })
     .parse(global.rows[0]);
   if (state.control.generationId !== state.generation) rejected();
+  // The signed historical source roster does not attest the target registry.
+  // Reject later/unknown target migrations before private metadata/staging.
+  const installed = await client.query(
+    'SELECT max(version) AS version FROM public.schema_migrations',
+  );
+  const targetVersion = z
+    .strictObject({ version: z.number().int().positive().nullable() })
+    .parse(installed.rows[0]);
+  if (targetVersion.version !== identity.targetSchemaVersion)
+    throw new Error('APP_FAMILY_TARGET_SCHEMA_MISMATCH');
   const target = await client.query(
     'SELECT nonce::text,schema_hash,state,state_version FROM wm_app_load.target WHERE singleton FOR UPDATE',
   );

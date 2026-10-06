@@ -108,6 +108,7 @@ const migrationFiles = [
   '100_app_admission_binding.sql',
   '101_restore_processing_closed_control.sql',
   '102_restore_app_family_loader.sql',
+  '103_global_openai_budget.sql',
 ] as const;
 
 /**
@@ -1271,6 +1272,24 @@ export async function grantCourses(connectionString: string, runtimeRole: string
     await pool.query(
       `GRANT EXECUTE ON FUNCTION public.claim_course_share_budget(uuid[]) TO "${runtimeRole}"`,
     );
+  } finally {
+    await pool.end();
+  }
+}
+
+/** Narrow accounting worker entry points; no global tables or activation grant. */
+export async function grantOpenAiBudgetWorker(
+  connectionString: string,
+  runtimeRole: string,
+): Promise<void> {
+  if (!/^[a-z_][a-z0-9_]{0,62}$/.test(runtimeRole)) throw new Error('INVALID_ROLE_NAME');
+  const pool = new Pool({ connectionString, connectionTimeoutMillis: 5000, max: 1 });
+  try {
+    await pool.query(`GRANT USAGE ON SCHEMA public TO "${runtimeRole}"`);
+    await pool.query(`GRANT EXECUTE ON FUNCTION
+      public.reserve_openai_budget(uuid,text,text,text,integer,integer,uuid),
+      public.begin_openai_budget_dispatch(uuid,uuid,uuid,uuid,integer,uuid),
+      public.settle_openai_budget(uuid,uuid,text,text,text) TO "${runtimeRole}"`);
   } finally {
     await pool.end();
   }
