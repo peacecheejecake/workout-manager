@@ -1804,11 +1804,7 @@
         "M2-01k-v-d",
         "M2-01k-v-e",
         "M2-01k-v-f",
-        "M2-01k-w-a",
-        "M2-01k-w-b",
-        "M2-01k-w-c",
-        "M2-01k-w-d",
-        "M2-01k-w-e"
+        "M2-01k-w-a"
       ],
       "kind": "task",
       "status": "in_progress",
@@ -1827,7 +1823,20 @@
     {
       "id": "M2-02",
       "title": "대회·기록",
-      "dependsOn": ["M2-01", "M2-02a"],
+      "dependsOn": [
+        "M2-01",
+        "M2-02a",
+        "M2-02b",
+        "M2-02c",
+        "M2-02d",
+        "M2-02e",
+        "M2-02f",
+        "M2-02g",
+        "M2-02h",
+        "M2-02i",
+        "M2-02j",
+        "M2-02k"
+      ],
       "kind": "task",
       "status": "not_started",
       "scope": "competitions; 코스 참조·결과"
@@ -1897,7 +1906,7 @@
     {
       "id": "M2-06",
       "title": "전체 화면·내부 통합 검증",
-      "dependsOn": ["M2-02", "M2-05", "M0-06b", "M1-06b-tmp"],
+      "dependsOn": ["M2-02", "M2-05", "M0-06b", "M1-06b-tmp", "M2-05c"],
       "kind": "task",
       "status": "not_started",
       "scope": "S01–S35·보안·운영·내부 수용 기준 대조; FUT-09 원문 미확정 해소 또는 명시적 범위 결정. 완료된 M1-06b-tmp의 소유자 한정·기본 꺼짐 비공식 수집 interface와 fixture 회귀를 포함하되, 실제 Garmin 계정 실행은 별도 not_executed이며 공식 연동·일반 사용자 자동 동기화 증거로 쓰지 않는다. 공식 후속 범위: docs/implementation/research/garmin-official-deferred.md"
@@ -1913,7 +1922,7 @@
     {
       "id": "G2-PUBLIC",
       "title": "Web MVP 공개 출시 gate",
-      "dependsOn": ["G2", "EXT-HOSTING"],
+      "dependsOn": ["G2", "EXT-HOSTING", "M2-05d"],
       "kind": "gate",
       "status": "not_started",
       "scope": "사용자 결정(2026-09-27): 호스팅을 내부 준비 판정 뒤로 미룬다. 공개 Web 출시는 G2의 제품 수용과 EXT-HOSTING의 공개 HTTPS/TLS, Zitadel 배포 redirect·logout·취소·만료 검증, NODE_ENV=production·__Host-/Secure cookie, secret manager, ODbL 고지 지도 산출물 재빌드 증거를 모두 요구한다. 미실행·partial 항목은 통과로 표시하지 않으며 공식 Garmin 연동은 별도 후속 범위다."
@@ -2241,40 +2250,130 @@
       "evidence": "docs/implementation/progress/M2-01k-w.md"
     },
     {
-      "id": "M2-01k-w-b",
+      "id": "M2-05a",
       "title": "AI 실행 선택의 immutable job 저장",
-      "dependsOn": ["M2-01k-w-a"],
+      "dependsOn": ["M2-01k-w-a", "M2-02", "M2-05"],
       "kind": "task",
       "status": "not_started",
-      "scope": "Versioned run command/receipt·frozen selection·tenant/RLS·삭제/export/restore·outbox 원자성. 기존 fixture/역사 run에 자동 binding 또는 모델 대체 금지.",
-      "evidence": "docs/implementation/progress/M2-01k-w.md"
+      "scope": "기존 M2-01k-w-b의 미시작 범위를 일대일 이관(2026-10-07); Versioned run command/receipt·frozen selection·tenant/RLS·삭제/export/restore·outbox 원자성. 기존 fixture/역사 run에 자동 binding 또는 모델 대체 금지.",
+      "evidence": "docs/implementation/progress/M2-05-execution.md"
     },
     {
-      "id": "M2-01k-w-c",
+      "id": "M2-05b",
       "title": "AI dispatch의 complete freshness 검증",
-      "dependsOn": ["M2-01k-w-b"],
+      "dependsOn": ["M2-05a"],
       "kind": "task",
       "status": "not_started",
-      "scope": "Same-transaction full dependency manifest·absent heads·actual/overlay/ACL/suppression·consent/policy/catalog·restore generation·outbox lease의 authoritative 재검증. CLOSED 우회 금지.",
-      "evidence": "docs/implementation/progress/M2-01k-w.md"
+      "scope": "기존 M2-01k-w-c의 미시작 범위를 일대일 이관(2026-10-07); Same-transaction full dependency manifest·absent heads·actual/overlay/ACL/suppression·consent/policy/catalog·restore generation·outbox lease의 authoritative 재검증. CLOSED 우회 금지.",
+      "evidence": "docs/implementation/progress/M2-05-execution.md"
     },
     {
-      "id": "M2-01k-w-d",
+      "id": "M2-05c",
       "title": "AI 월 예산과 lease dispatch 연결",
-      "dependsOn": ["M2-01k-w-c"],
+      "dependsOn": ["M2-05b"],
       "kind": "task",
       "status": "not_started",
-      "scope": "모든 사용자 합산 서울 월50,000원 reserve→fresh marker commit→거래 밖 HTTP→settle/finish. ambiguous 전송 재시도 금지, 취소/철회/lease loss·완전한 budget 원장/복원 검증.",
-      "evidence": "docs/implementation/progress/M2-01k-w.md"
+      "scope": "기존 M2-01k-w-d의 미시작 범위를 일대일 이관(2026-10-07); 모든 사용자 합산 서울 월50,000원 reserve→fresh marker commit→거래 밖 HTTP→settle/finish. ambiguous 전송 재시도 금지, 취소/철회/lease loss·완전한 budget 원장/복원 검증.",
+      "evidence": "docs/implementation/progress/M2-05-execution.md"
     },
     {
-      "id": "M2-01k-w-e",
+      "id": "M2-05d",
       "title": "AI 실제 OpenAI 제공자 수용",
-      "dependsOn": ["M2-01k-w-d", "EXT-HOSTING"],
+      "dependsOn": ["M2-05c", "EXT-HOSTING"],
       "kind": "external",
       "status": "not_started",
-      "scope": "명시 Sol 코칭/Luna 합성 비교·서버 키·현재 가격/FX/tokenizer·월 예산·출력/citation 검증·실제 API/청구 증거. 합성 자료로 먼저 확인하고 plan 적용은 별도 명시 승인; provider 실제 증거 전 not_executed 유지.",
-      "evidence": "docs/implementation/progress/M2-01k-w.md"
+      "scope": "기존 M2-01k-w-e의 미시작 범위를 일대일 이관(2026-10-07); 명시 Sol 코칭/Luna 합성 비교·서버 키·현재 가격/FX/tokenizer·월 예산·출력/citation 검증·실제 API/청구 증거. 합성 자료로 먼저 확인하고 plan 적용은 별도 명시 승인; provider 실제 증거 전 not_executed 유지.",
+      "evidence": "docs/implementation/progress/M2-05-execution.md"
+    },
+    {
+      "id": "M2-02b",
+      "title": "대회·결과 저장 명령 계약",
+      "dependsOn": ["M2-02a"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "지도 외부 수용과 독립적으로 기존 RaceEvent/RaceResult/TrainingBest 계약을 소비하는 명시 저장·수정·조회 서버 명령 경계를 준비한다. revision·idempotency·소유권·검증시각 서버 소유와 불변 course 참조를 보존하고 계획 날짜 영향·별도 승인 및 PB 정책을 임의 확정하지 않는다. DTO와 invalid boundary 검증만으로 DB/API/UI/부모 완료를 선언하지 않는다. 후속 persistence/API/화면 및 운영 gate는 부모 M2-02에 남긴다.",
+      "evidence": "docs/implementation/progress/M2-02-branch-state.md"
+    },
+    {
+      "id": "M2-02c",
+      "title": "대회·결과 원장 저장 거래",
+      "dependsOn": ["M2-02b"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "RaceEvent/RaceResult/TrainingBest create/update/get의 실제 PostgreSQL 원장·불변 revision·tenant RLS·CAS·멱등 receipt/outbox·소유권 참조 검증을 구현한다. 서버 official 검증 사실은 사용자 입력으로 승격하지 않으며 연결 Plan 날짜 변경은 영향 preview/별도승인 없이 일반 update로 적용하지 않는다. 새 table의 export/계정 erasure/restore 대응을 root가 함께 통합한다. list/개별삭제·API·S15/S16·PB·날짜 영향 승인 전체 및 지도/운영 수용은 후속에 남기며 부모 완료를 주장하지 않는다.",
+      "evidence": "docs/implementation/progress/M2-02-branch-state.md"
+    },
+    {
+      "id": "M2-02d",
+      "title": "대회·기록의 삭제 freshness를 보존하는 목록 조회",
+      "dependsOn": ["M2-02c"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "tenant별 bounded id-asc 페이지·(revision,privacyGeneration) cursor; stale/foreign/nonexistent cursor 거절·원자 read",
+      "evidence": "docs/implementation/progress/M2-02-branch-state.md"
+    },
+    {
+      "id": "M2-02e",
+      "title": "대회·기록 owner-scoped API 연결",
+      "dependsOn": ["M2-02d"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "Fastify GET/list/create/update runtime boundaries·auth/CSRF·bounded cursor·stable errors; 실제 configured repository/role grants 연결",
+      "evidence": "docs/implementation/progress/M2-02-branch-state.md"
+    },
+    {
+      "id": "M2-02f",
+      "title": "대회·기록 개별 삭제와 복원 suppression",
+      "dependsOn": ["M2-02e"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "개별 삭제 CAS·최소 receipt·history/private purge·tenant별 collection privacyGeneration·독립 restore suppression ledger/exact replay. RaceEvent 삭제는 independent actual result를 조용히 삭제하지 않고 nullable link만 정리; linked Plan 자동 변경 금지. 설계/계약 root 직렬화 후 실제 PG·복원 수용, API 연결.",
+      "evidence": "docs/implementation/progress/M2-02-branch-state.md"
+    },
+    {
+      "id": "M2-02g",
+      "title": "S15·S16 대회·실제 기록의 재사용 화면",
+      "dependsOn": ["M2-02f"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "인증된 세 원장 목록·명시 생성/수정/삭제·null/zero/출처/시간대·CAS/멱등성·Plan 영향 오류·private cache/draft reset. 코스 불변 참조와 실제 활동 연결, 공식 결과/기기 추정 구분. 재사용 module/DTO HTTP adapter/RTL 수용; shell/실제 브라우저 통합은 h로 구분.",
+      "evidence": "docs/implementation/progress/M2-02-branch-state.md"
+    },
+    {
+      "id": "M2-02h",
+      "title": "대회·기록 web/mobile host와 실제 인증 연결",
+      "dependsOn": ["M2-02g"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "실제 Course/Plan/Activity named relation loader, S15/S16 thin web/mobile routes와 URL section, identity fixture races repository wiring, 실제 인증/API/DB E2E. PB 포함 정책 결정과 Plan 영향 preview/승인은 별도 미완료 추적; 합성 module 화면을 제품 통합으로 취급하지 않는다.",
+      "evidence": "docs/implementation/progress/M2-02-branch-state.md"
+    },
+    {
+      "id": "M2-02i",
+      "title": "대회 날짜 변경 Plan 영향 preview·명시 승인",
+      "dependsOn": ["M2-02e"],
+      "kind": "task",
+      "status": "in_progress",
+      "scope": "S15 날짜 변경의 영향 preview와 별도 사용자 승인; RaceEvent/PlanVersion 현재근거·revision·consent·관련모든root freshness 및 원자적 명령/receipt/outbox. 실제PG concurrency/rollback과 UI/E2E 수용 필요.",
+      "evidence": "docs/implementation/progress/M2-02-branch-state.md"
+    },
+    {
+      "id": "M2-02j",
+      "title": "S16 PB 기준·거리별 최고 기록 수용",
+      "dependsOn": ["M2-02g"],
+      "kind": "task",
+      "status": "in_progress",
+      "scope": "2026-10-07 사용자 결정: 공식 확인된 대회 기록만 PB. 거리·단위별 최고 기록/결정론 동률·미상 처리, 서버 검증 근거 유지·수동 및 기기 추정 split 제외, 실제 Host·삭제 갱신 수용",
+      "evidence": "docs/implementation/progress/M2-02-branch-state.md"
+    },
+    {
+      "id": "M2-02k",
+      "title": "대회·결과·훈련 기록의 app 처리 동의 연결",
+      "dependsOn": ["M2-02e"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "S22 app admission의 race6 create/update receipt-first 신규처리 gate, 기존 조회·삭제·export·성공 replay 유지 및 실제PG/HTTP/OIDC Next·Vite 계정동의·철회초안·재동의 수용 완료. 날짜 영향 고정 basis/승인은 M2-02i, 공식 PB는 M2-02j, 실기기·운영·phase review는 별도.",
+      "evidence": "docs/implementation/progress/M2-02-branch-state.md"
     }
   ]
 }
