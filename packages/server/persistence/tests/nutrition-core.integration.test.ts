@@ -14,6 +14,16 @@ const adminUrl = process.env['TEST_DATABASE_ADMIN_URL'];
 const runtimeUrl = process.env['TEST_DATABASE_URL'];
 if (!adminUrl || !runtimeUrl) throw new Error('Run pnpm test:integration with isolated PostgreSQL');
 const admin = new Pool({ connectionString: adminUrl });
+// These command fixtures represent an explicitly granted app processing purpose.
+async function grantedAthlete(): Promise<string> {
+  const athlete = randomUUID();
+  await admin.query(
+    "WITH scope AS MATERIALIZED (SELECT set_config('app.athlete_id',$1,true)) INSERT INTO consent(athlete_id,kind,granted,revision) SELECT $1,'app',true,1 FROM scope",
+    [athlete],
+  );
+  return athlete;
+}
+
 let database: Database;
 let restoreGeneration: string;
 const makeRepository = () =>
@@ -125,7 +135,7 @@ function intake(foodVersionId: string, intakeId: string = randomUUID()): CreateI
 describe('M1b-01 nutrition persistence', () => {
   it('stores immutable user-approved plans separately from actual intake and enforces head CAS', async () => {
     const repository = makeRepository();
-    const athlete = randomUUID();
+    const athlete = await grantedAthlete();
     const request = {
       kind: 'create' as const,
       idempotencyKey: randomUUID(),
@@ -198,7 +208,7 @@ describe('M1b-01 nutrition persistence', () => {
 
   it('freezes food definitions and intake revisions, preserving reported zero versus unknown', async () => {
     const repository = makeRepository();
-    const athlete = randomUUID();
+    const athlete = await grantedAthlete();
     const foodRequest = food();
     const firstFood = await repository.saveFood(athlete, foodRequest);
     expect(await repository.saveFood(athlete, foodRequest)).toEqual(firstFood);
@@ -295,7 +305,7 @@ describe('M1b-01 nutrition persistence', () => {
 
   it('paginates adjacent microsecond intake instants without skipping the next row', async () => {
     const repository = makeRepository();
-    const athlete = randomUUID();
+    const athlete = await grantedAthlete();
     const savedFood = await repository.saveFood(athlete, food());
     const base = intake(savedFood.versionId);
     const newer = await repository.createIntake(athlete, {
@@ -328,8 +338,8 @@ describe('M1b-01 nutrition persistence', () => {
 
   it('isolates owners, rejects foreign food links, and serializes competing creates', async () => {
     const repository = makeRepository();
-    const owner = randomUUID();
-    const other = randomUUID();
+    const owner = await grantedAthlete();
+    const other = await grantedAthlete();
     const savedFood = await repository.saveFood(owner, food());
     expect(await repository.readFood(other, savedFood.foodId)).toBeNull();
     await expect(repository.createIntake(other, intake(savedFood.versionId))).rejects.toMatchObject(
@@ -350,7 +360,7 @@ describe('M1b-01 nutrition persistence', () => {
 
   it('fails closed on unknown training, planned item, session and activity links', async () => {
     const repository = makeRepository();
-    const athlete = randomUUID();
+    const athlete = await grantedAthlete();
     const savedFood = await repository.saveFood(athlete, food());
     await expect(
       repository.savePlan(athlete, {
@@ -402,7 +412,7 @@ describe('M1b-01 nutrition persistence', () => {
 
   it('rolls back an intake when the outbox write fails', async () => {
     const repository = makeRepository();
-    const athlete = randomUUID();
+    const athlete = await grantedAthlete();
     const savedFood = await repository.saveFood(athlete, food());
     const request = intake(savedFood.versionId);
     await database.tenant(athlete, (tx) =>
@@ -417,7 +427,7 @@ describe('M1b-01 nutrition persistence', () => {
 
   it('permits only one concurrent correction and erases all nutrition revisions', async () => {
     const repository = makeRepository();
-    const athlete = randomUUID();
+    const athlete = await grantedAthlete();
     const savedPlan = await repository.savePlan(athlete, {
       kind: 'create',
       idempotencyKey: randomUUID(),
@@ -470,8 +480,8 @@ describe('M1b-01 nutrition persistence', () => {
 
   it('rejects a prior-generation retry before receipt replay and preserves rolled-back rotations', async () => {
     const repository = makeRepository();
-    const athlete = randomUUID();
-    const other = randomUUID();
+    const athlete = await grantedAthlete();
+    const other = await grantedAthlete();
     const savedFood = await repository.saveFood(athlete, food());
     const request = intake(savedFood.versionId);
     const saved = await repository.createIntake(athlete, request);

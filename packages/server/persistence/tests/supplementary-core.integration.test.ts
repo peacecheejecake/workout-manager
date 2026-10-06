@@ -17,6 +17,16 @@ const adminUrl = process.env['TEST_DATABASE_ADMIN_URL'];
 const runtimeUrl = process.env['TEST_DATABASE_URL'];
 if (!adminUrl || !runtimeUrl) throw new Error('Run pnpm test:integration with isolated PostgreSQL');
 const admin = new Pool({ connectionString: adminUrl });
+// These command fixtures represent an explicitly granted app processing purpose.
+async function grantedAthlete(): Promise<string> {
+  const athlete = randomUUID();
+  await admin.query(
+    "WITH scope AS MATERIALIZED (SELECT set_config('app.athlete_id',$1,true)) INSERT INTO consent(athlete_id,kind,granted,revision) SELECT $1,'app',true,1 FROM scope",
+    [athlete],
+  );
+  return athlete;
+}
+
 let database: Database;
 const happenedAt = '2026-01-01T08:00:00.000Z';
 const laterAt = '2026-01-01T08:01:00.000Z';
@@ -203,7 +213,7 @@ describe('supplementary core real PostgreSQL ledger', () => {
     if (exported.schemaVersion !== 4) throw new Error('Expected V4 synthetic FIT export');
     const source = exported.imports[0];
     if (!source) throw new Error('Missing mixed parent');
-    const athlete = randomUUID();
+    const athlete = await grantedAthlete();
     const activityRepository = createActivityRepository(database);
     const activity = await activityRepository.importActivity(athlete, source);
     const repository = createSupplementaryRepository(database);
@@ -289,7 +299,7 @@ describe('supplementary core real PostgreSQL ledger', () => {
     ).rejects.toMatchObject({ code: 'ACTIVITY_INVALID' });
   });
   it('bounds the exercise catalog at 100 stable head rows and reports truncation', async () => {
-    const athlete = randomUUID();
+    const athlete = await grantedAthlete();
     const records = Array.from({ length: 101 }, () => exercise().definition);
     await database.tenant(athlete, async (tx) => {
       for (const definition of records) {
@@ -325,7 +335,7 @@ describe('supplementary core real PostgreSQL ledger', () => {
 
   it('restores at most 100 tenant-owned reference-time timers in a stable order', async () => {
     const repository = createSupplementaryRepository(database);
-    const athlete = randomUUID();
+    const athlete = await grantedAthlete();
     const activity = await seededActivity(athlete);
     const execution = await repository.createExecution(athlete, {
       schemaVersion: 2,
@@ -360,7 +370,7 @@ describe('supplementary core real PostgreSQL ledger', () => {
 
   it('rejects linking a non-strength canonical Activity', async () => {
     const repository = createSupplementaryRepository(database);
-    const athlete = randomUUID();
+    const athlete = await grantedAthlete();
     const activity = await seededActivity(athlete, 'running');
     await expect(
       repository.createExecution(athlete, {
@@ -481,7 +491,7 @@ describe('supplementary core real PostgreSQL ledger', () => {
 
   it('records one canonical Activity and set revision, then timer, correction, tombstone and Activity deletion', async () => {
     const repository = createSupplementaryRepository(database, { now: () => new Date(happenedAt) });
-    const athlete = randomUUID();
+    const athlete = await grantedAthlete();
     const savedExercise = await repository.saveExercise(athlete, exercise());
     const savedRoutine = await repository.saveRoutine(
       athlete,
@@ -712,7 +722,7 @@ describe('supplementary core real PostgreSQL ledger', () => {
 
   it('records an explicitly stopped execution without inventing a performed set', async () => {
     const repository = createSupplementaryRepository(database, { now: () => new Date(happenedAt) });
-    const athlete = randomUUID();
+    const athlete = await grantedAthlete();
     const activity = await seededActivity(athlete);
     const started = await repository.createExecution(athlete, {
       schemaVersion: 2,
@@ -737,7 +747,7 @@ describe('supplementary core real PostgreSQL ledger', () => {
 
   it('erases linked supplementary content before Activity and Plan foreign keys', async () => {
     const repository = createSupplementaryRepository(database);
-    const athlete = randomUUID();
+    const athlete = await grantedAthlete();
     const savedExercise = await repository.saveExercise(athlete, exercise());
     const savedRoutine = await repository.saveRoutine(
       athlete,

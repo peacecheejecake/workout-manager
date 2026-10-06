@@ -1,3 +1,4 @@
+import { requireAppAdmission } from './app-admission.js';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import {
@@ -392,6 +393,7 @@ export function createRecoveryRepository(
         await lockCommands(tx);
         const prior = await replay(tx, key, request, recoveryStrategyVersionSchema);
         if (prior) return prior;
+        await requireAppAdmission(tx);
         await validateDraft(tx, command.draft);
         const saved = recoveryStrategyVersionSchema.parse({
           schemaVersion: 1,
@@ -425,6 +427,7 @@ export function createRecoveryRepository(
         await lockCommands(tx);
         const prior = await replay(tx, key, request, recoveryStrategyVersionSchema);
         if (prior) return prior;
+        await requireAppAdmission(tx);
         const head = await tx.query(
           'SELECT version,version_id FROM recovery_strategy_head WHERE athlete_id=$1 AND strategy_id=$2',
           [athleteId, command.strategyId],
@@ -481,6 +484,7 @@ export function createRecoveryRepository(
             throw new RecoveryReferenceError('ACTION_NOT_FOUND');
           return prior;
         }
+        await requireAppAdmission(tx);
         if (Date.parse(command.occurredAt) > now().getTime() + 5 * 60_000)
           throw new RecoveryValidationError();
         await validateActionLinks(tx, command);
@@ -523,6 +527,7 @@ export function createRecoveryRepository(
             throw new RecoveryReferenceError('ACTION_NOT_FOUND');
           return prior;
         }
+        await requireAppAdmission(tx);
         const current = await currentAction(tx, command.actionId);
         if (current === null || current.status === 'deleted')
           throw new RecoveryReferenceError('ACTION_NOT_FOUND');
