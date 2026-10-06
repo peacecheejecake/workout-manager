@@ -1,6 +1,6 @@
 import '@testing-library/jest-dom/vitest';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { focusManager } from '@tanstack/react-query';
 import { IdentityWorkspace } from '../src/identity-workspace';
@@ -148,6 +148,46 @@ it('clears private consent and account UI only after logout confirmation', async
   expect(screen.queryByText(/athlete-a/)).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'AI 동의 철회' })).not.toBeInTheDocument();
 });
+it.each([false, true])(
+  'shows AI purpose and transmission limits before changing granted=%s',
+  async (granted) => {
+    const user = userEvent.setup();
+    let current = { kind: 'ai', granted, revision: 1 };
+    const write = vi.fn((_init: RequestInit) => {
+      current = { ...current, granted: !granted, revision: 2 };
+      return response(current);
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (path: string, init?: RequestInit) => {
+        if (path === '/bff/v1/session') return response(session);
+        if (path === '/bff/v1/operations/status') return operationsResponse();
+        if (path === '/bff/v1/integrations/garmin/status') return garminResponse();
+        if (path.startsWith(unofficialBase)) return response(null, 404);
+        if (init?.method === 'PUT') return write(init);
+        return response(current);
+      }),
+    );
+    render(<IdentityWorkspace />);
+    const account = within(await screen.findByRole('region', { name: '계정과 AI 동의' }));
+    const button = await account.findByRole('button', {
+      name: granted ? 'AI 동의 철회' : 'AI 전달에 동의',
+    });
+    const notice = account.getByText(/훈련 계획·수행 요약·체크인 정보를 AI 코칭 목적으로/);
+    expect(notice).toBeVisible();
+    expect(notice).toHaveTextContent(/사진·자료 원문·정밀 위치는 포함하지 않습니다/);
+    expect(notice).toHaveTextContent('현재 외부 AI 전송 기능은 연결되지 않았습니다.');
+    expect(notice.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(write).not.toHaveBeenCalled();
+    await user.click(button);
+    await account.findByRole('button', { name: granted ? 'AI 전달에 동의' : 'AI 동의 철회' });
+    expect(write).toHaveBeenCalledOnce();
+    expect(write.mock.calls[0]?.[0].body).toBe(
+      JSON.stringify({ granted: !granted, expectedRevision: 1 }),
+    );
+  },
+);
+
 it('does not claim consent success when its revision conflicts', async () => {
   vi.stubGlobal(
     'fetch',

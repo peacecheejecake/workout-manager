@@ -1,6 +1,6 @@
 import '@testing-library/jest-dom/vitest';
 import { StrictMode } from 'react';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AuthenticatedTransport } from '@workout/contracts/core';
@@ -101,6 +101,10 @@ describe('HealthKit account panel', () => {
       }),
     });
     expect(await screen.findByText('앱 동의: 허용되지 않음')).toBeVisible();
+    const health = within(screen.getByRole('region', { name: 'Apple 건강' }));
+    expect(health.getByText('앱 동의와 iPhone 운동 읽기 요청은 별개입니다.')).toBeVisible();
+    expect(health.getByText('iPhone 운동 읽기 허용 여부: 알 수 없음')).toBeVisible();
+    expect(bridge.writeHealthKitConsent).not.toHaveBeenCalled();
     expect(screen.getByRole('button', { name: 'iPhone 운동 읽기 요청' })).toBeDisabled();
     expect(bridge.requestHealthKitWorkoutAccess).not.toHaveBeenCalled();
 

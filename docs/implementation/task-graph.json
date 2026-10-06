@@ -1752,6 +1752,15 @@
       "evidence": "docs/implementation/progress/M2-01k-t.md"
     },
     {
+      "id": "M2-01k-u",
+      "title": "S22 동의 고지·사용자 보호 수용 보강",
+      "dependsOn": ["M2-01k-t", "M3-02n"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "사용자가 진행을 지시한 S22 후속 작업. 확정된 AI 정보·목적, HealthKit 서버동의/OS권한/원본·귀속·해제 상태, 계정삭제·백업잔존 고지를 명시 액션 전 가시성·mutation0·실패 후 미성공·계정전환 응답폐기 회귀로 검증한다. app/provider 정책은 답변 대기이며 새 처리 gate·자동삭제/보존 의미를 임의 구현하지 않는다. 실제 사용처·거래/worker 경합 대조는 준비 증거로만 기록하고 V2-F31 전체/운영·실기기 미실행은 유지한다.",
+      "evidence": "docs/implementation/progress/M2-01k-u.md"
+    },
+    {
       "id": "M2-01k",
       "title": "지도·코스 통합 수용",
       "dependsOn": [
@@ -1787,7 +1796,8 @@
         "M2-01k-q",
         "M2-01k-r",
         "M2-01k-s",
-        "M2-01k-t"
+        "M2-01k-t",
+        "M2-01k-u"
       ],
       "kind": "task",
       "status": "in_progress",

@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -95,7 +95,25 @@ describe('account operations controls', () => {
     const { fetcher, onSignedOut, client } = setup();
     await screen.findByText(/Garmin: 연결되지 않음/);
     expect(fetcher.mock.calls.map(([path]) => String(path))).toEqual(['/bff/v1/operations/status']);
-    const button = screen.getByRole('button', { name: '확인하고 앱 계정 삭제' });
+    const operations = within(screen.getByRole('region', { name: '운영 상태와 내 데이터' }));
+    const button = operations.getByRole('button', { name: '확인하고 앱 계정 삭제' });
+    for (const notice of [
+      operations.getByText(/외부 제공자 계정은 삭제하지 않습니다/),
+      operations.getByText(/이전 계정을 구분하는 불투명한 식별자와 삭제 시각/),
+      operations.getByText(/필요한 연결 정보가 암호화되어 임시 보관/),
+      operations.getByText(/백업 사본은 별도로 보관됩니다/),
+    ]) {
+      expect(notice).toBeVisible();
+      expect(
+        notice.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    }
+    expect(operations.getByText(/필요한 연결 정보가 암호화되어 임시 보관/)).toHaveTextContent(
+      'Garmin 응답이 지연되거나 실패하면 연결 해제도 지연될 수 있습니다.',
+    );
+    expect(operations.getByText(/백업 사본은 별도로 보관됩니다/)).toHaveTextContent(
+      /보관 기간이 만료되거나 삭제 정보를 반영한 안전한 복구 절차가 적용될 때까지 남을 수 있습니다/,
+    );
     expect(button).toBeDisabled();
     const input = screen.getByRole('textbox', { name: '삭제 확인 문구' });
     await user.type(input, 'delete my account');
@@ -103,6 +121,9 @@ describe('account operations controls', () => {
     await user.clear(input);
     await user.type(input, 'DELETE MY ACCOUNT');
     expect(button).toBeEnabled();
+    expect(fetcher.mock.calls.filter(([path]) => String(path).endsWith('/account'))).toHaveLength(
+      0,
+    );
     await user.click(button);
     await waitFor(() => expect(onSignedOut).toHaveBeenCalledOnce());
     expect(
@@ -208,6 +229,43 @@ describe('account operations controls', () => {
         .every((query) => query.state.data === undefined),
     ).toBe(true);
   });
+  it('does not sign out a replacement account when an old deletion completes late', async () => {
+    const user = userEvent.setup();
+    let finish: ((value: Response) => void) | undefined;
+    const { rerender, tree, props, fetcher, onSignedOut, onSessionChanged } = setup(
+      async () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    await user.type(screen.getByRole('textbox', { name: '삭제 확인 문구' }), 'DELETE MY ACCOUNT');
+    await user.click(screen.getByRole('button', { name: '확인하고 앱 계정 삭제' }));
+    expect(await screen.findByText('앱 계정을 삭제하고 있습니다.')).toBeVisible();
+    expect(onSignedOut).not.toHaveBeenCalled();
+    const request = fetcher.mock.calls.find(([path]) => String(path).endsWith('/account'))?.[1];
+    expect(new Headers(request?.headers).get('x-workout-session-id')).toBe('session-one');
+    rerender(
+      tree({
+        ...props,
+        session: { ...session, athleteId: 'athlete-two', sessionId: 'session-two' },
+      }),
+    );
+    expect(request?.signal?.aborted).toBe(true);
+    expect(screen.getByRole('textbox', { name: '삭제 확인 문구' })).toHaveValue('');
+    expect(screen.getByRole('button', { name: '확인하고 앱 계정 삭제' })).toBeDisabled();
+    await act(async () => {
+      finish?.(response({ erased: true }));
+    });
+    expect(onSignedOut).not.toHaveBeenCalled();
+    expect(onSessionChanged).not.toHaveBeenCalled();
+    expect(screen.queryByText('앱 계정을 삭제하고 있습니다.')).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: '삭제 확인 문구' })).toBeEnabled();
+    expect(fetcher.mock.calls.filter(([path]) => String(path).endsWith('/account'))).toHaveLength(
+      1,
+    );
+  });
+
   it('ignores an old in-flight export after session replacement and aborts its request', async () => {
     const user = userEvent.setup();
     let finish: ((value: Response) => void) | undefined;
