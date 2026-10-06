@@ -50,11 +50,12 @@ test.afterEach(async ({ page }) => {
 
 const plannerUrl =
   '/planner?lens=calendar&from=2026-09-14&to=2026-09-28&plannedView=agenda&plannedSession=attendance-session&view=stack';
-async function setup(page: Page) {
+async function setup(page: Page, beforeProtectedWrite: (page: Page) => Promise<void>) {
   page.setDefaultTimeout(5000);
   page.setDefaultNavigationTimeout(5000);
   const headers = await login(page, 'Alice');
   cleanupHeaders.set(page, headers);
+  await beforeProtectedWrite(page);
   const get = async (path: string) => {
     const response = await page.request.get(path, { headers, timeout: 5000 });
     expect(response.status()).toBe(200);
@@ -124,7 +125,7 @@ test('attendance protects deletion until a separate unlock commit while schedule
   page,
 }) => {
   await page.setViewportSize({ width: 320, height: 850 });
-  const fixture = await setup(page);
+  const fixture = await setup(page, grantAppProcessingForScenario);
   await expect(attendance(page)).not.toBeChecked();
   await attendance(page).focus();
   await attendance(page).press('Space');
@@ -188,7 +189,7 @@ test('attendance protects deletion until a separate unlock commit while schedule
 test('duplicating an attendance-protected session retains its source and creates an independently deletable copy', async ({
   page,
 }) => {
-  const fixture = await setup(page);
+  const fixture = await setup(page, grantAppProcessingForScenario);
   await attendance(page).check();
   await savePreview(page);
   const locked = (await fixture.read()).head;
@@ -225,3 +226,4 @@ test('duplicating an attendance-protected session retains its source and creates
     fixture.actuals,
   );
 });
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';

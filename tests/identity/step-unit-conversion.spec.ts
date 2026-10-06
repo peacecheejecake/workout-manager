@@ -46,11 +46,12 @@ test.afterEach(async ({ page }) => {
   expect((await page.request.get('/bff/v1/session', { timeout: 5000 })).status()).toBe(401);
 });
 
-async function setup(page: Page) {
+async function setup(page: Page, beforeProtectedWrite: (page: Page) => Promise<void>) {
   page.setDefaultTimeout(5000);
   page.setDefaultNavigationTimeout(5000);
   const headers = await login(page, 'Alice');
   cleanupHeaders.set(page, headers);
+  await beforeProtectedWrite(page);
   const read = async () => {
     const response = await page.request.get('/bff/v1/plans/current', { headers, timeout: 5000 });
     expect(response.status()).toBe(200);
@@ -134,7 +135,7 @@ test('confirmed same-dimension display conversion preserves precision, while edi
   page,
 }) => {
   await page.setViewportSize({ width: 320, height: 850 });
-  const fixture = await setup(page);
+  const fixture = await setup(page, grantAppProcessingForScenario);
   let writes = 0;
   page.on('request', (request) => {
     if (request.method() === 'PUT' && new URL(request.url()).pathname === '/bff/v1/plans/current')
@@ -209,7 +210,7 @@ test('confirmed same-dimension display conversion preserves precision, while edi
 test('zero and unknown survive unit display changes and intensity-locked steps cannot be edited', async ({
   page,
 }) => {
-  const fixture = await setup(page);
+  const fixture = await setup(page, grantAppProcessingForScenario);
   const zero = page.getByRole('group', { name: '계획 단계 2', exact: true });
   const unknown = page.getByRole('group', { name: '계획 단계 3', exact: true });
   for (const step of [zero, unknown]) {
@@ -238,3 +239,4 @@ test('zero and unknown survive unit display changes and intensity-locked steps c
     fixture.step.getByRole('combobox', { name: '단계 거리 단위', exact: true }),
   ).toBeDisabled();
 });
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';

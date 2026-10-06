@@ -54,6 +54,7 @@ test('calendar table and agenda share planned selection and draft while saving o
   page.setDefaultTimeout(5000);
   page.setDefaultNavigationTimeout(5000);
   const headers = await login(page, 'Alice');
+  await grantAppProcessingForScenario(page);
   cleanupHeaders.set(page, headers);
   const marker = `Synthetic planner views ${randomUUID()}`;
   const readPlan = async () => {
@@ -210,3 +211,4 @@ test('calendar table and agenda share planned selection and draft while saving o
     committed.head?.draft.sessions.find((session) => session.id === 'views-second')?.date,
   ).toBe('2026-09-21');
 });
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';

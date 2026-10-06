@@ -46,11 +46,12 @@ test.afterEach(async ({ page }) => {
   expect((await page.request.get('/bff/v1/session', { timeout: 5000 })).status()).toBe(401);
 });
 
-async function setupPriority(page: Page) {
+async function setupPriority(page: Page, beforeProtectedWrite: (page: Page) => Promise<void>) {
   page.setDefaultTimeout(5000);
   page.setDefaultNavigationTimeout(5000);
   const headers = await login(page);
   cleanupHeaders.set(page, headers);
+  await beforeProtectedWrite(page);
   const readPlan = async () => {
     const response = await page.request.get('/bff/v1/plans/current', { headers });
     expect(response.status()).toBe(200);
@@ -151,7 +152,7 @@ async function openComparison(page: Page, version: number) {
 test('period priority survives review, responsive editing and history while locked session values remain unchanged', async ({
   page,
 }) => {
-  const f = await setupPriority(page);
+  const f = await setupPriority(page, grantAppProcessingForScenario);
   expect(f.saved.draft.periods.every((period) => !Object.hasOwn(period, 'priority'))).toBe(true);
   await expect(selectedPeriod(page)).toContainText('기간 우선순위 미지정');
   await page.getByRole('button', { name: '계획 초안 편집', exact: true }).click();
@@ -245,3 +246,4 @@ test('period priority survives review, responsive editing and history while lock
   expect(planSnapshotSchema.parse(await old.json())).toEqual(f.saved);
   expect(await f.readActuals()).toEqual(f.actuals);
 });
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';

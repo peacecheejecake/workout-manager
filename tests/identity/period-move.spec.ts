@@ -48,11 +48,12 @@ test.afterEach(async ({ page }) => {
   expect((await page.request.get('/bff/v1/session', { timeout: 5000 })).status()).toBe(401);
 });
 
-async function setup(page: Page) {
+async function setup(page: Page, beforeProtectedWrite: (page: Page) => Promise<void>) {
   page.setDefaultTimeout(5000);
   page.setDefaultNavigationTimeout(5000);
   const headers = await login(page, 'Alice');
   cleanupHeaders.set(page, headers);
+  await beforeProtectedWrite(page);
   async function get(path: string) {
     const response = await page.request.get(path, { headers, timeout: 5000 });
     expect(response.status()).toBe(200);
@@ -145,7 +146,7 @@ test('period descendant movement preserves completed and locked dates until expl
   page,
 }) => {
   await page.setViewportSize({ width: 320, height: 850 });
-  const fixture = await setup(page);
+  const fixture = await setup(page, grantAppProcessingForScenario);
   let writes = 0;
   page.on('request', (request) => {
     if (request.method() === 'PUT' && new URL(request.url()).pathname === '/bff/v1/plans/current')
@@ -234,7 +235,7 @@ test('period descendant movement preserves completed and locked dates until expl
 test('period movement rejects fixed completed dates outside the shifted Block and invalid selected-only containment', async ({
   page,
 }) => {
-  const fixture = await setup(page);
+  const fixture = await setup(page, grantAppProcessingForScenario);
   await fixture.panel.getByLabel('이동할 기간 시작일', { exact: true }).fill('2026-09-20');
   await fixture.panel
     .getByRole('radio', { name: '자식 기간과 세션 함께 이동', exact: true })
@@ -256,3 +257,4 @@ test('period movement rejects fixed completed dates outside the shifted Block an
   expect((await fixture.head())?.id).toBe(fixture.saved.id);
   expect((await fixture.report()).report).toMatchObject({ status: 'completed', revision: 1 });
 });
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';

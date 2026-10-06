@@ -53,6 +53,7 @@ test('duplicating a selected locked session creates an isolated draft and requir
   page.setDefaultTimeout(5000);
   page.setDefaultNavigationTimeout(5000);
   const headers = await login(page, 'Alice');
+  await grantAppProcessingForScenario(page);
   cleanupHeaders.set(page, headers);
   const readPlan = async () => {
     const response = await page.request.get('/bff/v1/plans/current', { headers });
@@ -200,3 +201,4 @@ test('duplicating a selected locked session creates an isolated draft and requir
   await page.getByRole('button', { name: '계획 초안 편집', exact: true }).click();
   await expect(page.getByLabel('세션 메모', { exact: true })).toHaveValue('Copy only');
 });
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';

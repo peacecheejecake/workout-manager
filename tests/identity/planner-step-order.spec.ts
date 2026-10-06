@@ -47,11 +47,16 @@ test.afterEach(async ({ page }) => {
   expect((await page.request.get('/bff/v1/session', { timeout: 5000 })).status()).toBe(401);
 });
 
-async function setupSteps(page: Page, locked: boolean) {
+async function setupSteps(
+  page: Page,
+  beforeProtectedWrite: (page: Page) => Promise<void>,
+  locked: boolean,
+) {
   page.setDefaultTimeout(5000);
   page.setDefaultNavigationTimeout(5000);
   const headers = await login(page);
   cleanupHeaders.set(page, headers);
+  await beforeProtectedWrite(page);
   const readPlan = async () => {
     const response = await page.request.get('/bff/v1/plans/current', { headers, timeout: 5000 });
     expect(response.status()).toBe(200);
@@ -179,7 +184,7 @@ async function savePreview(page: Page) {
 test('step reorder is a reviewable draft that survives responsive changes and preserves source values', async ({
   page,
 }) => {
-  const fixture = await setupSteps(page, false);
+  const fixture = await setupSteps(page, grantAppProcessingForScenario, false);
   await page.getByRole('button', { name: '계획 초안 편집', exact: true }).click();
   await expectOrder(page, ['warmup', 'work', 'recovery', 'cooldown']);
   await expect(
@@ -237,7 +242,7 @@ test('step reorder is a reviewable draft that survives responsive changes and pr
 test('saved intensity locks protect order until an independent unlock version is committed', async ({
   page,
 }) => {
-  const fixture = await setupSteps(page, true);
+  const fixture = await setupSteps(page, grantAppProcessingForScenario, true);
   await page.getByRole('button', { name: '계획 초안 편집', exact: true }).click();
   const move = stepRow(page, 'work').getByRole('button', { name: '단계 위로', exact: true });
   await expect(move).toBeDisabled();
@@ -289,3 +294,4 @@ test('saved intensity locks protect order until an independent unlock version is
   expect(fixture.writes).toHaveLength(2);
   await fixture.actualsUnchanged();
 });
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';
