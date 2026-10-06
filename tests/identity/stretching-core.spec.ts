@@ -1,3 +1,4 @@
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';
 import { identityMobileOrigin } from '../../scripts/fixtures/identity-ports';
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
@@ -49,6 +50,7 @@ test('S34 keeps side-specific holds and precise correction times under one Activ
   test.setTimeout(120_000);
   page.setDefaultTimeout(8_000);
   const headers = await login(page);
+  await grantAppProcessingForScenario(page);
   const marker = randomUUID();
   const exerciseName = `Synthetic stretch ${marker}`;
   const activityName = `Synthetic stretch Activity ${marker}`;

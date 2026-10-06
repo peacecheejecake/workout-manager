@@ -1,3 +1,4 @@
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';
 import { identityMobileOrigin, identityWebOrigin } from '../../scripts/fixtures/identity-ports';
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
@@ -56,6 +57,7 @@ test('OIDC recovery keeps full rest separate from actual actions across web and 
   test.setTimeout(120_000);
   page.setDefaultTimeout(10_000);
   const headers = await login(page);
+  await grantAppProcessingForScenario(page);
   const marker = randomUUID();
   const methodTitle = `Synthetic recovery method ${marker}`;
   const strategyTitle = `Synthetic rest choice ${marker}`;

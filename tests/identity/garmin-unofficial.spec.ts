@@ -1,3 +1,4 @@
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';
 import { identityMobileOrigin, identityWebOrigin } from '../../scripts/fixtures/identity-ports';
 import assert from 'node:assert/strict';
 import { expect, test, type Page } from '@playwright/test';
@@ -149,6 +150,7 @@ test('Next shell: the owner connects with MFA, imports, sees the unofficial labe
   page,
 }) => {
   const owner = await login(page, 'Carol');
+  await grantAppProcessingForScenario(page);
   expect(owner.athleteId).toBe(unofficialOwner.athleteId);
   const checkPassword = watchForPassword(page, unofficialAccounts.mfa.password);
   const section = panel(page);
@@ -228,6 +230,7 @@ test('Vite shell: the owner reconnects without MFA, the rerun imports nothing ne
   page,
 }) => {
   const owner = await login(page, 'Carol');
+  await grantAppProcessingForScenario(page);
   await page.goto(`${shells.Vite}/account`);
   const section = panel(page);
   await expect(section).toBeVisible();

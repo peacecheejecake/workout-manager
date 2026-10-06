@@ -1,3 +1,4 @@
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';
 import { identityWebOrigin } from '../../scripts/fixtures/identity-ports';
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
@@ -44,6 +45,7 @@ test('a routine blueprint schedules one occurrence and confirms a checklist run 
 }) => {
   test.setTimeout(90_000);
   await login(page);
+  await grantAppProcessingForScenario(page);
   const headers = cleanup.get(page);
   if (!headers) throw new Error('Expected authenticated session');
   const activityBefore = await page.request.get('/bff/v1/activities?limit=1', { headers });
