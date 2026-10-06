@@ -191,6 +191,166 @@ async function candidateRowCounts(athleteId: string) {
     return rows.rows[0];
   });
 }
+async function candidateWriteState(athleteId: string) {
+  return database.tenant(athleteId, async (tx) => {
+    const result = await tx.query(
+      `SELECT
+        (SELECT count(*)::integer FROM coaching_decision WHERE athlete_id=$1) AS decisions,
+        (SELECT count(*)::integer FROM coaching_proposal WHERE athlete_id=$1) AS proposals,
+        (SELECT count(*)::integer FROM coaching_candidate WHERE athlete_id=$1) AS candidates,
+        (SELECT count(*)::integer FROM command_receipt WHERE athlete_id=$1) AS receipts,
+        (SELECT count(*)::integer FROM outbox WHERE athlete_id=$1) AS events,
+        (SELECT count(*)::integer FROM plan_snapshot WHERE athlete_id=$1) AS plans,
+        (SELECT jsonb_agg(jsonb_build_object('id',id,'status',status) ORDER BY id)
+          FROM coaching_run WHERE athlete_id=$1) AS runs`,
+      [athleteId],
+    );
+    return result.rows[0];
+  });
+}
+
+const creationPaths = ['prepared', 'fixture'] as const;
+function createThrough(path: (typeof creationPaths)[number], athleteId: string, runId: string) {
+  const input = command(runId);
+  return path === 'prepared'
+    ? candidates().create(athleteId, input)
+    : candidates().createFromFixture(athleteId, {
+        runId,
+        idempotencyKey: input.idempotencyKey,
+      });
+}
+
+it.each(creationPaths)(
+  'fresh %s creation rejects foreign and missing runs without writes after own app opt-in',
+  async (path) => {
+    const athleteId = randomUUID();
+    const otherId = randomUUID();
+    const { run } = await seed(athleteId);
+    await createConsentRepository(database).setConsent(otherId, {
+      kind: 'app',
+      granted: true,
+      expectedRevision: 0,
+      idempotencyKey: randomUUID(),
+    });
+    const ownerBefore = await candidateWriteState(athleteId);
+    const otherBefore = await candidateWriteState(otherId);
+    for (const id of [run.id, randomUUID()]) {
+      await expect(createThrough(path, otherId, id)).rejects.toMatchObject({
+        code: 'RUN_NOT_FOUND',
+      });
+      expect(await candidateWriteState(otherId)).toEqual(otherBefore);
+      expect(await candidateWriteState(athleteId)).toEqual(ownerBefore);
+    }
+  },
+);
+
+it.each(creationPaths)(
+  'fresh %s creation keeps absent and false app consent ahead of foreign ownership',
+  async (path) => {
+    const { run } = await seed(randomUUID());
+    const otherId = randomUUID();
+    const consent = createConsentRepository(database);
+    for (const state of ['absent', 'false'] as const) {
+      if (state === 'false')
+        await consent.setConsent(otherId, {
+          kind: 'app',
+          granted: false,
+          expectedRevision: 0,
+          idempotencyKey: randomUUID(),
+        });
+      const before = await candidateWriteState(otherId);
+      await expect(createThrough(path, otherId, run.id)).rejects.toMatchObject({
+        code: 'APP_CONSENT_REQUIRED',
+      });
+      expect(await candidateWriteState(otherId)).toEqual(before);
+    }
+  },
+);
+
+it.each(creationPaths)(
+  'fresh %s creation keeps owned missing admission binding unavailable',
+  async (path) => {
+    const athleteId = randomUUID();
+    const { run } = await seed(athleteId);
+    // Synthetic plain-owner maintenance models a historical unbound run; no runtime bypass/grant.
+    const owner = await ownerPool.connect();
+    try {
+      await owner.query('BEGIN');
+      await owner.query("SELECT set_config('app.athlete_id',$1,true)", [athleteId]);
+      const deleted = await owner.query(
+        'DELETE FROM run_app_admission_binding WHERE athlete_id=$1 AND run_id=$2',
+        [athleteId, run.id],
+      );
+      expect(deleted.rowCount).toBe(1);
+      await owner.query('COMMIT');
+    } catch (error) {
+      await owner.query('ROLLBACK');
+      throw error;
+    } finally {
+      owner.release();
+    }
+    const before = await candidateWriteState(athleteId);
+    await expect(createThrough(path, athleteId, run.id)).rejects.toMatchObject({
+      code: 'APP_BINDING_UNAVAILABLE',
+    });
+    expect(await candidateWriteState(athleteId)).toEqual(before);
+  },
+);
+
+it.each(creationPaths)(
+  'fresh %s creation keeps the owned original binding stale after app regrant',
+  async (path) => {
+    const athleteId = randomUUID();
+    const { run } = await seed(athleteId);
+    const consent = createConsentRepository(database);
+    for (const [granted, expectedRevision] of [
+      [false, 1],
+      [true, 2],
+    ] as const)
+      await consent.setConsent(athleteId, {
+        kind: 'app',
+        granted,
+        expectedRevision,
+        idempotencyKey: randomUUID(),
+      });
+    const before = await candidateWriteState(athleteId);
+    await expect(createThrough(path, athleteId, run.id)).rejects.toMatchObject({
+      code: 'STALE_APP_ADMISSION',
+    });
+    expect(await candidateWriteState(athleteId)).toEqual(before);
+  },
+);
+
+it.each(creationPaths)(
+  'successful %s creation receipt remains first after app withdrawal without new writes',
+  async (path) => {
+    const athleteId = randomUUID();
+    const { run } = await seed(athleteId);
+    const repo = candidates();
+    const input = command(run.id);
+    const invoke = () =>
+      path === 'prepared'
+        ? repo.create(athleteId, input)
+        : repo.createFromFixture(athleteId, {
+            runId: run.id,
+            idempotencyKey: input.idempotencyKey,
+          });
+    const saved = await invoke();
+    await createConsentRepository(database).setConsent(athleteId, {
+      kind: 'app',
+      granted: false,
+      expectedRevision: 1,
+      idempotencyKey: randomUUID(),
+    });
+    const before = await candidateWriteState(athleteId);
+    expect(await invoke()).toEqual(saved);
+    expect(await candidateWriteState(athleteId)).toEqual(before);
+    await expect(createThrough(path, athleteId, run.id)).rejects.toMatchObject({
+      code: 'APP_CONSENT_REQUIRED',
+    });
+    expect(await candidateWriteState(athleteId)).toEqual(before);
+  },
+);
 async function approvalState(athleteId: string) {
   return database.tenant(athleteId, async (tx) => {
     const result = await tx.query(

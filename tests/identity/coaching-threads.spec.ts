@@ -1,3 +1,4 @@
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
@@ -38,6 +39,7 @@ test('stores only user conversations with pinned scope, conflict recovery and ac
   browser,
 }) => {
   const headers = await login(page, 'Alice');
+  await grantAppProcessingForScenario(page);
   const base = '/bff/v1/coaching-threads';
   const get = async (path: string) => {
     const response = await page.request.get(path, { headers });
@@ -125,6 +127,8 @@ test('stores only user conversations with pinned scope, conflict recovery and ac
     try {
       const other = await otherContext.newPage();
       const otherHeaders = await login(other, 'Bob');
+      // Authorize Bob's own storage without authorizing Alice's plan or conversation.
+      await grantAppProcessingForScenario(other);
       expect((await other.request.get(path, { headers: otherHeaders })).status()).toBe(404);
       const foreign = await other.request.post(base, {
         headers: { ...otherHeaders, 'idempotency-key': randomUUID() },

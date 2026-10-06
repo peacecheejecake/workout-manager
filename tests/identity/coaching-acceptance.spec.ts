@@ -1,3 +1,4 @@
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
@@ -120,6 +121,7 @@ test('synthetic actual enters evidence, then an explicitly reviewed fixture diff
 }) => {
   test.setTimeout(120_000);
   const { athleteId, headers } = await loginToEmptyAccount(page);
+  await grantAppProcessingForScenario(page);
   const get = async (path: string) => {
     const response = await page.request.get(path, { headers });
     expect(response.status()).toBe(200);

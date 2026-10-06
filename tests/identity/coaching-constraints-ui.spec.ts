@@ -1,3 +1,4 @@
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
@@ -52,11 +53,7 @@ const review = (page: Page) =>
   panel(page).getByRole('button', { name: '제약 변경 검토', exact: true });
 const confirmation = (page: Page) =>
   panel(page).getByRole('group', { name: '사용자 제약 변경 확인', exact: true });
-async function setup(page: Page) {
-  page.setDefaultTimeout(5000);
-  page.setDefaultNavigationTimeout(5000);
-  const headers = await login(page);
-  cleanupHeaders.set(page, headers);
+async function setup(page: Page, headers: Awaited<ReturnType<typeof login>>) {
   const get = async (path: string) => {
     const response = await page.request.get(path, { headers });
     expect(response.status()).toBe(200);
@@ -91,7 +88,12 @@ async function confirm(page: Page, method: 'POST' | 'PUT' | 'DELETE', path: stri
 test('reviews, creates, updates and removes confirmed constraints while preserving responsive drafts and absent versus cleared meaning', async ({
   page,
 }) => {
-  const f = await setup(page);
+  page.setDefaultTimeout(5000);
+  page.setDefaultNavigationTimeout(5000);
+  const headers = await login(page);
+  cleanupHeaders.set(page, headers);
+  await grantAppProcessingForScenario(page);
+  const f = await setup(page, headers);
   await page.goto('/coach');
   await expect(panel(page)).toContainText('사용자 제약을 아직 확인하지 않았습니다.');
   expect(await f.list()).toEqual({ headRevision: null, items: [] });
@@ -173,7 +175,12 @@ test('reviews, creates, updates and removes confirmed constraints while preservi
 test('keeps a conflicting constraint draft for fresh review and retries a committed lost response without a second revision', async ({
   page,
 }) => {
-  const f = await setup(page);
+  page.setDefaultTimeout(5000);
+  page.setDefaultNavigationTimeout(5000);
+  const headers = await login(page);
+  cleanupHeaders.set(page, headers);
+  await grantAppProcessingForScenario(page);
+  const f = await setup(page, headers);
   const original = '합성 최초 제약';
   const seed = await page.request.post(base, {
     headers: { ...f.headers, 'idempotency-key': randomUUID() },

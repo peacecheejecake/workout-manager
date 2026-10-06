@@ -1,3 +1,4 @@
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
@@ -52,6 +53,7 @@ test('mandatory confirmed constraints remain frozen across captures and are purg
   page.setDefaultTimeout(5000);
   page.setDefaultNavigationTimeout(5000);
   const headers = await login(page);
+  await grantAppProcessingForScenario(page);
   cleanupHeaders.set(page, headers);
   const get = async (path: string) => {
     const r = await page.request.get(path, { headers });

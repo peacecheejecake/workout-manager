@@ -244,6 +244,19 @@ async function observeCandidateRetrieval(
   };
 }
 
+/** Read only an owned existence fact before checking the private run's admission binding. */
+async function requireOwnedRun(tx: Transaction, runId: string): Promise<void> {
+  const selected = await tx.query(
+    'SELECT EXISTS(SELECT 1 FROM coaching_run WHERE athlete_id=$1 AND id=$2) AS owned',
+    [tx.athleteId, runId],
+  );
+  const [fact] = z
+    .array(z.strictObject({ owned: z.boolean() }))
+    .length(1)
+    .parse(selected.rows);
+  if (!fact?.owned) throw new TrainingCandidateError('RUN_NOT_FOUND');
+}
+
 async function currentContext(
   tx: Transaction,
   runId: string,
@@ -720,6 +733,8 @@ export function createTrainingCandidateRepository(
       return guarded(athleteId, async (tx) => {
         const replay = await replayCandidate(tx, key, request, policy, source);
         if (replay) return replay;
+        await requireAppAdmission(tx);
+        await requireOwnedRun(tx, command.runId);
         await requireAppBinding(tx, 'run', command.runId);
         const context = await currentContext(tx, command.runId, policy, source);
         requireStatus(context.row, 'analysis_ready');
@@ -737,6 +752,8 @@ export function createTrainingCandidateRepository(
       return guarded(athleteId, async (tx) => {
         const replay = await replayCandidate(tx, key, request, policy, source);
         if (replay) return replay;
+        await requireAppAdmission(tx);
+        await requireOwnedRun(tx, command.runId);
         await requireAppBinding(tx, 'run', command.runId);
         const context = await currentContext(tx, command.runId, policy, source);
         requireStatus(context.row, 'analysis_ready');

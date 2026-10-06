@@ -1,3 +1,4 @@
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';
 import { identityMobileOrigin, identityWebOrigin } from '../../scripts/fixtures/identity-ports';
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
@@ -63,6 +64,7 @@ test('reviews and atomically applies one server-owned four-domain candidate on w
 }) => {
   test.setTimeout(120_000);
   const headers = await login(page);
+  await grantAppProcessingForScenario(page);
   const post = (path: string, data: unknown, key = randomUUID()) =>
     page.request.post(path, { headers: { ...headers, 'idempotency-key': key }, data });
   const get = async (path: string) => {
