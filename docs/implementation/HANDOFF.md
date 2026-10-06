@@ -264,3 +264,12 @@ M3-02l은 2026-10-05 로컬 서버·계약 수용을 완료했다. 개별 해제
 ## M3-02m 로컬 native 수용과 다음 작업(2026-10-05)
 
 등록 UUID/claim epoch 전체 목록 검증 뒤에만 제한된 native observer·anchored query·v2 outbox를 실행하도록 연결했다. 루트가 소스와 실제 합성 218 단언·arm64 네 소비자 typecheck/compile을 확인했다. [M3-02m](progress/M3-02m.md)에 실제 결과와 실패·미실행을 분리했다. 다음 ready node는 M3-02n 운동 선택 UI/native bridge다. 제품 collector의 개인 실기기 실행은 n/o 안전 통합 전 계속 금지하고, M3-02h와 phase 독립 검토는 별도다.
+
+## 재개와 다음 작업 · 2026-10-06
+
+- M3-02n의 명시 선택·계정 귀속 등록과 M3-02o의 비식별 감사/개별 해제/배포 준비를 phase/m3-02에 커밋했다. 로컬 수용은 [n](progress/M3-02n.md)·[o](progress/M3-02o.md), 전체 phase 검사·독립 검토 상태는 [phase 기록](progress/M3-02-phase-review-20261006.md)을 따른다. o의 실제 운영 감사·선배포·rollback과 h의 제품 HTTPS/실기기 수용은 in_progress/not_executed를 유지한다. 검토된 main 포함 여부는 최종 Git HEAD와 annotated review tag로 확인한다.
+- 전체 identity 최초 완료는 공통 export helper의 28/실제 producer30 불일치로 301통과·8실패·12skip였다. strict runtime schema/assert를 유지한 helper 수정 이후 같은 phase HEAD에서 두 새 전체 회차를 검증한다. 실패 기록을 지우거나 일부 재실행을 두 전체 회차의 성공으로 세지 않는다.
+- 10월5일 UID v3의 후속 실행은 old container 정지와 ubuntu 권한 회수 뒤 sudo 판정 조건에서 fail-stop했다. 해당 정확한 1회 승인은 사용됐으며 전체 v3를 다시 실행하지 않는다. 마지막 관측에서 UID 소유권 전환과 새 container 시작은 미실행, Workout503·apex307→200·timer mask는 유지됐다. 이는 오늘의 새 서버 관측이 아니다. EXT-HOSTING 별도 branch의 부분 실행 기록 `8a78619d`와 원본 서버 record를 확인한다.
+- 남은 UID 작업을 위한 정확한 resume-v2 script SHA-256 `dce43db9ab995d003a75241ef6dc5f33c82abb7da1a6b9c9457712d131466060`은 fresh context-less 독립 읽기 전용 검토를 통과했다. 설치/실행은 하지 않았다. AWS SSO 재연결 후 새 Linux 상태·copied baseline 무결성·권한을 확인하고, 정확한 새 실행 승인을 받은 다음 진행한다. 과거 v3 승인은 이 script 승인으로 전용하지 않는다. 운영 원장·전체 백업/격리 복원·503 해제는 별도 gate다.
+- 사용자 답변 대기: 비루트 AWS SSO 로그인 재연결 가능 시점, HealthKit 없는 WM Synthetic Performance가 실제 iPhone에서 지도/그리기 값을 표시하고 계속 열려 있는지, FUT-09 원문 제공 또는 원문 이식 보류 결정. 합성 성능값/예산은 미확정이며 기존 제품 collector를 개인 건강 자료에서 실행하지 않는다.
+- S22 추가 정책 답변 대기: generic app 동의의 처리 대상·철회 효과, generic provider를 개별 연동 기준으로 둘지 공통 상위 수집 gate로 사용할지. 별도 M2-01k 읽기 전용 대조에서 두 kind의 원장 저장은 확인했으나 실제 업무 gate consumer를 찾지 못했다. 기존 HealthKit/Garmin 결정은 유지하며 새 의미를 임의 구현하지 않는다.
