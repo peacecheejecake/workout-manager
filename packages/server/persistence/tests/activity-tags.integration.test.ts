@@ -51,6 +51,7 @@ it('persists tags only in overlays, keeps them across correction and reimport, a
   const athlete = randomUUID(),
     repo = createActivityRepository(database),
     source = input();
+  await grantAppPurpose(athlete);
   const imported = await repo.importActivity(athlete, source);
   const command = {
     expectedRevision: 1,
@@ -101,6 +102,7 @@ it('filters exact NFC and case-sensitive literal tags with existing AND filters 
     repo = createActivityRepository(database);
   const all = [];
   for (let i = 0; i < 3; i++) {
+    await grantAppPurpose(athlete);
     const created = await repo.importActivity(athlete, input());
     await repo.updateOverlay(athlete, created.activityId, {
       expectedRevision: 1,
@@ -139,15 +141,18 @@ it('filters exact NFC and case-sensitive literal tags with existing AND filters 
 });
 it('serializes competing tag revisions, rejects foreign writes and rolls back tags with failed outbox enqueue', async () => {
   const athlete = randomUUID(),
-    repo = createActivityRepository(database),
-    created = await repo.importActivity(athlete, input());
+    repo = createActivityRepository(database);
+  await grantAppPurpose(athlete);
+  const created = await repo.importActivity(athlete, input());
   const command = {
     expectedRevision: 1,
     idempotencyKey: randomUUID(),
     reason: 'Tags',
     tags: ['one'],
   };
-  await expect(repo.updateOverlay(randomUUID(), created.activityId, command)).rejects.toThrow(
+  const foreignAthlete = randomUUID();
+  await grantAppPurpose(foreignAthlete);
+  await expect(repo.updateOverlay(foreignAthlete, created.activityId, command)).rejects.toThrow(
     'ACTIVITY_NOT_FOUND',
   );
   const broken: Database = {
@@ -188,8 +193,9 @@ it('serializes competing tag revisions, rejects foreign writes and rolls back ta
 it('exports local tags and erases their history, while deletion suppression prevents tagged activities from returning', async () => {
   const athlete = randomUUID(),
     repo = createActivityRepository(database),
-    source = input(),
-    created = await repo.importActivity(athlete, source);
+    source = input();
+  await grantAppPurpose(athlete);
+  const created = await repo.importActivity(athlete, source);
   await repo.updateOverlay(athlete, created.activityId, {
     expectedRevision: 1,
     idempotencyKey: randomUUID(),
@@ -265,6 +271,7 @@ it('replays a pre-tag receipt with absent tags while preserving the latest tags 
       },
     ],
   };
+  await grantAppPurpose(athlete);
   const saved = await createPlanningRepository(database).save(athlete, {
     source: 'manual',
     confirmed: true,
@@ -315,3 +322,26 @@ it('replays a pre-tag receipt with absent tags while preserving the latest tags 
   expect(imported?.userReport).toEqual(first.userReport);
   expect(imported?.overlay.tags).toEqual(['local']);
 });
+
+// Explicit permission for this synthetic positive core-storage fixture only.
+// Preserve any existing withdrawal/revision and never recreate an erased tenant.
+async function grantAppPurpose(athleteId: string): Promise<void> {
+  const client = await admin.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock_shared(77210,1)');
+    // Serialize the absence check before the app event trigger, like the consent command.
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [athleteId]);
+    await client.query("SELECT set_config('app.athlete_id',$1,true)", [athleteId]);
+    await client.query(
+      "INSERT INTO consent(athlete_id,kind,granted,revision) SELECT $1,'app',true,1 WHERE NOT EXISTS (SELECT 1 FROM tenant_erasure WHERE athlete_id=$1) ON CONFLICT (athlete_id,kind) DO NOTHING",
+      [athleteId],
+    );
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}

@@ -61,6 +61,7 @@ function draft(): PlanDraft {
   };
 }
 async function plan(athlete: string) {
+  await grantAppPurpose(athlete);
   return createPlanningRepository(database).save(athlete, {
     source: 'manual',
     confirmed: true,
@@ -75,6 +76,7 @@ async function actual(
   startedAt = '2024-03-10T05:00:00Z',
   distanceMeters: number | null = 0,
 ) {
+  await grantAppPurpose(athlete);
   return createActivityRepository(database).createManualActivity(athlete, {
     confirmed: true,
     idempotencyKey: randomUUID(),
@@ -113,6 +115,7 @@ it('resolves immutable old plan even when current head changes and preserves zer
     linked = await plan(athlete),
     created = await actual(athlete, linked.id);
   const plans = createPlanningRepository(database);
+  await grantAppPurpose(athlete);
   const next = await plans.save(athlete, {
     source: 'manual',
     confirmed: true,
@@ -261,6 +264,7 @@ it('does not compare unlike duration kinds or replace missing planned distance w
   const athlete = randomUUID(),
     value = draft();
   value.sessions = value.sessions.map((session) => ({ ...session, distanceMeters: null }));
+  await grantAppPurpose(athlete);
   const linked = await createPlanningRepository(database).save(athlete, {
     source: 'manual',
     confirmed: true,
@@ -304,6 +308,7 @@ it('reports unsupported legacy year-zero activity and linked plan calendars with
   const athlete = randomUUID(),
     linked = await plan(athlete),
     created = await actual(athlete, linked.id);
+  await grantAppPurpose(athlete);
   await createActivityRepository(database).importActivity(athlete, {
     idempotencyKey: randomUUID(),
     source: { kind: 'fixture', sourceId: randomUUID(), revision: 1, contentHash: 'a'.repeat(64) },
@@ -329,6 +334,7 @@ it('reports unsupported legacy year-zero activity and linked plan calendars with
     endDateExclusive: '0001-01-01',
   }));
   value.sessions = value.sessions.map((session) => ({ ...session, date: '0000-01-01' }));
+  await grantAppPurpose(second);
   const ancient = await createPlanningRepository(database).save(second, {
     source: 'manual',
     confirmed: true,
@@ -374,6 +380,7 @@ it('compares immutable planned distance ranges to actuals without manufacturing 
     distanceRange: { minMeters: 0, maxMeters: 100 },
     durationRange: { minSeconds: 20, maxSeconds: 40 },
   }));
+  await grantAppPurpose(athlete);
   const saved = await plans.save(athlete, {
     source: 'manual',
     confirmed: true,
@@ -431,3 +438,26 @@ it('compares immutable planned distance ranges to actuals without manufacturing 
     (await createActivityContextRepository(database).read(athlete, below.activityId))?.planContext,
   ).toMatchObject({ distanceComparison: { rangePosition: 'below', delta: null } });
 });
+
+// Explicit permission for this synthetic positive core-storage fixture only.
+// Preserve any existing withdrawal/revision and never recreate an erased tenant.
+async function grantAppPurpose(athleteId: string): Promise<void> {
+  const client = await admin.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock_shared(77210,1)');
+    // Serialize the absence check before the app event trigger, like the consent command.
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [athleteId]);
+    await client.query("SELECT set_config('app.athlete_id',$1,true)", [athleteId]);
+    await client.query(
+      "INSERT INTO consent(athlete_id,kind,granted,revision) SELECT $1,'app',true,1 WHERE NOT EXISTS (SELECT 1 FROM tenant_erasure WHERE athlete_id=$1) ON CONFLICT (athlete_id,kind) DO NOTHING",
+      [athleteId],
+    );
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}

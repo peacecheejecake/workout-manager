@@ -455,6 +455,7 @@ describe('queue and state paths on a migration owner that is neither superuser n
 
   it('protects an upload’s objects against a queued deletion', async () => {
     const tenant = randomUUID();
+    await grantAppPurpose(tenant);
     const imported = await activities.importActivity(tenant, importInput());
     // A deletion already queued for the very key the upload is about to record — what an
     // abandoned earlier attempt at the same bytes leaves. Protect must close it.
@@ -512,6 +513,7 @@ describe('queue and state paths on a migration owner that is neither superuser n
 
   it('supersedes a duplicate upload, deletes an activity with a track, and deletes both', async () => {
     const tenant = randomUUID();
+    await grantAppPurpose(tenant);
     const imported = await activities.importActivity(tenant, importInput());
     const recording = `recording-${randomUUID()}`;
     const first = await storeTrack(tenant, imported.activityId, imported.revision, recording);
@@ -551,6 +553,7 @@ describe('queue and state paths on a migration owner that is neither superuser n
 
   it('never deletes an object a live track still references', async () => {
     const tenant = randomUUID();
+    await grantAppPurpose(tenant);
     const imported = await activities.importActivity(tenant, importInput());
     const stored = await storeTrack(tenant, imported.activityId, imported.revision);
     await publishTrackObject(stored.keys.raw);
@@ -565,6 +568,7 @@ describe('queue and state paths on a migration owner that is neither superuser n
 
   it('defers a deletion while the key’s writer holds an open publication fence', async () => {
     const tenant = randomUUID();
+    await grantAppPurpose(tenant);
     const imported = await activities.importActivity(tenant, importInput());
     const prepared = await storeTrack(
       tenant,
@@ -587,6 +591,7 @@ describe('queue and state paths on a migration owner that is neither superuser n
 
   it('keeps a finished deletion open while a failed writer’s publication window lasts', async () => {
     const tenant = randomUUID();
+    await grantAppPurpose(tenant);
     const imported = await activities.importActivity(tenant, importInput());
     const failed = await storeTrack(
       tenant,
@@ -623,6 +628,7 @@ describe('queue and state paths on a migration owner that is neither superuser n
 
   it('erases an account whose tenant has track and thumbnail object references', async () => {
     const tenant = randomUUID();
+    await grantAppPurpose(tenant);
     const imported = await activities.importActivity(tenant, importInput());
     const stored = await storeTrack(tenant, imported.activityId, imported.revision);
     const created = await courses.create(
@@ -750,6 +756,7 @@ describe('queue and state paths on a migration owner that is neither superuser n
 
   it('keeps the sweep’s reclaim and settle refusals for a live track', async () => {
     const tenant = randomUUID();
+    await grantAppPurpose(tenant);
     const imported = await activities.importActivity(tenant, importInput());
     const stored = await storeTrack(tenant, imported.activityId, imported.revision);
     await inspect.query(
@@ -780,6 +787,7 @@ describe('queue and state paths on a migration owner that is neither superuser n
 
   it('keeps the sweep’s reclaim refusal for a render that can still publish', async () => {
     const tenant = randomUUID();
+    await grantAppPurpose(tenant);
     const imported = await activities.importActivity(tenant, importInput());
     const stored = await storeTrack(tenant, imported.activityId, imported.revision);
     await courses.create(
@@ -838,6 +846,7 @@ describe('queue and state paths on a migration owner that is neither superuser n
          VALUES($1,'https://issuer.test',$2)`,
         [athlete, randomUUID()],
       );
+    await grantAppPurpose(holder);
     const held = await activities.importActivity(holder, importInput());
     const course = randomUUID();
     await plant(
@@ -900,6 +909,7 @@ describe('queue and state paths on a migration owner that is neither superuser n
 
   it('leaves the caller’s tenant setting as it was', async () => {
     const tenant = randomUUID();
+    await grantAppPurpose(tenant);
     const imported = await activities.importActivity(tenant, importInput());
     const stored = await storeTrack(tenant, imported.activityId, imported.revision);
     await plantCleanup(stored.keys.normalized);
@@ -1010,3 +1020,26 @@ describe('queue and state paths on a migration owner that is neither superuser n
 
 // The paths M2-01au left closed — the render queue, the reapers, the prunes and the sweep
 // windows — run on such an owner since M2-01av: worker-tenant-source-plain-owner.integration.test.ts.
+
+// Explicit permission for this synthetic positive core-storage fixture only.
+// Preserve any existing withdrawal/revision and never recreate an erased tenant.
+async function grantAppPurpose(athleteId: string): Promise<void> {
+  const client = await inspect.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock_shared(77210,1)');
+    // Serialize the absence check before the app event trigger, like the consent command.
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [athleteId]);
+    await client.query("SELECT set_config('app.athlete_id',$1,true)", [athleteId]);
+    await client.query(
+      "INSERT INTO consent(athlete_id,kind,granted,revision) SELECT $1,'app',true,1 WHERE NOT EXISTS (SELECT 1 FROM tenant_erasure WHERE athlete_id=$1) ON CONFLICT (athlete_id,kind) DO NOTHING",
+      [athleteId],
+    );
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}

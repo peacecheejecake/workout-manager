@@ -181,3 +181,13 @@ HealthKit historical receipt v1/v2 owner seed·nutrition/recovery restore-genera
 별도 PG3파일31/31(skip0), `/private/tmp/wm-c-bounded-fixtures-pg-20261007-run1.log`: Garmin scripted collector의 양성 import fixture3개만 명시 합성 app head를 준비해 개별 provider 동의와 구분했다. 공식 Garmin/실환경 호출 증거가 아니다. Purge 권한 함수의 정확한10개 roster에서099의 renamed implementation 식별자를 갱신하고 owner/ACL 조건을 유지했다. Suppression event FK child096/099 두 개를 정확하게 확인하며 불완전 TRUNCATE의 FK 거절과 전체 FK roster/CASCADE에서 실제 immutable guard 거절을 별도 검증했다. Constraint/trigger bypass를 사용하지 않았다.
 
 Root는 두 실제 로그·source diff·SHA·cleanup과 집중 TS/lint/format을 확인했다. 최신 export 소비자·owner maintenance의 이 집중 수용은 이전 전체1099pass/336fail/16skip을 대체하지 않는다. Plain-owner window의 행 읽기 bound는 실제 원인/성능 조사 중이며 작은 통과 기준으로 바꾸지 않는다.
+
+## 2026-10-07 explicit synthetic app purpose and legacy owner fixture alignment
+
+31파일의 positive Plan/Activity/CheckIn/dialogue/constraint fixture에 실제 named synthetic athlete의 app=true/revision1을 명시 준비했다. 공유 harness의 자동 허가가 아니다. Global shared77210→tenant0 lock을 먼저 잡고 fresh erasure/consent 상태를 확인한 뒤 INSERT하며 기존 false/revision은 덮어쓰지 않고 erased tenant는 생성하지 않는다. 기존 원장 trigger는 실행된다. Anonymous foreign actor는 명시 허가된 foreign tenant로 바꿔 원래 소유권404 검증에 도달한다. Runtime missing/withdrawn gate나 개별 AI/HealthKit/가민 허가는 바꾸지 않았다.
+
+보호된 routing/course/thumbnail 유지 작업만 실제 migration owner/tenant 연결을 사용하고 admin 검사·runtime deny를 유지했다. 내부 권한 검사는 기존 하드코딩된 admin 대신 실제 relowner만 제외하므로 다른 non-owner 권한은 계속 거절한다. 최신 export producer 기대값만33으로 정렬하고 실제 과거 artifact는 보존했다. Root가31개 frozen SHA를 모두 직접 대조하고 source diff·보고/실제 로그를 확인했다.
+
+최종 실제 PG104 baseline: 별도 historical URL1/1 이후 선택354시험 **352pass/2fail/skip0**, `/private/tmp/wm-c-fixture-final-bounded-20261007.log`. 남은 두 실패는 activity tracks699행·course thumbnails599행 읽기(기준≤1)이고 기존 assertion을 유지한다. 이는 전체1451 수용이 아니다. 명시 app/owner/export/foreign 오류는 해소됐지만 행 읽기 수용은 완료되지 않았다. 초기 object scope 동시성의 immutable app revision collision은 fixture absence snapshot 전에 lock0을 잡지 않은 문제였다; canonical lock 순서를 맞춘 최종 회차는 collision0이고 이전 실패 로그를 보존한다. TS/API TS/lint/format exit0·9개 실제 cluster stopped/removed. Whole phase/main readiness는 주장하지 않는다.
+
+별도 격리 EXPLAIN 실험에서 tenant-leading index는 직접 쿼리를 개선했지만 실제 security-definer cached/generic 함수의93행 scan 및 worker50개 요청/150행 방문을 해결하지 못했다. Index-only 변경을105에 등록하거나 exactN 통과로 처리하지 않았다. 실제 함수와 캐시 재사용에 대한 bounded query 수정 실험을 계속한다. C in_progress/운영·제공자·restore의 기존 미실행 조건은 유지한다.

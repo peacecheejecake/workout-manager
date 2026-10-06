@@ -35,6 +35,9 @@ const adminUrl = process.env['TEST_DATABASE_ADMIN_URL'];
 const runtimeUrl = process.env['TEST_DATABASE_URL'];
 if (!adminUrl || !runtimeUrl) throw new Error('Run pnpm test:integration with isolated PostgreSQL');
 const admin = new Pool({ connectionString: adminUrl });
+const migrationOwnerUrl = process.env['TEST_DATABASE_OWNER_URL'];
+if (!migrationOwnerUrl) throw new Error('Explicit plain migration owner required for maintenance');
+const migrationOwner = new Pool({ connectionString: migrationOwnerUrl, max: 4 });
 let database: Database;
 let runtime: Pool;
 let activities: ActivityRepository;
@@ -66,6 +69,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await runtime?.end();
   await database?.close();
+  await migrationOwner.end();
   await admin.end();
 });
 
@@ -101,6 +105,7 @@ function importInput(): ActivityImport {
 
 /** One stored recording, through the real upload lifecycle's database half. */
 async function recording(athleteId: string) {
+  await grantAppPurpose(athleteId);
   const imported = await activities.importActivity(athleteId, importInput());
   const reservation = await tracks.reserve(
     athleteId,
@@ -262,7 +267,7 @@ async function coursePurge(athleteId: string, courseId: string) {
 }
 
 async function asTenant<T>(session: string, work: (client: PoolClient) => Promise<T>): Promise<T> {
-  const client = await admin.connect();
+  const client = await migrationOwner.connect();
   try {
     await client.query('BEGIN');
     await client.query("SELECT set_config('app.athlete_id',$1,true)", [session]);
@@ -502,3 +507,26 @@ describe('course deletion ledger (M2-01ao)', () => {
     expect(garmin.rowCount).toBe(0);
   });
 });
+
+// Explicit permission for this synthetic positive core-storage fixture only.
+// Preserve any existing withdrawal/revision and never recreate an erased tenant.
+async function grantAppPurpose(athleteId: string): Promise<void> {
+  const client = await admin.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock_shared(77210,1)');
+    // Serialize the absence check before the app event trigger, like the consent command.
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [athleteId]);
+    await client.query("SELECT set_config('app.athlete_id',$1,true)", [athleteId]);
+    await client.query(
+      "INSERT INTO consent(athlete_id,kind,granted,revision) SELECT $1,'app',true,1 WHERE NOT EXISTS (SELECT 1 FROM tenant_erasure WHERE athlete_id=$1) ON CONFLICT (athlete_id,kind) DO NOTHING",
+      [athleteId],
+    );
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
