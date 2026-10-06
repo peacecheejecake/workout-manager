@@ -87,6 +87,12 @@ beforeAll(async () => {
   await migrate(adminUrl);
   database = ownerDatabase(admin);
   await database.tenant(athlete, async (tx) => {
+    // Explicit synthetic permission for this tenant's actual-record fixtures.
+    // The other tenant remains without an app head for the existing read checks.
+    await tx.query(
+      "INSERT INTO consent(athlete_id,kind,granted,revision) VALUES($1,'app',true,1)",
+      [athlete],
+    );
     await tx.query(
       `INSERT INTO activity_canonical(athlete_id,id,revision,original) VALUES($1,$2,1,$3::jsonb)`,
       [

@@ -32,6 +32,8 @@ beforeAll(async () => {
     await admin.query(sql);
   }
   await admin.query('GRANT USAGE ON SCHEMA public TO workout_runtime');
+  // App admission reads this tenant-scoped head; no new write privilege is needed.
+  await admin.query('GRANT SELECT ON consent TO workout_runtime');
   await admin.query(
     'GRANT SELECT,INSERT ON recovery_method_version,recovery_strategy_version,recovery_action_revision TO workout_runtime',
   );
@@ -54,6 +56,15 @@ afterAll(async () => {
   await database?.close();
   await admin.end();
 });
+
+// Explicit synthetic app processing permission for the existing tenant fixture.
+// Direct fixture setup preserves the original command/outbox assertions.
+async function grantAppPurpose(athleteId: string): Promise<void> {
+  await admin.query(
+    "WITH scope AS MATERIALIZED (SELECT set_config('app.athlete_id',$1,true)) INSERT INTO consent(athlete_id,kind,granted,revision) SELECT $1,'app',true,1 FROM scope",
+    [athleteId],
+  );
+}
 
 async function createCheckIn(athleteId: string, id: string) {
   const client = await admin.connect();
@@ -125,6 +136,7 @@ it('keeps rest selection separate from actuals and enforces tenant ownership, re
   const owner = 'recovery-owner-' + randomUUID();
   const other = 'recovery-other-' + randomUUID();
   const checkInId = randomUUID();
+  await grantAppPurpose(owner);
   await createCheckIn(owner, checkInId);
   const repo = createRecoveryRepository(database, {
     now: () => new Date('2026-09-19T00:00:00.000Z'),
@@ -155,6 +167,7 @@ it('keeps rest selection separate from actuals and enforces tenant ownership, re
   expect(strategy.status).toBe('draft');
   expect(strategy.selectedOptionId).toBeNull();
   expect(await repo.createStrategy(owner, create)).toEqual(strategy);
+  await grantAppPurpose(other);
   await expect(
     repo.createStrategy(other, {
       draft: { ...prepared, observations: [] },

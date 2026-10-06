@@ -18,3 +18,9 @@ Production5 repository, 기존 nutrition/supplementary fixture2와 새 actuals-a
 ## 남은 통합
 
 소유권 밖 recovery/stretching/routine 기존 suite의 명시 consent fixture·권한 보완과 전체 consumer/phase 회귀는 후속 통합이다. 대회 actual 원장은 별도 phase 구현 중이므로 공통 baseline에 합류할 때 app admission 경계를 추가 검증해야 한다. AI versioned basis/worker/provider/UI는 v-c/v-e/v-f 범위다. 제품 API/browser/native·운영 배포·전체 V2-F31 통과를 주장하지 않는다. phase 독립 검토 전 main 병합하지 않는다.
+
+## 기존 suite 호환 fixture 확인 (2026-10-06)
+
+recovery-core·stretching·routine-core의 실제 처리 tenant fixture에 명시적인 합성 app grant를 추가했다. 다른 tenant의 읽기와 catalog-only 동작은 그대로이며 production 자동 동의는 없다. recovery runtime에는 consent SELECT만 추가했다. 기존 assertion을 유지한 실제 일회용 PG14 **3파일 11시험 통과**, 첫 실행 성공·cleanup exit0. persistence typecheck·owned lint·format exit0. Root가 diff와 최종 로그를 확인했다. stretching/routine 기존 owner fixture를 새 restricted-runtime gate 증거로 재분류하지 않는다.
+
+증거: `/private/tmp/wm-s22-v-d-compat-{pg,typecheck,lint,format}.log`, `/private/tmp/wm-s22-v-d-compat-hashes.txt`. 전체 phase gate와 독립 phase 검토는 별도다.
