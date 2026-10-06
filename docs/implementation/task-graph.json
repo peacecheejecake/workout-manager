@@ -1803,7 +1803,12 @@
         "M2-01k-v-c",
         "M2-01k-v-d",
         "M2-01k-v-e",
-        "M2-01k-v-f"
+        "M2-01k-v-f",
+        "M2-01k-w-a",
+        "M2-01k-w-b",
+        "M2-01k-w-c",
+        "M2-01k-w-d",
+        "M2-01k-w-e"
       ],
       "kind": "task",
       "status": "in_progress",
@@ -2225,6 +2230,51 @@
       "status": "completed",
       "scope": "app 첫 grant/거부/철회 목적과 기존 조회/export/delete 허용 고지, 실패 draft 보존·계정 늦은 응답 차단·두 shell 실제 browser/E2E. native fixed allowlist 변경은 M3 별도 소유·수용과 조정; device 미실행 보존.",
       "evidence": "docs/implementation/progress/M2-01k-v-f.md"
+    },
+    {
+      "id": "M2-01k-w-a",
+      "title": "AI 저장 설정의 같은 거래 실행 준비",
+      "dependsOn": ["M2-01k-v-c"],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "명시 설정 revision·owned evidence·현재 catalog/app/AI facts와 selection 연결. 준비 결과는 실제 dispatch 권한이 아니며 job·budget writes 없이 검증한다.",
+      "evidence": "docs/implementation/progress/M2-01k-w.md"
+    },
+    {
+      "id": "M2-01k-w-b",
+      "title": "AI 실행 선택의 immutable job 저장",
+      "dependsOn": ["M2-01k-w-a"],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "Versioned run command/receipt·frozen selection·tenant/RLS·삭제/export/restore·outbox 원자성. 기존 fixture/역사 run에 자동 binding 또는 모델 대체 금지.",
+      "evidence": "docs/implementation/progress/M2-01k-w.md"
+    },
+    {
+      "id": "M2-01k-w-c",
+      "title": "AI dispatch의 complete freshness 검증",
+      "dependsOn": ["M2-01k-w-b"],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "Same-transaction full dependency manifest·absent heads·actual/overlay/ACL/suppression·consent/policy/catalog·restore generation·outbox lease의 authoritative 재검증. CLOSED 우회 금지.",
+      "evidence": "docs/implementation/progress/M2-01k-w.md"
+    },
+    {
+      "id": "M2-01k-w-d",
+      "title": "AI 월 예산과 lease dispatch 연결",
+      "dependsOn": ["M2-01k-w-c"],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "모든 사용자 합산 서울 월50,000원 reserve→fresh marker commit→거래 밖 HTTP→settle/finish. ambiguous 전송 재시도 금지, 취소/철회/lease loss·완전한 budget 원장/복원 검증.",
+      "evidence": "docs/implementation/progress/M2-01k-w.md"
+    },
+    {
+      "id": "M2-01k-w-e",
+      "title": "AI 실제 OpenAI 제공자 수용",
+      "dependsOn": ["M2-01k-w-d", "EXT-HOSTING"],
+      "kind": "external",
+      "status": "not_started",
+      "scope": "명시 Sol 코칭/Luna 합성 비교·서버 키·현재 가격/FX/tokenizer·월 예산·출력/citation 검증·실제 API/청구 증거. 합성 자료로 먼저 확인하고 plan 적용은 별도 명시 승인; provider 실제 증거 전 not_executed 유지.",
+      "evidence": "docs/implementation/progress/M2-01k-w.md"
     }
   ]
 }
