@@ -59,3 +59,9 @@ App transition record5는 허용 field·연속 int4 epoch·nullable prior pair·
 현재 port의 실제 PG **11/11**(기존 appchain8+신규3)은 normal001..100 migrations/plain owner로 통과했다. caller BEGIN→replay→후속 SQL22012→전체 ROLLBACK, 같은 인증 handle의 재시도 COMMIT, 별도 connection에서 uncommitted 자료 비노출, 위조 handle 무변경 거절을 확인했다. Root가 `/private/tmp/wm-s22-replaytx-acceptance-20261007.md`와108개 입력 해시, stop0/status3/isready2·data/socket 제거를 직접 확인했다. root boundary13/13은 mocked SQL port이며 실제 DB11에 합산하지 않는다. 최초 root 시험은 존재하지 않는 Vitest project 이름으로 startup 실패했고 실제 integration config로 재실행한 기록을 보존한다.
 
 현재 source SHA `eb2d3285f5192c36a647667da9c4bbc5f612834d04647ec663d691f9fa639c82`는 앞선66/66의 source와 구분한다. persistence typecheck·변경 source/test lint/format/diff check exit0. 합성 anchor/key는 local replay의 검증이며 독립적인 운영 tail completeness가 아니다. owner historical loader·독립 proof·처리 재개는 미완료이고 C를 완료 처리하지 않는다.
+
+## 기존93 backup pin과 현재100 schema 구분 회귀 · 2026-10-07
+
+기존 source-registry candidate93 및 coverage2/complete:false를 변경하지 않았다. 정식 registry가100으로 확장된 뒤에도 과거 pin checksum 시험은 명시001..093 원본 prefix를 검사하고, 별도 신규 시험은 현재001..100을 과거 pin으로 허용하지 않는다고 단언한다. historical coverage PG fixture도 migrate(...,93)를 명시해 해당 증거의 범위를 고정한다. 현재 schema를93으로 잘라 운영 준비 완료라고 판단하는 경로는 추가하지 않았다.
+
+Root unit boundary **6/6**, 별도 실제 PG source inventory **1/1** 및 historical snapshot coverage **2/2** 통과. Source inventory의 같은 시험 안에서 실제93 positive 뒤 normal migration100으로 upgrade하고 candidate93 거절을 검증했다. `/private/tmp/wm-source-inventory-legacy100-boundary-20261007.log`, `wm-source-inventory-actual100-boundary-r2-20261007.log`, `wm-snapshot-legacy93-pg-r2-20261007.log`. 최초 sandbox의 shmget EPERM 초기화 실패 로그는 보존했고 승인된 일회용 PG 시험으로 재실행했다. scope별 임시data/socket parent가 없음을 직접 확인했다. 이 시험은 schema100 독립 registry/완전 coverage의 성공 증거가 아니라 아직 재개할 수 없다는 거절 회귀다.
