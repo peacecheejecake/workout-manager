@@ -457,3 +457,58 @@ it('untyped scalar protected content cannot evade unsupported body diagnostics',
     { path: 'context.actuals.original', reason: 'unsupported_copied_body' },
   ]);
 });
+
+it('accepts only exact bodyless producer metadata shapes at their captured context paths', () => {
+  const input = envelope({
+    affected: { routine: [one] },
+    rosters: { routine: [{ aggregateId: one, versionId: two }] },
+    manualBasis: {
+      purpose: 'manual_race_date_change',
+      app: { state: 'present', granted: true, revision: 1 },
+      policy: { id: 'manual-race-date-impact', version: 1, digest: 'a'.repeat(64) },
+    },
+    sourcePermissionManifest: {
+      activityMediaPermissions: {
+        consents: [
+          { kind: 'healthkit', state: 'absent' },
+          { kind: 'media', state: 'present', granted: false, revision: 2 },
+        ],
+        garminLineage: [
+          {
+            kind: 'fit',
+            source_id: 'synthetic-source',
+            provider: 'garmin-connect-unofficial',
+            official: false,
+            outcome: 'suppressed',
+          },
+        ],
+        healthkitRegistry: { state: 'present', revision: 2 },
+        garminUnofficial: {
+          state: 'present',
+          connection: {
+            session_generation: 0,
+            state: 'not_connected',
+            schedule_enabled: false,
+            schedule_paused: true,
+          },
+        },
+      },
+    },
+  });
+  const result = mapRaceManualReviewSourceInventory(input);
+  expect(result.inventoryState).toBe('mapped');
+  expect(result.refs).toEqual([]);
+  expect(result.storageAllowed).toBe(false);
+  const injected = {
+    ...input,
+    context: { ...input.context, manualBasis: { ...input.context.manualBasis, record: event() } },
+  };
+  expect(mapRaceManualReviewSourceInventory(injected).inventoryState).toBe('blocked');
+  const wrongPath = envelope({ manualBasis: null });
+  expect(mapRaceManualReviewSourceInventory(wrongPath).inventoryState).toBe('blocked');
+  expect(
+    mapRaceManualReviewSourceInventory(
+      envelope({ actuals: { manualBasis: input.context.manualBasis } }),
+    ).inventoryState,
+  ).toBe('blocked');
+});

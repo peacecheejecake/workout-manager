@@ -196,6 +196,79 @@ const metadataKeys = new Set(
     /\s+/,
   ),
 );
+// Exact producer paths below carry scalar access/head facts only, never source
+// bodies. Unknown fields (including injected record/content/spec) are rejected.
+const presentRevision = z.strictObject({ state: z.literal('present'), revision: revision.min(1) });
+const absent = z.strictObject({ state: z.literal('absent') });
+const bodylessMetadata = new Map<string, z.ZodType>([
+  ['context.affected.routine', z.array(uuid).max(5000)],
+  [
+    'context.rosters.routine',
+    z.array(z.strictObject({ aggregateId: uuid, versionId: uuid })).max(5000),
+  ],
+  [
+    'context.manualBasis',
+    z.strictObject({
+      purpose: z.literal('manual_race_date_change'),
+      app: z.union([absent, presentRevision.extend({ granted: z.boolean() })]),
+      policy: z.strictObject({
+        id: z.literal('manual-race-date-impact'),
+        version: z.literal(1),
+        digest: z.string().regex(/^[a-f0-9]{64}$/),
+      }),
+    }),
+  ],
+  [
+    'context.sourcePermissionManifest.activityMediaPermissions.consents',
+    z
+      .array(
+        z.union([
+          z.strictObject({
+            kind: z.enum(['provider', 'healthkit', 'media']),
+            state: z.literal('absent'),
+          }),
+          presentRevision.extend({
+            kind: z.enum(['provider', 'healthkit', 'media']),
+            granted: z.boolean(),
+          }),
+        ]),
+      )
+      .max(3),
+  ],
+  [
+    'context.sourcePermissionManifest.activityMediaPermissions.garminLineage',
+    z
+      .array(
+        z.strictObject({
+          kind: z.enum(['fit', 'fixture', 'manual', 'healthkit']),
+          source_id: id,
+          provider: z.enum(['garmin-official', 'garmin-connect-unofficial']),
+          official: z.boolean(),
+          outcome: z.enum(['imported', 'unchanged', 'stale', 'suppressed']),
+        }),
+      )
+      .max(5000),
+  ],
+  [
+    'context.sourcePermissionManifest.activityMediaPermissions.healthkitRegistry',
+    z.union([absent, presentRevision]),
+  ],
+  [
+    'context.sourcePermissionManifest.activityMediaPermissions.garminUnofficial',
+    z.union([
+      absent,
+      z.strictObject({
+        state: z.literal('present'),
+        connection: z.strictObject({
+          session_generation: revision,
+          state: z.enum(['not_connected', 'connected', 'reconnect_required']),
+          schedule_enabled: z.boolean(),
+          schedule_paused: z.boolean(),
+        }),
+      }),
+    ]),
+  ],
+]);
 const protectedFields = new Set([
   'record',
   'original',
@@ -277,6 +350,11 @@ export function mapRaceManualReviewSourceInventory(raw: unknown) {
       }
     }
     function scan(value: unknown, path: string, capture: boolean, parentKey = ''): void {
+      const metadata = bodylessMetadata.get(path);
+      if (metadata) {
+        metadata.parse(value);
+        return;
+      }
       if (value === null) return;
       if (Array.isArray(value)) {
         value.forEach((body, index) => scan(body, `${path}[${index}]`, capture, parentKey));
@@ -387,6 +465,7 @@ export function mapRaceManualReviewSourceInventory(raw: unknown) {
       }
       for (const [key, body] of Object.entries(row)) {
         if (
+          !bodylessMetadata.has(`${path}.${key}`) &&
           !metadataKeys.has(key) &&
           !protectedFields.has(key) &&
           !(key === 'body' && path === 'candidate')
