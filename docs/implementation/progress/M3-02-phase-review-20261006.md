@@ -1,6 +1,6 @@
 # M3-02 phase · 계정별 HealthKit 등록/해제 검토 준비
 
-상태: **전체 phase 검증 진행 중 / 독립 검토 대기 / main 미병합**. 이 문서는 M3-02j–o의 로컬 구현·준비와 실제 운영·기기 수용을 구분한다. baseline main `173d8d6e5fac4f6304ad3762e3c9dd8a6e0bae24`, 코드 freeze HEAD `1887073ac7b97059da31f363bb50f19558fd01ed`. 아래 기록을 포함한 최종 phase HEAD를 별도로 고정한 뒤 전체 diff를 fresh context-less gpt-6-sol high 읽기 전용 reviewer에게 제출한다.
+상태: **실행 가능한 로컬 phase 검증 완료 / 독립 검토 대기 / main 미병합**. 이 문서는 M3-02j–p의 로컬 구현·준비와 실제 운영·기기 수용을 구분한다. baseline main `173d8d6e5fac4f6304ad3762e3c9dd8a6e0bae24`, 제품 코드 freeze HEAD `1887073ac7b97059da31f363bb50f19558fd01ed`, 최종 시험 입력 freeze HEAD `bd625ee8e8b4bea6bb7132db8c5e673c65d2508d`. 두 HEAD 사이에는 공유 E2E 시험과 기록/graph만 바뀌었고 runtime은 동일하다. 아래 기록을 포함한 최종 phase HEAD를 별도로 고정한 뒤 전체 diff를 fresh context-less gpt-6-sol high 읽기 전용 reviewer에게 제출한다.
 
 ## 실행 가능한 로컬 작업과 외부 조건
 
@@ -30,3 +30,11 @@ j 계약, k 등록 영속화, l API/개별 해제 cleanup, m native UUID/epoch �
 ## 독립 phase 검토
 
 검증 완료 후 최종 base/head·실제 변경/미추적 파일·검사/실패/skip·외부 조건을 fresh context-less gpt-6-sol high reviewer에게 전달한다. 리뷰 중 해당 tree를 변경하지 않는다. 전체 phase diff의 계약·도메인·ownership/RLS·보안·스타일/경계·회귀·시험을 검토하며 완료된 결과를 읽기 전에는 main을 fast-forward하지 않는다. valid finding은 새 commit과 검증, fresh 재검토를 거친다. 최종 base/head·결과·FIXED/NOT FIXED·검증 기록은 해당 HEAD의 annotated review tag로 보존한다. push는 사용자 작업이다.
+
+## 최종 고정 입력의 두 전체 회차 · 2026-10-06
+
+clean HEAD `bd625ee8e8b4bea6bb7132db8c5e673c65d2508d`에서 `isolated-r5` **309통과·12skip·0실패·actual exit0**(11.7분), `isolated-r6` **309통과·12skip·0실패·actual exit0**(11.9분)을 완료했다. 두 회차 전후 자체5610–5650 listener0, 종료 뒤 자체 임시 PG 디렉터리0과 HEAD 불변/clean을 실제 확인했다. root가 두 원본 로그의 완료 결과를 읽었고12개 skip case도 동일하다. 최종 shared 시험 변경 뒤 전체 typecheck34/34+root tsc, 해당 lint/format/diff와 최종 generated/전체 format exit0을 확인했다. 위 r1–r4 실패·중단과 skip/외부 미실행을 보존한다. [M3-02p](M3-02p.md)만 로컬 completed로 바꾸고 o/h의 외부 in_progress는 유지한다. 마지막 기록 커밋에는 제품/시험 입력 변경이 없다.
+
+두 회차 증거는 `/private/tmp/wm-m3-phase-identity-isolated-r5.log`, `/private/tmp/wm-m3-phase-identity-isolated-r6.log`, `/private/tmp/wm-m3-phase-identity-two-round-proof-20261006.md`다. 이전 문단의 진행 중 표현은 그 회차 시점의 기록이다. 최종 검토 대상은 이 기록 커밋을 포함한 phase HEAD 전체이며 검토 결과는 그 HEAD의 annotated review tag에 보존한다.
+
+최종 기록의 generated 재확인에서 잘못 쓴 `pnpm generated:check`는 명령 부재 exit254였다. 저장소 script명을 확인해 `pnpm check:generated`로 재실행한 실제 exit0과 원본 오류 로그를 따로 보존했다. DAG225개/의존 상태·로컬 링크·diff 검사도 통과했다.

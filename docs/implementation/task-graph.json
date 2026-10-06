@@ -2100,7 +2100,7 @@
       "title": "Phase 수용 E2E의 비동기 fixture·포커스 경합 검증",
       "dependsOn": ["M3-02n"],
       "kind": "task",
-      "status": "in_progress",
+      "status": "completed",
       "scope": "전체 phase 검사에서 드러난 export 버전·삭제 영향 조회 준비·반복된 합성 Garmin MFA 응답 경합을 별도 추적한다. 실제 HTTP fixture 응답과 UI 준비를 구분해 진단하고 엄격한 schema·명시 확인·보안 단언을 유지한 시험 경계를 검증한다. 임의 sleep·제품 안전 gate 약화·실제 공급자 통과 추정 없이 수정한 고정 HEAD에서 전체 identity 두 성공 회차를 확인한다. 실패·중단·skip·미실행은 보존한다.",
       "evidence": "docs/implementation/progress/M3-02p.md"
     },

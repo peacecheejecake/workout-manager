@@ -795,7 +795,7 @@ Native shell·collector는 M1c 통합과 native feasibility 이후 M2 Web 확장
 | M3-02m HealthKit 등록 UUID 범위의 native 수집 | M3-02l | ACK된 UUID만 query/outbox, 계정 전환·재설치·삭제·anchor를 합성 Swift harness로 검증 |
 | M3-02n HealthKit 운동 선택 UI·native bridge | M3-02j, M3-02m | [로컬 구현 수용 완료](progress/M3-02n.md): native 합성·SDK 및 웹 브라우저 검증. UIKit/VoiceOver·제품 HTTPS·실기기는 별도 미실행 |
 | M3-02o HealthKit 계정별 등록 통합·안전 배포 준비 | M3-02k–M3-02n | [진행 중](progress/M3-02o.md): 비식별 감사 실제 합성 PG 통과, 개별 해제 제품 연결·[안전 배포 준비](research/healthkit-registration-rollout-readiness.md). 운영 감사·배포/rollback·실기기는 미실행 |
-| M3-02p Phase 수용 E2E의 비동기 fixture·포커스 경합 검증 | M3-02n | [진행 중](progress/M3-02p.md): export 버전·삭제 준비 대기·반복된 합성 MFA 응답 경합 진단. 제품 안전 gate를 유지하고 고정 HEAD의 전체 identity 두 회차 검증 |
+| M3-02p Phase 수용 E2E의 비동기 fixture·포커스 경합 검증 | M3-02n | [로컬 완료](progress/M3-02p.md): export 버전·삭제 준비 대기·합성 MFA 응답 경합 수정. 고정 bd625ee8의 전체 identity 두 회차 각각309통과·12skip·exit0; 외부 gate 유지 |
 | M3-02 HealthKit collector | M3-01, M3-02a–M3-02p | native collector; anchor/tombstone/outbox/ack·실기기 |
 | M3-03 최종 Native 통합 | M3-02, G2 | M2 전체 모듈 재조합·실기기 lifecycle/IME/back/offline 회귀·출시 요건 |
 | G3 Native-inclusive 출시 gate | M3-03, G2-PUBLIC | Web 공개 출시 조건 + 실제 HealthKit·native 검증 |
