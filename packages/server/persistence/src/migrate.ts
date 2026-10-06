@@ -106,6 +106,7 @@ const migrationFiles = [
   '098_race_ledger.sql',
   '099_exact_race_deletion.sql',
   '100_app_admission_binding.sql',
+  '101_restore_processing_closed_control.sql',
 ] as const;
 
 /**
@@ -454,6 +455,15 @@ export async function grantOperations(
     );
     await pool.query(`GRANT EXECUTE ON FUNCTION public.erase_account(text) TO "${runtimeRole}"`);
     await grantAppAdmissionBindings(pool, runtimeRole, 'export');
+    // Historical schema100 fixtures remain supported; control tables stay owner-only.
+    const processingControl = await pool.query('SELECT 1 FROM schema_migrations WHERE version=101');
+    if (processingControl.rowCount) {
+      await pool.query(
+        `GRANT EXECUTE ON FUNCTION public.lock_restore_processing_shared(),
+         public.read_restore_processing_admission(),
+         public.require_restore_processing_admission() TO "${runtimeRole}"`,
+      );
+    }
   } finally {
     await pool.end();
   }

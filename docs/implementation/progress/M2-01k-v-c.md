@@ -91,3 +91,17 @@ Root가 readonly 설계 `/private/tmp/wm-s22-global-admission-design-20261007.md
 Complete row sets·불변 private object·owner loader·final fenced tail·독립 target/witness가 없으면 reopen을 허용하지 않는다. DB 외부 monotonic authority 및 target별 credential/network binding·processing lease drain이 필요하며, DB commit 뒤 외부 activation CAS는 별도 단계다. DB만 ADMITTED이고 외부 PENDING이면 계속 처리 거절한다. SQL boolean/GUC·새 UUID·같은 호스트 관측을 외부 최신성으로 승격하지 않는다. 전체 설계 수용 행렬은 NOT_EXECUTED이며 운영 authority/provisioner는 아직 없다.
 
 REASSIGN 뒤 사건 정책의42501을 피하는 기존066 `retarget_definer_policies()` maintenance가 이미 있다. 새 owner의 기존 재지정·table/function ownership/grants pin을 검증하고 정책을 임의 확장하지 않는다. 이 설계로 SQL100을 수정하지 않으며 새 migration 번호는 기존 private budget101/settings102 후보와 충돌을 root가 직렬화한 뒤 확정한다. Default CLOSED primitive의 별도 actual PG 준비를 native agent에 배정했지만 정식 설치·전체 runtime 연결·reopen 검증으로 표시하지 않는다. C는 in_progress다.
+
+## 등록할 복원 마이그레이션 번호와 CLOSED 제어 준비 · 2026-10-07
+
+Root는 정식 registry101에 `101_restore_processing_closed_control.sql`을 등록했다. 전역 두 정수 advisory namespace `(77210,1)`을 이 제어에 예약하며, CLOSED-only 상태·bigint 문자열 revision·target nonce/incarnation·immutable exact close receipt를 제공한다. 정상 `grantOperations`는 migration101이 있을 때 lock/read/require 함수만 runtime에 허용한다. owner close/assert 및 제어/receipt 테이블은 runtime에 허용하지 않는다. 기존 Database.tenant 및 writer/provider/outbox 경로는 아직 연결하지 않았으므로 전역 처리 차단 완료를 뜻하지 않는다. global shared/exclusive는 lifecycle77206/tenant0보다 먼저 취득해야 한다.
+
+후속 번호는102 owner family loader,103 AI budget,104 AI settings로 배정한다. 기존 private budget101/settings102 draft와 과거 입력 hash·결과는 보존하고, 후속 정식 source를 별도로 작성한다. candidate100 inventory의 positive fixture는 migrate(...,100)을 명시해 schema101의 수용 증거로 세지 않는다. 기존 SQL100 bytes는 변경하지 않았다.
+
+Private owner family v3의 별도 실제 PG source19/19와 boundary regression31/31 보고·입력331개·cleanup을 root가 확인했다. 당시 입력 중 migrate.ts만 이번 registry101 등록으로 달라졌으며, 나머지330개는 frozen SHA와 일치한다. PG58653 stop0/status3/isready2 및 실제 base/socket 부재를 확인했다. SQL SHA `e5cab380a6cfc22c265eebd9f8596f913d395232fd42347ee325f2e6ee1ba095`, `/private/tmp/wm-s22-ownerloadv3-acceptance-20261007.md`. 이 결과는 private synthetic trust probe이며 정식102 설치·독립 source proof·전체 account restore·admission의 성공 증거가 아니다. 정식102는 전역 CLOSED의 exact revision/nonce/incarnation에 결합하고 새 입력으로 실제 검증해야 한다.
+
+Root의 schema100 명시 pin 변경 회귀는 실제 PostgreSQL **13/13, skip0**로 통과했다(`/private/tmp/wm-schema100-pin-after101-root-20261007.log`). 후보100·원본 migration100·정상 grant를 유지한 historical 시험이다. 초기 persistence typecheck는 병렬 작업 중 미export 계약 import TS2724로 실패했고 담당 agent가 수정 중이므로 아직 최종 typecheck 통과를 기록하지 않는다.
+
+정식101 정상 upgrade001–100→101·checksum101개와 정상 grantOperations/grantResources/grantNutritionCore의 실제 PostgreSQL 수용 **13/13, skip0**를 root가 코드·로그·frozen 입력4개와 대조했다(`/private/tmp/wm-registered-admission-pg-20261007-run1.log`). PUBLIC/runtime 직접 DML·owner 명령 거절, 성공 receipt 조회 보존과 새 처리 CLOSED 거절, bool/GUC reopen 거절, exact close/CAS/retry/rollback/bigint overflow/missing control, 실제 양방향 pg_locks(global→77206→tenant0), REASSIGN·기존 retarget·이전 owner 거절을 포함한다. source/tests의 남은 reader factory·전체 writer 연결·외부 authority·reopen은 미구현이다.
+
+Root 최종 persistence typecheck exit0(`/private/tmp/wm-processing101-root-ts-20261007.log`), migrate.ts 및 담당 두 파일 ESLint·Prettier/diff check exit0. 초기 병렬 계약 import 오류와 담당 unused-import lint 실패는 보존한다. 시험 cluster stop·private parent 제거 및 현재 해당 prefix 디렉터리0을 확인했다. 정식101 설치는 로컬 실제 fixture이며 운영 적용·처리 재개·C 완료·phase 승인과 구분한다.

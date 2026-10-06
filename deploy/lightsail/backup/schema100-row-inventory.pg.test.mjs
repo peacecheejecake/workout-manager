@@ -73,7 +73,7 @@ test(
       );
       await admin.query('ALTER DATABASE postgres OWNER TO inventory_owner');
       await admin.query('ALTER SCHEMA public OWNER TO inventory_owner');
-      await migrate(url('inventory_owner'));
+      await migrate(url('inventory_owner'), 100);
       await grantOperations(url('inventory_owner'), 'inventory_runtime');
       const writer = await connect('inventory_owner'),
         holder = await connect('inventory_owner'),
