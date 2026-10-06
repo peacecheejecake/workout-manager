@@ -1,3 +1,8 @@
+import {
+  captureNestedNutritionSources,
+  captureActivityAndMediaPermissions,
+} from '../src/race-plan-impact-nested-sources.js';
+import { createGalleryMediaRepository } from '../src/gallery-media.js';
 import { captureRaceImpactSourcePermissions } from '../src/race-plan-impact-source-permissions.js';
 import { createPrivateTextResourceRepository } from '../src/resources.js';
 import { createResourceAccessRepository } from '../src/resource-access.js';
@@ -31,7 +36,7 @@ import {
   routineOccurrenceSchema,
   routineRunSchema,
 } from '@workout/contracts/routines';
-import { planDraftSchema } from '@workout/contracts/planning';
+import { planDraftSchema, planSnapshotSchema } from '@workout/contracts/planning';
 import type { RaceEventValues } from '@workout/contracts/race-commands';
 import { createDatabase, type Database } from '../src/database.js';
 import { createRaceRepository, type RaceRepository } from '../src/races.js';
@@ -46,6 +51,8 @@ import {
   grantNutritionCore,
   grantResources,
   grantResourceRetrieval,
+  grantGalleryMedia,
+  grantGarminUnofficial,
 } from '../src/migrate.js';
 import { captureRacePlanImpactContext } from '../src/race-plan-impact-context.js';
 import { dropIsolatedDatabase } from './drop-isolated-database.js';
@@ -245,6 +252,9 @@ beforeAll(async () => {
   // Same regular resources/retrieval combination as the configured authenticated runtime.
   await grantResources(url(ownerRole), runtimeRole);
   await grantResourceRetrieval(url(ownerRole), runtimeRole);
+  // Existing configured product role composition, not collector-only privilege fabrication.
+  await grantGalleryMedia(url(ownerRole), runtimeRole);
+  await grantGarminUnofficial(url(ownerRole), runtimeRole);
   database = createDatabase({ connectionString: url(runtimeRole) });
   races = createRaceRepository(database);
 });
@@ -2354,4 +2364,546 @@ it('captures exact blueprint catalog ownership and rejects forged identities wit
   await expect(
     permissionFacts(athlete, [], [], 4194304n - 2048n, 0, [requested]),
   ).rejects.toMatchObject({ code: 'CONTEXT_UNAVAILABLE' });
+});
+
+function dNutrients() {
+  return {
+    energy: { value: null, unit: 'kcal' as const, status: 'unknown' as const, evidenceIds: [] },
+    carbohydrate: { value: null, unit: 'g' as const, status: 'unknown' as const, evidenceIds: [] },
+    protein: { value: null, unit: 'g' as const, status: 'unknown' as const, evidenceIds: [] },
+    fat: { value: null, unit: 'g' as const, status: 'unknown' as const, evidenceIds: [] },
+    fluid: { value: null, unit: 'mL' as const, status: 'unknown' as const, evidenceIds: [] },
+    sodium: { value: null, unit: 'mg' as const, status: 'unknown' as const, evidenceIds: [] },
+  };
+}
+it('D consumes blueprint historical nutrition food and linked Plan copies before supplementary capture', async () => {
+  const athlete = await account(),
+    repository = createNutritionRepository(database);
+  const firstFood = await repository.saveFood(athlete, {
+    confirmed: true,
+    idempotencyKey: randomUUID(),
+    expectedVersionId: null,
+    definition: {
+      foodId: 'synthetic-food',
+      name: 'Synthetic food',
+      basis: { kind: 'per_100g' },
+      nutrients: dNutrients(),
+      provenance: {
+        kind: 'user_entered',
+        reference: null,
+        capturedAt: '2026-10-01T00:00:00Z',
+        reviewState: 'unreviewed',
+      },
+    },
+  });
+  const exercise = await seedExercise(athlete),
+    oldPlan = await training(athlete, strengthDraft(), false);
+  await seedLink(athlete, oldPlan, 'strength-0', {
+    kind: 'embedded',
+    spec: syntheticSpec(exercise.versionId),
+  });
+  await training(athlete);
+  const event = await create(athlete),
+    base = nutrition(oldPlan, [
+      { entity: 'session', entityId: 'strength-0' },
+      { entity: 'race', entityId: event.id },
+    ]);
+  const record = nutritionPlanVersionSchema.parse({
+    ...base,
+    items: base.items.map((item) => ({
+      ...item,
+      foods: [
+        {
+          foodVersionId: firstFood.versionId,
+          description: 'Synthetic portion',
+          quantity: 0,
+          unit: 'g',
+          sourceBasis: 'per_100g',
+        },
+      ],
+    })),
+  });
+  await seedNutrition(athlete, [record]);
+  await owned(athlete, (c) =>
+    c.query('DELETE FROM nutrition_plan_head WHERE athlete_id=$1', [athlete]),
+  );
+  const blueprint = await bSeedBlueprint(
+    athlete,
+    bBlueprint({
+      kind: 'nutrition_template',
+      ref: { id: record.planId, versionId: record.versionId },
+    }),
+  );
+  await bSeedRun(athlete, blueprint);
+  const captured = await capture(athlete, event.id);
+  expect(captured.sourcePermissionManifest.nestedNutritionSources).toMatchObject([
+    {
+      versionId: record.versionId,
+      foods: [{ requestedVersionId: firstFood.versionId, state: 'current' }],
+      linkedPlan: { state: 'historical', requestedVersionId: oldPlan },
+      anchors: [
+        { source: { state: 'owned', planVersionId: oldPlan } },
+        { source: { state: 'current' } },
+      ],
+    },
+  ]);
+  expect(captured.supplementaryManifest.copies).toMatchObject([
+    { link: { planVersionId: oldPlan } },
+  ]);
+  expect(captured.supplementaryManifest.exercises).toMatchObject([
+    { versionId: exercise.versionId },
+  ]);
+  const newer = await repository.saveFood(athlete, {
+    confirmed: true,
+    idempotencyKey: randomUUID(),
+    expectedVersionId: firstFood.versionId,
+    definition: {
+      foodId: firstFood.foodId,
+      name: 'Synthetic corrected catalog',
+      basis: firstFood.basis,
+      nutrients: dNutrients(),
+      provenance: {
+        kind: 'user_entered',
+        reference: null,
+        capturedAt: firstFood.provenance.capturedAt,
+        reviewState: 'unreviewed',
+      },
+    },
+  });
+  const changed = await capture(athlete, event.id);
+  expect(changed.sourcePermissionManifest.nestedNutritionSources).toMatchObject([
+    {
+      foods: [
+        {
+          state: 'historical',
+          content: { versionId: firstFood.versionId, provenance: { reviewState: 'unreviewed' } },
+          currentHead: { versionId: newer.versionId, provenance: { reviewState: 'unreviewed' } },
+        },
+      ],
+    },
+  ]);
+  expect(changed.readSetDigest).not.toBe(captured.readSetDigest);
+  expect(changed.supplementaryManifest).toEqual(captured.supplementaryManifest);
+});
+it('D caches repeated exact nutrition food/Plan/race bodies and keeps foreign refs contentless', async () => {
+  const athlete = await account(),
+    other = await account(),
+    event = await create(athlete),
+    plan = await training(athlete);
+  const baseRecord = nutrition(plan, [
+    { entity: 'race', entityId: event.id },
+    { entity: 'race', entityId: event.id },
+    { entity: 'session', entityId: 'session' },
+  ]);
+  const repository = createNutritionRepository(database);
+  async function saveFood(tenant: string, id: string) {
+    return repository.saveFood(tenant, {
+      confirmed: true,
+      idempotencyKey: randomUUID(),
+      expectedVersionId: null,
+      definition: {
+        foodId: id,
+        name: 'Synthetic cached source',
+        basis: { kind: 'per_100g' },
+        nutrients: dNutrients(),
+        provenance: {
+          kind: 'user_entered',
+          reference: null,
+          capturedAt: '2026-10-01T00:00:00Z',
+          reviewState: 'unreviewed',
+        },
+      },
+    });
+  }
+  const ownFood = await saveFood(athlete, 'owned-food'),
+    foreignFood = await saveFood(other, 'foreign-food'),
+    missingFood = randomUUID();
+  const portion = (versionId: string) => ({
+    foodVersionId: versionId,
+    description: 'Synthetic portion',
+    quantity: 0,
+    unit: 'g',
+    sourceBasis: 'per_100g',
+  });
+  const record = nutritionPlanVersionSchema.parse({
+    ...baseRecord,
+    items: baseRecord.items.map((item) => ({ ...item, foods: [portion(ownFood.versionId)] })),
+  });
+  const baseForeign = nutrition(null, [{ entity: 'race', entityId: (await create(other)).id }]);
+  const foreign = nutritionPlanVersionSchema.parse({
+    ...baseForeign,
+    items: baseForeign.items.map((item) => ({
+      ...item,
+      foods: [portion(foreignFood.versionId), portion(missingFood)],
+    })),
+  });
+  let raceBodyReads = 0,
+    planBodyReads = 0,
+    foodBodyReads = 0;
+  const result = await database.tenant(athlete, async (tx) => {
+    await lockAppAdmission(tx);
+    return captureNestedNutritionSources(
+      {
+        athleteId: tx.athleteId,
+        query: async (sql, values) => {
+          if (sql.startsWith('SELECT v.food_id')) foodBodyReads++;
+          return tx.query(sql, values);
+        },
+      },
+      [record, record, foreign],
+      { bytes: 0n, sources: 0 },
+      {
+        plan: async (id) => {
+          planBodyReads++;
+          const rows = await tx.query(
+            'SELECT id,version,created_at,draft FROM plan_snapshot WHERE athlete_id=$1 AND id=$2::uuid',
+            [athlete, id],
+          );
+          const row = z
+            .object({
+              id: z.uuid(),
+              version: z.number(),
+              created_at: z.date(),
+              draft: planDraftSchema,
+            })
+            .parse(rows.rows[0]);
+          return planSnapshotSchema.parse({
+            id: row.id,
+            version: row.version,
+            createdAt: row.created_at.toISOString(),
+            draft: row.draft,
+          });
+        },
+        race: async (id) => {
+          raceBodyReads++;
+          const record = await races.getRaceEvent(athlete, id);
+          if (!record) throw new Error('Synthetic owned race unavailable');
+          return record;
+        },
+      },
+    );
+  });
+  expect(planBodyReads).toBe(1);
+  expect(raceBodyReads).toBe(1);
+  expect(foodBodyReads).toBe(3);
+  expect(result.nutrition.find((row) => row.versionId === foreign.versionId)?.foods).toMatchObject([
+    { state: 'unavailable', content: null },
+    { state: 'unavailable', content: null },
+  ]);
+  expect(result.nutrition).toHaveLength(2);
+  expect(
+    result.nutrition.find((row) => row.versionId === foreign.versionId)?.anchors,
+  ).toMatchObject([{ source: { state: 'unavailable', content: null } }]);
+});
+it('D media metadata preserves own identity/deletion and explicitly leaves cleanup completion unavailable', async () => {
+  const athlete = await account(),
+    mediaId = randomUUID(),
+    storageRef = `synthetic-object-${randomUUID()}`;
+  // Plain-owner SQL represents an already committed synthetic upload, not real bytes/storage evidence.
+  await owned(athlete, async (c) => {
+    await c.query(
+      "INSERT INTO gallery_media_object(athlete_id,storage_ref,content_hash,size_bytes,media_type,created_at) VALUES($1,$2,$3,1,'image/png',now())",
+      [athlete, storageRef, 'a'.repeat(64)],
+    );
+    await c.query(
+      "INSERT INTO gallery_media_item(athlete_id,id,media_kind,storage_ref,original_filename,media_type,size_bytes,content_hash,access_revision,created_at,updated_at) VALUES($1,$2,'image',$3,'synthetic.png','image/png',1,$4,1,now(),now())",
+      [athlete, mediaId, storageRef, 'a'.repeat(64)],
+    );
+  });
+  async function media(tenant: string) {
+    return database.tenant(tenant, async (tx) => {
+      await lockAppAdmission(tx);
+      return captureActivityAndMediaPermissions(tx, [mediaId], { bytes: 0n, sources: 0 });
+    });
+  }
+  const initial = await media(athlete);
+  expect(initial.media).toMatchObject([
+    {
+      state: 'owned',
+      accessRevision: 1,
+      content: { objectIdentity: { state: 'present' } },
+      cleanup: { state: 'unavailable' },
+    },
+  ]);
+  expect(JSON.stringify(initial)).not.toContain(storageRef);
+  expect((await media(await account())).media).toMatchObject([
+    { state: 'unavailable', content: null },
+  ]);
+  await createGalleryMediaRepository(database).softDelete(athlete, mediaId, {
+    expectedAccessRevision: 1,
+    idempotencyKey: randomUUID(),
+  });
+  expect((await media(athlete)).media).toMatchObject([
+    { state: 'deleted', accessRevision: 2, content: null, cleanup: { state: 'unavailable' } },
+  ]);
+});
+it('D captures canonical overlay/source suppression and true provider provenance without treating FIT as Garmin', async () => {
+  const athlete = await account(),
+    event = await create(athlete),
+    id = randomUUID(),
+    sourceId = randomUUID();
+  const original = {
+    title: 'Synthetic actual',
+    kind: 'running',
+    startedAt: null,
+    durationSeconds: null,
+    durationKind: 'unknown',
+    timezone: 'UTC',
+    distanceMeters: 0,
+  };
+  // Owned legacy source facts, including explicit absence of its immutable raw revision.
+  await owned(athlete, async (c) => {
+    await c.query(
+      'INSERT INTO activity_canonical(athlete_id,id,revision,original) VALUES($1,$2,1,$3::jsonb)',
+      [athlete, id, JSON.stringify(original)],
+    );
+    await c.query(
+      "INSERT INTO activity_source_head(athlete_id,kind,source_id,source_revision,content_hash,activity_id) VALUES($1,'fit',$2,1,$3,$4)",
+      [athlete, sourceId, 'b'.repeat(64), id],
+    );
+  });
+  const before = await capture(athlete, event.id);
+  expect(before.sourcePermissionManifest.activityMediaPermissions.activities).toMatchObject([
+    {
+      source: { kind: 'fit', suppressed: false, revisionRecord: { state: 'absent' } },
+      overlay: { state: 'absent' },
+    },
+  ]);
+  expect(before.sourcePermissionManifest.activityMediaPermissions.garmin).toEqual({
+    state: 'absent',
+  });
+  expect(before.sourcePermissionManifest.activityMediaPermissions.garminLineage).toEqual([]);
+  await owned(athlete, async (c) => {
+    await c.query(
+      "INSERT INTO activity_overlay(athlete_id,activity_id,values_json) VALUES($1,$2,'{}')",
+      [athlete, id],
+    );
+    await c.query(
+      "INSERT INTO activity_overlay_revision(athlete_id,activity_id,revision,values_json) VALUES($1,$2,2,'{}')",
+      [athlete, id],
+    );
+    await c.query('UPDATE activity_canonical SET revision=2 WHERE athlete_id=$1 AND id=$2', [
+      athlete,
+      id,
+    ]);
+    await c.query(
+      "INSERT INTO activity_suppression(athlete_id,kind,source_id) VALUES($1,'fit',$2)",
+      [athlete, sourceId],
+    );
+    await c.query(
+      "INSERT INTO garmin_connection(athlete_id,generation,state) VALUES($1,0,'disconnected')",
+      [athlete],
+    );
+    await c.query(
+      "INSERT INTO garmin_unofficial_connection(athlete_id,session_generation,state) VALUES($1,0,'not_connected')",
+      [athlete],
+    );
+    await c.query(
+      "INSERT INTO garmin_activity_ledger(athlete_id,garmin_activity_id,provider,official,outcome,collected_at) VALUES($1,'123','garmin-connect-unofficial',false,'suppressed',now())",
+      [athlete],
+    );
+    await c.query(
+      "INSERT INTO garmin_activity_ledger_source(athlete_id,garmin_activity_id,kind,source_id) VALUES($1,'123','fit',$2)",
+      [athlete, sourceId],
+    );
+  });
+  const after = await capture(athlete, event.id);
+  expect(after.sourcePermissionManifest.activityMediaPermissions.activities).toMatchObject([
+    { revision: 2, source: { suppressed: true }, overlay: { state: 'present', revision: 2 } },
+  ]);
+  expect(after.sourcePermissionManifest.activityMediaPermissions.garmin).toMatchObject({
+    state: 'present',
+    connection: { generation: 0, state: 'disconnected' },
+  });
+  expect(after.sourcePermissionManifest.activityMediaPermissions.garminLineage).toMatchObject([
+    { provider: 'garmin-connect-unofficial', official: false, outcome: 'suppressed' },
+  ]);
+  expect(after.readSetDigest).not.toBe(before.readSetDigest);
+});
+
+it('D records HealthKit claim/consent provenance and actual withdrawal suppression without foreign lookup', async () => {
+  const athlete = await account(),
+    event = await create(athlete),
+    sampleId = randomUUID(),
+    epoch = randomUUID();
+  await owned(athlete, async (c) => {
+    await c.query(
+      "INSERT INTO consent(athlete_id,kind,granted,revision) VALUES($1,'healthkit',true,1)",
+      [athlete],
+    );
+    await c.query('INSERT INTO healthkit_workout_registry_head(athlete_id,revision) VALUES($1,1)', [
+      athlete,
+    ]);
+    await c.query(
+      'INSERT INTO healthkit_workout_claim(athlete_id,sample_id,claim_epoch,consent_revision) VALUES($1,$2,$3,1)',
+      [athlete, sampleId, epoch],
+    );
+    await c.query(
+      "INSERT INTO healthkit_workout_sample(athlete_id,sample_id,installation_id,state,source_bundle_id,activity_type,observed_from,observed_to,duration_seconds,distance_meters,payload_digest) VALUES($1,$2,$3,'active','synthetic.fixture',37,'2026-10-01T00:00:00Z','2026-10-01T00:00:00Z',0,NULL,$4)",
+      [athlete, sampleId, randomUUID(), 'c'.repeat(64)],
+    );
+    // Existing SQL producer creates the canonical/immutable source/lineage together.
+    await c.query('SELECT public.create_healthkit_canonical($1,$2)', [sampleId, 'c'.repeat(64)]);
+  });
+  const before = await capture(athlete, event.id);
+  expect(before.sourcePermissionManifest.activityMediaPermissions.healthkit).toMatchObject([
+    {
+      id: sampleId,
+      sample: { state: 'present', status: 'active' },
+      claim: { state: 'present', epoch, consentRevision: 1 },
+      lineage: { state: 'present', status: 'created_activity' },
+    },
+  ]);
+  expect(before.sourcePermissionManifest.activityMediaPermissions.healthkitRegistry).toEqual({
+    state: 'present',
+    revision: 1,
+  });
+  const other = await account(),
+    foreignEvent = await create(other);
+  const foreign = await capture(other, foreignEvent.id);
+  expect(foreign.sourcePermissionManifest.activityMediaPermissions.healthkit).toEqual([]);
+  expect(foreign.sourcePermissionManifest.activityMediaPermissions.healthkitRegistry).toEqual({
+    state: 'absent',
+  });
+  await owned(athlete, (c) =>
+    c.query(
+      "UPDATE consent SET granted=false,revision=2 WHERE athlete_id=$1 AND kind='healthkit'",
+      [athlete],
+    ),
+  );
+  const withdrawn = await capture(athlete, event.id);
+  expect(withdrawn.sourcePermissionManifest.activityMediaPermissions.healthkit).toMatchObject([
+    {
+      id: sampleId,
+      sample: { state: 'absent' },
+      claim: { state: 'absent' },
+    },
+  ]);
+  expect(withdrawn.sourcePermissionManifest.activityMediaPermissions.activities).toMatchObject([
+    { deleted: true, source: { kind: 'healthkit', suppressed: true } },
+  ]);
+  expect(withdrawn.sourcePermissionManifest.activityMediaPermissions.healthkitRegistry).toEqual({
+    state: 'absent',
+  });
+  expect(withdrawn.sourcePermissionManifest.activityMediaPermissions.consents).toContainEqual({
+    state: 'present',
+    kind: 'healthkit',
+    granted: false,
+    revision: 2,
+  });
+  expect(withdrawn.readSetDigest).not.toBe(before.readSetDigest);
+  expect(withdrawn.coverage.complete).toBe(false);
+});
+it('D enforces cumulative metadata bytes/reference bounds and explicit absent/zero provider facts', async () => {
+  const athlete = await account();
+  async function facts(bytes: bigint, sources: number) {
+    return database.tenant(athlete, async (tx) => {
+      await lockAppAdmission(tx);
+      return captureActivityAndMediaPermissions(tx, [], { bytes, sources });
+    });
+  }
+  const empty = await facts(0n, 0);
+  expect(empty.activities).toEqual([]);
+  expect(empty.garmin).toEqual({ state: 'absent' });
+  expect(empty.consents).toContainEqual({ kind: 'media', state: 'absent' });
+  await owned(athlete, (c) =>
+    c.query(
+      "INSERT INTO garmin_connection(athlete_id,generation,state) VALUES($1,0,'disconnected')",
+      [athlete],
+    ),
+  );
+  const zero = await facts(0n, 0);
+  expect(zero.garmin).toMatchObject({
+    state: 'present',
+    connection: { generation: 0, state: 'disconnected', permissions: [] },
+  });
+  await expect(facts(4194304n, 0)).rejects.toMatchObject({
+    code: 'CONTEXT_UNAVAILABLE',
+    bound: 'decoded_bytes',
+  });
+  await expect(facts(0n, 5000)).rejects.toMatchObject({
+    code: 'CONTEXT_UNAVAILABLE',
+    bound: 'unique_sources',
+  });
+});
+
+it('D collector manual basis tracks absent/false/grant/regrant without changing immutable domain facts', async () => {
+  const athlete = await account(),
+    event = await create(athlete),
+    plan = await training(athlete);
+  await owned(athlete, (c) =>
+    c.query("DELETE FROM consent WHERE athlete_id=$1 AND kind='app'", [athlete]),
+  );
+  const absent = await capture(athlete, event.id);
+  expect(absent.manualBasis.app).toEqual({ state: 'absent' });
+  await owned(athlete, (c) =>
+    c.query("INSERT INTO consent(athlete_id,kind,granted,revision) VALUES($1,'app',false,1)", [
+      athlete,
+    ]),
+  );
+  const denied = await capture(athlete, event.id);
+  expect(denied.manualBasis.app).toEqual({ state: 'present', granted: false, revision: 1 });
+  await owned(athlete, (c) =>
+    c.query("UPDATE consent SET granted=true,revision=2 WHERE athlete_id=$1 AND kind='app'", [
+      athlete,
+    ]),
+  );
+  const granted = await capture(athlete, event.id);
+  expect(granted.manualBasis.app).toEqual({ state: 'present', granted: true, revision: 2 });
+  await owned(athlete, (c) =>
+    c.query("UPDATE consent SET granted=false,revision=3 WHERE athlete_id=$1 AND kind='app'", [
+      athlete,
+    ]),
+  );
+  const revoked = await capture(athlete, event.id);
+  await owned(athlete, (c) =>
+    c.query("UPDATE consent SET granted=true,revision=4 WHERE athlete_id=$1 AND kind='app'", [
+      athlete,
+    ]),
+  );
+  const regranted = await capture(athlete, event.id);
+  expect(
+    new Set([absent, denied, granted, revoked, regranted].map((context) => context.readSetDigest))
+      .size,
+  ).toBe(5);
+  for (const context of [denied, granted, revoked, regranted]) {
+    expect(context.currentTraining?.snapshot.id).toBe(plan);
+    expect(context.supplementaryManifest).toEqual(absent.supplementaryManifest);
+    expect(context.routineActualManifest).toEqual(absent.routineActualManifest);
+    expect(context.sourcePermissionManifest).toEqual(absent.sourcePermissionManifest);
+    expect(context.manualBasis.policy).toEqual(absent.manualBasis.policy);
+    expect(context.status).toBe('blocked');
+    expect(context.coverage.complete).toBe(false);
+  }
+});
+
+it('D rejects a forged current source head/hash rather than classifying a conflicting immutable revision as absent', async () => {
+  const athlete = await account(),
+    event = await create(athlete),
+    id = randomUUID(),
+    sourceId = randomUUID();
+  const original = {
+    title: 'Synthetic integrity check',
+    kind: 'running',
+    startedAt: null,
+    durationSeconds: null,
+    durationKind: 'unknown',
+    timezone: 'UTC',
+    distanceMeters: 0,
+  };
+  await owned(athlete, async (c) => {
+    await c.query(
+      'INSERT INTO activity_canonical(athlete_id,id,revision,original) VALUES($1,$2,1,$3::jsonb)',
+      [athlete, id, JSON.stringify(original)],
+    );
+    await c.query(
+      "INSERT INTO activity_source_head(athlete_id,kind,source_id,source_revision,content_hash,activity_id) VALUES($1,'fixture',$2,1,$3,$4)",
+      [athlete, sourceId, 'a'.repeat(64), id],
+    );
+    await c.query(
+      "INSERT INTO activity_source_revision(athlete_id,kind,source_id,source_revision,content_hash,normalized_raw) VALUES($1,'fixture',$2,1,$3,$4::jsonb)",
+      [athlete, sourceId, 'b'.repeat(64), JSON.stringify(original)],
+    );
+  });
+  await expect(capture(athlete, event.id)).rejects.toMatchObject({ code: 'INVALID_CONTEXT' });
 });

@@ -1,3 +1,4 @@
+import { captureRaceManualBasis } from './race-plan-impact-manual-basis.js';
 import { captureRaceImpactSourcePermissions } from './race-plan-impact-source-permissions.js';
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
@@ -598,30 +599,31 @@ export async function captureRacePlanImpactContext(tx: Transaction, input: unkno
   }
   let dependencyInventory: Awaited<ReturnType<typeof captureIntegratedDependencyInventory>>;
   let routineActualManifest: Awaited<ReturnType<typeof captureRoutineActualManifest>>;
-  let supplementaryManifest: Awaited<ReturnType<typeof captureSupplementaryReferenceManifest>>;
+  let supplementaryManifest!: Awaited<ReturnType<typeof captureSupplementaryReferenceManifest>>;
   let sourcePermissionManifest: Awaited<ReturnType<typeof captureRaceImpactSourcePermissions>>;
   try {
     dependencyInventory = await captureIntegratedDependencyInventory(tx);
     routineActualManifest = await captureRoutineActualManifest(tx, sources);
-    supplementaryManifest = await captureSupplementaryReferenceManifest(
-      tx,
-      await sources.consumedPlans(),
-      sources.sourceCount() + routineActualManifest.uniqueSourceCount,
-    );
     sourcePermissionManifest = await captureRaceImpactSourcePermissions(tx, {
       plannedRefs: routineActualManifest.occurrences.flatMap((row) =>
         row.record.stepBindings.map((binding) => binding.plannedRef),
       ),
-      resourceVersionIds: supplementaryManifest.exercises.flatMap((row) => row.resourceVersionIds),
+      resourceVersionIds: [],
+      nutritionRecords: nutrition.map((row) => row.record),
+      sources,
+      captureSupplementary: async (sourceCount) => {
+        supplementaryManifest = await captureSupplementaryReferenceManifest(
+          tx,
+          await sources.consumedPlans(),
+          sourceCount,
+        );
+        return supplementaryManifest;
+      },
       catalogRefs: routineActualManifest.blueprints.flatMap((row) =>
         row.record.steps.map((step) => step.content),
       ),
       baseBytes,
-      existingSourceCount:
-        sources.sourceCount() +
-        routineActualManifest.uniqueSourceCount +
-        supplementaryManifest.routines.length +
-        supplementaryManifest.exercises.length,
+      existingSourceCount: sources.sourceCount() + routineActualManifest.uniqueSourceCount,
     });
   } catch (error) {
     if (error instanceof RaceImpactDependencyError)
@@ -636,8 +638,10 @@ export async function captureRacePlanImpactContext(tx: Transaction, input: unkno
     recovery: recovery.map((row) => ({ aggregateId: row.aggregateId, versionId: row.versionId })),
     routine: routines.map((row) => ({ aggregateId: row.aggregateId, versionId: row.versionId })),
   };
+  const manualBasis = await captureRaceManualBasis(tx);
   const readSet = {
     athleteId: tx.athleteId,
+    manualBasis,
     event,
     collections,
     linkedPlan: linked,
@@ -666,6 +670,8 @@ export async function captureRacePlanImpactContext(tx: Transaction, input: unkno
         'immutable_supplementary_copy_references',
         'routine_occurrence_run_and_actual_reference_facts',
         'partial_owned_planned_reference_and_resource_permission_facts',
+        'nested_nutrition_plan_food_anchor_and_activity_media_provider_facts',
+        'manual_purpose_app_and_policy_facts',
       ] as const,
     },
     ...readSet,

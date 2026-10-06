@@ -1,4 +1,13 @@
 import {
+  captureNestedNutritionSources,
+  captureActivityAndMediaPermissions,
+  reserveSourceBudget,
+} from './race-plan-impact-nested-sources.js';
+import type { NutritionPlanVersion } from '@workout/contracts/nutrition-core';
+import type { PlanSnapshot } from '@workout/contracts/planning';
+import type { RaceEvent } from '@workout/contracts/races';
+import type { captureSupplementaryReferenceManifest } from './race-plan-impact-dependencies.js';
+import {
   routineTemplateVersionSchema,
   supplementaryExerciseVersionSchema,
 } from '@workout/contracts/supplementary-core';
@@ -33,6 +42,12 @@ export async function captureRaceImpactSourcePermissions(
     plannedRefs: readonly DomainPlanRef[];
     resourceVersionIds: readonly string[];
     catalogRefs?: readonly z.infer<typeof routineStepContentSchema>[];
+    nutritionRecords?: readonly NutritionPlanVersion[];
+    mediaIds?: readonly string[];
+    sources?: { plan(id: string): Promise<PlanSnapshot>; race(id: string): Promise<RaceEvent> };
+    captureSupplementary?: (
+      sourceCount: number,
+    ) => Promise<Awaited<ReturnType<typeof captureSupplementaryReferenceManifest>>>;
     baseBytes: bigint;
     existingSourceCount: number;
   },
@@ -64,6 +79,13 @@ export async function captureRaceImpactSourcePermissions(
   let bytes =
     input.baseBytes + BigInt((refs.length + resourceIds.length + catalogRequests.length) * 2048);
   if (bytes > 4194304n) throw new RaceImpactDependencyError('CONTEXT_UNAVAILABLE', 'decoded_bytes');
+  const nutritionRecords = new Map(
+    (input.nutritionRecords ?? []).map((record) => [
+      record.versionId,
+      parse(nutritionPlanVersionSchema, record),
+    ]),
+  );
+  const mediaIds = new Set(input.mediaIds ?? []);
   const planned = [];
   for (const requested of refs) {
     // These two producers have concrete session/item membership. Recovery and
@@ -151,6 +173,7 @@ export async function captureRaceImpactSourcePermissions(
       : parse(nutritionPlanVersionSchema, row.body);
     if ('versionId' in record && record.versionId !== requested.versionId)
       throw new RaceImpactDependencyError('INVALID_CONTEXT');
+    if ('planId' in record) nutritionRecords.set(record.versionId, record);
     const aggregateMatches = training
       ? head?.aggregate_id === requested.planId
       : 'planId' in record && record.planId === requested.planId;
@@ -230,6 +253,7 @@ export async function captureRaceImpactSourcePermissions(
       if (body === null) return null;
       const record = parse(supplementaryExerciseVersionSchema, body);
       if (record.versionId !== versionId) throw new RaceImpactDependencyError('INVALID_CONTEXT');
+      for (const id of record.mediaAssetIds) mediaIds.add(id);
       for (const id of record.resourceVersionIds)
         if (!resourceIds.includes(id)) {
           resourceIds.push(id);
@@ -277,6 +301,7 @@ export async function captureRaceImpactSourcePermissions(
     const record = workout
       ? parse(routineTemplateVersionSchema, body)
       : parse(nutritionPlanVersionSchema, body);
+    if ('planId' in record) nutritionRecords.set(record.versionId, record);
     const id = 'routineId' in record ? record.routineId : record.planId;
     if (id !== requested.ref.id || record.versionId !== requested.ref.versionId)
       throw new RaceImpactDependencyError('INVALID_CONTEXT');
@@ -332,6 +357,33 @@ export async function captureRaceImpactSourcePermissions(
       exercises: linked,
     });
   }
+  const budget = {
+    bytes,
+    sources: input.existingSourceCount + refs.length + resourceIds.length + extraSources,
+  };
+  const nestedSources = await captureNestedNutritionSources(
+    tx,
+    [...nutritionRecords.values()],
+    budget,
+    input.sources,
+  );
+  if (input.captureSupplementary) {
+    const supplementary = await input.captureSupplementary(budget.sources);
+    reserveSourceBudget(budget, 0n, supplementary.routines.length + supplementary.exercises.length);
+    for (const exercise of supplementary.exercises) {
+      for (const id of exercise.resourceVersionIds)
+        if (!resourceIds.includes(id)) {
+          resourceIds.push(id);
+          reserveSourceBudget(budget, 2048n, 1);
+        }
+      for (const id of exercise.mediaAssetIds) mediaIds.add(id);
+    }
+  }
+  const activityMediaPermissions = await captureActivityAndMediaPermissions(
+    tx,
+    [...mediaIds],
+    budget,
+  );
   resourceIds.sort();
   const consentRows = (
     await tx.query("SELECT granted,revision FROM consent WHERE athlete_id=$1 AND kind='ai'", [
@@ -437,11 +489,13 @@ export async function captureRaceImpactSourcePermissions(
     planned,
     resources,
     catalog,
+    nestedNutritionSources: nestedSources.nutrition,
+    activityMediaPermissions,
     aiConsent,
     missing: [
       'unsupported_domain_item_membership',
       'immutable_training_aggregate_history',
-      'nested_nutrition_food_and_training_sources',
+      'media_cleanup_status_port',
       'media_and_provider_source_permissions',
       'manual_purpose_app_and_policy_binding',
     ] as const,
