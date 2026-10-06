@@ -149,6 +149,7 @@ describe('transaction-local HealthKit consent epoch event', () => {
       expectedRevision: 0,
       idempotencyKey: randomUUID(),
     } as const;
+    await declareSyntheticAppConsent(tenant);
     await consents.setConsent(tenant, grant);
     const oldBatch = batch();
     const oldSampleId = oldBatch.events[0]?.sampleId;
@@ -322,3 +323,15 @@ describe('transaction-local HealthKit consent epoch event', () => {
     ).rejects.toMatchObject({ code: '23514' });
   });
 });
+
+// Explicit synthetic user permission for named positive collection scenarios only.
+async function declareSyntheticAppConsent(athleteId: string): Promise<void> {
+  expect(
+    await createConsentRepository(database).setConsent(athleteId, {
+      kind: 'app',
+      granted: true,
+      expectedRevision: 0,
+      idempotencyKey: randomUUID(),
+    }),
+  ).toEqual({ kind: 'app', granted: true, revision: 1 });
+}

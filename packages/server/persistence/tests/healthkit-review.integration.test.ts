@@ -1,3 +1,4 @@
+import { createConsentRepository } from '../src/repositories.js';
 import { randomUUID } from 'node:crypto';
 import { Pool, type PoolClient } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -153,6 +154,8 @@ describe('M3-02g owner-scoped HealthKit review queue', () => {
   it('returns bounded, deterministic, minimal pending facts and isolates tenants', async () => {
     const athleteId = randomUUID();
     const other = randomUUID();
+    await declareSyntheticAppConsent(athleteId);
+    await declareSyntheticAppConsent(other);
     await consent(athleteId, true);
     await consent(other, true);
     const earlier = await ingest(athleteId, {
@@ -196,6 +199,7 @@ describe('M3-02g owner-scoped HealthKit review queue', () => {
 
   it('omits every non-pending lineage state and deleted raw sample', async () => {
     const athleteId = randomUUID();
+    await declareSyntheticAppConsent(athleteId);
     await consent(athleteId, true);
     const pending = await ingest(athleteId);
     const linked = await ingest(athleteId);
@@ -237,6 +241,7 @@ describe('M3-02g owner-scoped HealthKit review queue', () => {
       code: 'CONSENT_REQUIRED',
     });
     await consent(athleteId, true);
+    await declareSyntheticAppConsent(athleteId);
     await ingest(athleteId);
     expect((await repo.listPendingWorkouts(athleteId, 50)).items).toHaveLength(1);
     await consent(athleteId, false);
@@ -249,3 +254,15 @@ describe('M3-02g owner-scoped HealthKit review queue', () => {
     expect(raw.rows[0]?.['count']).toBe(0);
   });
 });
+
+// Explicit synthetic user permission for named positive collection scenarios only.
+async function declareSyntheticAppConsent(athleteId: string): Promise<void> {
+  expect(
+    await createConsentRepository(database).setConsent(athleteId, {
+      kind: 'app',
+      granted: true,
+      expectedRevision: 0,
+      idempotencyKey: randomUUID(),
+    }),
+  ).toEqual({ kind: 'app', granted: true, revision: 1 });
+}

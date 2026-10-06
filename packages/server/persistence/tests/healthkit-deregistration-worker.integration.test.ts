@@ -1,3 +1,4 @@
+import { createConsentRepository } from '../src/repositories.js';
 import { randomUUID } from 'node:crypto';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -21,6 +22,7 @@ import {
 } from '../src/resource-object-cleanup.js';
 import {
   grantHealthKitIngestion,
+  grantCorePlanning,
   grantOperations,
   grantResourceObjectCleanupWorker,
   migrate,
@@ -28,14 +30,20 @@ import {
 
 const clusterAdminUrl = process.env['TEST_DATABASE_ADMIN_URL'];
 const clusterRuntimeUrl = process.env['TEST_DATABASE_URL'];
-if (!clusterAdminUrl || !clusterRuntimeUrl) throw new Error('Use isolated real PostgreSQL');
+const clusterOwnerUrl = process.env['TEST_DATABASE_OWNER_URL'];
+if (!clusterAdminUrl || !clusterRuntimeUrl || !clusterOwnerUrl)
+  throw new Error('Use isolated real PostgreSQL');
 const databaseName = `hk_worker_${randomUUID().replaceAll('-', '')}`;
 const isolatedAdmin = new URL(clusterAdminUrl);
 const isolatedRuntime = new URL(clusterRuntimeUrl);
+const isolatedOwner = new URL(clusterOwnerUrl);
 isolatedAdmin.pathname = `/${databaseName}`;
 isolatedRuntime.pathname = `/${databaseName}`;
+isolatedOwner.pathname = `/${databaseName}`;
 const adminUrl = isolatedAdmin.toString();
 const runtimeUrl = isolatedRuntime.toString();
+const ownerUrl = isolatedOwner.toString();
+const owner = new Pool({ connectionString: ownerUrl });
 const cluster = new Pool({ connectionString: clusterAdminUrl });
 const admin = new Pool({ connectionString: adminUrl });
 const workerRole = `hk_cleanup_${randomUUID().replaceAll('-', '')}`;
@@ -49,14 +57,22 @@ let store: Awaited<ReturnType<typeof createLocalFilesystemObjectStorage>>;
 let cleanup: ReturnType<typeof createResourceObjectCleanupRepository>;
 let finalizer: ReturnType<typeof createHealthKitDeregistrationWorkerRepository>;
 beforeAll(async () => {
-  await cluster.query(`CREATE DATABASE "${databaseName}"`);
-  await migrate(adminUrl);
-  await grantHealthKitIngestion(adminUrl, 'workout_runtime');
-  await grantOperations(adminUrl, 'workout_runtime');
-  await admin.query('GRANT SELECT,INSERT,UPDATE ON consent TO workout_runtime');
+  const ownerRole = decodeURIComponent(isolatedOwner.username).replaceAll('"', '""');
+  await cluster.query(`CREATE DATABASE "${databaseName}" OWNER "${ownerRole}"`);
+  await migrate(ownerUrl);
+  const identity = await owner.query(`SELECT
+    current_user=session_user AS same_session,
+    current_user=pg_get_userbyid(relowner) AS owns_schema,
+    (SELECT rolsuper OR rolbypassrls OR rolcreatedb OR rolcreaterole
+      FROM pg_roles WHERE rolname=current_user) AS unsafe
+    FROM pg_class WHERE oid='public.restore_generation'::regclass`);
+  expect(identity.rows).toEqual([{ same_session: true, owns_schema: true, unsafe: false }]);
+  await grantCorePlanning(ownerUrl, 'workout_runtime');
+  await grantHealthKitIngestion(ownerUrl, 'workout_runtime');
+  await grantOperations(ownerUrl, 'workout_runtime');
   await admin.query(`CREATE ROLE "${workerRole}" LOGIN NOSUPERUSER NOBYPASSRLS NOINHERIT`);
   await admin.query(`GRANT USAGE ON SCHEMA public TO "${workerRole}"`);
-  await grantResourceObjectCleanupWorker(adminUrl, workerRole);
+  await grantResourceObjectCleanupWorker(ownerUrl, workerRole);
   database = createDatabase({ connectionString: runtimeUrl, max: 4 });
   root = await mkdtemp(join(tmpdir(), 'hk-deregistration-cleanup-'));
   store = await createLocalFilesystemObjectStorage(root);
@@ -71,7 +87,7 @@ beforeAll(async () => {
 });
 afterAll(async () => {
   await Promise.all([cleanup?.close(), finalizer?.close(), database?.close(), worker.end()]);
-  await admin.end();
+  await Promise.all([admin.end(), owner.end()]);
   await cluster.query(`DROP DATABASE "${databaseName}"`);
   await cluster.end();
   if (root) await rm(root, { recursive: true, force: true });
@@ -92,9 +108,8 @@ async function consent(athleteId: string) {
     ),
   );
 }
-async function fixture(withActivity = false) {
-  const athleteId = randomUUID(),
-    other = randomUUID(),
+async function fixture(withActivity = false, athleteId = randomUUID()) {
+  const other = randomUUID(),
     sampleId = randomUUID();
   await Promise.all([consent(athleteId), consent(other)]);
   const registration = createHealthKitRegistrationRepository(database);
@@ -155,7 +170,9 @@ async function due(athleteId: string) {
   );
 }
 it('releases only after real temporary-filesystem prefix deletion and committed database cleanup facts', async () => {
-  const item = await fixture(true);
+  const athleteId = randomUUID();
+  await declareSyntheticAppConsent(athleteId);
+  const item = await fixture(true, athleteId);
   if (!item.activityId) throw new Error('Missing synthetic activity');
   const key = createActivityTrackTemporaryObjectKey({
     tenantId: item.athleteId,
@@ -194,7 +211,9 @@ it('releases only after real temporary-filesystem prefix deletion and committed 
   expect(await finalizer.processOne()).toBe('empty');
 });
 it('keeps the claim pending on physical deletion failure without publishing completion', async () => {
-  const item = await fixture(true);
+  const athleteId = randomUUID();
+  await declareSyntheticAppConsent(athleteId);
+  const item = await fixture(true, athleteId);
   if (!item.activityId) throw new Error('Missing synthetic activity');
   const key = createActivityTrackTemporaryObjectKey({
     tenantId: item.athleteId,
@@ -327,3 +346,15 @@ it('reports exhausted jobs as bounded dead letters and retains ownership instead
     item.registration.registerWorkouts(item.other, register(item.sampleId)),
   ).rejects.toMatchObject({ code: 'CLAIM_CONFLICT' });
 });
+
+// Explicit synthetic user permission for named positive collection scenarios only.
+async function declareSyntheticAppConsent(athleteId: string): Promise<void> {
+  expect(
+    await createConsentRepository(database).setConsent(athleteId, {
+      kind: 'app',
+      granted: true,
+      expectedRevision: 0,
+      idempotencyKey: randomUUID(),
+    }),
+  ).toEqual({ kind: 'app', granted: true, revision: 1 });
+}

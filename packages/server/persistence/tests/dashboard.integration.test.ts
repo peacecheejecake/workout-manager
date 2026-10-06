@@ -1,3 +1,4 @@
+import { createConsentRepository } from '../src/repositories.js';
 import { emptyActual, emptyPlanned, summarizeDays } from '../src/dashboard-metrics.js';
 import { createPeriodSummaryRepository } from '../src/period-summary.js';
 import { randomUUID } from 'node:crypto';
@@ -9,6 +10,7 @@ import { createDatabase, type Database } from '../src/database.js';
 import {
   migrate,
   grantOperations,
+  grantCorePlanning,
   grantCheckIns,
   grantHealthKitIngestion,
 } from '../src/migrate.js';
@@ -30,6 +32,7 @@ let database: Database;
 beforeAll(async () => {
   await migrate(adminUrl);
   await grantOperations(adminUrl, 'workout_runtime');
+  await grantCorePlanning(adminUrl, 'workout_runtime');
   await grantCheckIns(adminUrl, 'workout_runtime');
   await grantHealthKitIngestion(adminUrl, 'workout_runtime');
   await admin.query(
@@ -218,6 +221,7 @@ it('counts one HealthKit canonical Activity across daily, period, session and co
   const athlete = randomUUID();
   const otherAthlete = randomUUID();
   const sampleId = randomUUID();
+  await declareSyntheticAppConsent(athlete);
   const consentClient = await admin.connect();
   try {
     await consentClient.query('BEGIN');
@@ -699,4 +703,16 @@ async function grantAppPurpose(athleteId: string): Promise<void> {
   } finally {
     client.release();
   }
+}
+
+// Explicit synthetic user permission for named positive collection scenarios only.
+async function declareSyntheticAppConsent(athleteId: string): Promise<void> {
+  expect(
+    await createConsentRepository(database).setConsent(athleteId, {
+      kind: 'app',
+      granted: true,
+      expectedRevision: 0,
+      idempotencyKey: randomUUID(),
+    }),
+  ).toEqual({ kind: 'app', granted: true, revision: 1 });
 }

@@ -1,3 +1,4 @@
+import { createConsentRepository } from '../src/repositories.js';
 import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -106,6 +107,7 @@ describe('M3-02k HealthKit active UUID ownership', () => {
     const a = randomUUID();
     const b = randomUUID();
     const sampleId = randomUUID();
+    await declareSyntheticAppConsent(a);
     await Promise.all([consent(a), consent(b)]);
     const registrations = createHealthKitRegistrationRepository(database);
     const ingestion = createHealthKitIngestionRepository(database);
@@ -209,6 +211,7 @@ describe('M3-02k HealthKit active UUID ownership', () => {
     const a = randomUUID();
     const b = randomUUID();
     const sampleId = randomUUID();
+    await declareSyntheticAppConsent(a);
     await Promise.all([consent(a), consent(b)]);
     const registration = createHealthKitRegistrationRepository(database);
     const ingestion = createHealthKitIngestionRepository(database);
@@ -264,6 +267,70 @@ describe('M3-02k HealthKit active UUID ownership', () => {
     expect(await counts(b)).toMatchObject({ claims: 2, registrations: 2, raw: 0 });
   });
 
+  it('requires explicit app permission for new capture but retains ACK replay and delete-only cleanup after withdrawal', async () => {
+    const athlete = randomUUID();
+    const sampleId = randomUUID();
+    await consent(athlete);
+    const registrations = createHealthKitRegistrationRepository(database);
+    const ingestion = createHealthKitIngestionRepository(database);
+    const claim = (await registrations.registerWorkouts(athlete, register([sampleId]))).claims[0];
+    if (!claim) throw new Error('Missing synthetic claim');
+    const request = batch(sampleId, claim.claimEpoch);
+    const beforeCapture = await counts(athlete);
+    await expect(ingestion.ingestBatch(athlete, request, 1)).rejects.toMatchObject({
+      code: 'APP_CONSENT_REQUIRED',
+    });
+    expect(await counts(athlete)).toEqual(beforeCapture);
+    expect(await createConsentRepository(database).getConsent(athlete, 'app')).toEqual({
+      kind: 'app',
+      granted: false,
+      revision: 0,
+    });
+    await declareSyntheticAppConsent(athlete);
+    const originalAck = await ingestion.ingestBatch(athlete, request, 1);
+    expect(
+      await createConsentRepository(database).setConsent(athlete, {
+        kind: 'app',
+        granted: false,
+        expectedRevision: 1,
+        idempotencyKey: randomUUID(),
+      }),
+    ).toEqual({ kind: 'app', granted: false, revision: 2 });
+    const withdrawn = await counts(athlete);
+    expect(await ingestion.ingestBatch(athlete, request, 1)).toEqual(originalAck);
+    expect(await counts(athlete)).toEqual(withdrawn);
+    await expect(
+      ingestion.ingestBatch(
+        athlete,
+        {
+          ...request,
+          batchId: randomUUID(),
+        },
+        1,
+      ),
+    ).rejects.toMatchObject({ code: 'APP_CONSENT_REQUIRED' });
+    expect(await counts(athlete)).toEqual(withdrawn);
+    const cleanup = {
+      ...request,
+      batchId: randomUUID(),
+      events: [{ kind: 'delete' as const, sampleId, claimEpoch: claim.claimEpoch }],
+    };
+    const cleanupAck = await ingestion.ingestBatch(athlete, cleanup, 1);
+    expect(cleanupAck).toMatchObject({ schemaVersion: 2, acceptedCount: 1 });
+    expect(await ingestion.ingestBatch(athlete, cleanup, 1)).toEqual(cleanupAck);
+    const sample = await database.tenant(athlete, (tx) =>
+      tx.query('SELECT state,payload_digest FROM healthkit_workout_sample WHERE sample_id=$1', [
+        sampleId,
+      ]),
+    );
+    expect(sample.rows).toEqual([{ state: 'deleted', payload_digest: null }]);
+    expect(await createConsentRepository(database).getConsent(athlete, 'app')).toEqual({
+      kind: 'app',
+      granted: false,
+      revision: 2,
+    });
+  });
+
   it('only accepts a deletion UUID already claimed by the same account', async () => {
     const athlete = randomUUID();
     await consent(athlete);
@@ -275,6 +342,7 @@ describe('M3-02k HealthKit active UUID ownership', () => {
     const deletion = batch(sampleId, claim.claimEpoch);
     deletion.events = [{ kind: 'delete', sampleId, claimEpoch: claim.claimEpoch }];
     await ingestion.ingestBatch(athlete, deletion, 1);
+    await declareSyntheticAppConsent(athlete);
     await ingestion.ingestBatch(athlete, batch(sampleId, claim.claimEpoch), 1);
     const state = await database.tenant(athlete, (tx) =>
       tx.query('SELECT state,payload_digest FROM healthkit_workout_sample WHERE sample_id=$1', [
@@ -295,3 +363,15 @@ describe('M3-02k HealthKit active UUID ownership', () => {
     ).rejects.toMatchObject({ code: 'REGISTRATION_REQUIRED' });
   });
 });
+
+// Explicit synthetic user permission for named positive collection scenarios only.
+async function declareSyntheticAppConsent(athleteId: string): Promise<void> {
+  expect(
+    await createConsentRepository(database).setConsent(athleteId, {
+      kind: 'app',
+      granted: true,
+      expectedRevision: 0,
+      idempotencyKey: randomUUID(),
+    }),
+  ).toEqual({ kind: 'app', granted: true, revision: 1 });
+}

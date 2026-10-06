@@ -1,3 +1,4 @@
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
@@ -37,6 +38,7 @@ test('batch deletion distinguishes actual success, stale conflict and a lost com
   page,
 }) => {
   const headers = await login(page);
+  await grantAppProcessingForScenario(page);
   const prefix = `batch-delete-${randomUUID()}`;
   const records: Array<{ id: string; revision: number; title: string; sourceId: string }> = [];
   const list = async () => {
