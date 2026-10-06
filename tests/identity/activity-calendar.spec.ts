@@ -1,3 +1,4 @@
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
@@ -52,6 +53,7 @@ test('accepted ISO calendar years and offsets preserve activity data without bre
   page.setDefaultTimeout(5000);
   page.setDefaultNavigationTimeout(5000);
   const headers = await login(page, 'Alice');
+  await grantAppProcessingForScenario(page);
   cleanupHeaders.set(page, headers);
   const marker = `Synthetic calendar ${randomUUID()}`;
   const fixtures = [

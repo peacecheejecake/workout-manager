@@ -1,3 +1,4 @@
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';
 import { identityMobileOrigin, identityWebOrigin } from '../../scripts/fixtures/identity-ports';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
@@ -75,6 +76,7 @@ for (const [shell, origin] of shells)
     page,
   }) => {
     const headers = await login(page, 'Alice');
+    await grantAppProcessingForScenario(page);
     try {
       const current = planReadSchema.parse(
         await (await page.request.get('/bff/v1/plans/current', { headers })).json(),

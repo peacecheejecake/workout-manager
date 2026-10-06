@@ -1,3 +1,4 @@
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';
 import { identityMobileOrigin, identityWebOrigin } from '../../scripts/fixtures/identity-ports';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
@@ -252,6 +253,7 @@ for (const shell of shells) {
   }) => {
     await page.setViewportSize({ width: 1440, height: 1000 });
     const headers = await login(page);
+    await grantAppProcessingForScenario(page);
     const activityId = await storeTrack(page, headers);
     await page.goto(`${shell.origin}/activities?selected=${activityId}&detailTab=route`);
     const panel = page.getByRole('region', { name: '저장된 경로', exact: true });
@@ -282,6 +284,7 @@ for (const shell of shells) {
   test(`${shell.name}: quick full view after a wheel stays programmatic`, async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 1000 });
     const headers = await login(page);
+    await grantAppProcessingForScenario(page);
     const activityId = await storeTrack(page, headers);
     await page.goto(`${shell.origin}/activities?selected=${activityId}&detailTab=route`);
     const panel = page.getByRole('region', { name: '저장된 경로', exact: true });
@@ -312,6 +315,7 @@ for (const shell of shells) {
   }) => {
     await page.setViewportSize({ width: 1440, height: 1000 });
     const headers = await login(page);
+    await grantAppProcessingForScenario(page);
     const activityId = await storeTrack(page, headers);
     await page.goto(`${shell.origin}/activities?selected=${activityId}&detailTab=route`);
     const panel = page.getByRole('region', { name: '저장된 경로', exact: true });
@@ -344,6 +348,7 @@ for (const shell of shells) {
   }) => {
     await page.setViewportSize({ width: 1440, height: 1000 });
     const headers = await login(page);
+    await grantAppProcessingForScenario(page);
     const activityId = await storeTrack(page, headers);
     await page.goto(`${shell.origin}/activities?selected=${activityId}&detailTab=route`);
     const panel = page.getByRole('region', { name: '저장된 경로', exact: true });
@@ -372,6 +377,7 @@ for (const shell of shells) {
   }) => {
     await page.setViewportSize({ width: 1440, height: 1000 });
     const headers = await login(page);
+    await grantAppProcessingForScenario(page);
     const activityId = await storeTrack(page, headers, 2100);
     await page.goto(`${shell.origin}/activities?selected=${activityId}&detailTab=route`);
     const panel = page.getByRole('region', { name: '저장된 경로', exact: true });
@@ -417,6 +423,7 @@ for (const shell of shells) {
   }) => {
     await page.setViewportSize({ width: 1440, height: 1000 });
     const headers = await login(page);
+    await grantAppProcessingForScenario(page);
     const activityId = await storeTrack(page, headers);
     await page.goto(`${shell.origin}/activities?selected=${activityId}&detailTab=route`);
     const panel = page.getByRole('region', { name: '저장된 경로', exact: true });
@@ -473,6 +480,7 @@ for (const shell of shells) {
     const pageErrors: string[] = [];
     page.on('pageerror', (error) => pageErrors.push(error.message));
     const headers = await login(page);
+    await grantAppProcessingForScenario(page);
     const activityId = await storeTrack(page, headers);
     await page.goto(`${shell.origin}/activities?selected=${activityId}&detailTab=route`);
     const panel = page.getByRole('region', { name: '저장된 경로', exact: true });
@@ -524,6 +532,7 @@ for (const shell of shells) {
     const pageErrors: string[] = [];
     page.on('pageerror', (error) => pageErrors.push(error.message));
     const headers = await login(page);
+    await grantAppProcessingForScenario(page);
     const activityId = await storeTrack(page, headers);
     await page.goto(`${shell.origin}/activities?selected=${activityId}&detailTab=route`);
     const panel = page.getByRole('region', { name: '저장된 경로', exact: true });

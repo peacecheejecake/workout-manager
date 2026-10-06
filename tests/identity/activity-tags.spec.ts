@@ -1,3 +1,4 @@
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
@@ -48,10 +49,9 @@ test.afterEach(async ({ page }) => {
   expect((await page.request.get('/bff/v1/session', { timeout: 5000 })).status()).toBe(401);
 });
 
-async function setup(page: Page) {
+async function setup(page: Page, headers: Awaited<ReturnType<typeof login>>) {
   page.setDefaultTimeout(5000);
   page.setDefaultNavigationTimeout(5000);
-  const headers = await login(page, 'Alice');
   cleanupHeaders.set(page, headers);
   const marker = `tags-${randomUUID()}`;
   const read = async (id: string) => {
@@ -105,7 +105,9 @@ test('local tag confirmation preserves observations, exact literal filters and v
   page,
 }) => {
   await page.setViewportSize({ width: 320, height: 900 });
-  const f = await setup(page);
+  const scenarioHeaders = await login(page, 'Alice');
+  await grantAppProcessingForScenario(page);
+  const f = await setup(page, scenarioHeaders);
   const tag = '산 / 길_% é';
   const decomposedInput = `  ${tag.normalize('NFD')}  `;
   expect(decomposedInput.trim()).not.toBe(tag);
@@ -170,7 +172,9 @@ test('local tag confirmation preserves observations, exact literal filters and v
 test('a real committed tag update with a lost response retries the same frozen key and body', async ({
   page,
 }) => {
-  const f = await setup(page);
+  const scenarioHeaders = await login(page, 'Alice');
+  await grantAppProcessingForScenario(page);
+  const f = await setup(page, scenarioHeaders);
   const attempts: { key: string | undefined; body: string | null }[] = [];
   const pattern = `**/bff/v1/activities/${f.id}`;
   await page.route(pattern, async (route) => {

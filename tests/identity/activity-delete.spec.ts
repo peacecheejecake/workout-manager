@@ -1,3 +1,4 @@
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
@@ -36,6 +37,7 @@ test('selected local deletion requires renewed confirmation after a real revisio
   browser,
 }) => {
   const headers = await login(page, 'Alice');
+  await grantAppProcessingForScenario(page);
   const marker = `Synthetic deletion ${randomUUID()}`;
   const sourceId = randomUUID();
   const body = {

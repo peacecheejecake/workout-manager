@@ -1,3 +1,4 @@
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
@@ -43,6 +44,7 @@ test('selected export refuses partial reads and downloads a report-preserving ar
   browser,
 }) => {
   let headers = await login(page, 'Alice');
+  await grantAppProcessingForScenario(page);
   const prefix = `batch-export-${randomUUID()}`;
   const originals: Activity[] = [];
   const cleanupContext = await browser.newContext({

@@ -1,3 +1,4 @@
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';
 import { identityMobileOrigin, identityWebOrigin } from '../../scripts/fixtures/identity-ports';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
@@ -141,6 +142,7 @@ for (const [shell, origin] of shells) {
     const pageErrors: string[] = [];
     page.on('pageerror', (error) => pageErrors.push(error.message));
     const headers = await login(page);
+    await grantAppProcessingForScenario(page);
     const activityId = await storeIndoorTrack(page, headers);
 
     // The server stored the recording and made up no geometry for it.

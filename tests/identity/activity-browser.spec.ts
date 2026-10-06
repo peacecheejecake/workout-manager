@@ -1,3 +1,4 @@
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
@@ -112,6 +113,7 @@ test('activity browser keeps independent selected details through paging, filter
   page,
 }) => {
   const headers = await login(page);
+  await grantAppProcessingForScenario(page);
   const records = await seedActivities(page, headers, true);
   try {
     await page.goto(records.url);
@@ -221,6 +223,7 @@ test('activity cards and table preserve unknowns and zero, reflow and recover fr
   page,
 }) => {
   const headers = await login(page);
+  await grantAppProcessingForScenario(page);
   const records = await seedActivities(page, headers);
   try {
     const listRequests = '**/bff/v1/activities?**';
