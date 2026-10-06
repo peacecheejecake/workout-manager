@@ -1,3 +1,4 @@
+import { requireAppAdmission } from './app-admission.js';
 import { activityInstantSql } from './activity-calendar.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
@@ -124,6 +125,7 @@ export function createActivityRepository(
             throw new PersistenceConflict('IDEMPOTENCY_CONFLICT');
           return manualActivityResultSchema.parse(receipt.rows[0]['result']);
         }
+        await requireAppAdmission(tx);
         validateStartedAt(command.activity.startedAt);
         await validatePlanLink(tx, command.report);
         const id = randomUUID(),
@@ -176,6 +178,7 @@ export function createActivityRepository(
             throw new PersistenceConflict('IDEMPOTENCY_CONFLICT');
           return activityImportResultSchema.parse(previous.rows[0]['result']);
         }
+        await requireAppAdmission(tx);
         const source = command.source;
         const head = await tx.query(
           `SELECT s.activity_id,s.source_revision,c.revision,c.deleted,EXISTS(SELECT 1 FROM activity_suppression d WHERE d.athlete_id=s.athlete_id AND d.kind=s.kind AND d.source_id=s.source_id) AS suppressed FROM activity_source_head s JOIN activity_canonical c ON c.athlete_id=s.athlete_id AND c.id=s.activity_id WHERE s.athlete_id=$1 AND s.kind=$2 AND s.source_id=$3`,
@@ -358,6 +361,7 @@ export function createActivityRepository(
             throw new PersistenceConflict('IDEMPOTENCY_CONFLICT');
           return activitySchema.parse(receipt.rows[0]['result']);
         }
+        await requireAppAdmission(tx);
         const current = await detail(tx, id);
         if (!current) throw new ActivityNotFound();
         if (current.revision !== command.expectedRevision)

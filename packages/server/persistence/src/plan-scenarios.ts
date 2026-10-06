@@ -1,3 +1,4 @@
+import { requireAppAdmission } from './app-admission.js';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import {
@@ -147,6 +148,7 @@ export function createPlanScenarioRepository(database: Database): PlanScenarioRe
         await lock(tx);
         const prior = await replay(tx, key, request);
         if (prior !== undefined) return planScenarioSchema.parse(prior);
+        await requireAppAdmission(tx);
         const base = await tx.query(
           'SELECT draft FROM plan_snapshot WHERE athlete_id=$1 AND id=$2',
           [athleteId, command.basePlanVersionId],
@@ -184,6 +186,7 @@ export function createPlanScenarioRepository(database: Database): PlanScenarioRe
         await lock(tx);
         const prior = await replay(tx, key, request);
         if (prior !== undefined) return planScenarioSchema.parse(prior);
+        await requireAppAdmission(tx);
         const previous = await current(tx, parsed);
         if (!previous) throw new PlanScenarioError('SCENARIO_NOT_FOUND');
         if (previous.revision !== command.expectedRevision)
@@ -220,6 +223,7 @@ export function createPlanScenarioRepository(database: Database): PlanScenarioRe
         await lock(tx);
         const prior = await replay(tx, key, request);
         if (prior !== undefined) return planScenarioApplyResultSchema.parse(prior);
+        await requireAppAdmission(tx);
         const alternative = await current(tx, parsed);
         if (!alternative) throw new PlanScenarioError('SCENARIO_NOT_FOUND');
         if (alternative.revision !== command.expectedScenarioRevision)

@@ -32,6 +32,17 @@ beforeAll(async () => {
   );
   database = createDatabase({ connectionString: runtimeUrl, max: 4 });
 });
+
+// Explicit synthetic purpose grant for these pre-existing domain regression tests.
+// No production account is granted implicitly; admission denial has its own suite.
+async function grantedAthlete(): Promise<string> {
+  const athlete = randomUUID();
+  await admin.query(
+    "WITH scope AS MATERIALIZED (SELECT set_config('app.athlete_id',$1,true)) INSERT INTO consent(athlete_id,kind,granted,revision) SELECT $1,'app',true,1 FROM scope",
+    [athlete],
+  );
+  return athlete;
+}
 afterAll(async () => {
   await database?.close();
   await admin.end();
@@ -108,7 +119,7 @@ const applyCommand = (planId: string, revision = 1, completion = 0) => ({
   idempotencyKey: randomUUID(),
 });
 async function seed() {
-  const athlete = randomUUID(),
+  const athlete = await grantedAthlete(),
     input = intensityCommand(),
     base = await createPlanningRepository(database).save(athlete, input);
   return { athlete, input, base };
@@ -248,7 +259,7 @@ describe('plan scenario durable alternatives', () => {
     expect(sameNameOnNextBase.basePlanVersionId).toBe(nextBase.id);
     expect((await repo.list(athlete, { basePlanVersionId: nextBase.id })).total).toBe(1);
     expect((await repo.list(athlete, { limit: 1 })).items).toHaveLength(1);
-    const other = randomUUID();
+    const other = await grantedAthlete();
     expect(await repo.read(other, first.id)).toBeNull();
     expect(await repo.readRevision(other, first.id, 1)).toBeNull();
     expect(await repo.list(other)).toEqual({ items: [], total: 0 });
