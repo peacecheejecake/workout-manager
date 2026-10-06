@@ -494,6 +494,9 @@ flowchart TD
     mapk --> task26
     task27["M2-02 대회·기록"]
     task27a["M2-02a 대회·결과 계약"]
+    task27b["M2-02b 대회 저장 명령 계약"]
+    task27a --> task27b
+    task27b --> task27
     task28["M2-03 갤러리·media"]
     task29["M2-04 자료 생명주기"]
     task29a["M2-04a private text·reader"]
@@ -765,7 +768,8 @@ Native shell·collector는 M1c 통합과 native feasibility 이후 M2 Web 확장
 | M2-01k-t 두 shell의 비공개 화면·계정 전환 수명 | M2-01k-s | 완료; Vite의 dashboard·wellbeing·활동 편집 경로와 양쪽 shell의 비공개 상태·계정 전환을 검증. OS focus·실제 OIDC·실기기는 별도 gate |
 | M2-01k-u S22 동의 고지·사용자 보호 | M2-01k-t, M3-02n | [완료](progress/M2-01k-u.md); 확정된 고지의 명시 액션 전 가시성·실패·계정 수명 회귀. app/provider 새 처리 정책은 답변 대기 |
 | M2-02a 대회·결과 런타임 계약 경계 | M2-01f, M1-04x, M1c-04 | 완료; RaceEvent 계획과 RaceResult/TrainingBest 실제 기록의 strict 계약·고정 Course revision·출처 분리. DB/API/UI는 부모 단계 |
-| M2-02 대회·기록 | M2-01, M2-02a | competitions; 코스 참조·결과. M2-01의 외부 gate는 그대로 선행 조건 |
+| M2-02b 대회·결과 저장 명령 계약 | M2-02a | [완료](progress/M2-02b.md); 지도 독립 명령 경계, DB/API/UI 수용은 후속 |
+| M2-02 대회·기록 | M2-01, M2-02a, M2-02b | competitions; 코스 참조·결과. M2-01의 외부 gate는 그대로 선행 조건 |
 | M2-03 갤러리·media | M1c-04 | gallery/media; 객체 권한·upload·video·삭제 |
 | M2-04 자료 생명주기 | M1c-04 | 진행 중; text core 이후 object storage/upload·URL/parser·접근/삭제 manifest 통합 |
 | M2-04a private text 자료·버전 고정 reader | M1c-04 | 완료; private direct text·불변 version/문단 locator·삭제 tombstone·계정 lifecycle·두 shell |

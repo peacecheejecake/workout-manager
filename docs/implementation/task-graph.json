@@ -1814,9 +1814,18 @@
       "evidence": "docs/implementation/progress/M2-02a.md"
     },
     {
+      "id": "M2-02b",
+      "title": "대회·결과 저장 명령 계약",
+      "dependsOn": ["M2-02a"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "지도 외부 수용과 독립적으로 기존 RaceEvent/RaceResult/TrainingBest 계약을 소비하는 명시 저장·수정·조회 서버 명령 경계를 준비한다. revision·idempotency·소유권·검증시각 서버 소유와 불변 course 참조를 보존하고 계획 날짜 영향·별도 승인 및 PB 정책을 임의 확정하지 않는다. DTO와 invalid boundary 검증만으로 DB/API/UI/부모 완료를 선언하지 않는다. 후속 persistence/API/화면 및 운영 gate는 부모 M2-02에 남긴다.",
+      "evidence": "docs/implementation/progress/M2-02b.md"
+    },
+    {
       "id": "M2-02",
       "title": "대회·기록",
-      "dependsOn": ["M2-01", "M2-02a"],
+      "dependsOn": ["M2-01", "M2-02a", "M2-02b"],
       "kind": "task",
       "status": "not_started",
       "scope": "competitions; 코스 참조·결과"

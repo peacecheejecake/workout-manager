@@ -37,6 +37,10 @@
       "types": "./src/races.ts",
       "default": "./dist/races.js"
     },
+    "./race-commands": {
+      "types": "./src/race-commands.ts",
+      "default": "./dist/race-commands.js"
+    },
     "./resources": {
       "types": "./src/resources.ts",
       "default": "./dist/resources.js"
