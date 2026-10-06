@@ -414,6 +414,82 @@ const accountExportV30Schema = accountExportV29Schema.extend({
       .max(1000),
   }),
 });
+/** v31 adds planned races and separate user-reported performance ledgers. */
+const accountExportV31Schema = accountExportV30Schema.extend({
+  schemaVersion: z.literal(31),
+  data: accountExportV30Schema.shape.data.extend({
+    raceEvents: rows,
+    raceEventRevisions: rows,
+    raceResults: rows,
+    raceResultRevisions: rows,
+    trainingBests: rows,
+    trainingBestRevisions: rows,
+    raceCollectionHeads: rows,
+  }),
+});
+/** v32 exports immutable app attribution facts, never receipt keys or replay commands.
+ * Portable facts cannot authorize processing or recreate admission bindings. */
+const accountExportV32Schema = accountExportV31Schema.extend({
+  schemaVersion: z.literal(32),
+  data: accountExportV31Schema.shape.data.extend({
+    evidenceAppBindings: z
+      .array(
+        z.strictObject({
+          evidence_snapshot_id: z.uuid(),
+          binding_version: z.literal(1),
+          app_revision: z.number().int().min(1).max(2147483647),
+          captured_at: z.iso.datetime({ offset: true }),
+        }),
+      )
+      .max(1000),
+    runAppBindings: z
+      .array(
+        z.strictObject({
+          run_id: z.uuid(),
+          evidence_snapshot_id: z.uuid(),
+          binding_version: z.literal(1),
+        }),
+      )
+      .max(1000),
+    candidateAppBindings: z
+      .array(
+        z.strictObject({
+          candidate_id: z.uuid(),
+          run_id: z.uuid(),
+          binding_version: z.literal(1),
+        }),
+      )
+      .max(1000),
+    integratedCandidateAppBindings: z
+      .array(
+        z.strictObject({
+          candidate_id: z.uuid(),
+          evidence_snapshot_id: z.uuid(),
+          binding_version: z.literal(1),
+        }),
+      )
+      .max(1000),
+    approvalAppBindings: z
+      .array(
+        z
+          .strictObject({
+            candidate_id: z.uuid().nullable(),
+            integrated_candidate_id: z.uuid().nullable(),
+            integrated_approval_id: z.uuid().nullable(),
+            binding_version: z.literal(1),
+            created_at: z.iso.datetime({ offset: true }),
+          })
+          .refine(
+            (value) => (value.candidate_id === null) !== (value.integrated_candidate_id === null),
+          )
+          .refine(
+            (value) =>
+              value.integrated_approval_id === null || value.integrated_candidate_id !== null,
+          ),
+      )
+      .max(1000),
+  }),
+});
 // Read historical artifacts unchanged; never manufacture absent collections.
 export const accountExportSchema = z.discriminatedUnion('schemaVersion', [
   accountExportV2Schema,
@@ -445,6 +521,8 @@ export const accountExportSchema = z.discriminatedUnion('schemaVersion', [
   accountExportV28Schema,
   accountExportV29Schema,
   accountExportV30Schema,
+  accountExportV31Schema,
+  accountExportV32Schema,
 ]);
 export const operationsStatusSchema = z.strictObject({
   checkedAt: z.iso.datetime({ offset: true }),

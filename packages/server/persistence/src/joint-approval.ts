@@ -1,3 +1,4 @@
+import { requireAppBinding } from './app-admission.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 
@@ -442,6 +443,7 @@ export async function captureJointFixtureContext(
     policy: { id: string; version: string };
   },
 ): Promise<JointFixtureCapture> {
+  await requireAppBinding(tx, 'evidence', uuid.parse(input.evidenceSnapshotId));
   const row = (
     await tx.query(
       `SELECT t.id AS thread_id,t.revision,e.id AS evidence_id,e.body AS evidence_body,
@@ -824,6 +826,7 @@ export function createJointApprovalRepository(
       const id = uuid.parse(runId);
       const ids = z.array(uuid).max(100).parse(nutritionPlanIds);
       return guarded(athleteId, async (tx) => {
+        await requireAppBinding(tx, 'run', id);
         const context = await captureContext(tx, id, scope, ids, policy);
         return {
           basis: context.basis,
@@ -866,6 +869,7 @@ export function createJointApprovalRepository(
           if (!saved) throw new JointApprovalError('CANDIDATE_UNAVAILABLE');
           return saved.candidate;
         }
+        await requireAppBinding(tx, 'run', command.runId);
         const context = await captureContext(
           tx,
           command.runId,
@@ -1016,6 +1020,7 @@ export function createJointApprovalRepository(
           if (!saved) throw new JointApprovalError('CANDIDATE_UNAVAILABLE');
           return saved.candidate;
         }
+        await requireAppBinding(tx, 'candidate', parentId);
         const stored = await readStoredCandidate(tx, parentId);
         if (!stored) throw new JointApprovalError('CANDIDATE_UNAVAILABLE');
         const parent = stored.candidate;
@@ -1085,6 +1090,7 @@ export function createJointApprovalRepository(
       return guarded(athleteId, async (tx) => {
         const prior = await receipt(tx, key, request);
         if (prior !== null) return readResult(tx, prior);
+        await requireAppBinding(tx, 'candidate', command.candidateId);
         const stored = await readStoredCandidate(tx, command.candidateId);
         if (!stored || stored.candidate.proposalId !== command.proposalId)
           throw new JointApprovalError('CANDIDATE_UNAVAILABLE');
@@ -1193,6 +1199,10 @@ export function createJointApprovalRepository(
           trainingVersionId: training?.id ?? null,
           nutritionVersionIds: nutrition.map((item) => item.versionId),
         });
+        await tx.query('SELECT public.record_approval_app_binding($1,$2)', [
+          key,
+          command.candidateId,
+        ]);
         return { training, nutrition };
       });
     },

@@ -103,6 +103,9 @@ const migrationFiles = [
   '095_healthkit_receipt_protocol_fence.sql',
   '096_healthkit_workout_deregistration.sql',
   '097_healthkit_deregistration_worker.sql',
+  '098_race_ledger.sql',
+  '099_exact_race_deletion.sql',
+  '100_app_admission_binding.sql',
 ] as const;
 
 /**
@@ -364,6 +367,9 @@ export async function grantOperations(
   try {
     await pool.query(`GRANT SELECT ON tenant_erasure TO "${runtimeRole}"`);
     await pool.query(
+      `GRANT SELECT ON race_event,race_event_revision,race_result,race_result_revision,training_best,training_best_revision,race_collection_head TO "${runtimeRole}"`,
+    );
+    await pool.query(
       `GRANT SELECT ON consent,plan_snapshot,plan_head,plan_history,
        activity_canonical,activity_source_head,activity_source_revision,
        activity_overlay,activity_overlay_revision,activity_suppression TO "${runtimeRole}"`,
@@ -447,6 +453,7 @@ export async function grantOperations(
       `GRANT EXECUTE ON FUNCTION public.garmin_pending(timestamptz) TO "${runtimeRole}"`,
     );
     await pool.query(`GRANT EXECUTE ON FUNCTION public.erase_account(text) TO "${runtimeRole}"`);
+    await grantAppAdmissionBindings(pool, runtimeRole, 'export');
   } finally {
     await pool.end();
   }
@@ -845,6 +852,36 @@ export async function grantCoachingThreads(
   }
 }
 
+/** Bindings are trigger-owned. Runtime gets tenant-scoped reads and bounded checks only. */
+async function grantAppAdmissionBindings(
+  pool: Pool,
+  role: string,
+  scope: 'evidence' | 'run' | 'candidate' | 'integrated_candidate' | 'export',
+): Promise<void> {
+  const installed = await pool.query('SELECT 1 FROM schema_migrations WHERE version=100');
+  if (!installed.rowCount) return;
+  const tables = ['evidence_app_admission_binding'];
+  const functions = [
+    'public.require_app_admission_revision(integer)',
+    'public.require_evidence_app_binding(uuid)',
+  ];
+  if (scope !== 'evidence') tables.push('run_app_admission_binding');
+  if (scope === 'run') functions.push('public.require_run_app_binding(uuid)');
+  if (scope === 'candidate' || scope === 'export') tables.push('candidate_app_admission_binding');
+  if (scope === 'integrated_candidate' || scope === 'export')
+    tables.push('integrated_candidate_app_admission_binding');
+  if (scope === 'candidate') functions.push('public.require_candidate_app_binding(uuid)');
+  if (scope === 'integrated_candidate')
+    functions.push('public.require_integrated_candidate_app_binding(uuid)');
+  if (scope === 'candidate' || scope === 'integrated_candidate')
+    functions.push('public.record_approval_app_binding(text,uuid,text)');
+  if (scope === 'export') tables.push('approval_app_admission_binding');
+  await pool.query(`GRANT SELECT ON ${tables.join(',')} TO "${role}"`);
+  // Export is retained read access, not processing or approval authority.
+  if (scope !== 'export')
+    await pool.query(`GRANT EXECUTE ON FUNCTION ${functions.join(',')} TO "${role}"`);
+}
+
 /** Stored core evidence is append-only; lifecycle triggers alone scrub withdrawn content. */
 export async function grantCoreEvidenceSnapshots(
   connectionString: string,
@@ -857,6 +894,7 @@ export async function grantCoreEvidenceSnapshots(
     await pool.query(
       `GRANT SELECT ON coaching_constraint,coaching_constraint_head TO "${runtimeRole}"`,
     );
+    await grantAppAdmissionBindings(pool, runtimeRole, 'evidence');
   } finally {
     await pool.end();
   }
@@ -886,6 +924,7 @@ export async function grantCoachingRuns(
        ON resource_retrieval_cache TO "${runtimeRole}"`,
     );
     await grantResourceRetrievalReads(pool, runtimeRole);
+    await grantAppAdmissionBindings(pool, runtimeRole, 'run');
   } finally {
     await pool.end();
   }
@@ -905,6 +944,7 @@ export async function grantCoachingCandidates(
     await pool.query(`GRANT SELECT ON coaching_analysis_output TO "${runtimeRole}"`);
     // Approval revalidates the resource-access half of the dependency manifest.
     await grantResourceRetrievalReads(pool, runtimeRole);
+    await grantAppAdmissionBindings(pool, runtimeRole, 'candidate');
   } finally {
     await pool.end();
   }
@@ -921,6 +961,7 @@ export async function grantIntegratedApprovalV4(
     await pool.query(
       `GRANT SELECT,INSERT ON integrated_candidate_v4,integrated_approval_v4,recovery_strategy_history,routine_schedule_history TO "${runtimeRole}"`,
     );
+    await grantAppAdmissionBindings(pool, runtimeRole, 'integrated_candidate');
   } finally {
     await pool.end();
   }
@@ -951,6 +992,7 @@ export async function grantCoachingRunWorker(
     await pool.query(
       `GRANT EXECUTE ON FUNCTION public.coaching_run_status_valid(jsonb) TO "${workerRole}"`,
     );
+    await grantAppAdmissionBindings(pool, workerRole, 'run');
   } finally {
     await pool.end();
   }

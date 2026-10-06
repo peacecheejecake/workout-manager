@@ -45,6 +45,12 @@ afterAll(async () => {
   await admin.end();
 });
 async function seed(athlete: string, sessionId = 'session') {
+  await createConsentRepository(database).setConsent(athlete, {
+    kind: 'app',
+    granted: true,
+    expectedRevision: 0,
+    idempotencyKey: randomUUID(),
+  });
   const draft: PlanDraft = {
     title: 'Completion',
     timezone: 'UTC',
@@ -261,8 +267,8 @@ it('purges dependent activity/checkin evidence and old receipts permanently, the
   });
   expect(await repo.read(athlete, third.id)).not.toHaveProperty('body');
   const exported = await createOperationsRepository(database).exportAccount(athlete);
-  expect(exported.schemaVersion).toBe(30);
-  if (exported.schemaVersion !== 30) throw new Error('Expected current export');
+  expect(exported.schemaVersion).toBe(32);
+  if (exported.schemaVersion !== 32) throw new Error('Expected current export');
   expect(exported.data.evidenceSnapshots).toHaveLength(3);
   expect(JSON.stringify(exported.data.evidenceSnapshots)).not.toContain('Private');
   await expect(
@@ -765,4 +771,68 @@ it('reserves multi-revision maintenance advances to the owner and purges owner h
     status: 'purged',
     reason: 'source_deleted',
   });
+});
+
+it('S22 absent app consent denies a fresh capture before writes', async () => {
+  const athleteId = randomUUID();
+  await expect(
+    createCoreEvidenceSnapshotRepository(database).capture(athleteId, randomUUID(), {
+      expectedConversationRevision: 1,
+      window: { from: '2080-01-01', toExclusive: '2080-01-08', timezone: 'UTC' },
+      idempotencyKey: randomUUID(),
+    }),
+  ).rejects.toMatchObject({ code: 'P0001', message: 'APP_CONSENT_REQUIRED' });
+  const result = await database.tenant(athleteId, (tx) =>
+    tx.query(
+      'SELECT (SELECT count(*)::int FROM core_evidence_snapshot WHERE athlete_id=$1) AS snapshots,(SELECT count(*)::int FROM command_receipt WHERE athlete_id=$1) AS receipts,(SELECT count(*)::int FROM outbox WHERE athlete_id=$1) AS events',
+      [athleteId],
+    ),
+  );
+  expect(result.rows).toEqual([{ snapshots: 0, receipts: 0, events: 0 }]);
+});
+
+it('S22 evidence receipts and historical reads survive withdrawal while new captures pin the regrant revision', async () => {
+  const athleteId = randomUUID();
+  const plan = await seed(athleteId);
+  const conversation = await thread(athleteId, plan.id);
+  const snapshots = createCoreEvidenceSnapshotRepository(database);
+  const command = {
+    expectedConversationRevision: 1,
+    window: { from: '2080-01-01', toExclusive: '2080-01-08', timezone: 'UTC' },
+    idempotencyKey: randomUUID(),
+  };
+  const first = await snapshots.capture(athleteId, conversation.id, command);
+  const consent = createConsentRepository(database);
+  await consent.setConsent(athleteId, {
+    kind: 'app',
+    granted: false,
+    expectedRevision: 1,
+    idempotencyKey: randomUUID(),
+  });
+  expect(await snapshots.capture(athleteId, conversation.id, command)).toEqual(first);
+  expect(await snapshots.read(athleteId, first.id)).toEqual(first);
+  await expect(
+    snapshots.capture(athleteId, conversation.id, { ...command, idempotencyKey: randomUUID() }),
+  ).rejects.toMatchObject({ code: 'P0001', message: 'APP_CONSENT_REQUIRED' });
+  await consent.setConsent(athleteId, {
+    kind: 'app',
+    granted: true,
+    expectedRevision: 2,
+    idempotencyKey: randomUUID(),
+  });
+  expect(await snapshots.capture(athleteId, conversation.id, command)).toEqual(first);
+  const fresh = await snapshots.capture(athleteId, conversation.id, {
+    ...command,
+    idempotencyKey: randomUUID(),
+  });
+  const bindings = await database.tenant(athleteId, (tx) =>
+    tx.query(
+      'SELECT evidence_snapshot_id,app_revision FROM evidence_app_admission_binding WHERE athlete_id=$1 ORDER BY app_revision',
+      [athleteId],
+    ),
+  );
+  expect(bindings.rows).toEqual([
+    { evidence_snapshot_id: first.id, app_revision: 1 },
+    { evidence_snapshot_id: fresh.id, app_revision: 3 },
+  ]);
 });

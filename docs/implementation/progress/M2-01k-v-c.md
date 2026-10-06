@@ -1,6 +1,6 @@
 # M2-01k-v-c · S22 app revision과 evidence·승인 basis 호환
 
-상태: in_progress — 아래 draft SQL 및 실제 source 수용은 진행했으나 정식 migration·fulltail/restore·처리 재개 수용은 미완료.
+상태: in_progress — 정식 migration100·runtime grants·source/export 수용을 진행했으나 fulltail/restore·처리 재개 수용은 미완료.
 
 strict v1/v2를 파괴하지 않는 versioned app admission binding, capture/worker/candidate/v3/v4 승인 freshness와 철회→재동의의 구형 basis 거절; export/restore 이전 자료 읽기 유지.
 
@@ -39,3 +39,15 @@ Root는 실제 source 보고와 gate 순서·최종 source 해시 및 PG cleanup
 Root는 `/private/tmp/wm-s22-read-audit-and-fix-20261007.md`를 읽고 최종 coaching-runs.ts SHA `bc8798eaa88126419e5db7231e9d8e1ef3baf21b59df2611745f698fa7a29c72`를 직접 대조했다. 현재 source actualPG **56/56**은 기존53+추가read3 회차다. 별도 기존53/53(추가3 filter skip) 및 grounded resource ACL1/1(나머지20 filter skip)은 각각 독립 증거이며 합산하지 않는다. appfalse/regrant/missing-binding fixture의 기존 output 조회·export 유지, stale worker/candidate 처리 거절, AI withdrawal 실제 purge·자료 ACL 철회 read 거절을 검증했다. missing-binding fixture는 owner scope DELETE 상태이며 pre100 restore loader 검증이 아니다.
 
 최종 persistence/API/worker 및 tmpconsumer TS·source ESLint·format exit0. 두 privatePG cluster stop0/status3/isready2 및 socket/data 제거를 직접 확인했다. 신규 회귀는 현재 private/tmp source consumer tests에만 있으며 정식100 migration·test 등록 전 완료로 승격하지 않는다. 이전56와53 회차 로그와 fixture/Node20 lint·import 실패도 보존한다. C/fulltail/운영 restore는 계속 in_progress다.
+
+## 정식 migration·source·export 등록 · 2026-10-07
+
+Root가 ordered001..100 registry와 목적별 최소 public grant helper를 연결했다. SQL100 SHA `4d08a67aa44ffa0961e7b1023a420f854c3bfd0a3023811b98cc626fbd3209fd`를 실제 설치한 정식5 source suites **97/97**(기존80+신규17)이 통과했다. evidence15/run33/candidate26/joint11/v412이며 실제 PostgreSQL14.15, plain owner/restricted runtime/worker에서 수행했다. tmp metadata나 app binding 권한을 덧붙이지 않았다. root가 보고서·15개 source/test 해시·cleanup(stop0/status3/isready2 및 data/socket 제거)를 직접 대조했다. `/private/tmp/wm-s22-registered-source-acceptance-20261007.md`, `wm-s22-registered-final-r3-20261007.log`가 증거다. 최초94pass/3fail은 stale export 기대값과 신규 SQL 오류 기대값으로 남겨두었으며, 원래 ownership/AI assertions를 변경하지 않았다.
+
+Binding은 원본 evidence/run/candidate/approval에서 immutable lineage로 캡처하고 현재 app epoch에 자동 backfill하지 않는다. worker prepare/finish는 철회·재동의 후 구형 basis를 거절하며 historical output read는 기존 AI·자료 ACL·삭제 검사를 유지한다. 성공 receipt는 새 processing gate 전에 반환한다. persistence/API/worker typecheck, 변경 test lint/format/diff check 모두 실제 exit0다. 정식 source suite가 합성 평가·SQL fixture를 포함한다는 한계를 유지하며 실제 외부 AI 호출로 부르지 않는다.
+
+Export producer는 race v31을 유지한 strict **v32**로 다섯 binding fact 배열을 추가했다. command receipt key와 owner restore receipt는 내보내지 않는다. contract **26/26** 및 실제 PG export/erase **24/24**(원래15+신규9)가 통과했다. false/regrant 상태의 기존 fact 보존, tenant 분리, cap+1 거절·audit rollback, erasure binding 제거와 exact receipt 보존을 확인했다. `/private/tmp/wm-app-export32-contract-root-20261007.log`, `wm-app-binding-export-pg-20261007-run2.log`. export32는 backup loader나 처리 권한 증거가 아니다. grant matrix의 별도 actual13/13은 이전 migrate/SQL 입력 회차의 증거로 보존하며 현재97/24 결과와 같은 input으로 합산하지 않는다.
+
+098/099 및 race export31 baseline은 아직 독립 phase 검토 전인 `phase/m2-02`의 **caaa428c**에서 가져온 준비 의존성이다. 이 의존성의 M2-02 phase 승인 전에 C를 main으로 병합하지 않는다. SQL100 파일 첫 줄의 draft/NOT EXECUTED 문구는 작성 당시 원본 hash를 보존한 것이며 현재 설치 증거는 위 별도 회차로 기록한다. source 및 registry 등록은 live 배포 또는 processing reopening 승인이 아니다.
+
+별도 v5 codec/local exact replay 회차는 **66/66 = 실제PG27 + codec/preflight39**로 구분한다. 당시 root는14개 입력 해시와 cleanup을 대조했다. `/private/tmp/wm-s22-fulltail-v5-implementation-20261007.md`. 이후 root의 replay transaction composition port 변경은 새 검증 회차로 관리한다. 완전한 독립 baseline/final-tail witness, historical owner loader, generation/admission 원자적 전환·동일 host rollback 차단, budget101, 운영 restore/provider는 미완료이며 C는 계속 in_progress다.

@@ -1,3 +1,4 @@
+import { requireAppAdmission, requireAppBinding } from './app-admission.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import {
@@ -141,13 +142,39 @@ const preflightSql = `SELECT t.revision AS conversation_revision,
  ON e.athlete_id=t.athlete_id AND e.thread_id=t.id AND e.id=$3
  WHERE t.athlete_id=$1 AND t.id=$2`;
 
-async function currentWorkerEvidence(
+async function hasCurrentRunAppBinding(tx: Transaction, runId: string): Promise<boolean> {
+  // A failed SQL gate aborts the transaction unless rolled back to a savepoint.
+  // Keep the caller's lease/run locks so stale work can still be cancelled and acknowledged.
+  await tx.query('SAVEPOINT coaching_run_app_binding');
+  try {
+    await requireAppBinding(tx, 'run', runId);
+    await tx.query('RELEASE SAVEPOINT coaching_run_app_binding');
+    return true;
+  } catch (error) {
+    await tx.query('ROLLBACK TO SAVEPOINT coaching_run_app_binding');
+    await tx.query('RELEASE SAVEPOINT coaching_run_app_binding');
+    if (
+      error instanceof Error &&
+      ['APP_CONSENT_REQUIRED', 'STALE_APP_ADMISSION', 'APP_BINDING_UNAVAILABLE'].includes(
+        error.message,
+      )
+    )
+      return false;
+    throw error;
+  }
+}
+
+async function currentRunEvidence(
   tx: Transaction,
   run: Record<string, unknown>,
   policy: z.infer<typeof trainingCoachingPolicySchema>,
   source: CoachingRunModelSource,
+  purpose: 'processing' | 'historical_read',
 ): Promise<CoreEvidenceBodyV2 | null> {
   const stored = decode(run);
+  // App withdrawal blocks new processing; it does not hide an already stored output.
+  // Both purposes still recheck AI consent, evidence, policy and retrieval below.
+  if (purpose === 'processing' && !(await hasCurrentRunAppBinding(tx, stored.id))) return null;
   if (
     stored.policy.id !== policy.id ||
     stored.policy.version !== policy.version ||
@@ -317,7 +344,11 @@ export function createCoachingRunRepository(
         const row = result.rows[0];
         if (!row) return null;
         const body = storedFixtureOutputSchema.safeParse(row['output_body']);
-        if (!body.success || !(await currentWorkerEvidence(tx, row, policy, source))) return null;
+        if (
+          !body.success ||
+          !(await currentRunEvidence(tx, row, policy, source, 'historical_read'))
+        )
+          return null;
         return coachingRunOutputV1Schema.parse({
           schemaVersion: 1,
           runId,
@@ -374,6 +405,7 @@ export function createCoachingRunRepository(
           if (!run) throw new Error('COACHING_RUN_RECEIPT_MISSING_RUN');
           return run;
         }
+        await requireAppAdmission(tx);
         const result = await tx.query(preflightSql, [athleteId, id, command.evidenceSnapshotId]);
         const current = result.rows[0];
         if (!current) throw new CoachingRunError('THREAD_NOT_FOUND');
@@ -381,6 +413,7 @@ export function createCoachingRunRepository(
           throw new CoachingRunError('CONVERSATION_REVISION_CONFLICT');
         if (!current['evidence_id'] || current['body'] === null)
           throw new CoachingRunError('EVIDENCE_UNAVAILABLE');
+        await requireAppBinding(tx, 'evidence', command.evidenceSnapshotId);
         const snapshot = coreEvidenceSnapshotSchema.safeParse({
           id: current['evidence_id'],
           threadId: id,
@@ -580,7 +613,7 @@ export function createCoachingRunWorkerStore(
           await acknowledgeWorkerLease(tx, lease);
           return { kind: 'skipped' };
         }
-        const evidence = await currentWorkerEvidence(tx, row, currentPolicy(), source);
+        const evidence = await currentRunEvidence(tx, row, currentPolicy(), source, 'processing');
         if (!evidence) {
           await changeWorkerStatus(tx, lease.runId, { kind: 'cancelled', reason: 'stale_basis' });
           await acknowledgeWorkerLease(tx, lease);
@@ -630,7 +663,7 @@ export function createCoachingRunWorkerStore(
           await acknowledgeWorkerLease(tx, lease);
           return 'skipped';
         }
-        if (!(await currentWorkerEvidence(tx, row, currentPolicy(), source))) {
+        if (!(await currentRunEvidence(tx, row, currentPolicy(), source, 'processing'))) {
           await changeWorkerStatus(tx, lease.runId, { kind: 'cancelled', reason: 'stale_basis' });
           await acknowledgeWorkerLease(tx, lease);
           return 'skipped';
