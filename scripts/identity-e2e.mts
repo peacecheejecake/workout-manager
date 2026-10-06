@@ -230,8 +230,22 @@ try {
     'start',
   ]);
   started = true;
-  const endpoint = `localhost/postgres?host=${encodeURIComponent(directory)}`;
+  // Administration/fixture inspection stays superuser; migrations/definers have
+  // a separate plain owner. Never install latest owner-guarded SQL as admin.
+  const management = new Pool({
+    connectionString: `postgresql://workout_admin@localhost/postgres?host=${encodeURIComponent(directory)}`,
+  });
+  try {
+    await management.query(
+      'CREATE ROLE workout_owner LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE',
+    );
+    await management.query('CREATE DATABASE workout_identity OWNER workout_owner');
+  } finally {
+    await management.end();
+  }
+  const endpoint = `localhost/workout_identity?host=${encodeURIComponent(directory)}`;
   const adminUrl = `postgresql://workout_admin@${endpoint}`;
+  const ownerUrl = `postgresql://workout_owner@${endpoint}`;
   const runtimeUrl = `postgresql://workout_runtime@${endpoint}`;
   const workerUrl = `postgresql://workout_coaching_worker@${endpoint}`;
   const admin = new Pool({ connectionString: adminUrl });
@@ -239,7 +253,18 @@ try {
     await admin.query(
       'CREATE ROLE workout_runtime LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE',
     );
-    await migrate(adminUrl);
+    await admin.query('ALTER SCHEMA public OWNER TO workout_owner');
+    await migrate(ownerUrl);
+    const owners = await admin.query(`SELECT pg_get_userbyid(relowner) AS owner FROM pg_class
+      WHERE relnamespace='public'::regnamespace AND relname IN
+      ('openai_budget_fx_definition','openai_budget_price_definition','openai_budget_activation','openai_budget_month','openai_budget_reservation','openai_budget_journal')`);
+    if (owners.rows.length !== 6 || owners.rows.some((row) => row.owner !== 'workout_owner'))
+      throw new Error('IDENTITY_MIGRATION_OWNER_INVALID');
+    const ownerRole = await admin.query(
+      "SELECT rolsuper,rolbypassrls FROM pg_roles WHERE rolname='workout_owner'",
+    );
+    if (ownerRole.rows.length !== 1 || ownerRole.rows[0].rolsuper || ownerRole.rows[0].rolbypassrls)
+      throw new Error('IDENTITY_MIGRATION_OWNER_INVALID');
     await grantIdentityFunctions(adminUrl, 'workout_runtime');
     await grantOperations(adminUrl, 'workout_runtime');
     await grantNutritionCore(adminUrl, 'workout_runtime');

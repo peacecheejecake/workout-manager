@@ -29,6 +29,9 @@ const adminUrl = process.env['TEST_DATABASE_ADMIN_URL'];
 const runtimeUrl = process.env['TEST_DATABASE_URL'];
 if (!adminUrl || !runtimeUrl) throw new Error('Use isolated PostgreSQL integration harness');
 const admin = new Pool({ connectionString: adminUrl });
+const ownerUrl = process.env['TEST_DATABASE_OWNER_URL'];
+if (!ownerUrl) throw new Error('Owner maintenance requires the plain migration owner URL');
+const ownerPool = new Pool({ connectionString: ownerUrl });
 let database: Database;
 let workerDatabase: Database;
 
@@ -58,6 +61,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await database?.close();
   await workerDatabase?.close();
+  await ownerPool.end();
   await admin.end();
 });
 
@@ -327,7 +331,7 @@ it.each(['consent_withdrawn', 'source_deleted'] as const)(
         idempotencyKey: randomUUID(),
       });
     } else {
-      const owner = await admin.connect();
+      const owner = await ownerPool.connect();
       try {
         await owner.query('BEGIN');
         await owner.query("SELECT set_config('app.athlete_id',$1,true)", [athleteId]);
@@ -561,7 +565,7 @@ it.each(['consent_withdrawn', 'source_deleted'] as const)(
         idempotencyKey: randomUUID(),
       });
     } else {
-      const owner = await admin.connect();
+      const owner = await ownerPool.connect();
       try {
         await owner.query('BEGIN');
         await owner.query("SELECT set_config('app.athlete_id',$1,true)", [athleteId]);
@@ -1170,7 +1174,7 @@ it('historical app audit saved output remains readable after app-only withdrawal
       { body_retained: true, purged_reason: null, ai_true: true, pinned_revision: 1 },
     ]);
     const exported = await createOperationsRepository(database).exportAccount(athleteId);
-    if (exported.schemaVersion !== 32) throw new Error('Expected current export schema');
+    if (exported.schemaVersion !== 33) throw new Error('Expected current export schema');
     expect(exported.data.coachingAnalysisOutputs[0]?.['body']).not.toBeNull();
   }
   await consent.setConsent(athleteId, {
@@ -1207,7 +1211,7 @@ it('historical app audit missing legacy run binding permits saved read but block
     ...seeded.command,
     idempotencyKey: randomUUID(),
   });
-  const owner = await admin.connect();
+  const owner = await ownerPool.connect();
   try {
     await owner.query('BEGIN');
     await owner.query("SELECT set_config('app.athlete_id',$1,true)", [athleteId]);

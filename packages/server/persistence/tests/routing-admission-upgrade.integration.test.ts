@@ -18,6 +18,7 @@ if (!adminUrl) throw new Error('Run pnpm test:integration with isolated PostgreS
 const admin = new Pool({ connectionString: adminUrl });
 const database = `admit_up_${randomUUID().replaceAll('-', '').slice(0, 12)}`;
 const runtimeRole = `admit_rt_${randomUUID().replaceAll('-', '').slice(0, 10)}`;
+const ownerRole = `admit_owner_${randomUUID().replaceAll('-', '').slice(0, 10)}`;
 const upgradeUrl = (user?: string) => {
   const url = new URL(adminUrl);
   url.pathname = `/${database}`;
@@ -31,14 +32,20 @@ let upgraded: Pool;
 let versionsBefore = 0;
 
 beforeAll(async () => {
-  await admin.query(`CREATE DATABASE ${database}`);
+  await admin.query(
+    `CREATE ROLE "${ownerRole}" LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE`,
+  );
+  await admin.query(`CREATE DATABASE ${database} OWNER "${ownerRole}"`);
   await admin.query(`CREATE ROLE "${runtimeRole}" LOGIN NOSUPERUSER NOBYPASSRLS`);
   upgraded = new Pool({ connectionString: upgradeUrl() });
+  // PG14 public schema ownership is not inherited from CREATE DATABASE OWNER.
+  // Keep this admin port for independent FORCE-RLS inspection, never installation.
+  await upgraded.query(`ALTER SCHEMA public OWNER TO "${ownerRole}"`);
   // Found by name, not by number: renumbering at merge time must not move the starting point.
   const index = migrationFileNames.findIndex((file) => /^\d+_routing_admission\.sql$/.test(file));
   expect(index).toBeGreaterThan(0);
   versionsBefore = index;
-  await migrate(upgradeUrl(), versionsBefore);
+  await migrate(upgradeUrl(ownerRole), versionsBefore);
   await upgraded.query(`GRANT USAGE ON SCHEMA public TO "${runtimeRole}"`);
 });
 
@@ -46,6 +53,7 @@ afterAll(async () => {
   await upgraded?.end();
   await dropIsolatedDatabase(admin, database);
   await admin.query(`DROP ROLE IF EXISTS "${runtimeRole}"`);
+  await admin.query(`DROP ROLE IF EXISTS "${ownerRole}"`);
   await admin.end();
 });
 
@@ -84,7 +92,7 @@ describe('routing-admission migration upgrade of a database built by every earli
     expect(eraseBefore).toBeDefined();
     const grantsBefore = await tableGrants();
 
-    await expect(migrate(upgradeUrl(), versionsBefore + 1)).resolves.toBeUndefined();
+    await expect(migrate(upgradeUrl(ownerRole), versionsBefore + 1)).resolves.toBeUndefined();
 
     const after = await checksums();
     expect(after.size).toBe(versionsBefore + 1);
@@ -154,9 +162,20 @@ describe('routing-admission migration upgrade of a database built by every earli
   });
 
   it('is reachable by the runtime role only through the functions, and erasure still works', async () => {
-    await migrate(upgradeUrl());
-    await grantOperations(upgradeUrl(), runtimeRole);
-    await grantCourses(upgradeUrl(), runtimeRole);
+    await migrate(upgradeUrl(ownerRole));
+    await grantOperations(upgradeUrl(ownerRole), runtimeRole);
+    await grantCourses(upgradeUrl(ownerRole), runtimeRole);
+    const roles = await admin.query(
+      'SELECT rolname,rolsuper,rolbypassrls FROM pg_roles WHERE rolname=ANY($1)',
+      [[ownerRole, runtimeRole]],
+    );
+    expect(roles.rows).toHaveLength(2);
+    for (const role of roles.rows)
+      expect(role).toMatchObject({ rolsuper: false, rolbypassrls: false });
+    const guarded = await upgraded.query(`SELECT pg_get_userbyid(relowner) AS owner FROM pg_class
+      WHERE relname IN ('openai_budget_fx_definition','openai_budget_price_definition','openai_budget_activation','openai_budget_month','openai_budget_reservation','openai_budget_journal') AND relnamespace='public'::regnamespace`);
+    expect(guarded.rows).toHaveLength(6);
+    for (const row of guarded.rows) expect(row.owner).toBe(ownerRole);
     expect((await tableGrants()).filter((entry) => entry.startsWith('routing_admission:'))).toEqual(
       [],
     );

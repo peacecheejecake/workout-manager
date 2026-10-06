@@ -26,6 +26,9 @@ const adminUrl = process.env['TEST_DATABASE_ADMIN_URL'],
   runtimeUrl = process.env['TEST_DATABASE_URL'];
 if (!adminUrl || !runtimeUrl) throw new Error('Use isolated PostgreSQL harness');
 const admin = new Pool({ connectionString: adminUrl });
+const ownerUrl = process.env['TEST_DATABASE_OWNER_URL'];
+if (!ownerUrl) throw new Error('Owner maintenance requires the plain migration owner URL');
+const ownerPool = new Pool({ connectionString: ownerUrl });
 let database: Database;
 beforeAll(async () => {
   await migrate(adminUrl);
@@ -42,6 +45,7 @@ beforeAll(async () => {
 });
 afterAll(async () => {
   await database?.close();
+  await ownerPool.end();
   await admin.end();
 });
 async function seed(athlete: string, sessionId = 'session') {
@@ -267,8 +271,8 @@ it('purges dependent activity/checkin evidence and old receipts permanently, the
   });
   expect(await repo.read(athlete, third.id)).not.toHaveProperty('body');
   const exported = await createOperationsRepository(database).exportAccount(athlete);
-  expect(exported.schemaVersion).toBe(32);
-  if (exported.schemaVersion !== 32) throw new Error('Expected current export');
+  expect(exported.schemaVersion).toBe(33);
+  if (exported.schemaVersion !== 33) throw new Error('Expected current export');
   expect(exported.data.evidenceSnapshots).toHaveLength(3);
   expect(JSON.stringify(exported.data.evidenceSnapshots)).not.toContain('Private');
   await expect(
@@ -741,7 +745,7 @@ it('reserves multi-revision maintenance advances to the owner and purges owner h
       tx.query('UPDATE coaching_constraint SET revision=revision+2 WHERE athlete_id=$1', [athlete]),
     ),
   ).rejects.toThrow('IMMUTABLE_CONSTRAINT_IDENTITY');
-  const client = await admin.connect();
+  const client = await ownerPool.connect();
   try {
     await client.query('BEGIN');
     await client.query("SELECT set_config('app.athlete_id',$1,true)", [athlete]);

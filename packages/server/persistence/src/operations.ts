@@ -43,6 +43,13 @@ const candidateEvidenceAvailable = `EXISTS(SELECT 1 FROM coaching_decision d
 const candidateAvailable = `(${candidateEvidenceAvailable} AND EXISTS(SELECT 1 FROM consent c
   WHERE c.athlete_id=coaching_candidate.athlete_id AND c.kind='ai' AND c.granted))`;
 const collections = [
+  ['aiSettingsHeads', 'ai_settings_head', 'revision', 'revision'],
+  [
+    'aiSettingsRevisions',
+    'ai_settings_revision',
+    'revision,updated_at,catalog_revision,policy_version,disclosure_version,default_provider_id,default_model_id,comparison_kind,comparison_provider_id,comparison_model_id',
+    'revision',
+  ],
   [
     'evidenceAppBindings',
     'evidence_app_admission_binding',
@@ -665,7 +672,7 @@ export function createOperationsRepository(database: Database): OperationsReposi
         if (!row.ok) throw new OperationsError('EXPORT_TOO_LARGE');
         const data = Object.fromEntries(collections.map(([name]) => [name, row.data[name] ?? []]));
         const artifact = accountExportSchema.parse({
-          schemaVersion: 32,
+          schemaVersion: 33,
           athleteId,
           exportedAt: new Date().toISOString(),
           data,

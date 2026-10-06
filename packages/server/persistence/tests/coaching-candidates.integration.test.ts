@@ -37,6 +37,9 @@ const adminUrl = process.env['TEST_DATABASE_ADMIN_URL'];
 const runtimeUrl = process.env['TEST_DATABASE_URL'];
 if (!adminUrl || !runtimeUrl) throw new Error('Use isolated PostgreSQL integration harness');
 const admin = new Pool({ connectionString: adminUrl });
+const ownerUrl = process.env['TEST_DATABASE_OWNER_URL'];
+if (!ownerUrl) throw new Error('Owner maintenance requires the plain migration owner URL');
+const ownerPool = new Pool({ connectionString: ownerUrl });
 let database: Database;
 let workerDatabase: Database;
 const policy = { id: 'running-core-v2-training', version: '1' };
@@ -70,6 +73,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await database?.close();
   await workerDatabase?.close();
+  await ownerPool.end();
   await admin.end();
 });
 
@@ -744,7 +748,7 @@ it('returns stale metadata for a corrupt physical candidate link and rejects it 
   const repo = candidates();
   const parent = await repo.create(athleteId, command(run.id));
   const forgedId = randomUUID();
-  const owner = await admin.connect();
+  const owner = await ownerPool.connect();
   try {
     await owner.query('BEGIN');
     await owner.query("SELECT set_config('app.athlete_id',$1,true)", [athleteId]);
@@ -868,7 +872,7 @@ it('scrubs source-derived bodies without leaving proposed text in the idempotenc
   const { evidence, run } = await seed(athleteId);
   const input = command(run.id);
   const created = await candidates().create(athleteId, input);
-  const owner = await admin.connect();
+  const owner = await ownerPool.connect();
   try {
     await owner.query('BEGIN');
     await owner.query("SELECT set_config('app.athlete_id',$1,true)", [athleteId]);
@@ -1191,7 +1195,7 @@ it('keeps an approved plan replayable while withdrawal redacts candidates and er
   expect(await repo.approve(athleteId, candidate.candidate.id, approval)).toEqual(saved);
   const operations = createOperationsRepository(database);
   const exported = await operations.exportAccount(athleteId);
-  if (exported.schemaVersion !== 32) throw new Error('Expected the latest account export');
+  if (exported.schemaVersion !== 33) throw new Error('Expected the latest account export');
   expect(exported.data.planHistory).toContainEqual({
     version_id: saved.id,
     action: 'candidate_approved',

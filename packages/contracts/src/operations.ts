@@ -490,6 +490,40 @@ const accountExportV32Schema = accountExportV31Schema.extend({
       .max(1000),
   }),
 });
+// Preference history is portable data, never executable consent or model permission.
+const aiSettingIdentifier = z.string().regex(/^[a-z][a-z0-9._-]{0,99}$/);
+const aiSettingDefinition = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,99}$/);
+const aiSettingsExportRevision = z
+  .strictObject({
+    revision: z.number().int().min(1).max(2147483647),
+    updated_at: z.iso.datetime({ offset: true }),
+    catalog_revision: z.number().int().min(1).max(2147483647),
+    policy_version: aiSettingDefinition,
+    disclosure_version: aiSettingDefinition,
+    default_provider_id: aiSettingIdentifier.nullable(),
+    default_model_id: aiSettingIdentifier.nullable(),
+    comparison_kind: z.enum(['off', 'selected']),
+    comparison_provider_id: aiSettingIdentifier.nullable(),
+    comparison_model_id: aiSettingIdentifier.nullable(),
+  })
+  .refine((row) => (row.default_provider_id === null) === (row.default_model_id === null))
+  .refine((row) =>
+    row.comparison_kind === 'off'
+      ? row.comparison_provider_id === null && row.comparison_model_id === null
+      : row.comparison_provider_id !== null && row.comparison_model_id !== null,
+  );
+// Shape spread avoids adding another nested Extend layer to the historical schema chain.
+const accountExportV33Schema = z.strictObject({
+  ...accountExportV32Schema.shape,
+  schemaVersion: z.literal(33),
+  data: z.strictObject({
+    ...accountExportV32Schema.shape.data.shape,
+    aiSettingsHeads: z
+      .array(z.strictObject({ revision: z.number().int().min(1).max(2147483647) }))
+      .max(1),
+    aiSettingsRevisions: z.array(aiSettingsExportRevision).max(1000),
+  }),
+});
 // Read historical artifacts unchanged; never manufacture absent collections.
 export const accountExportSchema = z.discriminatedUnion('schemaVersion', [
   accountExportV2Schema,
@@ -523,6 +557,7 @@ export const accountExportSchema = z.discriminatedUnion('schemaVersion', [
   accountExportV30Schema,
   accountExportV31Schema,
   accountExportV32Schema,
+  accountExportV33Schema,
 ]);
 export const operationsStatusSchema = z.strictObject({
   checkedAt: z.iso.datetime({ offset: true }),

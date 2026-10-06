@@ -82,7 +82,7 @@ beforeAll(async () => {
       `CREATE ROLE "${role}" LOGIN PASSWORD 'plain' NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE`,
     );
   await admin.query(`CREATE DATABASE "${databaseName}" OWNER "${roles.owner}"`);
-  await migrate(urlFor(roles.owner));
+  await migrate(urlFor(roles.owner), 104);
   const roleFlags = await admin.query(
     'SELECT rolsuper,rolbypassrls,rolcreatedb,rolcreaterole FROM pg_roles WHERE rolname=ANY($1)',
     [Object.values(roles)],
@@ -101,7 +101,7 @@ beforeAll(async () => {
         'SELECT count(*)::int AS total,min(version),max(version) FROM schema_migrations',
       )
     ).rows,
-  ).toEqual([{ total: 100, min: 1, max: 100 }]);
+  ).toEqual([{ total: 104, min: 1, max: 104 }]);
   // No manual runtime grants: use the production grant helpers exclusively.
   for (const grant of [
     grantOperations,
@@ -245,7 +245,7 @@ async function exported(fixture: Awaited<ReturnType<typeof seed>>) {
   const { database, operations } = await exporter();
   try {
     const artifact = await operations.exportAccount(fixture.athlete);
-    if (artifact.schemaVersion !== 32) throw new Error('Expected actual current v32 producer');
+    if (artifact.schemaVersion !== 33) throw new Error('Expected actual current v33 producer');
     return artifact;
   } finally {
     await database.close();

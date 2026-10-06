@@ -476,6 +476,12 @@ export async function grantOperations(
     );
     await pool.query(`GRANT EXECUTE ON FUNCTION public.erase_account(text) TO "${runtimeRole}"`);
     await grantAppAdmissionBindings(pool, runtimeRole, 'export');
+    // Historical100/103 role setup remains valid. This is retained read only.
+    const settings = await pool.query('SELECT 1 FROM schema_migrations WHERE version=104');
+    if (settings.rowCount)
+      await pool.query(
+        `GRANT SELECT ON public.ai_settings_head,public.ai_settings_revision TO "${runtimeRole}"`,
+      );
     // Historical schema100 fixtures remain supported; control tables stay owner-only.
     const processingControl = await pool.query('SELECT 1 FROM schema_migrations WHERE version=101');
     if (processingControl.rowCount) {
