@@ -15,6 +15,7 @@
     "./runner": "./src/runner.ts",
     "./candidates": "./src/candidates.ts",
     "./joint-candidates": "./src/joint-candidates.ts",
-    "./race-relative-schedule-impact": "./src/race-relative-schedule-impact.ts"
+    "./race-relative-schedule-impact": "./src/race-relative-schedule-impact.ts",
+    "./race-plan-impact": "./src/race-plan-impact.ts"
   }
 }
