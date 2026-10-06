@@ -843,4 +843,4 @@ M2-01k-v-a~f는 app 처리 의미 확정 뒤 새 admission·직접 저장·basis
 
 ## AI 설정의 실제 실행 연결 · 2026-10-07
 
-설정 선택의 로컬 수용과 실제 코칭 실행을 구분한다. 신규 M2-01k-w-a~e는 같은 거래 준비 → immutable job → complete freshness → 글로벌 월 예산 dispatch → 실제 OpenAI 수용의 의존 순서다. 모두 미완료이며 부모 M2-01k에 포함한다. [작업 기록](progress/M2-01k-w.md)의 범위와 외부 gate를 따른다.
+설정 선택의 로컬 수용과 실제 코칭 실행을 구분한다. 신규 M2-01k-w-a~e는 같은 거래 준비 → immutable job → complete freshness → 글로벌 월 예산 dispatch → 실제 OpenAI 수용의 의존 순서다. w-a의 로컬 실행 준비는 검증 완료이며 w-b~e는 미완료다. 모두 부모 M2-01k에 포함한다. [작업 기록](progress/M2-01k-w.md)의 범위와 외부 gate를 따른다.

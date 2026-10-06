@@ -2236,7 +2236,7 @@
       "title": "AI 저장 설정의 같은 거래 실행 준비",
       "dependsOn": ["M2-01k-v-c"],
       "kind": "task",
-      "status": "in_progress",
+      "status": "completed",
       "scope": "명시 설정 revision·owned evidence·현재 catalog/app/AI facts와 selection 연결. 준비 결과는 실제 dispatch 권한이 아니며 job·budget writes 없이 검증한다.",
       "evidence": "docs/implementation/progress/M2-01k-w.md"
     },
