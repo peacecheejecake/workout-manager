@@ -15,7 +15,7 @@ import { createPlanScenarioRepository } from '../packages/server/persistence/src
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { createCipheriv, createHash, randomBytes, randomUUID } from 'node:crypto';
-import { existsSync, rmSync } from 'node:fs';
+import { existsSync, rmSync, writeFileSync } from 'node:fs';
 import { cp, lstat, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -404,6 +404,755 @@ async function withSourceFixtureOwnerTenant<T>(
     throw error;
   } finally {
     client.release();
+  }
+}
+
+type DrillCatalogEntry = {
+  schema: string;
+  name: string;
+  kind: 'schema' | 'r' | 'p' | 'S' | 'i' | 'I' | 'function';
+  identity: string;
+  owner: 'drill_owner' | 'drill_admin';
+  facts: string;
+  acl: string;
+};
+type DrillCatalog = { entries: DrillCatalogEntry[]; extensions: string; migrations: string };
+// Normal schema105 retains migration097's exact fourteen owner-only policies.
+const drillDefinerPolicyTables = [
+  'activity_track_reconcile_state',
+  'course_deletion',
+  'course_share',
+  'course_share_rate',
+  'course_thumbnail_reconcile_state',
+  'healthkit_deregistration_work',
+  'object_scope_purge',
+  'resource_derived_cleanup',
+  'resource_object_cleanup',
+  'restore_share_erasure_context',
+  'restore_suppression_event',
+  'routing_admission',
+  'tenant_object_purge',
+  'tenant_work_index',
+] as const;
+function assertDrillDefinerPolicyRoster(catalog: DrillCatalog): void {
+  assert.ok(catalog.entries.length <= 4096);
+  const actual: { table: string; policy: string; roles: string[] }[] = [];
+  for (const table of drillDefinerPolicyTables) {
+    const relations = catalog.entries.filter(
+      (entry) => entry.schema === 'public' && entry.kind === 'r' && entry.name === table,
+    );
+    assert.equal(relations.length, 1);
+    assert.equal(relations[0]?.owner, 'drill_owner');
+  }
+  for (const relation of catalog.entries.filter(
+    (entry) => entry.schema === 'public' && (entry.kind === 'r' || entry.kind === 'p'),
+  )) {
+    const facts: unknown = JSON.parse(relation.facts);
+    assert.ok(facts !== null && typeof facts === 'object' && !Array.isArray(facts));
+    const policies: unknown = Object.fromEntries(Object.entries(facts)).policies;
+    assert.ok(Array.isArray(policies) && policies.length <= 64);
+    for (const policy of policies) {
+      assert.ok(policy !== null && typeof policy === 'object' && !Array.isArray(policy));
+      const row = Object.fromEntries(Object.entries(policy));
+      assert.ok(typeof row.name === 'string' && row.name.length <= 63);
+      if (!row.name.endsWith('_definer')) continue;
+      assert.ok(Array.isArray(row.roles) && row.roles.length <= 64);
+      const roles: string[] = [];
+      for (const role of row.roles) {
+        assert.ok(typeof role === 'string' && role.length <= 63);
+        roles.push(role);
+      }
+      actual.push({ table: relation.name, policy: row.name, roles: roles.sort() });
+    }
+  }
+  assert.deepEqual(
+    actual.sort((a, b) => a.table.localeCompare(b.table) || a.policy.localeCompare(b.policy)),
+    drillDefinerPolicyTables.map((table) => ({
+      table,
+      policy: `${table}_definer`,
+      roles: ['drill_owner'],
+    })),
+  );
+}
+
+const drillUserSchemas = ['garmin_private', 'identity_private', 'public', 'wm_app_load'];
+function parseDrillCatalogEntry(value: unknown): DrillCatalogEntry {
+  assert.ok(value !== null && typeof value === 'object' && !Array.isArray(value));
+  const row = Object.fromEntries(Object.entries(value));
+  assert.deepEqual(Object.keys(row).sort(), [
+    'acl',
+    'facts',
+    'identity',
+    'kind',
+    'name',
+    'owner',
+    'schema',
+  ]);
+  for (const field of ['schema', 'name', 'identity', 'facts', 'acl'] as const)
+    assert.ok(typeof row[field] === 'string' && row[field].length <= 1_048_576);
+  assert.ok(typeof row.schema === 'string' && drillUserSchemas.includes(row.schema));
+  assert.ok(typeof row.name === 'string' && row.name.length > 0 && row.name.length <= 63);
+  assert.ok(typeof row.identity === 'string');
+  assert.ok(typeof row.facts === 'string' && typeof row.acl === 'string');
+  assert.ok(row.owner === 'drill_owner' || row.owner === 'drill_admin');
+  assert.ok(
+    row.kind === 'schema' ||
+      row.kind === 'r' ||
+      row.kind === 'p' ||
+      row.kind === 'S' ||
+      row.kind === 'i' ||
+      row.kind === 'I' ||
+      row.kind === 'function',
+  );
+  return {
+    schema: row.schema,
+    name: row.name,
+    kind: row.kind,
+    identity: row.identity,
+    owner: row.owner,
+    facts: row.facts,
+    acl: row.acl,
+  };
+}
+function drillCatalogKey(row: DrillCatalogEntry): string {
+  return JSON.stringify([row.schema, row.kind, row.name, row.identity]);
+}
+async function captureDrillCatalog(client: Pick<PoolClient, 'query'>): Promise<DrillCatalog> {
+  const unexpected = await client.query(
+    `SELECT 1 FROM pg_namespace WHERE nspname NOT LIKE 'pg_%' AND nspname<>'information_schema'
+       AND NOT(nspname=ANY($1::text[]))
+     UNION ALL SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+       WHERE n.nspname=ANY($1::text[]) AND c.relkind NOT IN ('r','p','S','i','I')
+       AND NOT EXISTS(SELECT 1 FROM pg_depend d WHERE d.classid='pg_class'::regclass AND d.objid=c.oid AND d.deptype='e')
+     UNION ALL SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+       WHERE n.nspname=ANY($1::text[]) AND p.prokind<>'f'
+       AND NOT EXISTS(SELECT 1 FROM pg_depend d WHERE d.classid='pg_proc'::regclass AND d.objid=p.oid AND d.deptype='e')
+     UNION ALL SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid=t.typnamespace
+       WHERE n.nspname=ANY($1::text[]) AND (t.typtype IN ('d','e','r','m') OR (t.typtype='c' AND t.typrelid=0))
+       AND NOT EXISTS(SELECT 1 FROM pg_depend d WHERE d.classid='pg_type'::regclass AND d.objid=t.oid AND d.deptype='e')`,
+    [drillUserSchemas],
+  );
+  assert.equal(unexpected.rowCount, 0, 'UNSUPPORTED_DRILL_CATALOG_OBJECT');
+  // Stable identities omit OIDs. Ownership/grantor normalization is confined to ACL metadata.
+  const result = await client.query(
+    `WITH objects AS (
+       SELECT n.nspname AS schema,n.nspname AS name,'schema'::text AS kind,''::text AS identity,
+        n.nspowner AS owner_oid,n.nspacl AS acl,'n'::"char" AS aclkind,'{}'::jsonb AS facts
+       FROM pg_namespace n WHERE n.nspname=ANY($1::text[])
+       UNION ALL
+       SELECT n.nspname,c.relname,c.relkind::text,'',c.relowner,c.relacl,
+        CASE WHEN c.relkind='S' THEN 's' ELSE 'r' END::"char",
+        jsonb_build_object(
+         'columns',COALESCE((SELECT jsonb_agg(jsonb_build_object('name',a.attname,'type',format_type(a.atttypid,a.atttypmod),'notNull',a.attnotnull,
+           'identity',a.attidentity,'generated',a.attgenerated,'default',pg_get_expr(d.adbin,d.adrelid)) ORDER BY a.attnum)
+           FROM pg_attribute a LEFT JOIN pg_attrdef d ON d.adrelid=a.attrelid AND d.adnum=a.attnum WHERE a.attrelid=c.oid AND a.attnum>0 AND NOT a.attisdropped),'[]'::jsonb),
+         'rls',c.relrowsecurity,'force',c.relforcerowsecurity,
+         'constraints',COALESCE((SELECT jsonb_agg(jsonb_build_object('name',x.conname,'kind',x.contype,'definition',pg_get_constraintdef(x.oid,true),'validated',x.convalidated) ORDER BY x.conname) FROM pg_constraint x WHERE x.conrelid=c.oid),'[]'::jsonb),
+         'triggers',COALESCE((SELECT jsonb_agg(jsonb_build_object('name',t.tgname,'definition',pg_get_triggerdef(t.oid),'enabled',t.tgenabled) ORDER BY t.tgname) FROM pg_trigger t WHERE t.tgrelid=c.oid AND NOT t.tgisinternal),'[]'::jsonb),
+         'policies',COALESCE((SELECT jsonb_agg(jsonb_build_object('name',p.polname,'command',p.polcmd,'permissive',p.polpermissive,'roles',(SELECT jsonb_agg(CASE WHEN x=0 THEN 'PUBLIC' ELSE pg_get_userbyid(x) END ORDER BY x) FROM unnest(p.polroles) x),'qual',pg_get_expr(p.polqual,p.polrelid),'check',pg_get_expr(p.polwithcheck,p.polrelid)) ORDER BY p.polname) FROM pg_policy p WHERE p.polrelid=c.oid),'[]'::jsonb),
+         'index',CASE WHEN c.relkind IN ('i','I') THEN pg_get_indexdef(c.oid) ELSE NULL END,
+         'sequence',CASE WHEN c.relkind='S' THEN (SELECT jsonb_build_object('type',format_type(s.seqtypid,NULL),'start',s.seqstart,'increment',s.seqincrement,'max',s.seqmax,'min',s.seqmin,'cache',s.seqcache,'cycle',s.seqcycle) FROM pg_sequence s WHERE s.seqrelid=c.oid) ELSE NULL END,
+         'sequenceLinks',COALESCE((SELECT jsonb_agg(jsonb_build_object('schema',pn.nspname,'table',pc.relname,'column',a.attname,'kind',d.deptype) ORDER BY pn.nspname,pc.relname,a.attname) FROM pg_depend d JOIN pg_class pc ON pc.oid=d.refobjid JOIN pg_namespace pn ON pn.oid=pc.relnamespace JOIN pg_attribute a ON a.attrelid=pc.oid AND a.attnum=d.refobjsubid WHERE d.classid='pg_class'::regclass AND d.objid=c.oid AND d.refclassid='pg_class'::regclass AND d.deptype IN ('a','i')),'[]'::jsonb))
+       FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=ANY($1::text[])
+        AND NOT EXISTS(SELECT 1 FROM pg_depend d WHERE d.classid='pg_class'::regclass AND d.objid=c.oid AND d.deptype='e')
+       UNION ALL
+       SELECT n.nspname,p.proname,'function',pg_get_function_identity_arguments(p.oid),p.proowner,p.proacl,'f'::"char",
+        jsonb_build_object('definition',pg_get_functiondef(p.oid),'config',p.proconfig,'securityDefiner',p.prosecdef,'language',l.lanname)
+       FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace JOIN pg_language l ON l.oid=p.prolang
+       WHERE n.nspname=ANY($1::text[]) AND NOT EXISTS(SELECT 1 FROM pg_depend d WHERE d.classid='pg_proc'::regclass AND d.objid=p.oid AND d.deptype='e')
+     ) SELECT schema,name,kind,identity,pg_get_userbyid(owner_oid) AS owner,facts::text AS facts,
+      COALESCE((SELECT jsonb_agg(jsonb_build_object('grantee',CASE WHEN a.grantee=0 THEN 'PUBLIC' WHEN a.grantee=owner_oid THEN 'drill_owner' ELSE pg_get_userbyid(a.grantee) END,
+       'grantor',CASE WHEN a.grantor=owner_oid THEN 'drill_owner' ELSE pg_get_userbyid(a.grantor) END,
+       'privilege',a.privilege_type,'grantable',a.is_grantable) ORDER BY CASE WHEN a.grantee=0 THEN 'PUBLIC' WHEN a.grantee=owner_oid THEN 'drill_owner' ELSE pg_get_userbyid(a.grantee) END,CASE WHEN a.grantor=owner_oid THEN 'drill_owner' ELSE pg_get_userbyid(a.grantor) END,a.privilege_type,a.is_grantable)
+       FROM aclexplode(COALESCE(acl,acldefault(aclkind,owner_oid))) a),'[]'::jsonb)::text AS acl
+      FROM objects ORDER BY schema,kind,name,identity`,
+    [drillUserSchemas],
+  );
+  assert.ok(result.rows.length <= 4096);
+  assert.ok(Buffer.byteLength(JSON.stringify(result.rows)) <= 16 * 1024 * 1024);
+  const entries = result.rows.map(parseDrillCatalogEntry);
+  assert.equal(new Set(entries.map(drillCatalogKey)).size, entries.length);
+  assert.deepEqual(
+    entries.filter((x) => x.kind === 'schema').map((x) => x.schema),
+    drillUserSchemas,
+  );
+  const extensions = await client.query(
+    `SELECT COALESCE(jsonb_agg(jsonb_build_object('name',e.extname,'version',e.extversion,'schema',n.nspname,'owner',pg_get_userbyid(e.extowner),
+      'members',COALESCE((SELECT jsonb_agg(jsonb_build_object('identity',pg_describe_object(d.classid,d.objid,d.objsubid),
+       'owner',CASE WHEN d.classid='pg_proc'::regclass THEN (SELECT pg_get_userbyid(p.proowner) FROM pg_proc p WHERE p.oid=d.objid)
+         WHEN d.classid='pg_class'::regclass THEN (SELECT pg_get_userbyid(c.relowner) FROM pg_class c WHERE c.oid=d.objid)
+         WHEN d.classid='pg_type'::regclass THEN (SELECT pg_get_userbyid(t.typowner) FROM pg_type t WHERE t.oid=d.objid) ELSE NULL END,
+       'definition',CASE WHEN d.classid='pg_proc'::regclass THEN (SELECT CASE WHEN p.prokind='f' THEN pg_get_functiondef(p.oid) ELSE pg_get_function_identity_arguments(p.oid) END FROM pg_proc p WHERE p.oid=d.objid)
+         WHEN d.classid='pg_class'::regclass THEN (SELECT jsonb_build_object('kind',c.relkind,'rls',c.relrowsecurity,'force',c.relforcerowsecurity,
+           'index',CASE WHEN c.relkind IN ('i','I') THEN pg_get_indexdef(c.oid) ELSE NULL END,
+           'columns',(SELECT jsonb_agg(jsonb_build_object('name',a.attname,'type',format_type(a.atttypid,a.atttypmod),'notNull',a.attnotnull,'default',pg_get_expr(x.adbin,x.adrelid)) ORDER BY a.attnum)
+             FROM pg_attribute a LEFT JOIN pg_attrdef x ON x.adrelid=a.attrelid AND x.adnum=a.attnum WHERE a.attrelid=c.oid AND a.attnum>0 AND NOT a.attisdropped))::text FROM pg_class c WHERE c.oid=d.objid)
+         ELSE pg_describe_object(d.classid,d.objid,d.objsubid) END) ORDER BY pg_describe_object(d.classid,d.objid,d.objsubid))
+       FROM pg_depend d WHERE d.refclassid='pg_extension'::regclass AND d.refobjid=e.oid AND d.deptype='e'),'[]'::jsonb)) ORDER BY e.extname),'[]'::jsonb)::text AS facts FROM pg_extension e JOIN pg_namespace n ON n.oid=e.extnamespace`,
+  );
+  const extensionFacts: unknown = extensions.rows[0]?.facts;
+  assert.ok(
+    typeof extensionFacts === 'string' && Buffer.byteLength(extensionFacts) <= 4 * 1024 * 1024,
+  );
+  const registry = await client.query(
+    `SELECT COALESCE(jsonb_agg(jsonb_build_object('version',version,'checksum',checksum) ORDER BY version),'[]'::jsonb)::text AS facts FROM public.schema_migrations`,
+  );
+  const migrationFacts: unknown = registry.rows[0]?.facts;
+  assert.ok(typeof migrationFacts === 'string' && Buffer.byteLength(migrationFacts) <= 65536);
+  const versions: unknown = JSON.parse(migrationFacts);
+  assert.ok(Array.isArray(versions) && versions.length <= 105);
+  for (const [index, value] of versions.entries()) {
+    assert.ok(value && typeof value === 'object' && !Array.isArray(value));
+    const row = Object.fromEntries(Object.entries(value));
+    assert.deepEqual(Object.keys(row).sort(), ['checksum', 'version']);
+    assert.ok(
+      typeof row.version === 'number' &&
+        Number.isInteger(row.version) &&
+        row.version >= 1 &&
+        row.version <= 105,
+    );
+    assert.equal(row.version, index + 1);
+    assert.ok(typeof row.checksum === 'string' && /^[a-f0-9]{64}$/.test(row.checksum));
+  }
+  return { entries, extensions: extensionFacts, migrations: migrationFacts };
+}
+// Import may recreate a source-owner extension as admin-owned. It remains excluded:
+// normalize only this predicted import owner delta, never body/config/grantee text.
+function extensionImportFacts(value: string): string {
+  const parsed: unknown = JSON.parse(value);
+  assert.ok(Array.isArray(parsed));
+  const normalized = parsed.map((entry: unknown) => {
+    assert.ok(entry && typeof entry === 'object' && !Array.isArray(entry));
+    const row = Object.fromEntries(Object.entries(entry));
+    assert.deepEqual(Object.keys(row).sort(), ['members', 'name', 'owner', 'schema', 'version']);
+    assert.ok(Array.isArray(row.members));
+    const members = row.members.map((member: unknown) => {
+      assert.ok(member && typeof member === 'object' && !Array.isArray(member));
+      const item = Object.fromEntries(Object.entries(member));
+      assert.deepEqual(Object.keys(item).sort(), ['definition', 'identity', 'owner']);
+      return { ...item, owner: item.owner === 'drill_owner' ? 'drill_admin' : item.owner };
+    });
+    return { ...row, owner: row.owner === 'drill_owner' ? 'drill_admin' : row.owner, members };
+  });
+  return JSON.stringify(normalized);
+}
+type DrillAclPrivilege =
+  | 'CREATE'
+  | 'DELETE'
+  | 'EXECUTE'
+  | 'INSERT'
+  | 'REFERENCES'
+  | 'SELECT'
+  | 'TRIGGER'
+  | 'TRUNCATE'
+  | 'UPDATE'
+  | 'USAGE';
+type DrillAclTuple = Readonly<{
+  grantor: string;
+  grantee: string;
+  privilege: DrillAclPrivilege;
+  grantable: boolean;
+}>;
+type DrillRawAcl = Readonly<{
+  schema: string;
+  name: string;
+  kind: 'schema' | 'r' | 'p' | 'S' | 'function';
+  identity: string;
+  owner: 'drill_owner' | 'drill_admin';
+  aclIsNull: boolean;
+  rawAcl: string | null;
+  rawTuples: readonly DrillAclTuple[];
+  defaultTuples: readonly DrillAclTuple[];
+}>;
+function aclBoundedText(value: unknown, maxBytes: number): string {
+  assert.ok(
+    typeof value === 'string' &&
+      Buffer.byteLength(value, 'utf8') <= maxBytes &&
+      ![...value].some(
+        (character) => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127,
+      ),
+    'INVALID_ACL_TEXT',
+  );
+  return value;
+}
+function parseDrillAclTuples(value: unknown): readonly DrillAclTuple[] {
+  assert.ok(Array.isArray(value) && value.length <= 256, 'INVALID_ACL_TUPLES');
+  const tuples = value.map((item: unknown): DrillAclTuple => {
+    assert.ok(item && typeof item === 'object' && !Array.isArray(item));
+    const row: Record<string, unknown> = Object.fromEntries(Object.entries(item));
+    assert.deepEqual(Object.keys(row).sort(), ['grantable', 'grantee', 'grantor', 'privilege']);
+    const grantor = aclBoundedText(row.grantor, 63),
+      grantee = aclBoundedText(row.grantee, 63);
+    assert.ok(grantor.length > 0 && grantor !== 'PUBLIC' && grantee.length > 0);
+    const privileges = [
+      'CREATE',
+      'DELETE',
+      'EXECUTE',
+      'INSERT',
+      'REFERENCES',
+      'SELECT',
+      'TRIGGER',
+      'TRUNCATE',
+      'UPDATE',
+      'USAGE',
+    ] as const;
+    const privilege = privileges.find((candidate) => candidate === row.privilege);
+    assert.ok(privilege && typeof row.grantable === 'boolean', 'UNKNOWN_ACL_PRIVILEGE');
+    return { grantor, grantee, privilege, grantable: row.grantable };
+  });
+  const keys = tuples.map((tuple) =>
+    JSON.stringify([tuple.grantor, tuple.grantee, tuple.privilege]),
+  );
+  assert.equal(new Set(keys).size, keys.length, 'DUPLICATE_ACL_TUPLE');
+  return tuples;
+}
+function drillRawAclKey(row: DrillRawAcl): string {
+  return JSON.stringify([row.schema, row.kind, row.name, row.identity]);
+}
+function parseDrillRawAcl(value: unknown): readonly DrillRawAcl[] {
+  assert.ok(Array.isArray(value) && value.length <= 4096);
+  assert.ok(Buffer.byteLength(JSON.stringify(value), 'utf8') <= 4 * 1024 * 1024);
+  const rows = value.map((item: unknown): DrillRawAcl => {
+    assert.ok(item && typeof item === 'object' && !Array.isArray(item));
+    const row: Record<string, unknown> = Object.fromEntries(Object.entries(item));
+    assert.deepEqual(Object.keys(row).sort(), [
+      'aclIsNull',
+      'defaultTuples',
+      'identity',
+      'kind',
+      'name',
+      'owner',
+      'rawAcl',
+      'rawTuples',
+      'schema',
+    ]);
+    const schema = aclBoundedText(row.schema, 63),
+      name = aclBoundedText(row.name, 63),
+      identity = aclBoundedText(row.identity, 4096);
+    assert.ok(drillUserSchemas.includes(schema) && name.length > 0);
+    assert.ok(
+      row.kind === 'schema' ||
+        row.kind === 'r' ||
+        row.kind === 'p' ||
+        row.kind === 'S' ||
+        row.kind === 'function',
+    );
+    assert.ok(row.owner === 'drill_owner' || row.owner === 'drill_admin');
+    assert.ok(typeof row.aclIsNull === 'boolean');
+    const rawAcl = row.rawAcl === null ? null : aclBoundedText(row.rawAcl, 131072);
+    assert.equal(row.aclIsNull, rawAcl === null, 'INVALID_ACL_NULL_PAIR');
+    const rawTuples = parseDrillAclTuples(row.rawTuples),
+      defaultTuples = parseDrillAclTuples(row.defaultTuples);
+    if (row.aclIsNull) assert.equal(rawTuples.length, 0);
+    assert.ok(defaultTuples.length > 0);
+    const allowedPrivileges =
+      row.kind === 'schema'
+        ? ['CREATE', 'USAGE']
+        : row.kind === 'S'
+          ? ['SELECT', 'UPDATE', 'USAGE']
+          : row.kind === 'function'
+            ? ['EXECUTE']
+            : ['DELETE', 'INSERT', 'REFERENCES', 'SELECT', 'TRIGGER', 'TRUNCATE', 'UPDATE'];
+    assert.ok(
+      [...rawTuples, ...defaultTuples].every((tuple) =>
+        allowedPrivileges.includes(tuple.privilege),
+      ),
+      'ACL_PRIVILEGE_KIND_MISMATCH',
+    );
+    return {
+      schema,
+      name,
+      identity,
+      kind: row.kind,
+      owner: row.owner,
+      aclIsNull: row.aclIsNull,
+      rawAcl,
+      rawTuples,
+      defaultTuples,
+    };
+  });
+  assert.equal(new Set(rows.map(drillRawAclKey)).size, rows.length, 'DUPLICATE_ACL_OBJECT');
+  return rows;
+}
+function orderedAclTuples(tuples: readonly DrillAclTuple[]): readonly DrillAclTuple[] {
+  return [...tuples].sort((a, b) => {
+    const x = JSON.stringify([a.grantee, a.grantor, a.privilege, a.grantable]),
+      y = JSON.stringify([b.grantee, b.grantor, b.privilege, b.grantable]);
+    return x < y ? -1 : x > y ? 1 : 0;
+  });
+}
+function assertNativeDrillAclProjection(
+  before: readonly DrillRawAcl[],
+  after: readonly DrillRawAcl[],
+) {
+  const actual = new Map(after.map((row) => [drillRawAclKey(row), row]));
+  assert.deepEqual(
+    [...actual.keys()].sort(),
+    before.map(drillRawAclKey).sort(),
+    'ACL_IDENTITY_CHANGED',
+  );
+  for (const original of before) {
+    const row = actual.get(drillRawAclKey(original));
+    assert.ok(row && row.owner === 'drill_owner');
+    const merged = new Map<string, DrillAclTuple>();
+    for (const item of original.rawTuples) {
+      const next = {
+        ...item,
+        grantor: item.grantor === original.owner ? row.owner : item.grantor,
+        grantee: item.grantee === original.owner ? row.owner : item.grantee,
+      };
+      const key = JSON.stringify([next.grantor, next.grantee, next.privilege]),
+        prior = merged.get(key);
+      merged.set(key, { ...next, grantable: next.grantable || Boolean(prior?.grantable) });
+    }
+    assert.equal(row.aclIsNull, original.aclIsNull, 'NATIVE_ACL_NULL_CHANGED');
+    assert.deepEqual(
+      orderedAclTuples(row.rawTuples),
+      orderedAclTuples([...merged.values()]),
+      'NATIVE_ACL_PROJECTION_MISMATCH',
+    );
+  }
+}
+function assertSourceDrillEffectiveAcl(
+  source: readonly DrillRawAcl[],
+  after: readonly DrillRawAcl[],
+) {
+  const expected = new Map(source.map((row) => [drillRawAclKey(row), row]));
+  assert.deepEqual(
+    after.map(drillRawAclKey).sort(),
+    [...expected.keys()].sort(),
+    'SOURCE_ACL_IDENTITY_CHANGED',
+  );
+  for (const actual of after) {
+    const original = expected.get(drillRawAclKey(actual));
+    assert.ok(original && original.owner === 'drill_owner' && actual.owner === 'drill_owner');
+    assert.deepEqual(
+      orderedAclTuples(actual.aclIsNull ? actual.defaultTuples : actual.rawTuples),
+      orderedAclTuples(original.aclIsNull ? original.defaultTuples : original.rawTuples),
+      'SOURCE_EFFECTIVE_ACL_CHANGED',
+    );
+  }
+}
+async function captureDrillRawAcl(client: Pick<Pool, 'query'>): Promise<readonly DrillRawAcl[]> {
+  const result = await client.query(
+    `WITH objects AS (
+        SELECT n.nspname AS schema,n.nspname AS name,'schema'::text AS kind,''::text AS identity,
+          n.nspowner AS owner_oid,n.nspacl AS acl,'n'::"char" AS aclkind
+        FROM pg_namespace n WHERE n.nspname=ANY($1::text[])
+        UNION ALL
+        SELECT n.nspname,c.relname,c.relkind::text,''::text,c.relowner,c.relacl,
+          CASE WHEN c.relkind='S' THEN 's' ELSE 'r' END::"char"
+        FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+        WHERE n.nspname=ANY($1::text[]) AND c.relkind IN ('r','p','S')
+          AND NOT EXISTS(SELECT 1 FROM pg_depend d WHERE d.classid='pg_class'::regclass AND d.objid=c.oid AND d.deptype='e')
+        UNION ALL
+        SELECT n.nspname,p.proname,'function',pg_get_function_identity_arguments(p.oid),p.proowner,p.proacl,'f'::"char"
+        FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+        WHERE n.nspname=ANY($1::text[]) AND p.prokind='f'
+          AND NOT EXISTS(SELECT 1 FROM pg_depend d WHERE d.classid='pg_proc'::regclass AND d.objid=p.oid AND d.deptype='e')
+      ) SELECT schema,name,kind,identity,pg_get_userbyid(owner_oid) AS owner,
+        acl IS NULL AS "aclIsNull",acl::text AS "rawAcl",
+        COALESCE((SELECT jsonb_agg(jsonb_build_object('grantor',pg_get_userbyid(a.grantor),
+          'grantee',CASE WHEN a.grantee=0 THEN 'PUBLIC' ELSE pg_get_userbyid(a.grantee) END,
+          'privilege',a.privilege_type,'grantable',a.is_grantable)
+          ORDER BY pg_get_userbyid(a.grantor),CASE WHEN a.grantee=0 THEN 'PUBLIC' ELSE pg_get_userbyid(a.grantee) END,a.privilege_type,a.is_grantable)
+          FROM aclexplode(acl) a),'[]'::jsonb) AS "rawTuples",
+        (SELECT jsonb_agg(jsonb_build_object('grantor',pg_get_userbyid(a.grantor),
+          'grantee',CASE WHEN a.grantee=0 THEN 'PUBLIC' ELSE pg_get_userbyid(a.grantee) END,
+          'privilege',a.privilege_type,'grantable',a.is_grantable)
+          ORDER BY pg_get_userbyid(a.grantor),CASE WHEN a.grantee=0 THEN 'PUBLIC' ELSE pg_get_userbyid(a.grantee) END,a.privilege_type,a.is_grantable)
+          FROM aclexplode(acldefault(aclkind,owner_oid)) a) AS "defaultTuples"
+        FROM objects ORDER BY schema,kind,name,identity`,
+    [drillUserSchemas],
+  );
+  return parseDrillRawAcl(result.rows);
+}
+// Private observations are best effort; authority-bearing capture above always fails closed.
+async function recordDrillAclWitness(
+  rows: readonly DrillRawAcl[],
+  phase:
+    | 'source'
+    | 'pre-import-partial'
+    | 'pre-import-full'
+    | 'before-pre-data'
+    | 'after-pre-data'
+    | 'before-full'
+    | 'after-full',
+) {
+  try {
+    const value = JSON.stringify({
+      schemaVersion: 1,
+      phase,
+      scope: 'Private catalog ACL observations only',
+      rows,
+    });
+    if (Buffer.byteLength(value, 'utf8') > 4 * 1024 * 1024) return;
+    await writeFile(join(tmpdir(), `backup-acl-${phase}.json`), value + '\n', {
+      mode: 0o600,
+      flag: 'wx',
+    });
+  } catch {
+    /* Diagnostic I/O must not replace the strict checks. */
+  }
+}
+async function recordDrillAlterCount(
+  mode: 'full' | 'pre-data',
+  phase: 'after-loop' | 'rolled-back' | 'committed',
+  counts: Readonly<Record<'schema' | 'r' | 'p' | 'S' | 'function', number>>,
+) {
+  try {
+    await writeFile(
+      join(tmpdir(), `backup-alter-${mode}-${phase}.json`),
+      JSON.stringify({
+        schemaVersion: 1,
+        mode,
+        phase,
+        counts,
+        total: Object.values(counts).reduce((sum, count) => sum + count, 0),
+      }) + '\n',
+      { mode: 0o600, flag: 'wx' },
+    );
+  } catch {
+    // Diagnostic failures must not replace the original transaction outcome.
+  }
+}
+// Only catalog metadata is recorded. The original assertion remains authoritative even
+// if private diagnostic I/O is unavailable; no function definitions or source bodies enter it.
+function recordDrillCatalogMismatch(
+  entry: DrillCatalogEntry,
+  key: 'constraints' | 'triggers' | 'policies',
+  actualFact: unknown,
+  sourceFacts: unknown[],
+) {
+  const actualJson = JSON.stringify(actualFact);
+  const sourceJson = JSON.stringify(sourceFacts);
+  const digest = (value: string) => createHash('sha256').update(value).digest('hex');
+  const diagnostic = {
+    schemaVersion: 1,
+    stage: 'partial_catalog_fact_comparison',
+    object: {
+      schema: entry.schema,
+      kind: entry.kind,
+      name: entry.name,
+      identity: Buffer.byteLength(entry.identity, 'utf8') <= 256 ? entry.identity : null,
+      identitySha256: digest(entry.identity),
+    },
+    key,
+    actualFactSha256: digest(actualJson),
+    sourceFactsSha256: digest(sourceJson),
+    actualFact: Buffer.byteLength(actualJson, 'utf8') <= 8192 ? actualFact : null,
+    sourceFacts: Buffer.byteLength(sourceJson, 'utf8') <= 16384 ? sourceFacts : null,
+    comparisonUnchanged: true,
+  };
+  try {
+    writeFileSync(
+      join(tmpdir(), 'backup-catalog-mismatch.json'),
+      JSON.stringify(diagnostic) + '\n',
+      {
+        mode: 0o600,
+        flag: 'wx',
+      },
+    );
+  } catch {
+    // Preserve the existing exact-comparison failure, including on diagnostic path collision.
+  }
+}
+function compareDrillCatalog(
+  target: DrillCatalog,
+  source: DrillCatalog,
+  mode: 'full' | 'pre-data',
+) {
+  const sourceExtensions: unknown = JSON.parse(source.extensions);
+  const targetExtensions: unknown = JSON.parse(target.extensions);
+  assert.ok(Array.isArray(sourceExtensions) && Array.isArray(targetExtensions));
+  assert.equal(targetExtensions.length, sourceExtensions.length);
+  const allowedImportOwner = (actual: unknown, original: unknown) =>
+    actual === original || (original === 'drill_owner' && actual === 'drill_admin');
+  for (const [index, value] of targetExtensions.entries()) {
+    const original: unknown = sourceExtensions[index];
+    assert.ok(value && typeof value === 'object' && original && typeof original === 'object');
+    const a = Object.fromEntries(Object.entries(value)),
+      b = Object.fromEntries(Object.entries(original));
+    assert.ok(allowedImportOwner(a.owner, b.owner));
+    assert.ok(Array.isArray(a.members) && Array.isArray(b.members));
+    assert.equal(a.members.length, b.members.length);
+    for (const [memberIndex, member] of a.members.entries()) {
+      const sourceMember: unknown = b.members[memberIndex];
+      assert.ok(
+        member && typeof member === 'object' && sourceMember && typeof sourceMember === 'object',
+      );
+      const x = Object.fromEntries(Object.entries(member)),
+        y = Object.fromEntries(Object.entries(sourceMember));
+      assert.ok(allowedImportOwner(x.owner, y.owner));
+    }
+  }
+  assert.equal(extensionImportFacts(target.extensions), extensionImportFacts(source.extensions));
+  const expected = new Map(source.entries.map((entry) => [drillCatalogKey(entry), entry]));
+  const withoutOwner = ({ owner: _owner, ...entry }: DrillCatalogEntry) => entry;
+  if (mode === 'full') {
+    assert.equal(target.migrations, source.migrations);
+    assert.deepEqual(target.entries.map(withoutOwner), source.entries.map(withoutOwner));
+    return;
+  }
+  // Pre-data omits indexes, FK/PK, policies and triggers. Every actual present object must
+  // match its source identity; all source schemas/tables/sequences/functions are mandatory.
+  assert.equal(target.migrations, '[]');
+  const mandatory = source.entries.filter((entry) => entry.kind !== 'i' && entry.kind !== 'I');
+  assert.deepEqual(target.entries.map(drillCatalogKey), mandatory.map(drillCatalogKey));
+  for (const entry of target.entries) {
+    const original = expected.get(drillCatalogKey(entry));
+    assert.ok(original);
+    if (entry.kind === 'function') assert.equal(entry.facts, original.facts);
+    else if (entry.kind !== 'schema') {
+      const actual: unknown = JSON.parse(entry.facts),
+        baseline: unknown = JSON.parse(original.facts);
+      assert.ok(actual && typeof actual === 'object' && baseline && typeof baseline === 'object');
+      const a = Object.fromEntries(Object.entries(actual)),
+        b = Object.fromEntries(Object.entries(baseline));
+      for (const key of ['columns', 'sequence', 'sequenceLinks', 'index'])
+        assert.deepEqual(a[key], b[key]);
+      for (const key of ['constraints', 'triggers', 'policies'] as const) {
+        assert.ok(Array.isArray(a[key]) && Array.isArray(b[key]));
+        for (const fact of a[key]) {
+          const matches = b[key].some(
+            (expectedFact: unknown) => JSON.stringify(expectedFact) === JSON.stringify(fact),
+          );
+          if (!matches) recordDrillCatalogMismatch(entry, key, fact, b[key]);
+          assert.ok(matches);
+        }
+      }
+      assert.ok(a.rls === false || a.rls === b.rls);
+      assert.ok(a.force === false || a.force === b.force);
+    }
+  }
+}
+async function transferDrillTargetMetadata(
+  admin: Pool,
+  owner: Pool,
+  baseline: DrillCatalog,
+  baselineAcl: readonly DrillRawAcl[],
+  mode: 'full' | 'pre-data',
+) {
+  const client = await admin.connect();
+  const alterCounts = { schema: 0, r: 0, p: 0, S: 0, function: 0 };
+  try {
+    await client.query('BEGIN');
+    await client.query("SELECT set_config('lock_timeout','3000',true)");
+    await client.query('SELECT pg_advisory_xact_lock(77210,1)');
+    const databaseOwner = await client.query(
+      `SELECT datname,pg_get_userbyid(datdba) AS owner FROM pg_database WHERE datname=current_database()`,
+    );
+    assert.ok(
+      databaseOwner.rows[0]?.datname === 'drill_partial' ||
+        databaseOwner.rows[0]?.datname === 'drill_restore',
+    );
+    assert.equal(databaseOwner.rows[0]?.owner, 'drill_owner');
+    const before = await captureDrillCatalog(client);
+    const beforeAcl = await captureDrillRawAcl(client);
+    await recordDrillAclWitness(beforeAcl, mode === 'full' ? 'before-full' : 'before-pre-data');
+    const rowCounts = new Map<string, string>();
+    for (const entry of before.entries.filter((row) => row.kind === 'r' || row.kind === 'p')) {
+      const sql = await client.query(
+        `SELECT format('SELECT count(*)::text AS count FROM %I.%I',$1::text,$2::text) AS command`,
+        [entry.schema, entry.name],
+      );
+      const command: unknown = sql.rows[0]?.command;
+      assert.ok(typeof command === 'string');
+      const count: unknown = (await client.query(command)).rows[0]?.count;
+      assert.ok(typeof count === 'string' && /^[0-9]+$/.test(count));
+      rowCounts.set(drillCatalogKey(entry), count);
+    }
+    compareDrillCatalog(before, baseline, mode);
+    for (const kind of ['schema', 'r', 'p', 'S', 'function'] as const) {
+      for (const entry of before.entries.filter((row) => row.kind === kind)) {
+        const command = await client.query(
+          `SELECT CASE WHEN $1::text='schema' THEN format('ALTER SCHEMA %I OWNER TO drill_owner',$2::text)
+           WHEN $1::text='function' THEN format('ALTER FUNCTION %I.%I(%s) OWNER TO drill_owner',$2::text,$3::text,$4::text)
+           WHEN $1::text='S' THEN format('ALTER SEQUENCE %I.%I OWNER TO drill_owner',$2::text,$3::text)
+           ELSE format('ALTER TABLE %I.%I OWNER TO drill_owner',$2::text,$3::text) END AS command`,
+          [entry.kind, entry.schema, entry.name, entry.identity],
+        );
+        const statement: unknown = command.rows[0]?.command;
+        assert.ok(typeof statement === 'string');
+        await client.query(statement);
+        alterCounts[kind] += 1;
+      }
+    }
+    await recordDrillAlterCount(mode, 'after-loop', alterCounts);
+    const after = await captureDrillCatalog(client);
+    const afterAcl = await captureDrillRawAcl(client);
+    await recordDrillAclWitness(afterAcl, mode === 'full' ? 'after-full' : 'after-pre-data');
+    assertNativeDrillAclProjection(beforeAcl, afterAcl);
+    assertSourceDrillEffectiveAcl(baselineAcl, afterAcl);
+    assert.deepEqual(
+      after.entries.map(({ owner: _owner, ...row }) => row),
+      before.entries.map(({ owner: _owner, ...row }) => row),
+    );
+    assert.equal(after.extensions, before.extensions);
+    assert.equal(after.migrations, before.migrations);
+    assert.ok(after.entries.every((entry) => entry.owner === 'drill_owner'));
+    const dependentTypes = await client.query(
+      `SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid=t.typnamespace
+      WHERE n.nspname=ANY($1::text[]) AND t.typowner<>'drill_owner'::regrole
+      AND NOT EXISTS(SELECT 1 FROM pg_depend d WHERE d.classid='pg_type'::regclass AND d.objid=t.oid AND d.deptype='e')`,
+      [drillUserSchemas],
+    );
+    assert.equal(dependentTypes.rowCount, 0);
+    for (const entry of after.entries.filter((row) => row.kind === 'r' || row.kind === 'p')) {
+      const sql = await client.query(
+        `SELECT format('SELECT count(*)::text AS count FROM %I.%I',$1::text,$2::text) AS command`,
+        [entry.schema, entry.name],
+      );
+      const command: unknown = sql.rows[0]?.command;
+      assert.ok(typeof command === 'string');
+      assert.equal(
+        (await client.query(command)).rows[0]?.count,
+        rowCounts.get(drillCatalogKey(entry)),
+      );
+    }
+    await client.query('COMMIT');
+    await recordDrillAlterCount(mode, 'committed', alterCounts);
+  } catch (error) {
+    await client.query('ROLLBACK');
+    await recordDrillAlterCount(mode, 'rolled-back', alterCounts);
+    throw error;
+  } finally {
+    client.release();
+  }
+  if (mode === 'full') {
+    assertDrillDefinerPolicyRoster(baseline);
+    const ownerClient = await owner.connect();
+    try {
+      await ownerClient.query('BEGIN');
+      await ownerClient.query('SELECT pg_advisory_xact_lock(77210,1)');
+      const identity = await ownerClient.query(
+        `SELECT current_user AS role,session_user AS session_role,rolsuper,rolbypassrls,rolcreatedb,rolcreaterole FROM pg_roles WHERE rolname=current_user`,
+      );
+      assert.deepEqual(identity.rows, [
+        {
+          role: 'drill_owner',
+          session_role: 'drill_owner',
+          rolsuper: false,
+          rolbypassrls: false,
+          rolcreatedb: false,
+          rolcreaterole: false,
+        },
+      ]);
+      const result = await ownerClient.query(
+        'SELECT public.retarget_definer_policies() AS touched',
+      );
+      assert.equal(result.rows[0]?.touched, 14);
+      const retargeted = await captureDrillCatalog(ownerClient);
+      assertDrillDefinerPolicyRoster(retargeted);
+      compareDrillCatalog(retargeted, baseline, 'full');
+      assert.ok(retargeted.entries.every((entry) => entry.owner === 'drill_owner'));
+      await ownerClient.query('COMMIT');
+    } catch (error) {
+      await ownerClient.query('ROLLBACK');
+      throw error;
+    } finally {
+      ownerClient.release();
+    }
   }
 }
 
@@ -2981,6 +3730,12 @@ async function execute() {
         distanceMeters: 0,
       },
     });
+    const sourceCatalog = await captureDrillCatalog(sourceAdminPool);
+    assertDrillDefinerPolicyRoster(sourceCatalog);
+    const sourceAcl = await captureDrillRawAcl(sourceAdminPool);
+    await recordDrillAclWitness(sourceAcl, 'source');
+    const sourceRegistry: unknown = JSON.parse(sourceCatalog.migrations);
+    assert.ok(Array.isArray(sourceRegistry) && sourceRegistry.length === 105);
     run(bin, 'pg_dump', [
       '-h',
       directory,
@@ -2992,6 +3747,18 @@ async function execute() {
       '--file',
       archive,
     ]);
+    await writeFile(
+      join(directory, 'catalog-witness.json'),
+      JSON.stringify({
+        schemaVersion: 105,
+        catalogSha256: createHash('sha256').update(JSON.stringify(sourceCatalog)).digest('hex'),
+        archiveSha256: createHash('sha256')
+          .update(await readFile(archive))
+          .digest('hex'),
+        scope: 'Local synthetic catalog witness only; not full authenticated restore proof',
+      }),
+      { mode: 0o600, flag: 'wx' },
+    );
     // M2-01x: an upload that lands between the database dump and the object-archive copy.
     // The tenant erased right after it records a new activity and uploads its track through
     // the real lifecycle; the rows go into the source cluster after the dump was taken, the
@@ -3593,6 +4360,10 @@ async function execute() {
     // Target archive import still uses the privileged historical archive path. This source-owner
     // slice does not establish a current-schema active-trigger owner importer or admission proof.
     await admin.query('CREATE DATABASE drill_partial OWNER drill_owner');
+    await recordDrillAclWitness(
+      await captureDrillRawAcl(pool('drill_partial')),
+      'pre-import-partial',
+    );
     run(bin, 'pg_restore', [
       '-h',
       directory,
@@ -3607,6 +4378,14 @@ async function execute() {
       archive,
     ]);
     const partial = pool('drill_partial');
+    await transferDrillTargetMetadata(
+      partial,
+      pool('drill_partial', 'drill_owner'),
+      sourceCatalog,
+      sourceAcl,
+      'pre-data',
+    );
+    checks.push('partial_archive_target_user_metadata_plain_owner_no_data_replay_authority');
     const partialClient = await partial.connect();
     try {
       await partialClient.query('BEGIN');
@@ -3625,6 +4404,7 @@ async function execute() {
       partialClient.release();
     }
     checks.push('course_deletion_replay_refuses_a_cluster_whose_data_is_not_yet_restored');
+    await recordDrillAclWitness(await captureDrillRawAcl(pool('drill_restore')), 'pre-import-full');
     run(bin, 'pg_restore', [
       '-h',
       directory,
@@ -3639,6 +4419,16 @@ async function execute() {
     ]);
     await cp(objectArchive, restoredObjectRoot, { recursive: true, errorOnExist: true });
     const restored = pool('drill_restore');
+    await transferDrillTargetMetadata(
+      restored,
+      pool('drill_restore', 'drill_owner'),
+      sourceCatalog,
+      sourceAcl,
+      'full',
+    );
+    checks.push('full_archive_target_user_metadata_plain_owner_exact_catalog_retarget');
+    // Protected maintenance below still uses the historical mixed administrator Pool.
+    // Metadata transfer does not establish leased owner replay or authenticated reopening.
     // M2-01s: the archive predates the erasure, so before any replay the restored cluster
     // holds every course row and every object the erased tenant had. This is what makes
     // the checks after the replay mean something.
