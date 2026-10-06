@@ -1,3 +1,9 @@
+import {
+  requireAppAdmission,
+  lockAppAdmission,
+  AppConsentRequiredError,
+  AppAdmissionBindingError,
+} from './app-admission.js';
 import { z } from 'zod';
 import { TenantErasedError, type Database, type Transaction } from './database.js';
 
@@ -123,6 +129,14 @@ async function lockedRow(tx: Transaction) {
     [tx.athleteId],
   );
   return result.rows[0] ? connectionRow.parse(result.rows[0]) : null;
+}
+async function appRevision(tx: Transaction): Promise<number | null> {
+  try {
+    return (await requireAppAdmission(tx)).revision;
+  } catch (error) {
+    if (error instanceof AppConsentRequiredError) return null;
+    throw error;
+  }
 }
 const leaseLive = (row: z.infer<typeof connectionRow>, now: Date) =>
   row.lease_until !== null && row.lease_until > now;
@@ -315,10 +329,12 @@ export function createGarminUnofficialStore(database: Database) {
       now: Date,
     ): Promise<'requested' | 'not_connected' | 'blocked' | 'running'> {
       return database.tenant(athleteId, async (tx) => {
+        await lockAppAdmission(tx);
         const row = await lockedRow(tx);
         if (row === null || row.state !== 'connected') return 'not_connected' as const;
         if (row.blocked_until !== null && row.blocked_until > now) return 'blocked' as const;
         if (leaseLive(row, now)) return 'running' as const;
+        await requireAppAdmission(tx);
         await tx.query(
           'UPDATE garmin_unofficial_connection SET run_requested_at=coalesce(run_requested_at,$2) WHERE athlete_id=$1',
           [athleteId, now],
@@ -338,6 +354,7 @@ export function createGarminUnofficialStore(database: Database) {
       now: Date;
     }): Promise<{
       trigger: 'manual' | 'scheduled';
+      appRevision: number;
       sessionGeneration: number;
       encryptedSession: GarminUnofficialCipher;
       profileHash: string;
@@ -346,6 +363,7 @@ export function createGarminUnofficialStore(database: Database) {
       z.uuid().parse(input.leaseId);
       return unlessErased(null, () =>
         database.tenant(input.athleteId, async (tx) => {
+          await lockAppAdmission(tx);
           const row = await lockedRow(tx);
           if (row === null || row.state !== 'connected' || row.encrypted_session === null)
             return null;
@@ -358,6 +376,8 @@ export function createGarminUnofficialStore(database: Database) {
             (row.next_scheduled_at === null || row.next_scheduled_at <= input.now);
           const trigger = row.run_requested_at !== null ? 'manual' : scheduled ? 'scheduled' : null;
           if (trigger === null) return null;
+          const pinnedAppRevision = await appRevision(tx);
+          if (pinnedAppRevision === null) return null;
           // A run whose process died keeps its row; close it before starting the next one.
           await tx.query(
             "UPDATE garmin_unofficial_run SET state='failed_transient',finished_at=greatest(started_at,$2) WHERE athlete_id=$1 AND state='running'",
@@ -377,6 +397,7 @@ export function createGarminUnofficialStore(database: Database) {
           );
           return {
             trigger,
+            appRevision: pinnedAppRevision,
             sessionGeneration: row.session_generation,
             encryptedSession: row.encrypted_session,
             profileHash: row.profile_hash,
@@ -386,9 +407,16 @@ export function createGarminUnofficialStore(database: Database) {
     },
 
     /** True while this run still holds a connected lease; false after a disconnect. */
-    async holdsRun(athleteId: string, leaseId: string, now: Date): Promise<boolean> {
+    async holdsRun(
+      athleteId: string,
+      leaseId: string,
+      now: Date,
+      expectedAppRevision: number,
+    ): Promise<boolean> {
+      z.number().int().min(1).max(2147483647).parse(expectedAppRevision);
       return unlessErased(false, () =>
         database.tenant(athleteId, async (tx) => {
+          if ((await appRevision(tx)) !== expectedAppRevision) return false;
           const result = await tx.query(
             "SELECT 1 FROM garmin_unofficial_connection WHERE athlete_id=$1 AND lease_id=$2 AND lease_until>$3 AND state='connected'",
             [athleteId, leaseId, now],
@@ -550,10 +578,29 @@ export function createGarminUnofficialStore(database: Database) {
       outcome: 'imported' | 'unchanged' | 'stale' | 'suppressed';
       sources: readonly { kind: string; sourceId: string }[];
       now: Date;
+      appRevision: number;
     }): Promise<void> {
+      z.number().int().min(1).max(2147483647).parse(input.appRevision);
       garminActivityIdSchema.parse(input.garminActivityId);
       await unlessErased(undefined, () =>
         database.tenant(input.athleteId, async (tx) => {
+          await lockAppAdmission(tx);
+          const prior = await tx.query(
+            'SELECT 1 FROM garmin_activity_ledger WHERE athlete_id=$1 AND garmin_activity_id=$2',
+            [input.athleteId, input.garminActivityId],
+          );
+          let completeReplay = prior.rowCount === 1;
+          for (const source of input.sources) {
+            const link = await tx.query(
+              'SELECT 1 FROM garmin_activity_ledger_source WHERE athlete_id=$1 AND garmin_activity_id=$2 AND kind=$3 AND source_id=$4',
+              [input.athleteId, input.garminActivityId, source.kind, source.sourceId],
+            );
+            if (link.rowCount !== 1) completeReplay = false;
+          }
+          if (completeReplay) return;
+          const admission = await requireAppAdmission(tx);
+          if (admission.revision !== input.appRevision)
+            throw new AppAdmissionBindingError('STALE_APP_ADMISSION');
           await tx.query(
             'INSERT INTO garmin_activity_ledger(athlete_id,garmin_activity_id,provider,official,outcome,collected_at) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING',
             [

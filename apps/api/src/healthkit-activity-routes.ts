@@ -8,7 +8,12 @@ import {
   type HealthKitActivityRepository,
 } from '@workout/server-persistence/healthkit-activity';
 import type { Principal } from './ports.js';
-import { emptyQuery, input, ProductRequestError } from './product-boundary.js';
+import {
+  emptyQuery,
+  input,
+  command as executeCommand,
+  ProductRequestError,
+} from './product-boundary.js';
 
 const statusByCode = {
   CONSENT_REQUIRED: 403,
@@ -28,14 +33,14 @@ export function registerHealthKitActivityRoutes(
     input(emptyQuery, request.query);
     const owner = principal(request);
     const command = input(healthKitCreateActivitySchema, request.body);
-    try {
-      return healthKitCreateActivityResultSchema.parse(
-        await repository.createActivity(owner.athleteId, command),
-      );
-    } catch (error) {
-      if (error instanceof HealthKitActivityError)
-        throw new ProductRequestError(statusByCode[error.code], error.code);
-      throw error;
-    }
+    return healthKitCreateActivityResultSchema.parse(
+      await executeCommand(
+        () => repository.createActivity(owner.athleteId, command),
+        (error) =>
+          error instanceof HealthKitActivityError
+            ? new ProductRequestError(statusByCode[error.code], error.code)
+            : undefined,
+      ),
+    );
   });
 }

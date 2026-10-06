@@ -1,6 +1,7 @@
 import { Writable } from 'node:stream';
 import { afterEach, expect, it, vi } from 'vitest';
 import { HealthKitIngestionError } from '@workout/server-persistence/healthkit-ingestion';
+import { AppConsentRequiredError } from '@workout/server-persistence/app-admission';
 import { createApi } from '../src/app.js';
 
 const athleteId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
@@ -168,4 +169,18 @@ it('rejects legacy v1 and missing claims before any storage call', async () => {
     expect(response.json().error.code).toBe(code);
   }
   expect(ingestBatch).not.toHaveBeenCalled();
+});
+
+it('returns stable app-consent rejection without fabricating a successful ingestion result', async () => {
+  const { app, ingestBatch } = setup();
+  ingestBatch.mockRejectedValue(new AppConsentRequiredError());
+  const response = await app.inject({
+    method: 'POST',
+    url: '/bff/v1/healthkit/workout-batches',
+    headers: { authorization: 'Bearer native-token', 'x-healthkit-consent-revision': '1' },
+    payload: batch,
+  });
+  expect(response.statusCode).toBe(409);
+  expect(response.json()).toMatchObject({ error: { code: 'APP_CONSENT_REQUIRED' } });
+  expect(response.body).not.toContain('synthetic');
 });

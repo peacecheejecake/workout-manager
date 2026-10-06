@@ -182,6 +182,7 @@ export function memoryStore(): GarminUnofficialStorePort & {
       runs.push({ athleteId, id: runId, trigger, state: 'running', startedAt: now });
       return {
         trigger,
+        appRevision: 1,
         sessionGeneration: value['generation'] as number,
         encryptedSession: value['session'] as GarminSealedCredential,
         profileHash: value['profileHash'] as string,

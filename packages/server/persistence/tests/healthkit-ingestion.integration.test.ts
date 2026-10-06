@@ -49,10 +49,11 @@ function workout(sampleId = randomUUID()): HealthKitIngestionBatch {
   };
 }
 
+// Explicit synthetic positive fixture: app processing and individual HealthKit permissions.
 async function grantConsent(athleteId: string) {
   await database.tenant(athleteId, (tx) =>
     tx.query(
-      "INSERT INTO consent(athlete_id,kind,granted,revision) VALUES($1,'healthkit',true,1)",
+      "INSERT INTO consent(athlete_id,kind,granted,revision) VALUES($1,'healthkit',true,1),($1,'app',true,1)",
       [athleteId],
     ),
   );

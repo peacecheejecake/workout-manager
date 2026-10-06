@@ -1,4 +1,4 @@
-import { requireAppAdmission } from './app-admission.js';
+import { requireAppAdmission, AppAdmissionBindingError } from './app-admission.js';
 import { activityInstantSql } from './activity-calendar.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
@@ -58,12 +58,22 @@ async function event(tx: Transaction, id: string, revision: number, action: stri
     payload: { activityId: id, revision, action },
   });
 }
+const activityImportExecutionSchema = z.strictObject({
+  expectedAppRevision: z.number().int().positive().max(2147483647),
+});
+/** Server-owned execution basis; never a field in the browser import command. */
+export type ActivityImportExecution = z.infer<typeof activityImportExecutionSchema>;
+
 export interface ActivityRepository {
   createManualActivity(
     athleteId: string,
     input: ManualActivityCreate,
   ): Promise<ManualActivityResult>;
-  importActivity(athleteId: string, input: ActivityImport): Promise<ActivityImportResult>;
+  importActivity(
+    athleteId: string,
+    input: ActivityImport,
+    execution?: ActivityImportExecution,
+  ): Promise<ActivityImportResult>;
   listActivities(athleteId: string, input?: Partial<ActivityListQuery>): Promise<ActivityList>;
   getActivityDetails(athleteId: string, id: string): Promise<ActivityDetailsRead | null>;
   getActivity(athleteId: string, id: string): Promise<Activity | null>;
@@ -164,7 +174,7 @@ export function createActivityRepository(
         return result;
       });
     },
-    importActivity(athleteId, input) {
+    importActivity(athleteId, input, execution) {
       const command = importActivitySchema.parse(input);
       const hash = digest(command);
       return database.tenant(athleteId, async (tx) => {
@@ -178,7 +188,13 @@ export function createActivityRepository(
             throw new PersistenceConflict('IDEMPOTENCY_CONFLICT');
           return activityImportResultSchema.parse(previous.rows[0]['result']);
         }
-        await requireAppAdmission(tx);
+        // Exact committed receipts above retain their original result. For a new
+        // provider import, check the lease epoch in the same transaction as writes.
+        const basis =
+          execution === undefined ? undefined : activityImportExecutionSchema.parse(execution);
+        const admission = await requireAppAdmission(tx);
+        if (basis !== undefined && admission.revision !== basis.expectedAppRevision)
+          throw new AppAdmissionBindingError('STALE_APP_ADMISSION');
         const source = command.source;
         const head = await tx.query(
           `SELECT s.activity_id,s.source_revision,c.revision,c.deleted,EXISTS(SELECT 1 FROM activity_suppression d WHERE d.athlete_id=s.athlete_id AND d.kind=s.kind AND d.source_id=s.source_id) AS suppressed FROM activity_source_head s JOIN activity_canonical c ON c.athlete_id=s.athlete_id AND c.id=s.activity_id WHERE s.athlete_id=$1 AND s.kind=$2 AND s.source_id=$3`,

@@ -1,6 +1,7 @@
 import { Writable } from 'node:stream';
 import { afterEach, expect, it, vi } from 'vitest';
 import { HealthKitBindingError } from '@workout/server-persistence/healthkit-binding';
+import { AppConsentRequiredError } from '@workout/server-persistence/app-admission';
 import { createApi } from '../src/app.js';
 
 const athleteId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
@@ -133,4 +134,18 @@ it('maps stale source and reused idempotency keys to stable conflicts', async ()
     expect(response.statusCode).toBe(409);
     expect(response.json().error.code).toBe(code);
   }
+});
+
+it('returns stable app-consent rejection without fabricating a successful binding result', async () => {
+  const { app, bindExisting } = setup();
+  bindExisting.mockRejectedValue(new AppConsentRequiredError());
+  const response = await app.inject({
+    method: 'POST',
+    url: '/bff/v1/healthkit/workout-bindings',
+    headers: { authorization: 'Bearer native-token', 'x-healthkit-consent-revision': '1' },
+    payload: command,
+  });
+  expect(response.statusCode).toBe(409);
+  expect(response.json()).toMatchObject({ error: { code: 'APP_CONSENT_REQUIRED' } });
+  expect(response.body).not.toContain('synthetic');
 });

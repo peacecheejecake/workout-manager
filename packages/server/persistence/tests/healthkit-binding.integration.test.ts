@@ -76,10 +76,11 @@ async function createTarget(athleteId: string, kind: 'manual' | 'fit' | 'fixture
   return { activityId, sourceId, original };
 }
 
+// Explicit synthetic positive fixture: app processing and individual HealthKit permissions.
 async function grantConsent(athleteId: string) {
   await ownerTenant(athleteId, (client) =>
     client.query(
-      "INSERT INTO consent(athlete_id,kind,granted,revision) VALUES($1,'healthkit',true,1)",
+      "INSERT INTO consent(athlete_id,kind,granted,revision) VALUES($1,'healthkit',true,1),($1,'app',true,1)",
       [athleteId],
     ),
   );
