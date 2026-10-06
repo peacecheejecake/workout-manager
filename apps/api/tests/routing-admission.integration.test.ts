@@ -57,6 +57,9 @@ const runtimeUrl = process.env['TEST_DATABASE_URL'];
 if (!adminUrl || !runtimeUrl)
   throw new Error('Isolated real PostgreSQL required: run pnpm test:integration');
 const admin = new Pool({ connectionString: adminUrl });
+const migrationOwnerUrl = process.env['TEST_DATABASE_OWNER_URL'];
+if (!migrationOwnerUrl) throw new Error('Explicit plain migration owner required for maintenance');
+const migrationOwner = new Pool({ connectionString: migrationOwnerUrl, max: 1 });
 
 const realAnswer = await readFile(
   new URL(
@@ -138,7 +141,7 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
-  await admin.query('DELETE FROM routing_admission');
+  await migrationOwner.query('DELETE FROM routing_admission');
   directory = await mkdtemp(join(tmpdir(), 'routing-admission-'));
   const paths = {
     graph: join(directory, 'graph'),
@@ -203,6 +206,7 @@ afterEach(async () => {
 });
 
 afterAll(async () => {
+  await migrationOwner.end();
   await admin.end();
 });
 

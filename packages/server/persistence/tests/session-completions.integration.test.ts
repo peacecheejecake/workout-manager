@@ -24,6 +24,17 @@ beforeAll(async () => {
   );
   database = createDatabase({ connectionString: runtimeUrl, max: 6 });
 });
+
+// Explicit synthetic purpose grant for these pre-existing domain regression tests.
+// No production account is granted implicitly; admission denial has its own suite.
+async function grantedAthlete(): Promise<string> {
+  const athlete = randomUUID();
+  await admin.query(
+    "WITH scope AS MATERIALIZED (SELECT set_config('app.athlete_id',$1,true)) INSERT INTO consent(athlete_id,kind,granted,revision) SELECT $1,'app',true,1 FROM scope",
+    [athlete],
+  );
+  return athlete;
+}
 afterAll(async () => {
   await database?.close();
   await admin.end();
@@ -80,7 +91,7 @@ const command = (version: string) => ({
 });
 describe('user session completion ledger', () => {
   it('records future-session confirmation, duplicate replay, correction history and export without creating actuals', async () => {
-    const athlete = randomUUID(),
+    const athlete = await grantedAthlete(),
       saved = await seed(athlete);
     const repo = createSessionCompletionRepository(database, {
       now: () => new Date('2026-01-01T00:00:00Z'),
@@ -129,7 +140,7 @@ describe('user session completion ledger', () => {
       3, 2, 1,
     ]);
     const exported = await createOperationsRepository(database).exportAccount(athlete);
-    if (exported.schemaVersion !== 30) throw new Error('Expected completion export v30');
+    if (exported.schemaVersion !== 33) throw new Error('Expected completion export v33');
     expect(exported.data.sessionCompletions).toHaveLength(1);
     expect(exported.data.sessionCompletionRevisions).toHaveLength(3);
     expect(
@@ -149,7 +160,7 @@ describe('user session completion ledger', () => {
     }
   });
   it('blocks schedule identity changes and deletion while allowing new clone IDs and independent retraction', async () => {
-    const athlete = randomUUID(),
+    const athlete = await grantedAthlete(),
       saved = await seed(athlete);
     const repo = createSessionCompletionRepository(database);
     const planner = createPlanningRepository(database);
@@ -213,7 +224,7 @@ describe('user session completion ledger', () => {
     expect(moved.draft.sessions[0]?.date).toBe('2080-01-03');
   });
   it('serializes competing completion and plan movement, and isolates tenants', async () => {
-    const athlete = randomUUID(),
+    const athlete = await grantedAthlete(),
       saved = await seed(athlete);
     const repo = createSessionCompletionRepository(database);
     const planner = createPlanningRepository(database);
@@ -231,7 +242,7 @@ describe('user session completion ledger', () => {
       }),
     ]);
     expect(race.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
-    const other = randomUUID();
+    const other = await grantedAthlete();
     expect(await repo.read(other, 'session')).toBeNull();
     expect((await repo.list(other)).items).toEqual([]);
     await expect(repo.write(other, 'session', command(saved.id))).rejects.toMatchObject({
@@ -242,7 +253,7 @@ describe('user session completion ledger', () => {
     ).rejects.toMatchObject({ code: 'SESSION_COMPLETION_NOT_FOUND' });
   });
   it('rolls back the entire report, collection and receipt if outbox insertion fails', async () => {
-    const athlete = randomUUID(),
+    const athlete = await grantedAthlete(),
       saved = await seed(athlete, 'x'.repeat(200));
     const broken = createSessionCompletionRepository({
       ...database,
@@ -267,7 +278,7 @@ describe('user session completion ledger', () => {
 });
 
 it('serializes distinct confirmation keys and rejects stale report or plan revisions', async () => {
-  const athlete = randomUUID(),
+  const athlete = await grantedAthlete(),
     saved = await seed(athlete);
   const repo = createSessionCompletionRepository(database);
   const results = await Promise.allSettled([
@@ -308,7 +319,7 @@ it('serializes distinct confirmation keys and rejects stale report or plan revis
 });
 
 it('bounds history to the latest 100 reports and retains retracted history after removing the planned session', async () => {
-  const athlete = randomUUID(),
+  const athlete = await grantedAthlete(),
     saved = await seed(athlete);
   const repo = createSessionCompletionRepository(database);
   let revision: number | null = null;
@@ -329,7 +340,7 @@ it('bounds history to the latest 100 reports and retains retracted history after
   );
   expect(read?.report).toEqual(read?.history[0]);
   expect(read?.report?.status).toBe('retracted');
-  const other = randomUUID();
+  const other = await grantedAthlete();
   await database.tenant(other, async (tx) => {
     for (const table of [
       'session_completion',
@@ -358,7 +369,7 @@ it('bounds history to the latest 100 reports and retains retracted history after
   expect(await repo.read(athlete, 'session')).toBeNull();
   expect((await repo.list(athlete)).items).toEqual([]);
   const artifact = await createOperationsRepository(database).exportAccount(athlete);
-  if (artifact.schemaVersion !== 30) throw new Error('Expected export v30');
+  if (artifact.schemaVersion !== 33) throw new Error('Expected export v33');
   expect(artifact.data.sessionCompletions).toHaveLength(1);
   expect(artifact.data.sessionCompletionRevisions).toHaveLength(102);
 });

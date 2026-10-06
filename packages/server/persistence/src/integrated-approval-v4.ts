@@ -1,3 +1,4 @@
+import { requireAppAdmission, requireAppBinding } from './app-admission.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 
@@ -147,6 +148,7 @@ async function captureBasis(
   policyVersion: string,
 ): Promise<IntegratedCoachingBasisV023> {
   const input = basisInputSchema.parse(raw);
+  await requireAppAdmission(tx);
   const result = await tx.query(
     `SELECT e.body AS evidence_body,t.revision AS conversation_revision,
        c.revision AS consent_revision,c.granted AS consent_granted,
@@ -194,6 +196,7 @@ async function captureBasis(
     ],
   );
   if (!result.rows[0]) throw new IntegratedApprovalV4Error('STALE_BASIS');
+  await requireAppBinding(tx, 'evidence', input.evidenceSnapshotId);
   const row = capturedBasisRowSchema.parse(result.rows[0]);
   if (row.training_head_conflict) throw new IntegratedApprovalV4Error('STALE_BASIS');
   if (row.consent_granted !== true || row.consent_revision === null)
@@ -637,6 +640,7 @@ export function createIntegratedApprovalV4Repository(
           if (!candidate) throw new IntegratedApprovalV4Error('CANDIDATE_UNAVAILABLE');
           return candidate;
         }
+        await requireAppBinding(tx, 'evidence', input.basis.evidenceSnapshotId);
         const createdAt = iso(
           (await tx.query('SELECT statement_timestamp() AS at')).rows[0]?.['at'],
         );
@@ -675,8 +679,10 @@ export function createIntegratedApprovalV4Repository(
       return guarded(athleteId, async (tx) => {
         const prior = await replay(tx, key, request);
         if (prior !== null) return integratedApprovalResultV4Schema.parse(prior);
+        await requireAppAdmission(tx);
         const candidate = await readCandidate(tx, input.candidateId);
         if (!candidate) throw new IntegratedApprovalV4Error('CANDIDATE_UNAVAILABLE');
+        await requireAppBinding(tx, 'integrated_candidate', input.candidateId);
         const candidateDomains = [...new Set(candidate.writes.map((write) => write.domain))].sort(
           compare,
         );
@@ -910,6 +916,10 @@ export function createIntegratedApprovalV4Repository(
           payload: result,
         });
         await finish(tx, key, request, result);
+        await tx.query('SELECT public.record_approval_app_binding($1,$2)', [
+          key,
+          input.candidateId,
+        ]);
         return result;
       });
     },

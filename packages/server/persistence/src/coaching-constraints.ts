@@ -1,3 +1,4 @@
+import { requireAppAdmission } from './app-admission.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import {
@@ -68,6 +69,7 @@ export function createCoachingConstraintRepository(
           throw new PersistenceConflict('IDEMPOTENCY_CONFLICT');
         return coachingConstraintCommandResultSchema.parse(receipt.rows[0]['result']);
       }
+      if (action !== 'remove') await requireAppAdmission(tx);
       let previousRevision = 0;
       if (id !== null) {
         const item = await tx.query(

@@ -20,6 +20,17 @@ beforeAll(async () => {
   );
   database = createDatabase({ connectionString: runtimeUrl, max: 6 });
 });
+
+// Explicit synthetic purpose grant for these pre-existing domain regression tests.
+// No production account is granted implicitly; admission denial has its own suite.
+async function grantedAthlete(): Promise<string> {
+  const athlete = randomUUID();
+  await admin.query(
+    "WITH scope AS MATERIALIZED (SELECT set_config('app.athlete_id',$1,true)) INSERT INTO consent(athlete_id,kind,granted,revision) SELECT $1,'app',true,1 FROM scope",
+    [athlete],
+  );
+  return athlete;
+}
 afterAll(async () => {
   await database?.close();
   await admin.end();
@@ -29,7 +40,7 @@ const create = (
   text = 'Private confirmed restriction',
 ) => ({ expectedHeadRevision, confirmed: true as const, text, idempotencyKey: randomUUID() });
 it('distinguishes absent from explicitly emptied constraints and replays metadata without retaining old or deleted text', async () => {
-  const athlete = randomUUID(),
+  const athlete = await grantedAthlete(),
     repo = createCoachingConstraintRepository(database),
     input = { ...create(), idempotencyKey: 'k'.repeat(200) };
   expect(await repo.list(athlete)).toEqual({ headRevision: null, items: [] });
@@ -113,7 +124,7 @@ it('distinguishes absent from explicitly emptied constraints and replays metadat
   ).rejects.toThrow('IMMUTABLE_CONSTRAINT_IDENTITY');
 });
 it('serializes competing aggregate and item revisions and concurrent final slot creation', async () => {
-  const athlete = randomUUID(),
+  const athlete = await grantedAthlete(),
     repo = createCoachingConstraintRepository(database),
     first = await repo.create(athlete, create());
   const races = await Promise.allSettled(
@@ -151,8 +162,8 @@ it('serializes competing aggregate and item revisions and concurrent final slot 
   });
 });
 it('enforces ownership and immutable identity, exports current text only, and erases head, tombstones and command history', async () => {
-  const athlete = randomUUID(),
-    other = randomUUID(),
+  const athlete = await grantedAthlete(),
+    other = await grantedAthlete(),
     repo = createCoachingConstraintRepository(database),
     first = await repo.create(athlete, create());
   expect(await repo.list(other)).toEqual({ headRevision: null, items: [] });
@@ -196,7 +207,7 @@ it('enforces ownership and immutable identity, exports current text only, and er
   });
   const exported = await createOperationsRepository(database).exportAccount(athlete);
   expect(exported).toMatchObject({
-    schemaVersion: 30,
+    schemaVersion: 33,
     data: {
       coachingConstraints: [
         { id: first.id, revision: 2, text: 'Latest confirmed restriction', deleted: false },
@@ -217,7 +228,7 @@ it('enforces ownership and immutable identity, exports current text only, and er
     ).toBe(0);
 });
 it('rolls back both revisions, text and metadata when outbox fails, then reuses the original command key', async () => {
-  const athlete = randomUUID(),
+  const athlete = await grantedAthlete(),
     repo = createCoachingConstraintRepository(database),
     input = create();
   const broken: Database = {

@@ -358,7 +358,8 @@ test(
       await admin.query('CREATE ROLE coverage_owner LOGIN NOSUPERUSER NOBYPASSRLS');
       await admin.query('GRANT CREATE ON DATABASE postgres TO coverage_owner');
       await admin.query('GRANT CREATE ON SCHEMA public TO coverage_owner');
-      await migrate(url('coverage_owner'));
+      // This suite verifies the historical93 candidate, not current100 coverage.
+      await migrate(url('coverage_owner'), 93);
       const owner = await connect('coverage_owner');
       for (const [index, athleteId] of owners.entries())
         await owner.query(

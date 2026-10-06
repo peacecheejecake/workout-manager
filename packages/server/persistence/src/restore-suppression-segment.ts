@@ -35,7 +35,7 @@ const occurredAt = z
       Number.isFinite(Date.parse(value)),
   );
 const base = z.object({
-  schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]),
+  schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5)]),
   eventId: uuid,
   athleteId: boundedIdentifier,
   occurredAt,
@@ -97,6 +97,31 @@ const record = z
     base
       .extend({
         kind: z.literal('healthkit_consent_transition'),
+        consentPreviousRevision: revision.nullable(),
+        consentPreviousGranted: z.boolean().nullable(),
+        consentRevision: revision,
+        consentGranted: z.boolean(),
+      })
+      .strict(),
+    base
+      .extend({
+        schemaVersion: z.literal(5),
+        kind: z.literal('app_consent_transition'),
+        occurredAt: occurredAt.refine((value) => {
+          const date = value.slice(0, 10);
+          const midnight = new Date(`${date}T00:00:00Z`);
+          const hour = Number(value.slice(11, 13));
+          const minute = Number(value.slice(14, 16));
+          const second = Number(value.slice(17, 19));
+          return (
+            Number(date.slice(0, 4)) >= 1 &&
+            Number.isFinite(midnight.getTime()) &&
+            midnight.toISOString().slice(0, 10) === date &&
+            hour < 24 &&
+            minute < 60 &&
+            second < 60
+          );
+        }),
         consentPreviousRevision: revision.nullable(),
         consentPreviousGranted: z.boolean().nullable(),
         consentRevision: revision,
@@ -170,6 +195,7 @@ const record = z
         break;
       case 'healthkit_consent_transition':
       case 'ai_consent_transition':
+      case 'app_consent_transition':
         valid =
           (item.consentPreviousRevision === null) === (item.consentPreviousGranted === null) &&
           (item.consentPreviousRevision === null
@@ -222,6 +248,7 @@ const record = z
       case 'activity_deleted':
         break;
     }
+    if (item.schemaVersion === 5 && item.kind !== 'app_consent_transition') valid = false;
     if (
       item.schemaVersion === 4 &&
       item.kind !== 'race_event_deleted' &&

@@ -554,3 +554,52 @@ describe('v4 race deletion minimal records', () => {
       ).toThrow();
   });
 });
+
+it('accepts only v5 app transitions with exact nullable one-step epochs and closed payloads', () => {
+  const app = {
+    record_version: '5',
+    consent_previous_revision: null,
+    consent_previous_granted: null,
+    consent_revision: '1',
+    consent_granted: 't',
+  };
+  expect(validateSuppressionRecord(values('app_consent_transition', app))).toMatchObject({
+    schemaVersion: 5,
+    kind: 'app_consent_transition',
+    consentPreviousRevision: null,
+    consentPreviousGranted: null,
+    consentRevision: 1,
+    consentGranted: true,
+  });
+  expect(
+    validateSuppressionRecord(
+      values('app_consent_transition', {
+        ...app,
+        consent_previous_revision: '2147483646',
+        consent_previous_granted: 'f',
+        consent_revision: '2147483647',
+      }),
+    ),
+  ).toMatchObject({ consentRevision: 2147483647 });
+  for (const change of [
+    { record_version: '1' },
+    { record_version: '2' },
+    { record_version: '3' },
+    { record_version: '4' },
+    { record_version: '6' },
+    { consent_revision: '2' },
+    { consent_previous_granted: 'f' },
+    { consent_granted: null },
+    { consent_granted: 'true' },
+    { consent_previous_revision: '1', consent_previous_granted: 't', consent_revision: '3' },
+    { target_id: targetId },
+    { race_previous_revision: '1' },
+    { healthkit_registry_revision: '1' },
+    { occurred_at: '2026-02-30 00:00:00+00' },
+  ])
+    expect(() =>
+      validateSuppressionRecord(values('app_consent_transition', { ...app, ...change })),
+    ).toThrow();
+  expect(() => validateSuppressionRecord(values('ai_consent_transition', app))).toThrow();
+  expect(() => validateSuppressionRecord(values('healthkit_consent_transition', app))).toThrow();
+});

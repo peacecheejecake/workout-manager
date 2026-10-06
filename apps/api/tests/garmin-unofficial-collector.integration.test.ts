@@ -39,6 +39,30 @@ const adminUrl = process.env['TEST_DATABASE_ADMIN_URL'],
   runtimeUrl = process.env['TEST_DATABASE_URL'];
 if (!adminUrl || !runtimeUrl) throw new Error('Run isolated PostgreSQL integration harness');
 const admin = new Pool({ connectionString: adminUrl });
+const ownerUrl = process.env['TEST_DATABASE_OWNER_URL'];
+if (!ownerUrl)
+  throw new Error('Positive synthetic import fixture requires the plain migration owner');
+const ownerPool = new Pool({ connectionString: ownerUrl });
+async function grantSyntheticImportAppConsent(athleteId: string) {
+  const client = await ownerPool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock_shared(77210,1)');
+    await client.query("SELECT set_config('app.athlete_id',$1,true)", [athleteId]);
+    // Explicit app consent for positive synthetic import only. Individual Garmin
+    // permission still comes from connect; normal SQL100 immutable events remain active.
+    await client.query(
+      "INSERT INTO consent(athlete_id,kind,granted,revision) VALUES($1,'app',true,1)",
+      [athleteId],
+    );
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
 const keys = { k1: Buffer.alloc(32, 5).toString('base64') };
 const cipher = unofficialSessionCipher({ activeKeyId: 'k1', keys });
 const pinKey = Buffer.alloc(32, 21);
@@ -80,6 +104,7 @@ beforeAll(async () => {
 });
 afterAll(async () => {
   await raw?.close();
+  await ownerPool.end();
   await admin.end();
 });
 
@@ -285,6 +310,7 @@ describe('session storage and pinning', () => {
 describe('collection runs', () => {
   it('imports through the import path, records provenance, stores the refreshed session by CAS, and never calls the provider inside a transaction', async () => {
     const athlete = randomUUID();
+    await grantSyntheticImportAppConsent(athlete);
     await connect(athlete);
     await store.requestRun(athlete, new Date());
     const first = collector(['9001', '9002'], {
@@ -321,6 +347,7 @@ describe('collection runs', () => {
 
   it('never re-imports a deleted activity: not after the collector brought it, not after a manual import', async () => {
     const athlete = randomUUID();
+    await grantSyntheticImportAppConsent(athlete);
     await connect(athlete);
     // Collected, then deleted by the user: the next run does not download it again.
     await store.requestRun(athlete, new Date());
@@ -641,6 +668,7 @@ describe('erasure and export', () => {
 
   it('export contains neither the session nor its envelope', async () => {
     const athlete = randomUUID();
+    await grantSyntheticImportAppConsent(athlete);
     await connect(athlete);
     await store.requestRun(athlete, new Date());
     await run(athlete, collector(['9001'], { '9001': [fitCommand(`${athlete}-export`)] }).value);

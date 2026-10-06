@@ -1797,7 +1797,13 @@
         "M2-01k-r",
         "M2-01k-s",
         "M2-01k-t",
-        "M2-01k-u"
+        "M2-01k-u",
+        "M2-01k-v-a",
+        "M2-01k-v-b",
+        "M2-01k-v-c",
+        "M2-01k-v-d",
+        "M2-01k-v-e",
+        "M2-01k-v-f"
       ],
       "kind": "task",
       "status": "in_progress",
@@ -2258,6 +2264,60 @@
       "status": "completed",
       "scope": "S22 app admission의 race6 create/update receipt-first 신규처리 gate, 기존 조회·삭제·export·성공 replay 유지 및 실제PG/HTTP/OIDC Next·Vite 계정동의·철회초안·재동의 수용 완료. 날짜 영향 고정 basis/승인은 M2-02i, 공식 PB는 M2-02j, 실기기·운영·phase review는 별도.",
       "evidence": "docs/implementation/progress/M2-02k.md"
+    },
+    {
+      "id": "M2-01k-v-a",
+      "title": "S22 app 처리 공통 admission 경계",
+      "dependsOn": ["M2-01k-u"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "공통 tenant 0 잠금·absent false/revision0·APP_CONSENT_REQUIRED와 API 안정 오류를 정의하고 실제 PG 철회 경쟁·replay/read/delete 경계를 확인. 기존 generic provider는 호환 기록 유지.",
+      "evidence": "docs/implementation/progress/M2-01k-v-a.md"
+    },
+    {
+      "id": "M2-01k-v-b",
+      "title": "S22 계획·대화·직접 actual 처리 gate",
+      "dependsOn": ["M2-01k-v-a"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "계획/scenario/Activity/manual FIT overlay/check-in/completion/dialogue/constraint 새 처리에 app gate. 기존 성공 replay·조회/export/delete·기존 AI/HK 의미 유지. 전체 core gate의 첫 slice.",
+      "evidence": "docs/implementation/progress/M2-01k-v-b.md"
+    },
+    {
+      "id": "M2-01k-v-c",
+      "title": "S22 app revision과 evidence·승인 basis 호환",
+      "dependsOn": ["M2-01k-v-a"],
+      "kind": "task",
+      "status": "in_progress",
+      "scope": "strict v1/v2를 파괴하지 않는 versioned app admission binding, capture/worker/candidate/v3/v4 승인 freshness와 철회→재동의의 구형 basis 거절; export/restore 이전 자료 읽기 유지.",
+      "evidence": "docs/implementation/progress/M2-01k-v-c.md"
+    },
+    {
+      "id": "M2-01k-v-d",
+      "title": "S22 영양·회복·운동·루틴 처리 gate",
+      "dependsOn": ["M2-01k-v-a"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "새 plan/actual/library/routine schedule/run 처리 경계와 actual이 없는 순수 cancel/stop 분리. 새 actual은 동의 없이 생성하지 않음.",
+      "evidence": "docs/implementation/progress/M2-01k-v-d.md"
+    },
+    {
+      "id": "M2-01k-v-e",
+      "title": "S22 provider 실제 수집·worker app 처리 경계",
+      "dependsOn": ["M2-01k-v-b", "M2-01k-v-c"],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "HealthKit/Garmin의 개별 허가와 app 처리 허가를 실제 dispatch/import commit에서 검사; credentials와 disconnect/cancel/cleanup 유지. provider 호환 원장을 추가 상위 gate로 사용하지 않음.",
+      "evidence": "docs/implementation/progress/M2-01k-v-e.md"
+    },
+    {
+      "id": "M2-01k-v-f",
+      "title": "S22 UI 목적 고지·처리 차단 오류와 native 계약",
+      "dependsOn": ["M2-01k-v-b", "M2-01k-v-c", "M2-01k-v-d", "M2-01k-v-e"],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "app 첫 grant/거부/철회 목적과 기존 조회/export/delete 허용 고지, 실패 draft 보존·계정 늦은 응답 차단·두 shell 실제 browser/E2E. native fixed allowlist 변경은 M3 별도 소유·수용과 조정; device 미실행 보존.",
+      "evidence": "docs/implementation/progress/M2-01k-v-f.md"
     }
   ]
 }

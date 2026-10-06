@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { Pool } from 'pg';
+import { Pool, type PoolClient } from 'pg';
 import { z } from 'zod';
 import { beforeAll, afterAll, describe, expect, it } from 'vitest';
 import type {
@@ -14,6 +14,9 @@ import { createActivityRepository } from '../src/activities.js';
 const adminUrl = z.string().parse(process.env['TEST_DATABASE_ADMIN_URL']);
 const runtimeUrl = z.string().parse(process.env['TEST_DATABASE_URL']);
 const admin = new Pool({ connectionString: adminUrl });
+const fixtureOwner = new Pool({
+  connectionString: z.string().parse(process.env['TEST_DATABASE_OWNER_URL']),
+});
 let database: Database;
 let repository: RaceRepository;
 beforeAll(async () => {
@@ -28,6 +31,7 @@ beforeAll(async () => {
 });
 afterAll(async () => {
   await database?.close();
+  await fixtureOwner.end();
   await admin.end();
 });
 function eventValues(): RaceEventValues {
@@ -335,18 +339,20 @@ describe('race lists on real PostgreSQL', () => {
       activityId = randomUUID(),
       sourceId = randomUUID();
     await grantApp(athlete);
-    await admin.query(
-      "INSERT INTO activity_canonical(athlete_id,id,revision,original) VALUES($1,$2,1,'{}')",
-      [athlete, activityId],
-    );
-    await admin.query(
-      "INSERT INTO activity_source_head(athlete_id,kind,source_id,source_revision,content_hash,activity_id) VALUES($1,'fixture',$2,1,$3,$4)",
-      [athlete, sourceId, 'a'.repeat(64), activityId],
-    );
-    await admin.query(
-      "INSERT INTO activity_source_revision(athlete_id,kind,source_id,source_revision,content_hash,normalized_raw) VALUES($1,'fixture',$2,1,$3,'{}')",
-      [athlete, sourceId, 'a'.repeat(64)],
-    );
+    await owned(athlete, async (client) => {
+      await client.query(
+        "INSERT INTO activity_canonical(athlete_id,id,revision,original) VALUES($1,$2,1,'{}')",
+        [athlete, activityId],
+      );
+      await client.query(
+        "INSERT INTO activity_source_head(athlete_id,kind,source_id,source_revision,content_hash,activity_id) VALUES($1,'fixture',$2,1,$3,$4)",
+        [athlete, sourceId, 'a'.repeat(64), activityId],
+      );
+      await client.query(
+        "INSERT INTO activity_source_revision(athlete_id,kind,source_id,source_revision,content_hash,normalized_raw) VALUES($1,'fixture',$2,1,$3,'{}')",
+        [athlete, sourceId, 'a'.repeat(64)],
+      );
+    });
     const independent = await repository.createRaceResult(athlete, {
       idempotencyKey: randomUUID(),
       values: { ...resultValues(), linkedActivityId: activityId },
@@ -425,12 +431,33 @@ async function grantApp(athlete: string, pool: Pool = admin) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock_shared(77210,1)');
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [athlete]);
     await client.query("SELECT set_config('app.athlete_id',$1,true)", [athlete]);
     await client.query(
-      "INSERT INTO consent(athlete_id,kind,granted,revision) VALUES($1,'app',true,1) ON CONFLICT DO NOTHING",
+      "INSERT INTO consent(athlete_id,kind,granted,revision) SELECT $1,'app',true,1 WHERE NOT EXISTS(SELECT 1 FROM tenant_erasure WHERE athlete_id=$1) AND NOT EXISTS(SELECT 1 FROM consent WHERE athlete_id=$1 AND kind='app') ON CONFLICT DO NOTHING",
       [athlete],
     );
     await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+/** Plain schema owner seeds only the named synthetic tenant; FORCE RLS stays enabled. */
+async function owned<T>(athlete: string, operation: (client: PoolClient) => Promise<T>) {
+  const client = await fixtureOwner.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock_shared(77210,1)');
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [athlete]);
+    await client.query("SELECT set_config('app.athlete_id',$1,true)", [athlete]);
+    const result = await operation(client);
+    await client.query('COMMIT');
+    return result;
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;

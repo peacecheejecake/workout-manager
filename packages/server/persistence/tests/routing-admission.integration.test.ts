@@ -27,6 +27,9 @@ const runtimeUrl = process.env['TEST_DATABASE_URL'];
 if (!adminUrl || !runtimeUrl)
   throw new Error('Real PostgreSQL required: run pnpm test:integration');
 const admin = new Pool({ connectionString: adminUrl });
+const migrationOwnerUrl = process.env['TEST_DATABASE_OWNER_URL'];
+if (!migrationOwnerUrl) throw new Error('Explicit plain migration owner required for maintenance');
+const migrationOwner = new Pool({ connectionString: migrationOwnerUrl, max: 1 });
 const databases: Database[] = [];
 
 function pool(): Database {
@@ -68,11 +71,12 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   // The engine cap counts every tenant's permits, so each case starts from an empty table.
-  await admin.query('DELETE FROM routing_admission');
+  await migrationOwner.query('DELETE FROM routing_admission');
 });
 
 afterAll(async () => {
   await Promise.all(databases.map((database) => database.close().catch(() => undefined)));
+  await migrationOwner.end();
   await admin.end();
 });
 

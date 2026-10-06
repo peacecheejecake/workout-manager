@@ -1,3 +1,4 @@
+import { requireAppAdmission, lockAppAdmission } from './app-admission.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import {
@@ -80,6 +81,7 @@ export function createCheckInRepository(
       .update(JSON.stringify({ action, id, input: { ...input, ...(values ? { values } : {}) } }))
       .digest('hex');
     return database.tenant(athleteId, async (tx) => {
+      await lockAppAdmission(tx);
       await tx.query('SELECT pg_advisory_xact_lock(hashtextextended($1,77209))', [athleteId]);
       const receipt = await tx.query(
         'SELECT request_hash,result FROM check_in_receipt WHERE athlete_id=$1 AND idempotency_key=$2',
@@ -90,6 +92,7 @@ export function createCheckInRepository(
           throw new PersistenceConflict('IDEMPOTENCY_CONFLICT');
         return checkInCommandResultSchema.parse(receipt.rows[0]['result']);
       }
+      if (action !== 'delete') await requireAppAdmission(tx);
       if (values && Date.parse(values.observedAt) > now().getTime() + 300000)
         throw new CheckInValidationError();
       const recordId = id ?? randomUUID();

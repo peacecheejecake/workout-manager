@@ -772,12 +772,12 @@ Native shell·collector는 M1c 통합과 native feasibility 이후 M2 Web 확장
 | M2-01k-u S22 동의 고지·사용자 보호 | M2-01k-t, M3-02n | [완료](progress/M2-01k-u.md); 확정된 고지의 명시 액션 전 가시성·실패·계정 수명 회귀. app/provider 새 처리 정책은 답변 대기 |
 | M2-02a 대회·결과 런타임 계약 경계 | M2-01f, M1-04x, M1c-04 | 완료; RaceEvent 계획과 RaceResult/TrainingBest 실제 기록의 strict 계약·고정 Course revision·출처 분리. DB/API/UI는 부모 단계 |
 | M2-02b 대회·결과 저장 명령 계약 | M2-02a | [완료](progress/M2-02b.md); 지도 독립 명령 경계, DB/API/UI 수용은 후속 |
-| M2-02c 대회·결과 원장 저장 거래 | M2-02b | [진행 중](progress/M2-02c.md); PostgreSQL 원장·RLS·CAS·멱등·export/계정 수명, API/UI는 후속 |
+| M2-02c 대회·결과 원장 저장 거래 | M2-02b | [완료](progress/M2-02c.md); PostgreSQL 원장·RLS·CAS·멱등·export/계정 수명, API/UI는 후속 |
 | M2-02g 재사용 대회·기록 화면 | M2-02e, M2-02f | [로컬 수용 완료](progress/M2-02g.md); 실제 Host·PB·Plan 영향 승인은 후속 |
 | M2-02h 실제 대회·기록 Host | M2-02g | [완료](progress/M2-02h.md); canonical 경로·상세·인증 transport·실제 OIDC/DB 수용 |
 | M2-02i 날짜·Plan 영향 승인 | M2-02e | [진행 중](progress/M2-02i.md); 설계 준비, 전체 affected manifest·별도 원자적 승인 미구현 |
-| M2-02j 거리별 PB | M2-02g | [진행 중](progress/M2-02j.md); 사용자 포함 정책 답변 대기, 기기 추정 split 공식 PB 승격 금지 |
-| M2-02k app 처리 동의 연결 | M2-02e, S22 v-a root 통합 | [진행 중](progress/M2-02k.md); 새 처리만 gate, 조회/삭제/성공 replay 유지 |
+| M2-02j 거리별 PB | M2-02g | [진행 중](progress/M2-02j.md); 공식 확인된 대회 기록만 PB; 확인 방식·chip/gun·거리 분류 결정 대기, 기기 추정 split 공식 PB 승격 금지 |
+| M2-02k app 처리 동의 연결 | M2-02e, S22 v-a root 통합 | [완료](progress/M2-02k.md); 새 처리만 gate, 조회/삭제/성공 replay 유지 |
 | M2-02 대회·기록 | M2-01, M2-02a, M2-02b, M2-02c | competitions; 코스 참조·결과. M2-01의 외부 gate는 그대로 선행 조건 |
 | M2-03 갤러리·media | M1c-04 | gallery/media; 객체 권한·upload·video·삭제 |
 | M2-04 자료 생명주기 | M1c-04 | 진행 중; text core 이후 object storage/upload·URL/parser·접근/삭제 manifest 통합 |
@@ -856,3 +856,6 @@ M2-02d는 완료된 M2-02c 뒤 bounded 목록 조회를 구현한다. 로컬 수
 M2-02e는 완료된 M2-02d 뒤 Fastify owner-scoped create/update/get/list API와 configured repository·역할 grant 연결을 진행한다. API 이후에도 S15/S16·삭제·PB·Plan 영향 승인은 남는다.
 
 M2-02e의 API·실제 격리 DB 수용은 completed다. 부모 M2-02의 UI/삭제/PB/Plan 영향 승인과 phase 검토는 계속 남는다.
+## S22 확정 후속 처리 gate · 2026-10-06
+
+M2-01k-v-a~f는 app 처리 의미 확정 뒤 새 admission·직접 저장·basis 호환·영양/회복/루틴·provider worker·UI/native 경계를 각각 검증한다. v-a 공통 helper가 completed, v-b 직접 처리 연결은 in_progress, 나머지는 not_started이며 부모 M2-01k의 의존에 포함한다. generic provider는 호환 원장만 유지한다.

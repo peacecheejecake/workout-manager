@@ -12,13 +12,22 @@ import { createRecoveryRepository, RecoveryReferenceError } from '../src/recover
 
 const adminUrl = process.env['TEST_DATABASE_ADMIN_URL'];
 const runtimeUrl = process.env['TEST_DATABASE_URL'];
-if (!adminUrl || !runtimeUrl) throw new Error('Run pnpm test:integration with isolated PostgreSQL');
+const ownerUrl = process.env['TEST_DATABASE_OWNER_URL'];
+if (!adminUrl || !runtimeUrl || !ownerUrl)
+  throw new Error('Run pnpm test:integration with isolated PostgreSQL');
 const admin = new Pool({ connectionString: adminUrl });
+// Protected maintenance uses the actual plain schema owner; admin remains inspector.
+const maintenanceOwner = new Pool({ connectionString: ownerUrl });
 let database: Database;
 let restoreGeneration: string;
 
 beforeAll(async () => {
   await migrate(adminUrl);
+  const ownerIdentity = await maintenanceOwner.query(`SELECT
+    current_user=pg_get_userbyid(relowner) AS owner_matches,
+    (SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname=current_user) AS unsafe
+    FROM pg_class WHERE oid='public.restore_generation'::regclass`);
+  expect(ownerIdentity.rows).toEqual([{ owner_matches: true, unsafe: false }]);
   // This isolated task worktree precedes 023/024. The root integrator registers
   // 025 in migrate.ts after merging the three tasks.
   const installed = await admin.query(
@@ -32,6 +41,8 @@ beforeAll(async () => {
     await admin.query(sql);
   }
   await admin.query('GRANT USAGE ON SCHEMA public TO workout_runtime');
+  // App admission reads this tenant-scoped head; no new write privilege is needed.
+  await admin.query('GRANT SELECT ON consent TO workout_runtime');
   await admin.query(
     'GRANT SELECT,INSERT ON recovery_method_version,recovery_strategy_version,recovery_action_revision TO workout_runtime',
   );
@@ -52,8 +63,18 @@ beforeAll(async () => {
 });
 afterAll(async () => {
   await database?.close();
+  await maintenanceOwner.end();
   await admin.end();
 });
+
+// Explicit synthetic app processing permission for the existing tenant fixture.
+// Direct fixture setup preserves the original command/outbox assertions.
+async function grantAppPurpose(athleteId: string): Promise<void> {
+  await admin.query(
+    "WITH scope AS MATERIALIZED (SELECT set_config('app.athlete_id',$1,true)) INSERT INTO consent(athlete_id,kind,granted,revision) SELECT $1,'app',true,1 FROM scope",
+    [athleteId],
+  );
+}
 
 async function createCheckIn(athleteId: string, id: string) {
   const client = await admin.connect();
@@ -125,6 +146,7 @@ it('keeps rest selection separate from actuals and enforces tenant ownership, re
   const owner = 'recovery-owner-' + randomUUID();
   const other = 'recovery-other-' + randomUUID();
   const checkInId = randomUUID();
+  await grantAppPurpose(owner);
   await createCheckIn(owner, checkInId);
   const repo = createRecoveryRepository(database, {
     now: () => new Date('2026-09-19T00:00:00.000Z'),
@@ -155,6 +177,7 @@ it('keeps rest selection separate from actuals and enforces tenant ownership, re
   expect(strategy.status).toBe('draft');
   expect(strategy.selectedOptionId).toBeNull();
   expect(await repo.createStrategy(owner, create)).toEqual(strategy);
+  await grantAppPurpose(other);
   await expect(
     repo.createStrategy(other, {
       draft: { ...prepared, observations: [] },
@@ -214,13 +237,13 @@ it('keeps rest selection separate from actuals and enforces tenant ownership, re
   expect(saved.durationSeconds).toBeNull();
   expect(await repo.createAction(owner, action)).toEqual(saved);
   try {
-    await admin.query('SELECT public.rotate_restore_generation()');
+    await maintenanceOwner.query('SELECT public.rotate_restore_generation()');
     await expect(repo.createAction(owner, action)).rejects.toMatchObject({
       code: 'STALE_RESTORE_GENERATION',
     });
     expect((await repo.workspace(owner)).actions).toHaveLength(1);
   } finally {
-    await admin.query(
+    await maintenanceOwner.query(
       'UPDATE public.restore_generation SET generation_id=$1 WHERE singleton=true',
       [restoreGeneration],
     );

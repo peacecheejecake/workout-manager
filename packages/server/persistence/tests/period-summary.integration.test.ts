@@ -29,6 +29,7 @@ afterAll(async () => {
 });
 
 async function seed(athlete: string, startDate = '2026-01-01', endDateExclusive = '2027-01-01') {
+  await grantAppPurpose(athlete);
   return createPlanningRepository(database).save(athlete, {
     source: 'manual',
     confirmed: true,
@@ -104,6 +105,7 @@ describe('owned immutable period summaries', () => {
   it('covers a full year, descendants once, null/zero, exact owned old version and no plan-link dependency', async () => {
     const athlete = randomUUID();
     const saved = await seed(athlete);
+    await grantAppPurpose(athlete);
     await repository.importActivity(athlete, command('2026-07-01T12:00:00Z'));
     await repository.importActivity(athlete, command(null));
     const later = await createPlanningRepository(database).save(athlete, {
@@ -151,6 +153,7 @@ describe('owned immutable period summaries', () => {
   it('projects effective start across DST, excludes the end boundary, and retains tombstone revisions', async () => {
     const athlete = randomUUID();
     const saved = await seed(athlete, '2026-03-08', '2026-03-09');
+    await grantAppPurpose(athlete);
     const included = await repository.importActivity(athlete, {
       ...command('2026-03-09T03:59:59Z'),
       activity: {
@@ -208,6 +211,7 @@ describe('owned immutable period summaries', () => {
   it('reports unsupported year-zero periods without a database cast error', async () => {
     const athlete = randomUUID();
     const saved = await seed(athlete, '0000-01-01', '0000-02-01');
+    await grantAppPurpose(athlete);
     await repository.importActivity(athlete, command('0000-01-02T00:00:00Z'));
     expect(
       (
@@ -222,6 +226,7 @@ describe('owned immutable period summaries', () => {
     const athlete = randomUUID();
     const saved = await seed(athlete);
     const reader = createPeriodSummaryRepository(database);
+    await grantAppPurpose(athlete);
     const writes = Promise.all(
       Array.from({ length: 8 }, () =>
         repository.importActivity(athlete, command('2026-06-01T12:00:00Z')),
@@ -242,3 +247,26 @@ describe('owned immutable period summaries', () => {
     }
   });
 });
+
+// Explicit permission for this synthetic positive core-storage fixture only.
+// Preserve any existing withdrawal/revision and never recreate an erased tenant.
+async function grantAppPurpose(athleteId: string): Promise<void> {
+  const client = await admin.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock_shared(77210,1)');
+    // Serialize the absence check before the app event trigger, like the consent command.
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [athleteId]);
+    await client.query("SELECT set_config('app.athlete_id',$1,true)", [athleteId]);
+    await client.query(
+      "INSERT INTO consent(athlete_id,kind,granted,revision) SELECT $1,'app',true,1 WHERE NOT EXISTS (SELECT 1 FROM tenant_erasure WHERE athlete_id=$1) ON CONFLICT (athlete_id,kind) DO NOTHING",
+      [athleteId],
+    );
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}

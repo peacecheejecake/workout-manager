@@ -1342,3 +1342,144 @@ it('exports v30 pending and released facts without changing v29 or accepting com
     ).toBe(false);
   }
 });
+
+function appBindingArtifact() {
+  const schema = accountExportSchema.options.find(
+    (option) => option.shape.schemaVersion.value === 32,
+  );
+  if (!schema) throw new Error('Expected app attribution export v32');
+  const snapshot = '11111111-1111-4111-8111-111111111111';
+  const run = '22222222-2222-4222-8222-222222222222';
+  const candidate = '33333333-3333-4333-8333-333333333333';
+  return {
+    ...legacy,
+    schemaVersion: 32,
+    data: {
+      ...Object.fromEntries(schema.shape.data.keyof().options.map((key) => [key, []])),
+      evidenceAppBindings: [
+        {
+          evidence_snapshot_id: snapshot,
+          binding_version: 1,
+          app_revision: 1,
+          captured_at: legacy.exportedAt,
+        },
+      ],
+      runAppBindings: [{ run_id: run, evidence_snapshot_id: snapshot, binding_version: 1 }],
+      candidateAppBindings: [{ candidate_id: candidate, run_id: run, binding_version: 1 }],
+      integratedCandidateAppBindings: [
+        { candidate_id: candidate, evidence_snapshot_id: snapshot, binding_version: 1 },
+      ],
+      approvalAppBindings: [
+        {
+          candidate_id: candidate,
+          integrated_candidate_id: null,
+          integrated_approval_id: null,
+          binding_version: 1,
+          created_at: legacy.exportedAt,
+        },
+      ],
+    },
+  };
+}
+
+it('preserves historical exports and reads portable app attribution without creating authority', () => {
+  const artifact = appBindingArtifact();
+  expect(accountExportSchema.parse(artifact)).toEqual(artifact);
+  for (const version of [30, 31]) {
+    const schema = accountExportSchema.options.find(
+      (option) => option.shape.schemaVersion.value === version,
+    );
+    if (!schema) throw new Error('Expected historical export');
+    const old = {
+      ...legacy,
+      schemaVersion: version,
+      data: Object.fromEntries(schema.shape.data.keyof().options.map((key) => [key, []])),
+    };
+    expect(accountExportSchema.parse(old)).toEqual(old);
+    expect(accountExportSchema.parse(old).data).not.toHaveProperty('evidenceAppBindings');
+    expect(accountExportSchema.safeParse({ ...old, schemaVersion: 32 }).success).toBe(false);
+  }
+});
+
+it('rejects app attribution command internals, invalid epochs and ambiguous approvals', () => {
+  const artifact = appBindingArtifact();
+  const collectionNames = [
+    'evidenceAppBindings',
+    'runAppBindings',
+    'candidateAppBindings',
+    'integratedCandidateAppBindings',
+    'approvalAppBindings',
+  ] as const;
+  for (const collection of collectionNames) {
+    for (const field of [
+      'receipt_key',
+      'idempotency_key',
+      'athlete_id',
+      'restore_receipt',
+      'processing_authorized',
+    ]) {
+      expect(
+        accountExportSchema.safeParse({
+          ...artifact,
+          data: {
+            ...artifact.data,
+            [collection]: [{ ...artifact.data[collection][0], [field]: 'forbidden' }],
+          },
+        }).success,
+      ).toBe(false);
+    }
+  }
+  for (const app_revision of [0, -1, 2147483648, 1.5]) {
+    expect(
+      accountExportSchema.safeParse({
+        ...artifact,
+        data: {
+          ...artifact.data,
+          evidenceAppBindings: [{ ...artifact.data.evidenceAppBindings[0], app_revision }],
+        },
+      }).success,
+    ).toBe(false);
+  }
+  const approval = artifact.data.approvalAppBindings[0];
+  for (const patch of [
+    { candidate_id: null, integrated_candidate_id: null },
+    { integrated_candidate_id: artifact.data.candidateAppBindings[0]?.candidate_id },
+    { integrated_approval_id: artifact.data.candidateAppBindings[0]?.candidate_id },
+    { binding_version: 2 },
+  ]) {
+    expect(
+      accountExportSchema.safeParse({
+        ...artifact,
+        data: { ...artifact.data, approvalAppBindings: [{ ...approval, ...patch }] },
+      }).success,
+    ).toBe(false);
+  }
+});
+
+it('requires explicit bounded app collections and rejects a future export version', () => {
+  const artifact = appBindingArtifact();
+  for (const collection of [
+    'evidenceAppBindings',
+    'runAppBindings',
+    'candidateAppBindings',
+    'integratedCandidateAppBindings',
+    'approvalAppBindings',
+  ] as const) {
+    expect(
+      accountExportSchema.safeParse({
+        ...artifact,
+        data: { ...artifact.data, [collection]: undefined },
+      }).success,
+    ).toBe(false);
+    expect(
+      accountExportSchema.safeParse({
+        ...artifact,
+        data: {
+          ...artifact.data,
+          [collection]: Array.from({ length: 1001 }, () => artifact.data[collection][0]),
+        },
+      }).success,
+    ).toBe(false);
+  }
+  expect(accountExportSchema.safeParse({ ...artifact, schemaVersion: 33 }).success).toBe(false);
+});

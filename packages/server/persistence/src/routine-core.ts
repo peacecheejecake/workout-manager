@@ -1,3 +1,4 @@
+import { requireAppAdmission } from './app-admission.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import {
@@ -148,12 +149,14 @@ async function command<T>(
   request: unknown,
   schema: z.ZodType<T>,
   topic: string,
+  admission: 'core_processing' | 'catalog' | 'retained_lifecycle',
   apply: (tx: Transaction) => Promise<T>,
 ) {
   return db.tenant(athleteId, async (tx) => {
     await lock(tx);
     const found = await replay(tx, key, request, schema);
     if (found !== null) return found;
+    if (admission === 'core_processing') await requireAppAdmission(tx);
     const result = schema.parse(await apply(tx));
     return finish(tx, key, request, result, topic);
   });
@@ -446,6 +449,7 @@ export function createRoutineRepository(db: Database): RoutineRepository {
         { type: 'saveBlueprint', input },
         routineBlueprintReadSchema,
         'routine.blueprint.saved',
+        'catalog',
         async (tx) => {
           const blueprint = input.blueprint;
           uuid.parse(blueprint.routineId);
@@ -536,6 +540,7 @@ export function createRoutineRepository(db: Database): RoutineRepository {
         { type: 'changeLibrary', input },
         routineBlueprintReadSchema,
         'routine.library.changed',
+        'catalog',
         async (tx) => {
           const head = await blueprintHead(tx, input.routineId, true);
           if (!head || head.visibility === 'deleted')
@@ -573,7 +578,11 @@ export function createRoutineRepository(db: Database): RoutineRepository {
       );
     },
     previewSchedule: (athleteId, input) =>
-      db.tenant(athleteId, (tx) => preview(tx, routineSchedulePreviewCommandSchema.parse(input))),
+      db.tenant(athleteId, async (tx) => {
+        const command = routineSchedulePreviewCommandSchema.parse(input);
+        await requireAppAdmission(tx);
+        return preview(tx, command);
+      }),
     async approveSchedule(athleteId, raw) {
       const input = routineScheduleApproveCommandSchema.parse(raw);
       return command(
@@ -583,6 +592,7 @@ export function createRoutineRepository(db: Database): RoutineRepository {
         { type: 'approveSchedule', input },
         routineScheduleReadSchema,
         'routine.schedule.approved',
+        'core_processing',
         async (tx) => {
           const current = await preview(tx, input);
           if (current.previewDigest !== input.previewDigest)
@@ -662,6 +672,7 @@ export function createRoutineRepository(db: Database): RoutineRepository {
         { type: 'changeSchedule', input },
         routineScheduleReadSchema,
         'routine.schedule.changed',
+        input.action === 'resume' ? 'core_processing' : 'retained_lifecycle',
         async (tx) => {
           const prior = await scheduleRead(tx, input.scheduleId);
           if (!prior) throw new RoutineReferenceError('SCHEDULE_NOT_FOUND');
@@ -720,6 +731,7 @@ export function createRoutineRepository(db: Database): RoutineRepository {
         { type: 'startRun', input },
         routineRunReadSchema,
         'routine.run.started',
+        'core_processing',
         async (tx) => {
           const blueprint = await blueprintVersion(tx, input.blueprintVersionId);
           if (!blueprint) throw new RoutineReferenceError('BLUEPRINT_NOT_FOUND');
@@ -814,6 +826,7 @@ export function createRoutineRepository(db: Database): RoutineRepository {
         { type: 'chooseStep', input },
         routineRunReadSchema,
         'routine.run.choice',
+        'core_processing',
         async (tx) => {
           const run = await lockedRun(tx, input.runId);
           if (run.revision !== input.expectedRevision) throw new RoutineConflict('STALE_RUN');
@@ -851,6 +864,7 @@ export function createRoutineRepository(db: Database): RoutineRepository {
         { type: 'recordStep', input },
         routineRunReadSchema,
         'routine.run.step',
+        'core_processing',
         async (tx) => {
           const run = await lockedRun(tx, input.runId);
           if (run.revision !== input.expectedRevision) throw new RoutineConflict('STALE_RUN');
@@ -924,6 +938,7 @@ export function createRoutineRepository(db: Database): RoutineRepository {
         { type: 'changeRun', input },
         routineRunReadSchema,
         'routine.run.changed',
+        input.action === 'resume' ? 'core_processing' : 'retained_lifecycle',
         async (tx) => {
           const run = await lockedRun(tx, input.runId);
           if (run.revision !== input.expectedRevision) throw new RoutineConflict('STALE_RUN');
@@ -965,6 +980,9 @@ export function createRoutineRepository(db: Database): RoutineRepository {
         { type: 'timer', input },
         routineTimerSchema,
         'routine.timer.changed',
+        input.action === 'start' || input.action === 'resume'
+          ? 'core_processing'
+          : 'retained_lifecycle',
         async (tx) => {
           const run = await lockedRun(tx, input.runId);
           if (run.state !== 'in_progress') throw new RoutineReferenceError('RUN_NOT_ACTIVE');

@@ -60,6 +60,7 @@ function draft(): PlanDraft {
   };
 }
 async function plan(athlete: string, previous: string | null = null) {
+  await grantAppPurpose(athlete);
   return createPlanningRepository(database).save(athlete, {
     source: 'manual',
     confirmed: true,
@@ -69,6 +70,7 @@ async function plan(athlete: string, previous: string | null = null) {
   });
 }
 async function actual(athlete: string, version: string | null, startedAt = '2024-01-01T12:00:00Z') {
+  await grantAppPurpose(athlete);
   return createActivityRepository(database).createManualActivity(athlete, {
     confirmed: true,
     idempotencyKey: randomUUID(),
@@ -243,3 +245,26 @@ it('does not expose foreign versions, missing sessions or malformed stored link 
     ).total,
   ).toBe(0);
 });
+
+// Explicit permission for this synthetic positive core-storage fixture only.
+// Preserve any existing withdrawal/revision and never recreate an erased tenant.
+async function grantAppPurpose(athleteId: string): Promise<void> {
+  const client = await admin.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock_shared(77210,1)');
+    // Serialize the absence check before the app event trigger, like the consent command.
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [athleteId]);
+    await client.query("SELECT set_config('app.athlete_id',$1,true)", [athleteId]);
+    await client.query(
+      "INSERT INTO consent(athlete_id,kind,granted,revision) SELECT $1,'app',true,1 WHERE NOT EXISTS (SELECT 1 FROM tenant_erasure WHERE athlete_id=$1) ON CONFLICT (athlete_id,kind) DO NOTHING",
+      [athleteId],
+    );
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}

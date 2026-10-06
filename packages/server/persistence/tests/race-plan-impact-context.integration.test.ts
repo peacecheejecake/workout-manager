@@ -74,6 +74,7 @@ async function owned<T>(athlete: string, operation: (client: PoolClient) => Prom
   const client = await owner.connect();
   try {
     await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock_shared(77210,1)');
     await client.query("SELECT set_config('app.athlete_id',$1,true)", [athlete]);
     const value = await operation(client);
     await client.query('COMMIT');
@@ -265,11 +266,11 @@ afterAll(async () => {
   for (const role of [runtimeRole, ownerRole]) await admin.query(`DROP ROLE IF EXISTS "${role}"`);
   await admin.end();
 });
-it('installs all99 migrations with plain roles and returns explicit empty rosters/absence, blocked coverage and stable digest', async () => {
+it('installs all105 migrations with plain roles and returns explicit empty rosters/absence, blocked coverage and stable digest', async () => {
   const versions = await owner.query(
     'SELECT count(*)::int AS n,max(version)::int AS last FROM schema_migrations',
   );
-  expect(versions.rows[0]).toEqual({ n: 99, last: 99 });
+  expect(versions.rows[0]).toEqual({ n: 105, last: 105 });
   const roles = await admin.query(
     'SELECT rolsuper,rolbypassrls FROM pg_roles WHERE rolname=ANY($1)',
     [[ownerRole, runtimeRole]],
@@ -2828,12 +2829,25 @@ it('D enforces cumulative metadata bytes/reference bounds and explicit absent/ze
 });
 
 it('D collector manual basis tracks absent/false/grant/regrant without changing immutable domain facts', async () => {
-  const athlete = await account(),
-    event = await create(athlete),
-    plan = await training(athlete);
-  await owned(athlete, (c) =>
-    c.query("DELETE FROM consent WHERE athlete_id=$1 AND kind='app'", [athlete]),
+  // Historical unpinned records may be read without current app permission. Seed them
+  // under the plain owner, rather than deleting/recreating an already recorded app epoch.
+  const athlete = randomUUID(),
+    event = { id: randomUUID() };
+  await owner.query(
+    "INSERT INTO identity_private.account(athlete_id,issuer,subject) VALUES($1::uuid,'https://synthetic.test',$2)",
+    [athlete, randomUUID()],
   );
+  await owned(athlete, async (client) => {
+    await client.query(
+      'INSERT INTO race_event(athlete_id,id,revision,values_json,recorded_at,updated_at) VALUES($1,$2,1,$3::jsonb,now(),now())',
+      [athlete, event.id, JSON.stringify(values())],
+    );
+    await client.query(
+      'INSERT INTO race_event_revision(athlete_id,entity_id,revision,values_json,created_at) VALUES($1,$2,1,$3::jsonb,now())',
+      [athlete, event.id, JSON.stringify(values())],
+    );
+  });
+  const plan = await training(athlete);
   const absent = await capture(athlete, event.id);
   expect(absent.manualBasis.app).toEqual({ state: 'absent' });
   await owned(athlete, (c) =>

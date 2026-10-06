@@ -47,3 +47,38 @@ export async function requireAppAdmission(transaction: Transaction): Promise<App
   if (!admission.success) throw new AppConsentRequiredError();
   return admission.data;
 }
+
+const appBindingFailureSchema = z.object({
+  code: z.literal('P0001'),
+  message: z.enum(['APP_CONSENT_REQUIRED', 'STALE_APP_ADMISSION', 'APP_BINDING_UNAVAILABLE']),
+});
+
+export class AppAdmissionBindingError extends Error {
+  constructor(
+    readonly code: 'APP_CONSENT_REQUIRED' | 'STALE_APP_ADMISSION' | 'APP_BINDING_UNAVAILABLE',
+  ) {
+    super(code);
+  }
+}
+
+/** Only these fixed SQL gate functions can produce public app admission conflicts. */
+export async function requireAppBinding(
+  transaction: Transaction,
+  subject: 'evidence' | 'run' | 'candidate' | 'integrated_candidate',
+  id: string,
+): Promise<void> {
+  const functions = {
+    evidence: 'require_evidence_app_binding',
+    run: 'require_run_app_binding',
+    candidate: 'require_candidate_app_binding',
+    integrated_candidate: 'require_integrated_candidate_app_binding',
+  } as const;
+  try {
+    await transaction.query(`SELECT public.${functions[subject]}($1)`, [id]);
+  } catch (error) {
+    const failure = appBindingFailureSchema.safeParse(error);
+    if (error instanceof Error && failure.success)
+      throw new AppAdmissionBindingError(failure.data.message);
+    throw error;
+  }
+}

@@ -37,6 +37,30 @@ beforeAll(async () => {
   );
   database = createDatabase({ connectionString: runtimeUrl, max: 4 });
 });
+
+// Explicit synthetic purpose grant for these pre-existing domain regression tests.
+// No production account is granted implicitly; admission denial has its own suite.
+async function grantedAthlete(): Promise<string> {
+  const athlete = randomUUID();
+  const client = await admin.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock_shared(77210,1)');
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [athlete]);
+    await client.query("SELECT set_config('app.athlete_id',$1,true)", [athlete]);
+    await client.query(
+      "INSERT INTO consent(athlete_id,kind,granted,revision) SELECT $1,'app',true,1 WHERE NOT EXISTS(SELECT 1 FROM tenant_erasure WHERE athlete_id=$1) AND NOT EXISTS(SELECT 1 FROM consent WHERE athlete_id=$1 AND kind='app') ON CONFLICT DO NOTHING",
+      [athlete],
+    );
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+  return athlete;
+}
 afterAll(async () => {
   await database?.close();
   await admin.end();
@@ -69,7 +93,7 @@ function command(): ManualPlanCommand {
 }
 describe('M1-02 manual plans real transaction invariants', () => {
   it('freezes supplementary content with each approved plan version and copies it forward', async () => {
-    const athlete = randomUUID();
+    const athlete = await grantedAthlete();
     const supplementary = createSupplementaryRepository(database);
     const exerciseVersionId = randomUUID();
     await supplementary.saveExercise(athlete, {
@@ -193,7 +217,7 @@ describe('M1-02 manual plans real transaction invariants', () => {
   });
   it('starts absent and saves immutable version/head/history/outbox and original receipt', async () => {
     const repository = createPlanningRepository(database);
-    const athlete = randomUUID();
+    const athlete = await grantedAthlete();
     const input = command();
     expect(await repository.read(athlete)).toEqual({ head: null, history: [] });
     const first = await repository.save(athlete, input);
@@ -221,7 +245,7 @@ describe('M1-02 manual plans real transaction invariants', () => {
   });
   it('serializes concurrent missing heads, duplicate saves and competing revisions', async () => {
     const repository = createPlanningRepository(database);
-    const athlete = randomUUID();
+    const athlete = await grantedAthlete();
     const input = command();
     const duplicate = await Promise.all([
       repository.save(athlete, input),
@@ -247,7 +271,7 @@ describe('M1-02 manual plans real transaction invariants', () => {
     await expect(
       repository.save(athlete, { ...input, draft: { ...input.draft, title: 'Changed same key' } }),
     ).rejects.toMatchObject({ code: 'IDEMPOTENCY_CONFLICT' });
-    const newAthlete = randomUUID();
+    const newAthlete = await grantedAthlete();
     const missingRace = await Promise.allSettled([
       repository.save(newAthlete, command()),
       repository.save(newAthlete, command()),
@@ -255,8 +279,8 @@ describe('M1-02 manual plans real transaction invariants', () => {
     expect(missingRace.filter((entry) => entry.status === 'fulfilled')).toHaveLength(1);
   });
   it('RLS isolates plans, history, heads and rejects forged ownership', async () => {
-    const first = randomUUID();
-    const second = randomUUID();
+    const first = await grantedAthlete();
+    const second = await grantedAthlete();
     const repository = createPlanningRepository(database);
     const saved = await repository.save(first, command());
     expect(await repository.read(second)).toEqual({ head: null, history: [] });
@@ -271,7 +295,7 @@ describe('M1-02 manual plans real transaction invariants', () => {
     ).rejects.toMatchObject({ code: '42501' });
   });
   it('rolls back version/head/history when outbox insertion fails', async () => {
-    const athlete = randomUUID();
+    const athlete = await grantedAthlete();
     const input = command();
     const repository = createPlanningRepository(database);
     await database.tenant(athlete, (tx) =>
@@ -314,7 +338,7 @@ describe('M1-02 manual plans real transaction invariants', () => {
         steps: [],
       },
     ];
-    const athlete = randomUUID();
+    const athlete = await grantedAthlete();
     const repository = createPlanningRepository(database);
     const first = await repository.save(athlete, input);
     const moved = {
@@ -407,7 +431,7 @@ function intensityCommand(): ManualPlanCommand {
 
 describe('relative nutrition change gate', () => {
   it('blocks a later session move even when the nutrition plan links an older unchanged training version', async () => {
-    const athlete = randomUUID();
+    const athlete = await grantedAthlete();
     const planning = createPlanningRepository(database);
     const initial = intensityCommand();
     const first = await planning.save(athlete, initial);
@@ -470,7 +494,7 @@ describe('relative nutrition change gate', () => {
 
 describe('S06 intensity label snapshot compatibility', () => {
   it('preserves absent legacy fields and original receipts after a labeled version is saved', async () => {
-    const athlete = randomUUID();
+    const athlete = await grantedAthlete();
     const repository = createPlanningRepository(database);
     const legacy = intensityCommand();
     const first = await repository.save(athlete, legacy);
@@ -505,7 +529,7 @@ describe('S06 intensity label snapshot compatibility', () => {
     ).toBe(0);
   });
   it('rejects changing or clearing a locked label, including simultaneous unlock', async () => {
-    const athlete = randomUUID();
+    const athlete = await grantedAthlete();
     const repository = createPlanningRepository(database);
     const input = intensityCommand();
     input.draft.sessions = input.draft.sessions.map((session) => ({
@@ -567,7 +591,7 @@ describe('S06 intensity label snapshot compatibility', () => {
     ).toBe(0);
   });
   it('treats missing and null as the same unspecified value under an intensity lock', async () => {
-    const athlete = randomUUID();
+    const athlete = await grantedAthlete();
     const repository = createPlanningRepository(database);
     const input = intensityCommand();
     input.draft.sessions = input.draft.sessions.map((session) => ({
@@ -596,8 +620,8 @@ describe('S06 intensity label snapshot compatibility', () => {
 });
 
 it('reads an owned immutable version outside the latest 100 history entries without write side effects', async () => {
-  const athlete = randomUUID(),
-    foreign = randomUUID();
+  const athlete = await grantedAthlete(),
+    foreign = await grantedAthlete();
   const repository = createPlanningRepository(database);
   const legacy = intensityCommand();
   const first = await repository.save(athlete, legacy);
@@ -640,7 +664,7 @@ it('reads an owned immutable version outside the latest 100 history entries with
 });
 
 it('preserves legacy period priority absence and explicit values through immutable snapshots, receipts and export', async () => {
-  const athlete = randomUUID();
+  const athlete = await grantedAthlete();
   const repository = createPlanningRepository(database);
   const input = intensityCommand();
   input.draft.sessions = input.draft.sessions.map((session) => ({
@@ -702,7 +726,7 @@ it('preserves legacy period priority absence and explicit values through immutab
 });
 
 it('stores explicit scheduling conflicts and unknown duration constraints without changing locked sessions or old versions', async () => {
-  const athlete = randomUUID();
+  const athlete = await grantedAthlete();
   const repository = createPlanningRepository(database);
   const input = intensityCommand();
   input.draft.sessions = input.draft.sessions.flatMap((session) => [
@@ -778,7 +802,7 @@ it('stores explicit scheduling conflicts and unknown duration constraints withou
 
 describe('S06 pace and heart-rate target persistence', () => {
   it('preserves legacy absence and original receipts while saving and exporting explicit target ranges', async () => {
-    const athlete = randomUUID();
+    const athlete = await grantedAthlete();
     const repository = createPlanningRepository(database);
     const legacy = intensityCommand();
     const first = await repository.save(athlete, legacy);
@@ -815,7 +839,7 @@ describe('S06 pace and heart-rate target persistence', () => {
     });
   });
   it('requires a separate unlock before changing, clearing or omitting either protected target', async () => {
-    const athlete = randomUUID();
+    const athlete = await grantedAthlete();
     const repository = createPlanningRepository(database);
     const input = intensityCommand();
     input.draft.sessions = input.draft.sessions.map((session) => ({
@@ -885,7 +909,7 @@ describe('S06 pace and heart-rate target persistence', () => {
     expect((await repository.read(athlete)).history).toHaveLength(3);
   });
   it('treats absent and null as equivalent only for locks while preserving each saved representation', async () => {
-    const athlete = randomUUID();
+    const athlete = await grantedAthlete();
     const repository = createPlanningRepository(database);
     const input = intensityCommand();
     input.draft.sessions.forEach((session) => {
@@ -919,7 +943,7 @@ describe('S06 pace and heart-rate target persistence', () => {
 
 describe('attendance deletion lock persistence', () => {
   it('preserves legacy absence, original receipt and exported versions without synthesizing defaults', async () => {
-    const athlete = randomUUID();
+    const athlete = await grantedAthlete();
     const repository = createPlanningRepository(database);
     const legacy = intensityCommand();
     const first = await repository.save(athlete, legacy);
@@ -948,7 +972,7 @@ describe('attendance deletion lock persistence', () => {
     );
   });
   it('rejects removing an attendance-locked session atomically and permits deletion only after a separately saved unlock', async () => {
-    const athlete = randomUUID();
+    const athlete = await grantedAthlete();
     const repository = createPlanningRepository(database);
     const input = intensityCommand();
     input.draft.sessions = input.draft.sessions.map((session) => ({
@@ -991,7 +1015,7 @@ describe('attendance deletion lock persistence', () => {
     });
   });
   it('allows scheduling and content changes with attendance alone while preserving other lock protections', async () => {
-    const athlete = randomUUID();
+    const athlete = await grantedAthlete();
     const repository = createPlanningRepository(database);
     const input = intensityCommand();
     input.draft.sessions = input.draft.sessions.map((session) => ({
@@ -1054,7 +1078,7 @@ describe('attendance deletion lock persistence', () => {
 
 describe('session distance and duration range compatibility', () => {
   it('preserves legacy scalar receipts and exports explicit ranges without a synthetic midpoint', async () => {
-    const athlete = randomUUID(),
+    const athlete = await grantedAthlete(),
       repo = createPlanningRepository(database),
       input = intensityCommand();
     const first = await repo.save(athlete, input);
@@ -1089,7 +1113,7 @@ describe('session distance and duration range compatibility', () => {
     });
   });
   it('protects ranges with intensity locks including scalar replacement and simultaneous unlock', async () => {
-    const athlete = randomUUID(),
+    const athlete = await grantedAthlete(),
       repo = createPlanningRepository(database),
       input = intensityCommand();
     input.draft.sessions = input.draft.sessions.map((session) => ({
@@ -1310,7 +1334,7 @@ function observeSessionImpactQueries(observed: unknown[][]): Database {
 it.each(['race', 'session', 'mixed'] as const)(
   'distinguishes owned race/session UUID collision in %s nutrition during a session move',
   async (mode) => {
-    const athlete = randomUUID(),
+    const athlete = await grantedAthlete(),
       collisionId = randomUUID();
     const observed: unknown[][] = [];
     const planning = createPlanningRepository(observeSessionImpactQueries(observed));

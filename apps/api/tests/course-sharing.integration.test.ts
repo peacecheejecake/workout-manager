@@ -3,7 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { Pool } from 'pg';
+import { Pool, type PoolClient } from 'pg';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 import type { ActivityImport } from '@workout/contracts/activity';
@@ -67,6 +67,25 @@ if (!adminUrl || !runtimeUrl)
   throw new Error('Isolated real PostgreSQL required: run pnpm test:integration');
 
 const admin = new Pool({ connectionString: adminUrl });
+const ownerUrl = process.env['TEST_DATABASE_OWNER_URL'];
+if (!ownerUrl) throw new Error('Course maintenance requires the plain migration owner URL');
+const ownerPool = new Pool({ connectionString: ownerUrl });
+async function maintainOwned<T>(athleteId: string, action: (client: PoolClient) => Promise<T>) {
+  const client = await ownerPool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock_shared(77210,1)');
+    await client.query("SELECT set_config('app.athlete_id',$1,true)", [athleteId]);
+    const result = await action(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
 let database: Database;
 let storage: ObjectStorage;
 let objectRoot: string;
@@ -298,6 +317,7 @@ afterEach(async () => {
 afterAll(async () => {
   await Promise.all(readers.map((instance) => instance.close()));
   await database?.close();
+  await ownerPool.end();
   await admin.end();
   if (objectRoot) await rm(objectRoot, { recursive: true, force: true });
 });
@@ -666,7 +686,7 @@ describe('A. the owner GPX export is gated by a server-side confirmation', () =>
     });
     expect(exported.statusCode).toBe(200);
     const artifact = accountExportSchema.parse(exported.json());
-    if (artifact.schemaVersion !== 30) throw new Error('expected v30');
+    if (artifact.schemaVersion !== 33) throw new Error('expected v33');
     expect(artifact.data.courseShares).toHaveLength(1);
     expect(Object.keys(artifact.data.courseShares[0] ?? {}).sort()).toEqual(
       [
@@ -716,7 +736,7 @@ describe('A. the owner GPX export is gated by a server-side confirmation', () =>
     const after = accountExportSchema.parse(
       (await instance.inject({ method: 'POST', url: '/bff/v1/operations/export', headers })).json(),
     );
-    if (after.schemaVersion !== 30) throw new Error('expected v30');
+    if (after.schemaVersion !== 33) throw new Error('expected v33');
     expect(after.data.courseDeletions).toEqual([
       { course_id: gone, deleted_at: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/) },
     ]);
@@ -1147,6 +1167,14 @@ describe('B. the view-only link', () => {
     // Activity deletion reclaims the course and every revision; the link goes with them.
     const athleteId = randomUUID();
     signedIn = athleteId;
+    // Explicit synthetic app consent for this Activity scenario. The plain owner
+    // uses the normal SQL100 immutable-event trigger; runtime grants stay unchanged.
+    await maintainOwned(athleteId, (client) =>
+      client.query(
+        "INSERT INTO consent(athlete_id,kind,granted,revision) VALUES($1,'app',true,1)",
+        [athleteId],
+      ),
+    );
     const activities = createActivityRepository(database);
     const imported = await activities.importActivity(athleteId, activityImport());
     const reclaimedCourse = await addCourse(athleteId, loop, {
@@ -1202,20 +1230,31 @@ describe('B. the view-only link', () => {
       'course_privacy_zone',
     ])
       expect(await countRows(table, erased.athleteId), table).toBe(0);
-    // The chain is 059's HealthKit link wrapping 054's link (M2-01as), this node's,
-    // 049's, and 048's:
-    // each outermost link takes
-    // the account lock and then the command lock before any row (77206 → 0 → rows).
+    // Latest104 preferences wrap103 accounting,100 app attribution and98 races.
+    // The original059..048 course erasure suffix still locks77206→0 before rows.
+    const suffix = [
+      'erase_account_before_races',
+      'erase_account_before_healthkit_ingestion',
+      'erase_account_before_course_share_budget',
+      'erase_account_before_course_sharing',
+      'erase_account_before_course_deletion',
+      'erase_account_before_garmin_unofficial',
+    ];
     const chain: string[] = [];
     for (let name = 'erase_account'; ;) {
-      const found = await admin.query<{ source: string }>(
-        `SELECT prosrc AS source FROM pg_proc WHERE proname=$1`,
+      const found = await admin.query<{ source: string; owner: string }>(
+        `SELECT prosrc AS source,pg_get_userbyid(proowner) AS owner FROM pg_proc
+         WHERE oid=to_regprocedure('public.' || $1 || '(text)')`,
         [name],
       );
+      expect(found.rows).toHaveLength(1);
       const source = found.rows[0]?.source ?? '';
+      expect(found.rows[0]?.owner).toBe(new URL(ownerUrl).username);
       chain.push(name);
-      const next = /RETURN public\.(erase_account_before_[a-z_]+)\(\$1\)/.exec(source)?.[1];
-      if (chain.length <= 5) {
+      const next = /(?:RETURN\s+|erased\s*:=\s*)public\.(erase_account_before_[a-z_]+)\(\$1\)/.exec(
+        source,
+      )?.[1];
+      if (suffix.slice(0, 5).includes(name)) {
         const accountLock = source.indexOf('hashtextextended($1,77206)');
         const commandLock = source.indexOf('hashtextextended($1,0)');
         const firstDelete = source.indexOf('DELETE');
@@ -1223,17 +1262,34 @@ describe('B. the view-only link', () => {
         expect(commandLock, name).toBeGreaterThan(accountLock);
         expect(firstDelete, name).toBeGreaterThan(commandLock);
       }
+      if (name === 'erase_account_before_ai_settings') {
+        const globalLock = source.indexOf('pg_advisory_xact_lock_shared(77210,1)');
+        const delegate = source.indexOf('erased:=public.erase_account_before_global_budget($1)');
+        const scrub = source.indexOf('UPDATE public.openai_budget_reservation');
+        expect(globalLock).toBeGreaterThan(-1);
+        expect(delegate).toBeGreaterThan(globalLock);
+        expect(scrub).toBeGreaterThan(delegate);
+      }
       if (!next || chain.length > 60) break;
       name = next;
     }
-    expect(chain.slice(0, 6)).toEqual([
+    expect(chain.slice(0, 10)).toEqual([
       'erase_account',
-      'erase_account_before_healthkit_ingestion',
-      'erase_account_before_course_share_budget',
-      'erase_account_before_course_sharing',
-      'erase_account_before_course_deletion',
-      'erase_account_before_garmin_unofficial',
+      'erase_account_before_ai_settings',
+      'erase_account_before_global_budget',
+      'erase_account_before_app_binding',
+      ...suffix,
     ]);
+    for (const name of ['erase_account_before_ai_settings', 'erase_account_before_global_budget']) {
+      expect(
+        (
+          await admin.query("SELECT has_function_privilege($1,$2,'EXECUTE') AS allowed", [
+            new URL(runtimeUrl).username,
+            `public.${name}(text)`,
+          ])
+        ).rows,
+      ).toEqual([{ allowed: false }]);
+    }
     const counters = await admin.query(
       `SELECT count(*)::integer AS n FROM course_share_rate WHERE bucket=$1`,
       [`s:${third.share.shareId.replaceAll('-', '')}`],
@@ -1626,7 +1682,7 @@ describe('T12/T23: limits the unauthenticated read, across instances, by client 
   });
 
   it('B-5: a link from a higher epoch than the configured one stops every link', async () => {
-    const { courseId } = await ownerWithCourse(loop);
+    const { athleteId, courseId } = await ownerWithCourse(loop);
     const current = linkApp(5);
     const { token } = await makeLink(current, courseId);
     expect((await read(current, { token })).statusCode).toBe(200);
@@ -1635,10 +1691,14 @@ describe('T12/T23: limits the unauthenticated read, across instances, by client 
     expect((await read(future, { token: futureToken })).statusCode).toBe(200);
     // The configuration went back to 5 with a link of epoch 6 in the database.
     expect((await read(current, { token })).statusCode).toBe(404);
-    await admin.query('DELETE FROM course_share WHERE epoch>5');
+    await maintainOwned(athleteId, (c) =>
+      c.query('DELETE FROM course_share WHERE athlete_id=$1 AND epoch>5', [athleteId]),
+    );
     expect((await read(current, { token })).statusCode).toBe(200);
     // Leave no raised epoch behind for the scenarios of epoch 1.
-    await admin.query('DELETE FROM course_share WHERE epoch>1');
+    await maintainOwned(athleteId, (c) =>
+      c.query('DELETE FROM course_share WHERE athlete_id=$1 AND epoch>1', [athleteId]),
+    );
   });
 });
 
@@ -1746,14 +1806,16 @@ describe('peer review r1: receipt expiry and the share circles', () => {
     const { athleteId, courseId } = await ownerWithCourse(line, { zones: [zone] });
     const angle = (2 * Math.PI * 38) / 64;
     const offset = { x: 0.999999 * Math.cos(angle), y: 0.999999 * Math.sin(angle) };
-    await admin.query('DELETE FROM course_privacy_zone_share_offset WHERE athlete_id=$1', [
-      athleteId,
-    ]);
-    await admin.query(
-      `INSERT INTO course_privacy_zone_share_offset(athlete_id,zone_id,offset_x,offset_y,created_at)
+    await maintainOwned(athleteId, async (c) => {
+      await c.query('DELETE FROM course_privacy_zone_share_offset WHERE athlete_id=$1', [
+        athleteId,
+      ]);
+      await c.query(
+        `INSERT INTO course_privacy_zone_share_offset(athlete_id,zone_id,offset_x,offset_y,created_at)
        SELECT athlete_id,zone_id,$2,$3,now() FROM course_privacy_zone WHERE athlete_id=$1`,
-      [athleteId, offset.x, offset.y],
-    );
+        [athleteId, offset.x, offset.y],
+      );
+    });
     // The gap is real: the sliver is inside the area and outside its share circle.
     const [circle] = await shareCirclesOf(athleteId);
     if (!circle) throw new Error('no share circle');
@@ -1835,10 +1897,12 @@ describe('M2-01as: a place gives out at most 10 links, ever', () => {
     const reaped: string[] = [];
     for (let index = 0; index < 3; index += 1)
       reaped.push((await makeLink(epochOne, courseId)).share.shareId);
-    await admin.query('DELETE FROM course_share WHERE athlete_id=$1 AND share_id=ANY($2::uuid[])', [
-      athleteId,
-      reaped,
-    ]);
+    await maintainOwned(athleteId, (c) =>
+      c.query('DELETE FROM course_share WHERE athlete_id=$1 AND share_id=ANY($2::uuid[])', [
+        athleteId,
+        reaped,
+      ]),
+    );
     // 3 left active under epoch 1 — a restore then raises the epoch and invalidates them.
     const invalidated: string[] = [];
     for (let index = 0; index < 3; index += 1)
@@ -1874,7 +1938,9 @@ describe('M2-01as: a place gives out at most 10 links, ever', () => {
     } finally {
       // A link of a higher epoch stops every read under epoch 1 (the fail-closed rule), and
       // the other scenarios of this file read under epoch 1: remove this scenario's.
-      await admin.query('DELETE FROM course_share WHERE athlete_id=$1 AND epoch>1', [athleteId]);
+      await maintainOwned(athleteId, (c) =>
+        c.query('DELETE FROM course_share WHERE athlete_id=$1 AND epoch>1', [athleteId]),
+      );
     }
   });
 
@@ -1996,7 +2062,7 @@ describe('M2-01as: a place gives out at most 10 links, ever', () => {
     });
     expect(exported.statusCode).toBe(200);
     const artifact = accountExportSchema.parse(exported.json());
-    if (artifact.schemaVersion !== 30) throw new Error('expected v30');
+    if (artifact.schemaVersion !== 33) throw new Error('expected v33');
     const [row] = await budgetOf(athleteId);
     expect(artifact.data.courseShareAreaBudgets).toEqual([
       {

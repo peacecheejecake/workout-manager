@@ -68,6 +68,7 @@ const kinds = new Set([
   'gallery_media_deleted',
   'healthkit_consent_transition',
   'ai_consent_transition',
+  'app_consent_transition',
   'check_in_deleted',
   'resource_share_revoked',
   'course_share_revoked',

@@ -43,6 +43,44 @@ const candidateEvidenceAvailable = `EXISTS(SELECT 1 FROM coaching_decision d
 const candidateAvailable = `(${candidateEvidenceAvailable} AND EXISTS(SELECT 1 FROM consent c
   WHERE c.athlete_id=coaching_candidate.athlete_id AND c.kind='ai' AND c.granted))`;
 const collections = [
+  ['aiSettingsHeads', 'ai_settings_head', 'revision', 'revision'],
+  [
+    'aiSettingsRevisions',
+    'ai_settings_revision',
+    'revision,updated_at,catalog_revision,policy_version,disclosure_version,default_provider_id,default_model_id,comparison_kind,comparison_provider_id,comparison_model_id',
+    'revision',
+  ],
+  [
+    'evidenceAppBindings',
+    'evidence_app_admission_binding',
+    'evidence_snapshot_id,binding_version,app_revision,captured_at',
+    'evidence_snapshot_id',
+  ],
+  [
+    'runAppBindings',
+    'run_app_admission_binding',
+    'run_id,evidence_snapshot_id,binding_version',
+    'run_id',
+  ],
+  [
+    'candidateAppBindings',
+    'candidate_app_admission_binding',
+    'candidate_id,run_id,binding_version',
+    'candidate_id',
+  ],
+  [
+    'integratedCandidateAppBindings',
+    'integrated_candidate_app_admission_binding',
+    'candidate_id,evidence_snapshot_id,binding_version',
+    'candidate_id',
+  ],
+  // A receipt key is executable command metadata and is deliberately not projected.
+  [
+    'approvalAppBindings',
+    'approval_app_admission_binding',
+    'candidate_id,integrated_candidate_id,integrated_approval_id,binding_version,created_at',
+    'created_at,candidate_id,integrated_candidate_id,integrated_approval_id',
+  ],
   ['raceEvents', 'race_event', 'id,revision,values_json,deleted,recorded_at,updated_at', 'id'],
   [
     'raceEventRevisions',
@@ -634,7 +672,7 @@ export function createOperationsRepository(database: Database): OperationsReposi
         if (!row.ok) throw new OperationsError('EXPORT_TOO_LARGE');
         const data = Object.fromEntries(collections.map(([name]) => [name, row.data[name] ?? []]));
         const artifact = accountExportSchema.parse({
-          schemaVersion: 31,
+          schemaVersion: 33,
           athleteId,
           exportedAt: new Date().toISOString(),
           data,

@@ -219,6 +219,16 @@ describe.skipIf(!enabled)('local pgoutput suppression publication', () => {
   it('decodes committed PostgreSQL rows into kind-specific replay fields', async () => {
     const cases: readonly [string, Record<string, string | number | boolean>][] = [
       ['tenant_erased', {}],
+      ['app_consent_transition', { record_version: 5, consent_revision: 1, consent_granted: true }],
+      [
+        'race_event_deleted',
+        {
+          record_version: 4,
+          target_id: randomUUID(),
+          race_previous_revision: 1,
+          race_deleted_revision: 2,
+        },
+      ],
       ['course_deleted', { target_id: randomUUID() }],
       [
         'activity_deleted',
@@ -291,7 +301,9 @@ describe.skipIf(!enabled)('local pgoutput suppression publication', () => {
     expect(matching).toHaveLength(cases.length);
     for (const record of matching) {
       expect(record.kind).toBe(inserted.get(record.eventId));
-      expect(record.schemaVersion).toBe(1);
+      expect(record.schemaVersion).toBe(
+        record.kind === 'app_consent_transition' ? 5 : record.kind === 'race_event_deleted' ? 4 : 1,
+      );
       expect(new Date(record.occurredAt).toISOString()).toBe('2026-09-30T12:34:56.123Z');
     }
     expect(matching.find((record) => record.kind === 'activity_deleted')).toMatchObject({

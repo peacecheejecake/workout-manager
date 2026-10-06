@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { Pool } from 'pg';
+import { Pool, type PoolClient } from 'pg';
 import { z } from 'zod';
 import { beforeAll, afterAll, describe, expect, it } from 'vitest';
 import type {
@@ -17,6 +17,9 @@ const adminUrl = process.env['TEST_DATABASE_ADMIN_URL'];
 const runtimeUrl = process.env['TEST_DATABASE_URL'];
 if (!adminUrl || !runtimeUrl) throw new Error('Run isolated real PostgreSQL integration harness');
 const admin = new Pool({ connectionString: adminUrl });
+const fixtureOwner = new Pool({
+  connectionString: z.string().parse(process.env['TEST_DATABASE_OWNER_URL']),
+});
 let database: Database;
 let repository: RaceRepository;
 const fixedTime = '2026-10-06T10:00:00.000Z';
@@ -31,6 +34,7 @@ beforeAll(async () => {
 });
 afterAll(async () => {
   await database?.close();
+  await fixtureOwner.end();
   await admin.end();
 });
 function eventValues(): RaceEventValues {
@@ -83,38 +87,37 @@ async function seedReferences(athleteId: string) {
     planId = randomUUID(),
     courseId = randomUUID(),
     revisionId = randomUUID();
-  await admin.query(
-    'INSERT INTO activity_canonical(athlete_id,id,revision,original) VALUES($1,$2,1,$3::jsonb)',
-    [
-      athleteId,
-      activityId,
-      JSON.stringify({
-        title: 'Synthetic private activity',
-        kind: 'running',
-        startedAt: null,
-        timezone: null,
-        durationSeconds: null,
-        durationKind: 'unknown',
-        distanceMeters: 0,
-      }),
-    ],
-  );
-  await admin.query(
-    'INSERT INTO plan_snapshot(athlete_id,id,version,draft) VALUES($1,$2,1,$3::jsonb)',
-    [athleteId, planId, JSON.stringify({ fixture: 'Synthetic private plan' })],
-  );
-  const sourceId = randomUUID();
-  await admin.query(
-    "INSERT INTO activity_source_head(athlete_id,kind,source_id,source_revision,content_hash,activity_id) VALUES($1,'fixture',$2,1,$3,$4)",
-    [athleteId, sourceId, 'b'.repeat(64), activityId],
-  );
-  await admin.query(
-    "INSERT INTO activity_source_revision(athlete_id,kind,source_id,source_revision,content_hash,normalized_raw) VALUES($1,'fixture',$2,1,$3,'{}'::jsonb)",
-    [athleteId, sourceId, 'b'.repeat(64)],
-  );
-  // The deferred Course head FK is checked together with its immutable revision.
-  const client = await admin.connect();
-  try {
+  // Course head and immutable revision commit together under the same owned tenant scope.
+  await owned(athleteId, async (client) => {
+    await client.query(
+      'INSERT INTO activity_canonical(athlete_id,id,revision,original) VALUES($1,$2,1,$3::jsonb)',
+      [
+        athleteId,
+        activityId,
+        JSON.stringify({
+          title: 'Synthetic private activity',
+          kind: 'running',
+          startedAt: null,
+          timezone: null,
+          durationSeconds: null,
+          durationKind: 'unknown',
+          distanceMeters: 0,
+        }),
+      ],
+    );
+    await client.query(
+      'INSERT INTO plan_snapshot(athlete_id,id,version,draft) VALUES($1,$2,1,$3::jsonb)',
+      [athleteId, planId, JSON.stringify({ fixture: 'Synthetic private plan' })],
+    );
+    const sourceId = randomUUID();
+    await client.query(
+      "INSERT INTO activity_source_head(athlete_id,kind,source_id,source_revision,content_hash,activity_id) VALUES($1,'fixture',$2,1,$3,$4)",
+      [athleteId, sourceId, 'b'.repeat(64), activityId],
+    );
+    await client.query(
+      "INSERT INTO activity_source_revision(athlete_id,kind,source_id,source_revision,content_hash,normalized_raw) VALUES($1,'fixture',$2,1,$3,'{}'::jsonb)",
+      [athleteId, sourceId, 'b'.repeat(64)],
+    );
     await client.query('BEGIN');
     await client.query(
       "INSERT INTO course(athlete_id,course_id,name,visibility,status,head_revision,revision_id,created_at,updated_at) VALUES($1,$2,'Synthetic course','private','available',1,$3,$4,$4)",
@@ -124,13 +127,7 @@ async function seedReferences(athleteId: string) {
       "INSERT INTO course_revision(athlete_id,course_id,course_revision,revision_id,name,geometry,waypoints,generation,edit,vertex_count,distance_meters,content_digest,created_at) VALUES($1,$2,1,$3,'Synthetic course','{}'::jsonb,'[]'::jsonb,'{}'::jsonb,'{}'::jsonb,2,10000,$4,$5)",
       [athleteId, courseId, revisionId, 'a'.repeat(64), fixedTime],
     );
-    await client.query('COMMIT');
-  } catch (error) {
-    await client.query('ROLLBACK');
-    throw error;
-  } finally {
-    client.release();
-  }
+  });
   return { activityId, planId, course: { courseId, courseRevision: 1, revisionId } };
 }
 const allTables = [
@@ -813,12 +810,33 @@ async function grantApp(athlete: string, pool: Pool = admin) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock_shared(77210,1)');
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [athlete]);
     await client.query("SELECT set_config('app.athlete_id',$1,true)", [athlete]);
     await client.query(
-      "INSERT INTO consent(athlete_id,kind,granted,revision) VALUES($1,'app',true,1) ON CONFLICT DO NOTHING",
+      "INSERT INTO consent(athlete_id,kind,granted,revision) SELECT $1,'app',true,1 WHERE NOT EXISTS(SELECT 1 FROM tenant_erasure WHERE athlete_id=$1) AND NOT EXISTS(SELECT 1 FROM consent WHERE athlete_id=$1 AND kind='app') ON CONFLICT DO NOTHING",
       [athlete],
     );
     await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+/** Plain schema owner seeds only the named synthetic tenant; FORCE RLS stays enabled. */
+async function owned<T>(athlete: string, operation: (client: PoolClient) => Promise<T>) {
+  const client = await fixtureOwner.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock_shared(77210,1)');
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [athlete]);
+    await client.query("SELECT set_config('app.athlete_id',$1,true)", [athlete]);
+    const result = await operation(client);
+    await client.query('COMMIT');
+    return result;
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;

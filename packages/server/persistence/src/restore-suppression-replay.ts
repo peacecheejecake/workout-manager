@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 
-import type { Pool } from 'pg';
+import type { Pool, PoolClient } from 'pg';
 
 import type { SuppressionRecord } from './restore-suppression-records.js';
 import { decryptReplaySegment } from './restore-suppression-segment.js';
@@ -55,6 +55,7 @@ type SupportedRecord =
         kind:
           | 'healthkit_consent_transition'
           | 'ai_consent_transition'
+          | 'app_consent_transition'
           | 'course_share_revoked'
           | 'intake_entry_deleted'
           | 'recovery_action_deleted'
@@ -212,6 +213,7 @@ function verifyChain(input: ReplayInput): VerifiedChain {
           record.kind !== 'resource_share_revoked' &&
           record.kind !== 'healthkit_consent_transition' &&
           record.kind !== 'ai_consent_transition' &&
+          record.kind !== 'app_consent_transition' &&
           record.kind !== 'course_share_revoked' &&
           record.kind !== 'intake_entry_deleted' &&
           record.kind !== 'recovery_action_deleted' &&
@@ -224,6 +226,7 @@ function verifyChain(input: ReplayInput): VerifiedChain {
           (record.kind !== 'tenant_erased' &&
             record.kind !== 'healthkit_consent_transition' &&
             record.kind !== 'ai_consent_transition' &&
+            record.kind !== 'app_consent_transition' &&
             !('targetId' in record && canonicalUuid.test(record.targetId))) ||
           Date.parse(record.occurredAt) > now
         )
@@ -292,7 +295,8 @@ function verifyChain(input: ReplayInput): VerifiedChain {
         }
         if (
           (record.kind === 'healthkit_consent_transition' ||
-            record.kind === 'ai_consent_transition') &&
+            record.kind === 'ai_consent_transition' ||
+            record.kind === 'app_consent_transition') &&
           (record.consentRevision < 1 ||
             record.consentRevision > 2147483647 ||
             (record.consentPreviousRevision === null) !==
@@ -332,6 +336,279 @@ export function preflightSuppressionReplay(input: ReplayInput): ReplayPreflight 
   return verifyChain(input).summary;
 }
 
+/** Opaque, process-local authentication result. It is not an admission proof. */
+export type VerifiedSuppressionChain = {
+  readonly summary: Readonly<ReplayPreflight>;
+};
+
+const verifiedChains = new WeakMap<VerifiedSuppressionChain, VerifiedChain>();
+
+/** Authenticate all bytes before the owner coordinator obtains its connection. */
+export function prepareVerifiedSuppressionChain(input: ReplayInput): VerifiedSuppressionChain {
+  const verified = verifyChain(input);
+  const prepared = Object.freeze({ summary: Object.freeze({ ...verified.summary }) });
+  verifiedChains.set(prepared, verified);
+  return prepared;
+}
+
+/**
+ * Package-internal composition port: the owner coordinator must already own the
+ * transaction and its lock ordering, and must roll it back on any error. This
+ * function never begins, commits, rotates a generation or opens admission.
+ * Serialized/copied/caller-constructed handles are rejected before SQL.
+ */
+export async function replayVerifiedSuppressionChainIn(
+  client: Pick<PoolClient, 'query'>,
+  prepared: VerifiedSuppressionChain,
+): Promise<Readonly<ReplayPreflight>> {
+  const verified = verifiedChains.get(prepared);
+  if (!verified) return fail();
+  for (const transaction of verified.transactions) {
+    for (const record of transaction.records) {
+      if (record.kind === 'resource_share_revoked' && record.shareCauseKind === 'resource_deleted')
+        continue;
+      await client.query("SELECT set_config('app.athlete_id',$1,true)", [record.athleteId]);
+      if (record.kind === 'tenant_erased') {
+        await client.query('SELECT public.replay_tenant_erasure_exact($1,$2,$3)', [
+          record.athleteId,
+          record.eventId,
+          record.occurredAt,
+        ]);
+      } else if (record.kind === 'course_deleted') {
+        await client.query('SELECT public.replay_course_deletion_exact($1,$2,$3,$4)', [
+          record.athleteId,
+          record.targetId,
+          record.eventId,
+          record.occurredAt,
+        ]);
+      } else if (
+        record.kind === 'race_event_deleted' ||
+        record.kind === 'race_result_deleted' ||
+        record.kind === 'training_best_deleted'
+      ) {
+        const applied = await client.query(
+          'SELECT public.replay_race_deletion_exact($1,$2,$3,$4,$5,$6,$7) AS result',
+          [
+            record.athleteId,
+            record.kind,
+            record.targetId,
+            record.eventId,
+            record.occurredAt,
+            record.racePreviousRevision,
+            record.raceDeletedRevision,
+          ],
+        );
+        if (
+          !['applied', 'already_applied', 'already_applied_by_erasure'].includes(
+            String(applied.rows[0]?.['result']),
+          )
+        )
+          throw new Error('RESTORE_REPLAY_FAILED');
+      } else if (record.kind === 'activity_deleted') {
+        await client.query(
+          'SELECT public.replay_activity_deletion_exact($1,$2,$3,$4,$5,$6,$7,$8,$9)',
+          [
+            record.athleteId,
+            record.targetId,
+            record.eventId,
+            record.occurredAt,
+            record.activityRevision,
+            record.sourceKind,
+            record.sourceId,
+            record.sourceRevision,
+            record.sourceContentHash,
+          ],
+        );
+      } else if (record.kind === 'resource_deleted') {
+        const children = transaction.resourceChildren.get(record.eventId);
+        if (children?.length) {
+          await client.query(
+            'SELECT public.replay_resource_deletion_compound_exact($1,$2,$3,$4,$5,$6::jsonb)',
+            [
+              record.athleteId,
+              record.targetId,
+              record.eventId,
+              record.occurredAt,
+              record.resourceAccessRevision,
+              JSON.stringify(
+                children.map((child) => ({
+                  recordVersion: child.schemaVersion,
+                  eventId: child.eventId,
+                  athleteId: child.athleteId,
+                  targetId: child.targetId,
+                  shareId: child.shareId,
+                  occurredAt: child.occurredAt,
+                  shareGrantedAccessRevision: child.shareGrantedAccessRevision,
+                  shareRevokedAccessRevision: child.shareRevokedAccessRevision,
+                  shareCauseKind: child.shareCauseKind,
+                  shareCauseEventId: child.shareCauseEventId,
+                })),
+              ),
+            ],
+          );
+        } else {
+          await client.query('SELECT public.replay_resource_deletion_exact($1,$2,$3,$4,$5)', [
+            record.athleteId,
+            record.targetId,
+            record.eventId,
+            record.occurredAt,
+            record.resourceAccessRevision,
+          ]);
+        }
+      } else if (record.kind === 'gallery_media_deleted') {
+        await client.query('SELECT public.replay_gallery_media_deletion_exact($1,$2,$3,$4,$5)', [
+          record.athleteId,
+          record.targetId,
+          record.eventId,
+          record.occurredAt,
+          record.galleryAccessRevision,
+        ]);
+      } else if (record.kind === 'check_in_deleted') {
+        await client.query('SELECT public.replay_check_in_deletion_exact($1,$2,$3,$4,$5)', [
+          record.athleteId,
+          record.targetId,
+          record.eventId,
+          record.occurredAt,
+          record.checkInRevision,
+        ]);
+      } else if (record.kind === 'resource_share_revoked') {
+        if (record.shareCauseKind === 'tenant_erased') {
+          await client.query(
+            'SELECT public.replay_erasure_share_child_exact($1,$2,$3,$4,$5,$6,$7,$8)',
+            [
+              record.athleteId,
+              record.targetId,
+              record.shareId,
+              record.eventId,
+              record.occurredAt,
+              record.shareGrantedAccessRevision,
+              record.shareRevokedAccessRevision,
+              record.shareCauseEventId,
+            ],
+          );
+        } else {
+          await client.query(
+            'SELECT public.replay_resource_share_revoke_exact($1,$2,$3,$4,$5,$6,$7)',
+            [
+              record.athleteId,
+              record.targetId,
+              record.shareId,
+              record.eventId,
+              record.occurredAt,
+              record.shareGrantedAccessRevision,
+              record.shareRevokedAccessRevision,
+            ],
+          );
+        }
+      } else if (record.kind === 'course_share_revoked') {
+        await client.query(
+          'SELECT public.replay_course_share_revoke_exact($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',
+          [
+            record.athleteId,
+            record.targetId,
+            record.courseShareId,
+            record.eventId,
+            record.occurredAt,
+            record.courseShareEpoch,
+            record.courseShareCourseRevision,
+            record.courseShareRevokeReason,
+            record.courseShareAuditId,
+            record.courseShareAuditOccurredAt,
+          ],
+        );
+      } else if (record.kind === 'intake_entry_deleted') {
+        await client.query(
+          'SELECT public.replay_intake_entry_deletion_exact($1,$2,$3,$4,$5,$6,$7)',
+          [
+            record.athleteId,
+            record.targetId,
+            record.eventId,
+            record.occurredAt,
+            record.actualDeletionRevision,
+            record.actualPreviousRevisionId,
+            record.actualDeletedRevisionId,
+          ],
+        );
+      } else if (record.kind === 'recovery_action_deleted') {
+        await client.query(
+          'SELECT public.replay_recovery_action_deletion_exact($1,$2,$3,$4,$5,$6,$7)',
+          [
+            record.athleteId,
+            record.targetId,
+            record.eventId,
+            record.occurredAt,
+            record.actualDeletionRevision,
+            record.actualPreviousRevisionId,
+            record.actualDeletedRevisionId,
+          ],
+        );
+      } else if (
+        record.kind === 'healthkit_workout_deregistration_pending' ||
+        record.kind === 'healthkit_workout_deregistration_released'
+      ) {
+        await client.query(
+          'SELECT public.replay_healthkit_workout_deregistration_exact($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)',
+          [
+            record.athleteId,
+            record.eventId,
+            record.occurredAt,
+            record.kind,
+            record.targetId,
+            record.healthKitClaimEpoch,
+            record.healthKitOperationId,
+            record.healthKitConsentRevision,
+            record.healthKitRegistryPreviousRevision,
+            record.healthKitRegistryRevision,
+            JSON.stringify(record.healthKitObjectScopes),
+          ],
+        );
+      } else if (record.kind === 'healthkit_consent_transition') {
+        await client.query(
+          'SELECT public.replay_healthkit_consent_transition_exact($1,$2,$3,$4,$5,$6,$7)',
+          [
+            record.athleteId,
+            record.eventId,
+            record.occurredAt,
+            record.consentPreviousRevision,
+            record.consentPreviousGranted,
+            record.consentRevision,
+            record.consentGranted,
+          ],
+        );
+      } else if (record.kind === 'app_consent_transition') {
+        await client.query(
+          'SELECT public.replay_app_consent_transition_exact($1,$2,$3,$4,$5,$6,$7)',
+          [
+            record.athleteId,
+            record.eventId,
+            record.occurredAt,
+            record.consentPreviousRevision,
+            record.consentPreviousGranted,
+            record.consentRevision,
+            record.consentGranted,
+          ],
+        );
+      } else if (record.kind === 'ai_consent_transition') {
+        await client.query(
+          'SELECT public.replay_ai_consent_transition_exact($1,$2,$3,$4,$5,$6,$7)',
+          [
+            record.athleteId,
+            record.eventId,
+            record.occurredAt,
+            record.consentPreviousRevision,
+            record.consentPreviousGranted,
+            record.consentRevision,
+            record.consentGranted,
+          ],
+        );
+      } else {
+        throw new Error('RESTORE_REPLAY_UNSUPPORTED_KIND');
+      }
+    }
+  }
+  return prepared.summary;
+}
+
 /**
  * Owner-only, offline local replay. The caller supplies an independently trusted
  * backup-bound anchor and a dedicated owner pool. Authentication of every byte
@@ -343,7 +620,7 @@ export async function replayVerifiedSuppressionChain(
     ownerPool: Pick<Pool, 'connect'>;
   },
 ): Promise<ReplayPreflight> {
-  const verified = verifyChain(input);
+  const prepared = prepareVerifiedSuppressionChain(input);
   const client = await input.ownerPool.connect();
   let discard = false;
   let transactionOpen = false;
@@ -353,244 +630,12 @@ export async function replayVerifiedSuppressionChain(
     transactionOpen = true;
     await client.query("SELECT set_config('statement_timeout','5000',true)");
     await client.query("SELECT set_config('lock_timeout','3000',true)");
-    for (const transaction of verified.transactions) {
-      for (const record of transaction.records) {
-        if (
-          record.kind === 'resource_share_revoked' &&
-          record.shareCauseKind === 'resource_deleted'
-        )
-          continue;
-        await client.query("SELECT set_config('app.athlete_id',$1,true)", [record.athleteId]);
-        if (record.kind === 'tenant_erased') {
-          await client.query('SELECT public.replay_tenant_erasure_exact($1,$2,$3)', [
-            record.athleteId,
-            record.eventId,
-            record.occurredAt,
-          ]);
-        } else if (record.kind === 'course_deleted') {
-          await client.query('SELECT public.replay_course_deletion_exact($1,$2,$3,$4)', [
-            record.athleteId,
-            record.targetId,
-            record.eventId,
-            record.occurredAt,
-          ]);
-        } else if (
-          record.kind === 'race_event_deleted' ||
-          record.kind === 'race_result_deleted' ||
-          record.kind === 'training_best_deleted'
-        ) {
-          const applied = await client.query(
-            'SELECT public.replay_race_deletion_exact($1,$2,$3,$4,$5,$6,$7) AS result',
-            [
-              record.athleteId,
-              record.kind,
-              record.targetId,
-              record.eventId,
-              record.occurredAt,
-              record.racePreviousRevision,
-              record.raceDeletedRevision,
-            ],
-          );
-          if (
-            !['applied', 'already_applied', 'already_applied_by_erasure'].includes(
-              String(applied.rows[0]?.['result']),
-            )
-          )
-            throw new Error('RESTORE_REPLAY_FAILED');
-        } else if (record.kind === 'activity_deleted') {
-          await client.query(
-            'SELECT public.replay_activity_deletion_exact($1,$2,$3,$4,$5,$6,$7,$8,$9)',
-            [
-              record.athleteId,
-              record.targetId,
-              record.eventId,
-              record.occurredAt,
-              record.activityRevision,
-              record.sourceKind,
-              record.sourceId,
-              record.sourceRevision,
-              record.sourceContentHash,
-            ],
-          );
-        } else if (record.kind === 'resource_deleted') {
-          const children = transaction.resourceChildren.get(record.eventId);
-          if (children?.length) {
-            await client.query(
-              'SELECT public.replay_resource_deletion_compound_exact($1,$2,$3,$4,$5,$6::jsonb)',
-              [
-                record.athleteId,
-                record.targetId,
-                record.eventId,
-                record.occurredAt,
-                record.resourceAccessRevision,
-                JSON.stringify(
-                  children.map((child) => ({
-                    recordVersion: child.schemaVersion,
-                    eventId: child.eventId,
-                    athleteId: child.athleteId,
-                    targetId: child.targetId,
-                    shareId: child.shareId,
-                    occurredAt: child.occurredAt,
-                    shareGrantedAccessRevision: child.shareGrantedAccessRevision,
-                    shareRevokedAccessRevision: child.shareRevokedAccessRevision,
-                    shareCauseKind: child.shareCauseKind,
-                    shareCauseEventId: child.shareCauseEventId,
-                  })),
-                ),
-              ],
-            );
-          } else {
-            await client.query('SELECT public.replay_resource_deletion_exact($1,$2,$3,$4,$5)', [
-              record.athleteId,
-              record.targetId,
-              record.eventId,
-              record.occurredAt,
-              record.resourceAccessRevision,
-            ]);
-          }
-        } else if (record.kind === 'gallery_media_deleted') {
-          await client.query('SELECT public.replay_gallery_media_deletion_exact($1,$2,$3,$4,$5)', [
-            record.athleteId,
-            record.targetId,
-            record.eventId,
-            record.occurredAt,
-            record.galleryAccessRevision,
-          ]);
-        } else if (record.kind === 'check_in_deleted') {
-          await client.query('SELECT public.replay_check_in_deletion_exact($1,$2,$3,$4,$5)', [
-            record.athleteId,
-            record.targetId,
-            record.eventId,
-            record.occurredAt,
-            record.checkInRevision,
-          ]);
-        } else if (record.kind === 'resource_share_revoked') {
-          if (record.shareCauseKind === 'tenant_erased') {
-            await client.query(
-              'SELECT public.replay_erasure_share_child_exact($1,$2,$3,$4,$5,$6,$7,$8)',
-              [
-                record.athleteId,
-                record.targetId,
-                record.shareId,
-                record.eventId,
-                record.occurredAt,
-                record.shareGrantedAccessRevision,
-                record.shareRevokedAccessRevision,
-                record.shareCauseEventId,
-              ],
-            );
-          } else {
-            await client.query(
-              'SELECT public.replay_resource_share_revoke_exact($1,$2,$3,$4,$5,$6,$7)',
-              [
-                record.athleteId,
-                record.targetId,
-                record.shareId,
-                record.eventId,
-                record.occurredAt,
-                record.shareGrantedAccessRevision,
-                record.shareRevokedAccessRevision,
-              ],
-            );
-          }
-        } else if (record.kind === 'course_share_revoked') {
-          await client.query(
-            'SELECT public.replay_course_share_revoke_exact($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',
-            [
-              record.athleteId,
-              record.targetId,
-              record.courseShareId,
-              record.eventId,
-              record.occurredAt,
-              record.courseShareEpoch,
-              record.courseShareCourseRevision,
-              record.courseShareRevokeReason,
-              record.courseShareAuditId,
-              record.courseShareAuditOccurredAt,
-            ],
-          );
-        } else if (record.kind === 'intake_entry_deleted') {
-          await client.query(
-            'SELECT public.replay_intake_entry_deletion_exact($1,$2,$3,$4,$5,$6,$7)',
-            [
-              record.athleteId,
-              record.targetId,
-              record.eventId,
-              record.occurredAt,
-              record.actualDeletionRevision,
-              record.actualPreviousRevisionId,
-              record.actualDeletedRevisionId,
-            ],
-          );
-        } else if (record.kind === 'recovery_action_deleted') {
-          await client.query(
-            'SELECT public.replay_recovery_action_deletion_exact($1,$2,$3,$4,$5,$6,$7)',
-            [
-              record.athleteId,
-              record.targetId,
-              record.eventId,
-              record.occurredAt,
-              record.actualDeletionRevision,
-              record.actualPreviousRevisionId,
-              record.actualDeletedRevisionId,
-            ],
-          );
-        } else if (
-          record.kind === 'healthkit_workout_deregistration_pending' ||
-          record.kind === 'healthkit_workout_deregistration_released'
-        ) {
-          await client.query(
-            'SELECT public.replay_healthkit_workout_deregistration_exact($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)',
-            [
-              record.athleteId,
-              record.eventId,
-              record.occurredAt,
-              record.kind,
-              record.targetId,
-              record.healthKitClaimEpoch,
-              record.healthKitOperationId,
-              record.healthKitConsentRevision,
-              record.healthKitRegistryPreviousRevision,
-              record.healthKitRegistryRevision,
-              JSON.stringify(record.healthKitObjectScopes),
-            ],
-          );
-        } else if (record.kind === 'healthkit_consent_transition') {
-          await client.query(
-            'SELECT public.replay_healthkit_consent_transition_exact($1,$2,$3,$4,$5,$6,$7)',
-            [
-              record.athleteId,
-              record.eventId,
-              record.occurredAt,
-              record.consentPreviousRevision,
-              record.consentPreviousGranted,
-              record.consentRevision,
-              record.consentGranted,
-            ],
-          );
-        } else if (record.kind === 'ai_consent_transition') {
-          await client.query(
-            'SELECT public.replay_ai_consent_transition_exact($1,$2,$3,$4,$5,$6,$7)',
-            [
-              record.athleteId,
-              record.eventId,
-              record.occurredAt,
-              record.consentPreviousRevision,
-              record.consentPreviousGranted,
-              record.consentRevision,
-              record.consentGranted,
-            ],
-          );
-        } else {
-          throw new Error('RESTORE_REPLAY_UNSUPPORTED_KIND');
-        }
-      }
-    }
+    await replayVerifiedSuppressionChainIn(client, prepared);
     commitAttempted = true;
     const committed = await client.query('COMMIT');
     transactionOpen = false;
     if (committed.command !== 'COMMIT') throw new Error('RESTORE_REPLAY_NOT_COMMITTED');
-    return verified.summary;
+    return prepared.summary;
   } catch (error) {
     if (commitAttempted) {
       // A lost COMMIT response cannot establish whether PostgreSQL committed.

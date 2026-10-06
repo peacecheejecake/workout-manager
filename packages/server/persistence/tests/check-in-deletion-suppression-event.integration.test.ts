@@ -66,6 +66,7 @@ describe('transaction-local CheckIn deletion event', () => {
   it('records a minimal deletion tombstone once and keeps it after account erasure', async () => {
     const tenant = randomUUID();
     const repository = createCheckInRepository(database);
+    await grantAppPurpose(tenant);
     const first = await repository.createCheckIn(tenant, create());
     const second = await repository.createCheckIn(tenant, create());
     const deletion = { idempotencyKey: randomUUID(), expectedRevision: 1 };
@@ -121,6 +122,7 @@ describe('transaction-local CheckIn deletion event', () => {
   it('rolls back deletion, purge and event if a later outbox write fails', async () => {
     const tenant = randomUUID();
     const repository = createCheckInRepository(database);
+    await grantAppPurpose(tenant);
     const created = await repository.createCheckIn(tenant, create());
     const broken: Database = {
       ...database,
@@ -154,6 +156,7 @@ describe('transaction-local CheckIn deletion event', () => {
     const tenant = randomUUID();
     const other = randomUUID();
     const repository = createCheckInRepository(database);
+    await grantAppPurpose(tenant);
     const created = await repository.createCheckIn(tenant, create());
     await expect(
       repository.deleteCheckIn(other, created.id, {
@@ -186,3 +189,26 @@ describe('transaction-local CheckIn deletion event', () => {
     expect(await events(tenant)).toHaveLength(1);
   });
 });
+
+// Explicit permission for this synthetic positive core-storage fixture only.
+// Preserve any existing withdrawal/revision and never recreate an erased tenant.
+async function grantAppPurpose(athleteId: string): Promise<void> {
+  const client = await admin.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock_shared(77210,1)');
+    // Serialize the absence check before the app event trigger, like the consent command.
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [athleteId]);
+    await client.query("SELECT set_config('app.athlete_id',$1,true)", [athleteId]);
+    await client.query(
+      "INSERT INTO consent(athlete_id,kind,granted,revision) SELECT $1,'app',true,1 WHERE NOT EXISTS (SELECT 1 FROM tenant_erasure WHERE athlete_id=$1) ON CONFLICT (athlete_id,kind) DO NOTHING",
+      [athleteId],
+    );
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}

@@ -65,6 +65,7 @@ it('counts manual actuals once and projects corrected or cleared start times wit
   const athlete = randomUUID();
   const activities = createActivityRepository(database);
   const dashboard = createDashboardRepository(database);
+  await grantAppPurpose(athlete);
   const created = await activities.createManualActivity(athlete, {
     confirmed: true,
     idempotencyKey: randomUUID(),
@@ -146,6 +147,7 @@ function draft(): PlanDraft {
   };
 }
 async function savePlan(athlete: string, value = draft()) {
+  await grantAppPurpose(athlete);
   return createPlanningRepository(database).save(athlete, {
     source: 'manual',
     confirmed: true,
@@ -331,6 +333,7 @@ it('counts one HealthKit canonical Activity across daily, period, session and co
   ).toBeNull();
 });
 async function checkin(athlete: string, observedAt: string, note = 'self report') {
+  await grantAppPurpose(athlete);
   return createCheckInRepository(database).createCheckIn(athlete, {
     idempotencyKey: randomUUID(),
     values: {
@@ -374,6 +377,7 @@ it('returns bounded complete empty dates with unknown metrics and no invented co
 it('groups DST by local calendar date and preserves zero/null and separate duration definitions', async () => {
   const athlete = randomUUID(),
     repo = createActivityRepository(database);
+  await grantAppPurpose(athlete);
   await repo.importActivity(
     athlete,
     activity('2024-03-10T04:59:59Z', {
@@ -418,6 +422,7 @@ it('groups DST by local calendar date and preserves zero/null and separate durat
 it('uses plan timezone and bounded upcoming dates, keeping planned metrics separate', async () => {
   const athlete = randomUUID(),
     plan = await savePlan(athlete);
+  await grantAppPurpose(athlete);
   await createActivityRepository(database).importActivity(
     athlete,
     activity('2024-03-11T02:00:00Z', { distanceMeters: 0 }),
@@ -444,6 +449,7 @@ it('reflects overlays, explicit null correction and tombstone revisions without 
       durationSeconds: 30,
       durationKind: 'timer',
     });
+  await grantAppPurpose(athlete);
   const initial = await repo.importActivity(athlete, input);
   await repo.updateOverlay(athlete, initial.activityId, {
     idempotencyKey: randomUUID(),
@@ -498,6 +504,7 @@ it('reads every component in one SELECT while concurrent commits remain visible 
           query: async (sql, args) => {
             selects++;
             const result = await tx.query(sql, args);
+            await grantAppPurpose(athlete);
             await createActivityRepository(database).importActivity(
               athlete,
               activity('2024-03-10T12:00:00Z', { distanceMeters: 42 }),
@@ -657,6 +664,7 @@ it('matches SQL decimal day sums and JavaScript period/window target sums for fr
     ...input,
     sessions: input.sessions.filter((session) => session.id.startsWith('scalar')),
   };
+  await grantAppPurpose(athlete);
   await plans.save(athlete, {
     source: 'manual',
     confirmed: true,
@@ -669,3 +677,26 @@ it('matches SQL decimal day sums and JavaScript period/window target sums for fr
       ?.durationSeconds,
   ).toEqual({ min: 0.3, max: 0.3, knownCount: 2, missingCount: 0, rangeCount: 0 });
 });
+
+// Explicit permission for this synthetic positive core-storage fixture only.
+// Preserve any existing withdrawal/revision and never recreate an erased tenant.
+async function grantAppPurpose(athleteId: string): Promise<void> {
+  const client = await admin.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock_shared(77210,1)');
+    // Serialize the absence check before the app event trigger, like the consent command.
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [athleteId]);
+    await client.query("SELECT set_config('app.athlete_id',$1,true)", [athleteId]);
+    await client.query(
+      "INSERT INTO consent(athlete_id,kind,granted,revision) SELECT $1,'app',true,1 WHERE NOT EXISTS (SELECT 1 FROM tenant_erasure WHERE athlete_id=$1) ON CONFLICT (athlete_id,kind) DO NOTHING",
+      [athleteId],
+    );
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}

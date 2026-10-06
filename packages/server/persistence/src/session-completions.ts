@@ -1,3 +1,4 @@
+import { requireAppAdmission } from './app-admission.js';
 import { createHash, randomUUID } from 'node:crypto';
 import {
   sessionCompletionSchema,
@@ -83,6 +84,7 @@ export function createSessionCompletionRepository(
             throw new PersistenceConflict('IDEMPOTENCY_CONFLICT');
           return sessionCompletionResultSchema.parse(receipt['result']);
         }
+        await requireAppAdmission(tx);
         const head = (await tx.query(headSql, [athleteId])).rows[0];
         if (!head) throw new SessionCompletionError('SESSION_COMPLETION_NOT_FOUND');
         const draft = planDraftSchema.parse(head['draft']);

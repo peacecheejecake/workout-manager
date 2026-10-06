@@ -44,6 +44,16 @@ afterAll(async () => {
   await db.close();
 });
 
+// Grant only the existing fixture tenant that starts/processes a routine.
+// Catalog-only authoring and the other tenant's reads do not need this permission.
+async function grantAppPurpose(athleteId: string): Promise<void> {
+  await db.tenant(athleteId, (tx) =>
+    tx.query("INSERT INTO consent(athlete_id,kind,granted,revision) VALUES($1,'app',true,1)", [
+      athleteId,
+    ]),
+  );
+}
+
 function blueprint(routineId = randomUUID(), versionId = randomUUID()) {
   const first = randomUUID();
   const second = randomUUID();
@@ -87,6 +97,7 @@ function required<T>(value: T | undefined): T {
 describe('generic routine core on owner + FORCE RLS', () => {
   it('keeps immutable versions, approves finite occurrences once, and links one checklist actual without Activity', async () => {
     const athlete = randomUUID();
+    await grantAppPurpose(athlete);
     const other = randomUUID();
     const repository = createRoutineRepository(db);
     const first = blueprint();
@@ -220,6 +231,7 @@ describe('generic routine core on owner + FORCE RLS', () => {
 
   it('rejects explicitly unknown Activity time instead of restoring source time or inventing epoch', async () => {
     const athlete = randomUUID();
+    await grantAppPurpose(athlete);
     const exerciseId = randomUUID();
     const exerciseVersionId = randomUUID();
     const workoutId = randomUUID();

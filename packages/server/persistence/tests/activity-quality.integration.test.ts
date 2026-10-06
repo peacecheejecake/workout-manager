@@ -48,6 +48,7 @@ async function ids(athlete: string, query: Partial<ActivityListQuery>) {
 it('uses effective null rather than zero for distance and duration, including both overlay directions', async () => {
   const athlete = randomUUID(),
     repo = createActivityRepository(database);
+  await grantAppPurpose(athlete);
   const missing = await repo.importActivity(athlete, input());
   const zero = await repo.importActivity(athlete, input({ distanceMeters: 0, durationSeconds: 0 }));
   const knownUnknown = await repo.importActivity(
@@ -81,6 +82,7 @@ it('uses effective null rather than zero for distance and duration, including bo
 it('treats only null effective start as missing while preserving year-zero observations', async () => {
   const athlete = randomUUID(),
     repo = createActivityRepository(database);
+  await grantAppPurpose(athlete);
   const unknown = await repo.importActivity(athlete, input({ startedAt: null }));
   const ancient = await repo.importActivity(athlete, input({ startedAt: '0000-02-29T00:00:00Z' }));
   expect(await ids(athlete, { quality: 'missing_start' })).toEqual([unknown.activityId]);
@@ -114,6 +116,7 @@ it('uses explicit correction reasons rather than canonical revision or an initia
   const athlete = randomUUID(),
     repo = createActivityRepository(database),
     command = input({ distanceMeters: 0 });
+  await grantAppPurpose(athlete);
   const imported = await repo.importActivity(athlete, command);
   await repo.importActivity(athlete, {
     ...command,
@@ -186,6 +189,7 @@ it('combines quality with explicit Block, date and source without multiplying ro
       },
     ],
   };
+  await grantAppPurpose(athlete);
   const plan = await createPlanningRepository(database).save(athlete, {
     source: 'manual',
     confirmed: true,
@@ -199,6 +203,7 @@ it('combines quality with explicit Block, date and source without multiplying ro
     '2024-01-01T12:00:00Z',
     '2024-02-02T12:00:00Z',
   ]) {
+    await grantAppPurpose(athlete);
     const created = await repo.importActivity(athlete, input({ startedAt }));
     await repo.updateOverlay(athlete, created.activityId, {
       expectedRevision: 1,
@@ -239,3 +244,26 @@ it('combines quality with explicit Block, date and source without multiplying ro
   await repo.deleteActivity(athlete, deleted, { expectedRevision: 2 });
   expect((await repo.listActivities(athlete, filter)).total).toBe(1);
 });
+
+// Explicit permission for this synthetic positive core-storage fixture only.
+// Preserve any existing withdrawal/revision and never recreate an erased tenant.
+async function grantAppPurpose(athleteId: string): Promise<void> {
+  const client = await admin.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock_shared(77210,1)');
+    // Serialize the absence check before the app event trigger, like the consent command.
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [athleteId]);
+    await client.query("SELECT set_config('app.athlete_id',$1,true)", [athleteId]);
+    await client.query(
+      "INSERT INTO consent(athlete_id,kind,granted,revision) SELECT $1,'app',true,1 WHERE NOT EXISTS (SELECT 1 FROM tenant_erasure WHERE athlete_id=$1) ON CONFLICT (athlete_id,kind) DO NOTHING",
+      [athleteId],
+    );
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}

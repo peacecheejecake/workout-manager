@@ -73,8 +73,10 @@
     "./course-thumbnails": "./src/course-thumbnails.ts",
     "./routing-admission": "./src/routing-admission.ts",
     "./healthkit-registration-audit": "./src/healthkit-registration-audit.ts",
-    "./races": "./src/races.ts",
     "./app-admission": "./src/app-admission.ts",
+    "./global-openai-budget": "./src/global-openai-budget.ts",
+    "./ai-settings": "./src/ai-settings.ts",
+    "./races": "./src/races.ts",
     "./race-relative-schedule-calculation": "./src/race-relative-schedule-calculation.ts"
   },
   "devDependencies": {

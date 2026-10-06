@@ -299,3 +299,7 @@ M3-02l은 2026-10-05 로컬 서버·계약 수용을 완료했다. 개별 해제
 
 - Race6 create/update app admission의 actualPG96/96, HTTP 신규11/11·기존actual5/5에 이어 새 계정 app panel·거절 초안 UI를 실제 OIDC Next/Vite2/2로 검증했다. 별도 Chrome16 layout/focus 및 재동의/logout2 checks, Aside 실제 grant/revoke/초안 snapshot과 각 도구 한계를 [K 기록](progress/M2-02k.md)에 구분한다.
 - K completed; M2-02i 날짜 영향 전체 atomic 승인과 M2-02j 공식 PB는 in_progress다. 현재 phase의 full gates·독립 phase review 전 main으로 병합하지 않는다. HTTPS·실기기·provider 결과를 승격하지 않는다.
+
+## S22 확정 처리 정책과 후속 실행 · 2026-10-06
+
+사용자는 app 동의를 핵심 계획·실제기록·대화 저장/처리 허가로 정의하고, 철회 후 새 처리 금지·기존 조회/export/delete 허용을 승인했다. 부재는 false/revision0이며 자동 동의하지 않는다. generic provider는 호환 기록만 유지하고 HealthKit/Garmin 개별 허가를 유지한다. 새 M2-01k-v-a~f가 공통 admission·직접 처리·versioned basis·영양/회복/루틴·provider worker·UI/native 연결을 분리한다. 준비 대조는 읽기 전용이며 실제 gate 완료가 아니다. 독립 library/gallery/course authoring 전체를 이 동의 목적으로 임의 확대하지 않으며, actual 첨부·코칭 retrieval의 core 처리 경계는 포함한다. 기존 성공 receipt는 새로운 app gate 이전에 재반환하되 AI/HK 철회·redaction 의미를 우회하지 않는다. 같은 tenant lock0→기존 domain lock 순서를 지켜 철회와 처리 거래를 직렬화한다. strict manifest v1/v2에 필드를 임의 추가하지 않고 명시 version compatibility를 만든다. 완료/전체 검증/phase review 전 main에 넣지 않는다.
