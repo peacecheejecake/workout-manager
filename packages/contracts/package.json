@@ -228,6 +228,10 @@
     "./map-data-licence": {
       "types": "./src/map-data-licence.ts",
       "default": "./dist/map-data-licence.js"
+    },
+    "./race-queries": {
+      "types": "./src/race-queries.ts",
+      "default": "./dist/race-queries.js"
     }
   },
   "scripts": {

@@ -25,6 +25,17 @@ import {
   type TrainingBest,
 } from '@workout/contracts/races';
 import type { Database, Transaction } from './database.js';
+import {
+  raceCollectionStampSchema,
+  raceListQuerySchema,
+  raceEventListPageSchema,
+  raceResultListPageSchema,
+  trainingBestListPageSchema,
+  type RaceListQueryInput,
+  type RaceEventListPage,
+  type RaceResultListPage,
+  type TrainingBestListPage,
+} from '@workout/contracts/race-queries';
 import { enqueue, PersistenceConflict } from './outbox.js';
 
 export class RaceRepositoryError extends Error {
@@ -33,12 +44,18 @@ export class RaceRepositoryError extends Error {
       | 'RACE_NOT_FOUND'
       | 'RACE_REFERENCE_UNAVAILABLE'
       | 'RACE_PLAN_IMPACT_REQUIRED'
-      | 'RACE_REVISION_LIMIT',
+      | 'RACE_REVISION_LIMIT'
+      | 'RACE_CURSOR_KIND_MISMATCH'
+      | 'RACE_CURSOR_STALE'
+      | 'RACE_CURSOR_UNAVAILABLE',
   ) {
     super(code);
   }
 }
 export interface RaceRepository {
+  listRaceEvents(athleteId: string, input?: RaceListQueryInput): Promise<RaceEventListPage>;
+  listRaceResults(athleteId: string, input?: RaceListQueryInput): Promise<RaceResultListPage>;
+  listTrainingBests(athleteId: string, input?: RaceListQueryInput): Promise<TrainingBestListPage>;
   createRaceEvent(athleteId: string, input: RaceEventCreateCommand): Promise<RaceCommandResult>;
   updateRaceEvent(
     athleteId: string,
@@ -284,7 +301,73 @@ export function createRaceRepository(
         : null;
     });
   }
+  async function list<T, P>(
+    athleteId: string,
+    kind: Kind,
+    input: RaceListQueryInput | undefined,
+    itemSchema: z.ZodType<T>,
+    pageSchema: z.ZodType<P>,
+  ): Promise<P> {
+    const query = raceListQuerySchema.parse(input ?? {});
+    if (query.cursor !== null && query.cursor.kind !== kind)
+      throw new RaceRepositoryError('RACE_CURSOR_KIND_MISMATCH');
+    return database.tenant(athleteId, async (tx) => {
+      // Commands and privacy redaction share lock0: the collection stamp and rows
+      // must describe the same committed state, including terminal revision redaction.
+      await tx.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [athleteId]);
+      const heads = await tx.query(
+        'SELECT revision,privacy_generation::text AS "privacyGeneration" FROM race_collection_head WHERE athlete_id=$1 AND kind=$2',
+        [athleteId, kind],
+      );
+      const collection = heads.rows[0] ? raceCollectionStampSchema.parse(heads.rows[0]) : null;
+      if (query.cursor !== null) {
+        // Cursor shape is a position, never ownership authority. Check live membership
+        // under the authenticated tenant even when a foreign collection tuple matches.
+        if (
+          collection === null ||
+          collection.revision !== query.cursor.collection.revision ||
+          collection.privacyGeneration !== query.cursor.collection.privacyGeneration
+        )
+          throw new RaceRepositoryError('RACE_CURSOR_STALE');
+        const anchor = await tx.query(
+          `SELECT id FROM ${tables[kind]} WHERE athlete_id=$1 AND id=$2 AND NOT deleted`,
+          [athleteId, query.cursor.afterId],
+        );
+        if (!anchor.rows[0]) throw new RaceRepositoryError('RACE_CURSOR_UNAVAILABLE');
+      }
+      const rows = await tx.query(
+        `SELECT id,revision,values_json FROM ${tables[kind]} WHERE athlete_id=$1 AND NOT deleted AND ($2::uuid IS NULL OR id>$2::uuid) ORDER BY id ASC LIMIT $3`,
+        [athleteId, query.cursor?.afterId ?? null, query.limit + 1],
+      );
+      const pageRows = rows.rows.slice(0, query.limit);
+      const items = pageRows.map((row) =>
+        itemSchema.parse({
+          ...z.record(z.string(), z.unknown()).parse(row['values_json']),
+          id: row['id'],
+          revision: row['revision'],
+        }),
+      );
+      const last = pageRows.at(-1);
+      return pageSchema.parse({
+        schemaVersion: 1,
+        kind,
+        sort: 'id-asc',
+        collection,
+        items,
+        nextCursor:
+          rows.rows.length > query.limit && last && collection !== null
+            ? { kind, collection, afterId: last['id'] }
+            : null,
+      });
+    });
+  }
   return {
+    listRaceEvents: (athleteId, input) =>
+      list(athleteId, 'race-event', input, raceEventSchema, raceEventListPageSchema),
+    listRaceResults: (athleteId, input) =>
+      list(athleteId, 'race-result', input, raceResultSchema, raceResultListPageSchema),
+    listTrainingBests: (athleteId, input) =>
+      list(athleteId, 'training-best', input, trainingBestSchema, trainingBestListPageSchema),
     createRaceEvent: async (athleteId, input) =>
       write(athleteId, 'race-event', null, raceEventCreateCommandSchema.parse(input)),
     updateRaceEvent: async (athleteId, id, input) =>

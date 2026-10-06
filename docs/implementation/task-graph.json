@@ -1832,9 +1832,18 @@
       "evidence": "docs/implementation/progress/M2-02c.md"
     },
     {
+      "id": "M2-02d",
+      "title": "대회·기록의 삭제 freshness를 보존하는 목록 조회",
+      "dependsOn": ["M2-02c"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "tenant별 bounded id-asc 페이지·(revision,privacyGeneration) cursor; stale/foreign/nonexistent cursor 거절·원자 read",
+      "evidence": "docs/implementation/progress/M2-02d.md"
+    },
+    {
       "id": "M2-02",
       "title": "대회·기록",
-      "dependsOn": ["M2-01", "M2-02a", "M2-02b", "M2-02c"],
+      "dependsOn": ["M2-01", "M2-02a", "M2-02b", "M2-02c", "M2-02d"],
       "kind": "task",
       "status": "not_started",
       "scope": "competitions; 코스 참조·결과"
