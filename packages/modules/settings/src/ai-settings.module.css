@@ -1,0 +1,46 @@
+.workspace {
+  min-width: 0;
+  color: var(--ink, #1d1a16);
+  overflow-wrap: anywhere;
+}
+.form {
+  display: grid;
+  gap: var(--space-4, 16px);
+  max-width: 44rem;
+}
+.form fieldset {
+  min-width: 0;
+  border: 1px solid var(--border, #d9d1c6);
+  border-radius: var(--radius-control, 10px);
+  padding: var(--space-4, 16px);
+}
+.selection,
+.form label {
+  display: grid;
+  gap: var(--space-2, 8px);
+}
+.form select,
+.workspace button {
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 44px;
+  padding: 8px 12px;
+  font: inherit;
+  color: inherit;
+  background: var(--surface-strong, #fffdfa);
+  border: 1px solid var(--border, #d9d1c6);
+  border-radius: var(--radius-control, 10px);
+}
+.workspace :is(select, button):focus-visible {
+  outline: 2px solid var(--accent, #285f50);
+  outline-offset: 3px;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2, 8px);
+}
+.hint {
+  color: var(--ink-muted, #756e64);
+}

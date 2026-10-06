@@ -209,3 +209,22 @@ Root는 두 실제 로그·source diff·SHA·cleanup과 집중 TS/lint/format을
 Root는 source/계약/테스트 diff와 frozen SHA를 직접 확인하고 단위12/12를 재실행했다. 함께 identity private context sweep 회귀11/11을 실행하여 총2파일23/23,skip0(`/private/tmp/wm-execution-selection-root-20261007.log`). Agent coaching TS·lint·format exit0, 초기 실패는 `/private/tmp/wm-execution-selection-report-20261007.md`에 보존한다. Source SHA256 `e102d3376980b78aaba8a33edbb86dfd7f4cb18f6732644f6e1e920707c8c65f`, test `b634fb2bce809d7a9b8a0a89172104e7a8db43c142a88528713cb064aa830dd3`.
 
 Registry 및 합성 availability/classification은 caller facts이며 실제 OpenAI API model/pricing·환율·key·건강자료 분류 증거가 아니다. DB frozen job 저장·full freshness manifest·budget reservation·실제 dispatcher는 미연결/NOT_EXECUTED다. C와 실제 제공자 코칭 작업의 완료를 선언하지 않는다.
+
+## 2026-10-07 OpenAI API 공식 문서 확인 (실호출과 별개)
+
+OpenAI Docs의 공식 검색 후 [GPT-6.1 Sol](https://developers.openai.com/api/docs/models/gpt-6.1-sol), [GPT-6 Luna](https://developers.openai.com/api/docs/models/gpt-6-luna), [요금표](https://developers.openai.com/api/docs/pricing) 원문을 실제 fetch했다. 현재 문서의 API ID는 `gpt-6.1-sol`/`gpt-6-luna`이며 Responses·text structured output을 지원한다. Short-context Standard의 100만 token당 input/cached/cache-write/output USD는 Sol 2/0.10/2.50/10, Luna 0.10/0.01/0.125/0.50이다. 272K 초과 prompt는 전체 요청의 input/cache 2배·output1.5배이며 tier·regional processing 차액은 별도다. Sol은 none/minimal reasoning을 지원하지 않고 low 이상, Luna는 none 또는 low 이상을 지원한다.
+
+이는 공식 문서 확인이며 사용자 API 계정의 모델 접근·키·실제 응답·청구 수용은 NOT_EXECUTED다. 환율·세금·tool fee·tokenizer/최대출력 정책 및 실제 budget reserve/settle 경로를 아직 확정/실행하지 않았다. 문서상 모델 존재를 production catalog available 또는 실행 허가로 승격하지 않으며 현재 합성 카탈로그의 unconfigured를 유지한다. 저장과 전송 동의·호출은 계속 구분한다.
+
+## 2026-10-07 AI 설정 UI·authenticated transport 의존성 통합 준비
+
+M2-05 phase의 pinned UI `dd974084fe008397fe2ab2963191de6bea9e0380`에서 settings module source4/tests2·두 thin shell을 현재 C104/105 API와 연결했다. Module·shell manifest/lock는 기존 고정 dependency 버전을 재사용하며 external package version 변경은 없다. Root가 source provenance·delta·native/web 경계·실제 로그를 직접 확인했다. Native transport는 이번에 변경하지 않았다. Web session transport는 정확한 GET settings/catalog·PUT settings만 허용하고 credential/session/CSRF 경계를 유지한다. Strict CSRF_REJECTED403 응답을 별도로 처리해 초안을 보존한다. Synthetic catalog는 unconfigured이며 저장만으로 전송 동의·호출·기존 계획 변경을 만들지 않는다.
+
+- Root actual 단위: settings module41 + platform116 = **157/157**,3파일,skip0(`/private/tmp/wm-settings-ui-root-unit-20261007.log`). 별도 coaching12 + context sweep11 =23/23. Consumer module/platform TS exit0; agent 두 shell TS/lint·41/116 검증 및 root Next/Vite build exit0. Vite 기존 큰 chunk 경고는 남는다.
+- Install 최초 offline NO_TTY/캐시 tarball 누락은 실패로 보존하고 CI network install ignore-scripts의 실제 exit0로 dependencies를 복구했다. Lock delta는 세 workspace importer뿐이다. Root 전체 TS exit0.
+- Aside CLI는 실행 중인 daemon/browser에 연결하지 못했다(`fetch failed; Aside isn't running`). Chrome CUA fallback에서 합성 OIDC Alice 로그인·설정 null/off·OpenAI 선택·목적 고지를 확인했다. Native keyboard/model 선택·저장까지 완료하지 못했고 검증용 tab/세 local server를 닫았다. Aside check passed나 Chrome 저장 수용으로 부르지 않는다.
+- 실제 local OIDC+BFF+PG14 normal105+plain owner/runtime의 Playwright Chrome 기능 진단 **Next/Vite2/2**,skip0(`/private/tmp/wm-ai-settings-identity-actual-r6-20261007.log`): explicit Sol/Luna 저장200·revision1 reload, 다른 탭revision2와CAS409·초안 유지·명시 새로확인, Bob null/off 격리, revoke 후 기존 Sol 유지·option 실제 disabled·fallback 없음·새PUT422, 실제 SQL consent digest/outbox/plan/run 무변경. 320px reflow·focus 확인. UI route interception/MSW·external provider0.
+- r1 locator 실패, r2 직접 GET의 session header409, r3/r4 keyboard blank, r5 native option matcher 실패를 각각 보존했다. r6는 selectOption 기능 진단이며 r3/r4 키보드 실패를 pass로 바꾸지 않는다. Native option disabled는 실제 attribute/property로 확인했다. Keyboard 수용은 추가 진단 중이다.
+- 최종 spec SHA `96b733dcb51b8105f0d514c2dedf8eac5649e2265a23b1edc627a9be52740d1b`; context `b04060254f062f8681d447385704135f9e3c2d0bf3270802cee2378249a0b985`; catalog `50a2cbb1bd316ffed4e9941914e345679fc195d172f4b978468d0c9fec9f9f18`. `/private/tmp/wm-ai-settings-identity-actual-acceptance-20261007.md`와 회차별 inputs/cleanup 참조. r6 harness dead·socket/context absent·pg_isready2·5 ports listener0 확인; r4 개별PID/socket 포착 누락 한계는 그대로다.
+
+이는 M2-05 settings의 현재 processing 경계와 두 shell 연결을 C phase에서 수용하기 위한 의존성 통합이다. M2-05 전체나 S22v-f/native 노드를 완료 처리하지 않는다. Keyboard 전체·503 target lifecycle·전체 phase gate/독립 phase review·실기기·공개 HTTPS·유료 provider 호출은 미완료/NOT_EXECUTED로 남는다. Phase main 병합·push를 하지 않는다.

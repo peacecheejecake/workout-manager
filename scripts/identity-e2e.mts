@@ -71,12 +71,17 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Pool } from 'pg';
 import { createApi } from '../apps/api/src/app.ts';
+import { createAiSettingsService } from '../apps/api/src/ai-settings-service.ts';
+import { createAiSettingsRepository } from '../packages/server/persistence/src/ai-settings.ts';
+import { publishInitialAiSettingsCatalog } from './fixtures/ai-settings-catalog.ts';
+import { writeAiSettingsFixtureContext } from './fixtures/ai-settings-context.ts';
 import { createDatabase, type Database } from '../packages/server/persistence/src/database.ts';
 import { createRestoreGenerationRepository } from '../packages/server/persistence/src/restore-generation.ts';
 import { createConsentRepository } from '../packages/server/persistence/src/repositories.ts';
 import { createIdentityRepository } from '../packages/server/persistence/src/identity.ts';
 import {
   grantIdentityFunctions,
+  grantAiSettings,
   grantOperations,
   grantNutritionCore,
   grantSupplementaryCore,
@@ -266,6 +271,9 @@ try {
     if (ownerRole.rows.length !== 1 || ownerRole.rows[0].rolsuper || ownerRole.rows[0].rolbypassrls)
       throw new Error('IDENTITY_MIGRATION_OWNER_INVALID');
     await grantIdentityFunctions(adminUrl, 'workout_runtime');
+    await grantAiSettings(ownerUrl, 'workout_runtime');
+    // Only synthetic unavailable catalog entries; no provider key, consent or activation.
+    await publishInitialAiSettingsCatalog(ownerUrl);
     await grantOperations(adminUrl, 'workout_runtime');
     await grantNutritionCore(adminUrl, 'workout_runtime');
     await grantSupplementaryCore(adminUrl, 'workout_runtime');
@@ -325,6 +333,7 @@ try {
     { mode: 0o600 },
   );
   closers.push(() => rm(coachingWorkerContextPath, { force: true }));
+  closers.push(await writeAiSettingsFixtureContext({ ownerUrl, adminUrl }));
   // IDENTITY_E2E_OIDC=certified (opt-in, M2-01u) swaps the hand-written fixture for a
   // locally hosted OpenID Certified OP on the same issuer. Only
   // tests/identity/oidc-certified.spec.ts runs in that mode; every other spec signs in
@@ -544,6 +553,7 @@ try {
       cipher: garminCipher,
     }),
     consent: createConsentRepository(database),
+    aiSettings: createAiSettingsService(createAiSettingsRepository(database)),
     planning: createPlanningRepository(database),
     nutrition: createNutritionRepository(database),
     restoreGeneration: createRestoreGenerationRepository(database),
