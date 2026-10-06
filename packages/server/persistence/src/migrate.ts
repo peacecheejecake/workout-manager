@@ -103,6 +103,7 @@ const migrationFiles = [
   '095_healthkit_receipt_protocol_fence.sql',
   '096_healthkit_workout_deregistration.sql',
   '097_healthkit_deregistration_worker.sql',
+  '098_race_ledger.sql',
 ] as const;
 
 /**
@@ -354,6 +355,25 @@ async function grantResourceRetrievalReads(pool: Pool, role: string) {
   );
 }
 
+/** Tenant-scoped race ledgers; references are checked under the shared command lock. */
+export async function grantRaces(connectionString: string, runtimeRole: string): Promise<void> {
+  if (!/^[a-z_][a-z0-9_]{0,62}$/.test(runtimeRole)) throw new Error('INVALID_ROLE_NAME');
+  const pool = new Pool({ connectionString, connectionTimeoutMillis: 5000, max: 1 });
+  try {
+    await pool.query(
+      `GRANT SELECT,INSERT,UPDATE ON race_event,race_result,training_best,race_collection_head TO "${runtimeRole}"`,
+    );
+    await pool.query(
+      `GRANT SELECT,INSERT ON race_event_revision,race_result_revision,training_best_revision,race_command_receipt TO "${runtimeRole}"`,
+    );
+    await pool.query(`GRANT SELECT,UPDATE ON course,activity_canonical TO "${runtimeRole}"`);
+    await pool.query(`GRANT SELECT ON course_revision,plan_snapshot TO "${runtimeRole}"`);
+    await pool.query(`GRANT SELECT,INSERT ON outbox TO "${runtimeRole}"`);
+  } finally {
+    await pool.end();
+  }
+}
+
 /** Narrow runtime grants for the lifecycle gate and audited account operations. */
 export async function grantOperations(
   connectionString: string,
@@ -363,6 +383,9 @@ export async function grantOperations(
   const pool = new Pool({ connectionString, connectionTimeoutMillis: 5000, max: 1 });
   try {
     await pool.query(`GRANT SELECT ON tenant_erasure TO "${runtimeRole}"`);
+    await pool.query(
+      `GRANT SELECT ON race_event,race_event_revision,race_result,race_result_revision,training_best,training_best_revision,race_collection_head TO "${runtimeRole}"`,
+    );
     await pool.query(
       `GRANT SELECT ON consent,plan_snapshot,plan_head,plan_history,
        activity_canonical,activity_source_head,activity_source_revision,

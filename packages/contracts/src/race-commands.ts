@@ -74,7 +74,7 @@ export const trainingBestReadSchema = trainingBestSchema;
  */
 export const raceCommandResultSchema = z.strictObject({
   id: raceEventSchema.shape.id,
-  revision: expectedRevision,
+  revision: z.number().int().min(1).max(2147483647),
 });
 
 export type RaceResultSourceInput = z.infer<typeof raceResultSourceInputSchema>;

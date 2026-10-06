@@ -218,6 +218,21 @@ describe('M2-02b / S15 S16 / V2-F20 storage command boundaries', () => {
     ).toBe(false);
   });
 
+  it('returns the final int4 revision while bounding future update inputs', () => {
+    expect(raceCommandResultSchema.parse({ id, revision: 2147483647 })).toEqual({
+      id,
+      revision: 2147483647,
+    });
+    expect(raceCommandResultSchema.safeParse({ id, revision: 2147483648 }).success).toBe(false);
+    expect(
+      raceEventUpdateCommandSchema.safeParse({
+        idempotencyKey,
+        expectedRevision: 2147483647,
+        values: event,
+      }).success,
+    ).toBe(false);
+  });
+
   it('reads by resource ID only and accepts server facts solely in read output', () => {
     expect(raceCommandResultSchema.parse({ id, revision: 2 })).toEqual({ id, revision: 2 });
     expect(raceCommandResultSchema.safeParse({ id, revision: 2, values: result }).success).toBe(

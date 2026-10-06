@@ -1823,9 +1823,18 @@
       "evidence": "docs/implementation/progress/M2-02b.md"
     },
     {
+      "id": "M2-02c",
+      "title": "대회·결과 원장 저장 거래",
+      "dependsOn": ["M2-02b"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "RaceEvent/RaceResult/TrainingBest create/update/get의 실제 PostgreSQL 원장·불변 revision·tenant RLS·CAS·멱등 receipt/outbox·소유권 참조 검증을 구현한다. 서버 official 검증 사실은 사용자 입력으로 승격하지 않으며 연결 Plan 날짜 변경은 영향 preview/별도승인 없이 일반 update로 적용하지 않는다. 새 table의 export/계정 erasure/restore 대응을 root가 함께 통합한다. list/개별삭제·API·S15/S16·PB·날짜 영향 승인 전체 및 지도/운영 수용은 후속에 남기며 부모 완료를 주장하지 않는다.",
+      "evidence": "docs/implementation/progress/M2-02c.md"
+    },
+    {
       "id": "M2-02",
       "title": "대회·기록",
-      "dependsOn": ["M2-01", "M2-02a", "M2-02b"],
+      "dependsOn": ["M2-01", "M2-02a", "M2-02b", "M2-02c"],
       "kind": "task",
       "status": "not_started",
       "scope": "competitions; 코스 참조·결과"

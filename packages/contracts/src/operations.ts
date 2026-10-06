@@ -414,6 +414,19 @@ const accountExportV30Schema = accountExportV29Schema.extend({
       .max(1000),
   }),
 });
+/** v31 adds planned races and separate user-reported performance ledgers. */
+const accountExportV31Schema = accountExportV30Schema.extend({
+  schemaVersion: z.literal(31),
+  data: accountExportV30Schema.shape.data.extend({
+    raceEvents: rows,
+    raceEventRevisions: rows,
+    raceResults: rows,
+    raceResultRevisions: rows,
+    trainingBests: rows,
+    trainingBestRevisions: rows,
+    raceCollectionHeads: rows,
+  }),
+});
 // Read historical artifacts unchanged; never manufacture absent collections.
 export const accountExportSchema = z.discriminatedUnion('schemaVersion', [
   accountExportV2Schema,
@@ -445,6 +458,7 @@ export const accountExportSchema = z.discriminatedUnion('schemaVersion', [
   accountExportV28Schema,
   accountExportV29Schema,
   accountExportV30Schema,
+  accountExportV31Schema,
 ]);
 export const operationsStatusSchema = z.strictObject({
   checkedAt: z.iso.datetime({ offset: true }),

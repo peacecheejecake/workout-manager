@@ -43,6 +43,38 @@ const candidateEvidenceAvailable = `EXISTS(SELECT 1 FROM coaching_decision d
 const candidateAvailable = `(${candidateEvidenceAvailable} AND EXISTS(SELECT 1 FROM consent c
   WHERE c.athlete_id=coaching_candidate.athlete_id AND c.kind='ai' AND c.granted))`;
 const collections = [
+  ['raceEvents', 'race_event', 'id,revision,values_json,deleted,recorded_at,updated_at', 'id'],
+  [
+    'raceEventRevisions',
+    'race_event_revision',
+    'entity_id,revision,values_json,created_at',
+    'entity_id,revision',
+  ],
+  ['raceResults', 'race_result', 'id,revision,values_json,deleted,recorded_at,updated_at', 'id'],
+  [
+    'raceResultRevisions',
+    'race_result_revision',
+    'entity_id,revision,values_json,created_at',
+    'entity_id,revision',
+  ],
+  [
+    'trainingBests',
+    'training_best',
+    'id,revision,values_json,deleted,recorded_at,updated_at',
+    'id',
+  ],
+  [
+    'trainingBestRevisions',
+    'training_best_revision',
+    'entity_id,revision,values_json,created_at',
+    'entity_id,revision',
+  ],
+  [
+    'raceCollectionHeads',
+    'race_collection_head',
+    'kind,revision,privacy_generation::text AS "privacyGeneration"',
+    'kind',
+  ],
   [
     'coachingDecisions',
     'coaching_decision',
@@ -602,7 +634,7 @@ export function createOperationsRepository(database: Database): OperationsReposi
         if (!row.ok) throw new OperationsError('EXPORT_TOO_LARGE');
         const data = Object.fromEntries(collections.map(([name]) => [name, row.data[name] ?? []]));
         const artifact = accountExportSchema.parse({
-          schemaVersion: 30,
+          schemaVersion: 31,
           athleteId,
           exportedAt: new Date().toISOString(),
           data,
