@@ -719,6 +719,23 @@ describe.skipIf(!process.env['TEST_DATABASE_ADMIN_URL'] || !process.env['TEST_DA
       });
       repository = createRaceRepository(database);
     });
+    async function grantSyntheticApp(tenant: string) {
+      const client = await admin.connect();
+      try {
+        await client.query('BEGIN');
+        await client.query("SELECT set_config('app.athlete_id',$1,true)", [tenant]);
+        await client.query(
+          "INSERT INTO consent(athlete_id,kind,granted,revision) VALUES($1,'app',true,1)",
+          [tenant],
+        );
+        await client.query('COMMIT');
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
+    }
     afterAll(async () => {
       await database?.close();
       await admin?.end();
@@ -728,6 +745,9 @@ describe.skipIf(!process.env['TEST_DATABASE_ADMIN_URL'] || !process.env['TEST_DA
         other = randomUUID(),
         { app } = setup(true, repository, tenant),
         foreign = setup(true, repository, other).app;
+      // Explicit synthetic account permission for these real-PG core writes.
+      await grantSyntheticApp(tenant);
+      await grantSyntheticApp(other);
       for (const family of families) {
         const url = `/bff/v1${family.path}`,
           key = randomUUID(),
@@ -817,6 +837,9 @@ describe.skipIf(!process.env['TEST_DATABASE_ADMIN_URL'] || !process.env['TEST_DA
           other = randomUUID(),
           planId = randomUUID(),
           activityId = randomUUID();
+        // Explicit synthetic account permission for these real-PG core writes.
+        await grantSyntheticApp(tenant);
+        await grantSyntheticApp(other);
         for (const athlete of [tenant, other])
           await admin.query(
             "INSERT INTO identity_private.account(athlete_id,issuer,subject) VALUES($1::uuid,'https://synthetic-api.test',$2)",
@@ -949,6 +972,8 @@ describe.skipIf(!process.env['TEST_DATABASE_ADMIN_URL'] || !process.env['TEST_DA
       const tenant = randomUUID(),
         { app } = setup(true, repository, tenant),
         planId = randomUUID();
+      // Explicit synthetic account permission for these real-PG core writes.
+      await grantSyntheticApp(tenant);
       await admin.query(
         "INSERT INTO plan_snapshot(athlete_id,id,version,draft) VALUES($1,$2,1,'{}')",
         [tenant, planId],
