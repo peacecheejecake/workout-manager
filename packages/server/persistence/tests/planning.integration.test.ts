@@ -1,8 +1,12 @@
 import { randomUUID } from 'node:crypto';
-import { Pool } from 'pg';
+import { Pool, type PoolClient } from 'pg';
 import { beforeAll, afterAll, describe, it, expect } from 'vitest';
 import type { ManualPlanCommand } from '@workout/contracts/planning';
-import type { NutritionPlanDraft } from '@workout/contracts/nutrition-core';
+import {
+  nutritionPlanVersionSchema,
+  type NutritionPlanDraft,
+} from '@workout/contracts/nutrition-core';
+import { raceEventSchema } from '@workout/contracts/races';
 import { createDatabase, type Database } from '../src/database.js';
 import {
   migrate,
@@ -1162,3 +1166,221 @@ describe('session distance and duration range compatibility', () => {
     expect((await repo.read(athlete)).history).toHaveLength(3);
   });
 });
+
+async function ownedAnchorFixture<T>(
+  athleteId: string,
+  operation: (client: PoolClient) => Promise<T>,
+): Promise<T> {
+  const client = await admin.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query("SELECT set_config('app.athlete_id',$1,true)", [athleteId]);
+    const result = await operation(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+/** Owned SQL fixture only: the production nutrition race-anchor writer is still unimplemented. */
+async function seedAnchorCollision(
+  athleteId: string,
+  eventId: string,
+  trainingVersionId: string,
+  mode: 'race' | 'session' | 'mixed',
+  year: string,
+) {
+  return ownedAnchorFixture(athleteId, async (client) => {
+    const raceValues = raceEventSchema.omit({ id: true, revision: true }).parse({
+      title: 'Synthetic owned race',
+      localDate: `${year}-01-02`,
+      localStartTime: null,
+      timezone: 'UTC',
+      locationName: null,
+      distance: { kind: 'standard', class: '10k' },
+      priority: null,
+      participation: 'registered',
+      officialUrl: null,
+      course: null,
+      targetSeconds: null,
+      planVersionId: trainingVersionId,
+    });
+    await client.query(
+      `INSERT INTO race_event(athlete_id,id,revision,values_json,recorded_at,updated_at)
+      VALUES($1,$2,1,$3::jsonb,$4,$4)`,
+      [athleteId, eventId, JSON.stringify(raceValues), `${year}-01-01T00:00:00.000Z`],
+    );
+    await client.query(
+      `INSERT INTO race_event_revision(athlete_id,entity_id,revision,values_json,created_at)
+      VALUES($1,$2,1,$3::jsonb,$4)`,
+      [athleteId, eventId, JSON.stringify(raceValues), `${year}-01-01T00:00:00.000Z`],
+    );
+    const records = [];
+    const groups: ('race' | 'session')[][] =
+      mode === 'mixed' ? [['race'], ['session'], ['race', 'session']] : [[mode]];
+    for (const entities of groups) {
+      const versionId = randomUUID(),
+        planId = randomUUID(),
+        approvalId = randomUUID();
+      const record = nutritionPlanVersionSchema.parse({
+        planId,
+        versionId,
+        version: 1,
+        previousVersionId: null,
+        approvalId,
+        approvedAt: `${year}-01-01T00:00:00.000Z`,
+        period: { from: `${year}-01-01`, toInclusive: `${year}-01-31` },
+        timezone: 'UTC',
+        purpose: 'Explicit discriminator SQL fixture',
+        linkedTrainingPlanVersionId: trainingVersionId,
+        items: entities.map((entity) => ({
+          id: `item-${entity}`,
+          planVersionId: versionId,
+          category: 'before',
+          title: `Before ${entity}`,
+          anchor: {
+            kind: 'relative',
+            entity,
+            entityId: eventId,
+            point: 'start',
+            offsetMinutes: -30,
+          },
+          foods: [],
+          targets: [],
+          instructions: 'Prepare the explicit synthetic fixture meal.',
+          evidenceIds: [],
+          source: 'user_confirmed',
+        })),
+      });
+      await client.query(
+        `INSERT INTO nutrition_plan_version(athlete_id,plan_id,version_id,version,previous_version_id,
+        previous_version,period_from,period_to,linked_training_plan_version_id,approval_id,approved_at,record_json)
+        VALUES($1,$2,$3,1,NULL,NULL,$4,$5,$6,$7,$8,$9::jsonb)`,
+        [
+          athleteId,
+          planId,
+          versionId,
+          record.period.from,
+          record.period.toInclusive,
+          trainingVersionId,
+          approvalId,
+          record.approvedAt,
+          JSON.stringify(record),
+        ],
+      );
+      await client.query(
+        'INSERT INTO nutrition_plan_head(athlete_id,plan_id,version,version_id) VALUES($1,$2,1,$3)',
+        [athleteId, planId, versionId],
+      );
+      await client.query(
+        "INSERT INTO nutrition_plan_history(athlete_id,plan_id,version_id,approval_id,action) VALUES($1,$2,$3,$4,'user_approved')",
+        [athleteId, planId, versionId, approvalId],
+      );
+      records.push(record);
+    }
+    return records;
+  });
+}
+
+function observeSessionImpactQueries(observed: unknown[][]): Database {
+  return {
+    ...database,
+    tenant: (athleteId, operation) =>
+      database.tenant(athleteId, (tx) =>
+        operation({
+          ...tx,
+          query: async (sql, values) => {
+            const result = await tx.query(sql, values);
+            if (
+              sql.includes('SELECT h.plan_id FROM nutrition_plan_head') &&
+              sql.includes("item->'anchor'->>'kind'='relative'")
+            )
+              observed.push(result.rows.map((row) => row['plan_id']));
+            return result;
+          },
+        }),
+      ),
+  };
+}
+
+it.each(['race', 'session', 'mixed'] as const)(
+  'distinguishes owned race/session UUID collision in %s nutrition during a session move',
+  async (mode) => {
+    const athlete = randomUUID(),
+      collisionId = randomUUID();
+    const observed: unknown[][] = [];
+    const planning = createPlanningRepository(observeSessionImpactQueries(observed));
+    const initial = intensityCommand();
+    initial.draft.sessions = initial.draft.sessions.map((session) => ({
+      ...session,
+      id: collisionId,
+    }));
+    const first = await planning.save(athlete, initial);
+    observed.length = 0;
+    const records = await seedAnchorCollision(athlete, collisionId, first.id, mode, '2026');
+    const affected = records
+      .filter((record) =>
+        record.items.some(
+          (item) => item.anchor.kind === 'relative' && item.anchor.entity === 'session',
+        ),
+      )
+      .map((record) => record.planId)
+      .sort();
+    const before = await planning.read(athlete);
+    const counts = () =>
+      database.tenant(
+        athlete,
+        async (tx) =>
+          (
+            await tx.query(
+              `SELECT
+    (SELECT count(*)::int FROM plan_snapshot WHERE athlete_id=$1) plans,
+    (SELECT count(*)::int FROM plan_history WHERE athlete_id=$1) history,
+    (SELECT count(*)::int FROM command_receipt WHERE athlete_id=$1) receipts,
+    (SELECT count(*)::int FROM outbox WHERE athlete_id=$1) outbox`,
+              [athlete],
+            )
+          ).rows[0],
+      );
+    const oldCounts = await counts();
+    const move = {
+      ...initial,
+      expectedVersionId: first.id,
+      idempotencyKey: randomUUID(),
+      draft: {
+        ...first.draft,
+        sessions: first.draft.sessions.map((session) => ({ ...session, date: '2026-01-03' })),
+      },
+    };
+    if (affected.length === 0) {
+      const saved = await planning.save(athlete, move);
+      expect(saved.draft.sessions[0]?.date).toBe('2026-01-03');
+      expect((await planning.read(athlete)).head?.id).toBe(saved.id);
+    } else {
+      await expect(planning.save(athlete, move)).rejects.toMatchObject({
+        code: 'COMBINED_REVIEW_REQUIRED',
+      });
+      expect(await planning.read(athlete)).toEqual(before);
+      expect(await counts()).toEqual(oldCounts);
+    }
+    expect(observed).toEqual([affected]);
+    const preserved = await ownedAnchorFixture(
+      athlete,
+      async (client) =>
+        (
+          await client.query('SELECT values_json FROM race_event WHERE athlete_id=$1 AND id=$2', [
+            athlete,
+            collisionId,
+          ])
+        ).rows[0],
+    );
+    expect(preserved?.['values_json']).toMatchObject({
+      localDate: '2026-01-02',
+      localStartTime: null,
+    });
+  },
+);

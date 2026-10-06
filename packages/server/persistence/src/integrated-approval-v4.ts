@@ -596,6 +596,7 @@ async function reviewedRelativeNutritionIds(
      WHERE h.athlete_id=$1 AND EXISTS (
        SELECT 1 FROM jsonb_array_elements(v.record_json->'items') item
        WHERE item->'anchor'->>'kind'='relative'
+         AND item->'anchor'->>'entity'='session'
          AND item->'anchor'->>'entityId'=ANY($2::text[])
      ) ORDER BY h.plan_id`,
     [tx.athleteId, changed],
