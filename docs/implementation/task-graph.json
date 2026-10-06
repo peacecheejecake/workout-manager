@@ -2091,7 +2091,7 @@
       "title": "HealthKit 계정별 등록 통합·안전 배포 준비",
       "dependsOn": ["M3-02k", "M3-02l", "M3-02m", "M3-02n"],
       "kind": "task",
-      "status": "not_started",
+      "status": "in_progress",
       "scope": "기존 raw·receipt 중복을 비식별 감사하고 서버 선배포·구형 앱 차단·원장 삭제·safe rollback을 검증한다. 계약·실DB·native·브라우저 통합 결과를 확인해 M3-02h 실기기 실행 게이트를 준비한다. 운영·실기기 미실행을 passed로 바꾸지 않는다.",
       "evidence": "docs/implementation/progress/M3-02o.md"
     },
