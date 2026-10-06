@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
 import {
   createLocalFilesystemObjectStorage,
@@ -83,6 +83,15 @@ export interface ClosableObjectStorage extends ObjectStorage {
   close?(): Promise<void>;
 }
 
+/** Fixed phase outcome facts only; never copy lease, transport, parser or error inputs. */
+export interface UrlIngestionWorkerEvent {
+  readonly event: 'resource_url_ingestion_finished';
+  readonly phase: ResourceUrlIngestionLease['phase'];
+  readonly result: UrlIngestionWorkerResult;
+  readonly runId: string;
+  readonly version: string;
+}
+
 export interface UrlIngestionWorkerDependencies {
   createStorage(rootDirectory: string): Promise<ClosableObjectStorage>;
   createRepository(options: {
@@ -91,11 +100,7 @@ export interface UrlIngestionWorkerDependencies {
   }): UrlIngestionWorkerRepository;
   resolver: IngestionResolver;
   transport: IngestionTransport;
-  logger?: (event: {
-    event: 'resource_url_ingestion_finished';
-    phase: ResourceUrlIngestionLease['phase'];
-    result: UrlIngestionWorkerResult;
-  }) => void;
+  logger?: (event: UrlIngestionWorkerEvent) => void;
 }
 
 class LeaseLostError extends Error {
@@ -435,6 +440,13 @@ export async function runUrlIngestionWorker(
   config: ResourceUrlIngestionWorkerConfig,
   dependencies?: UrlIngestionWorkerDependencies,
 ): Promise<UrlIngestionWorkerResult> {
+  // Capture once per invocation, not at module import. This ID is independent of the CLI ID.
+  const runId = randomUUID();
+  const configuredRelease = process.env['WORKOUT_RELEASE'];
+  const version =
+    configuredRelease && /^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$/.test(configuredRelease)
+      ? configuredRelease
+      : 'unreleased';
   const resolvedDependencies: UrlIngestionWorkerDependencies = (() => {
     if (dependencies) return dependencies;
     const adapters = createNodeNetworkAdapters();
@@ -448,6 +460,7 @@ export async function runUrlIngestionWorker(
   const storage = await resolvedDependencies.createStorage(config.storageRoot);
   let repository: UrlIngestionWorkerRepository | undefined;
   let result: UrlIngestionWorkerResult | undefined;
+  let phase: ResourceUrlIngestionLease['phase'] | undefined;
   let processingError: unknown;
   try {
     repository = resolvedDependencies.createRepository({
@@ -456,15 +469,11 @@ export async function runUrlIngestionWorker(
     const lease = await repository.lease(60);
     if (!lease) result = 'empty';
     else {
+      phase = lease.phase;
       result =
         lease.phase === 'fetch'
           ? await fetchPhase(config, lease, repository, storage, resolvedDependencies)
           : await parsePhase(lease, repository, storage);
-      resolvedDependencies.logger?.({
-        event: 'resource_url_ingestion_finished',
-        phase: lease.phase,
-        result,
-      });
     }
   } catch (error) {
     processingError = error;
@@ -479,5 +488,16 @@ export async function runUrlIngestionWorker(
   );
   if (failedClose) throw failedClose.reason;
   if (result === undefined) throw new Error('RESOURCE_URL_INGESTION_RESULT_MISSING');
+  // A processing/close error is not a finished phase. Empty queues retain no phase event.
+  // Emit after both closes so a throwing logger cannot skip resource cleanup.
+  if (phase !== undefined) {
+    resolvedDependencies.logger?.({
+      event: 'resource_url_ingestion_finished',
+      phase,
+      result,
+      runId,
+      version,
+    });
+  }
   return result;
 }
