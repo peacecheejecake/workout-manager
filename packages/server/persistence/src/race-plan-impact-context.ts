@@ -219,6 +219,10 @@ async function preflight(tx: Transaction, eventId: string) {
       UNION ALL SELECT to_jsonb(c) FROM routine_checklist_confirmation c JOIN actual_refs ref ON ref.ref->>'kind'='checklist_confirmation' AND c.id::text=ref.ref->>'id' WHERE c.athlete_id=$1
       UNION ALL SELECT to_jsonb(d) FROM supplementary_set_log d JOIN actual_refs ref ON ref.ref->>'kind'='activity' AND d.id::text=ref.ref->>'detailId' WHERE d.athlete_id=$1
       UNION ALL SELECT p.draft FROM plan_snapshot p JOIN plan_refs ref ON p.id::text=ref.id WHERE p.athlete_id=$1
+      -- The consumed cache emits each exact snapshot once. Current/linked snapshots
+      -- remain separate existing fields, including two copies when they share an ID.
+      UNION ALL SELECT p.draft FROM plan_snapshot p JOIN plan_head h ON h.athlete_id=p.athlete_id AND h.version_id=p.id WHERE p.athlete_id=$1
+      UNION ALL SELECT p.draft FROM plan_snapshot p JOIN race_event e ON e.athlete_id=p.athlete_id AND e.values_json->>'planVersionId'=p.id::text WHERE p.athlete_id=$1 AND e.id=$2 AND NOT e.deleted
       UNION ALL SELECT to_jsonb(t) FROM supplementary_targets t
       UNION ALL SELECT to_jsonb(t) FROM supplementary_routine_targets t
       UNION ALL SELECT embedded_spec_json FROM supplementary_links
@@ -268,6 +272,7 @@ function sourceCache(tx: Transaction) {
   }
   return {
     consumedPlans: () => Promise.all(plans.values()),
+    consumedRaces: () => Promise.all(races.values()),
     sourceCount: () => plans.size + races.size,
     seedPlan(record: PlanSnapshot) {
       if (!plans.has(record.id)) {
@@ -639,6 +644,13 @@ export async function captureRacePlanImpactContext(tx: Transaction, input: unkno
     routine: routines.map((row) => ({ aggregateId: row.aggregateId, versionId: row.versionId })),
   };
   const manualBasis = await captureRaceManualBasis(tx);
+  // Only already consumed tenant-owned cache entries are exposed. No new source
+  // reads, current-head substitution or historical aggregate identity inference.
+  const order = (a: { id: string }, b: { id: string }) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+  const consumedSources = {
+    plans: (await sources.consumedPlans()).sort(order),
+    races: (await sources.consumedRaces()).sort(order),
+  };
   const readSet = {
     athleteId: tx.athleteId,
     manualBasis,
@@ -657,10 +669,11 @@ export async function captureRacePlanImpactContext(tx: Transaction, input: unkno
     supplementaryManifest,
     routineActualManifest,
     sourcePermissionManifest,
+    consumedSources,
   };
   // capturedAt is metadata, never a changing freshness value.
   const readSetDigest = digest({ ...readSet, coreDependencies: { ...core, capturedAt: null } });
-  return {
+  const result = {
     status: 'blocked' as const,
     coverage: {
       complete: false as const,
@@ -683,6 +696,11 @@ export async function captureRacePlanImpactContext(tx: Transaction, input: unkno
       routine: routines.filter((row) => row.affected).map((row) => row.aggregateId),
     },
   };
+  // Scalar preflight prevents oversized bodies reaching the driver; this final
+  // aggregate guard also counts duplicated decoded snapshots and DTO metadata.
+  if (Buffer.byteLength(JSON.stringify(result), 'utf8') > decodedBytesCap)
+    throw new RacePlanImpactContextError('CONTEXT_UNAVAILABLE', 'decoded_bytes');
+  return result;
 }
 async function captureCourse(tx: Transaction, event: RaceEvent) {
   if (event.course === null) return null;

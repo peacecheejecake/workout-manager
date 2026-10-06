@@ -36,13 +36,15 @@ export type RaceProjectionCapture = Pick<
   | 'coverage'
   | 'readSetDigest'
 > & {
+  // Older internal unit captures may omit these; omission never grants readiness.
+  consumedSources?: RacePlanImpactContext['consumedSources'];
   routineActualManifest: Pick<
     RacePlanImpactContext['routineActualManifest'],
     'schedules' | 'blueprints' | 'occurrences' | 'runs'
   >;
 };
 const id = z.string().min(1).max(200);
-const intentSchema = z.strictObject({
+export const raceProjectionIntentSchema = z.strictObject({
   expectedEvent: z.strictObject({
     id: z.uuid(),
     revision: z.number().int().min(1).max(2147483647),
@@ -84,6 +86,7 @@ const intentSchema = z.strictObject({
     })
     .default({ nutrition: [], routines: [] }),
 });
+export type RaceProjectionIntent = z.infer<typeof raceProjectionIntentSchema>;
 export type RaceProjectionMissingFact = {
   kind:
     | 'source_plan_body'
@@ -125,7 +128,7 @@ export function buildRacePlanImpactProjectionInput(
     const encoded = JSON.stringify({ capture, intent: rawIntent });
     if (encoded === undefined || Buffer.byteLength(encoded, 'utf8') > 4194304)
       return blocked('projection_bound');
-    const intent = intentSchema.parse(rawIntent);
+    const intent = raceProjectionIntentSchema.parse(rawIntent);
     const references =
       capture.nutrition.reduce((count, row) => count + row.record.items.length, 0) +
       capture.completions.length +
@@ -141,7 +144,9 @@ export function buildRacePlanImpactProjectionInput(
         0,
       ) +
       intent.resolutions.nutrition.length +
-      intent.resolutions.routines.length;
+      intent.resolutions.routines.length +
+      (capture.consumedSources?.plans.length ?? 0) +
+      (capture.consumedSources?.races.length ?? 0);
     if (references > 5000) return blocked('projection_bound');
     const event = raceEventSchema.parse(capture.event);
     if (event.id !== intent.expectedEvent.id || event.revision !== intent.expectedEvent.revision)
@@ -159,8 +164,21 @@ export function buildRacePlanImpactProjectionInput(
       capture.linkedPlan === null ? null : planSnapshotSchema.parse(capture.linkedPlan);
     if (event.planVersionId !== (linked?.id ?? null))
       return blocked('linked_plan_identity_mismatch');
+    const consumed = z
+      .strictObject({
+        plans: z.array(planSnapshotSchema).max(5000),
+        races: z.array(raceEventSchema).max(5000),
+      })
+      .parse(capture.consumedSources ?? { plans: [], races: [] });
+    const races = new Map<string, z.infer<typeof raceEventSchema>>();
+    for (const race of [event, ...consumed.races]) {
+      const previous = races.get(race.id);
+      if (previous && JSON.stringify(previous) !== JSON.stringify(race))
+        return blocked('source_identity_mismatch');
+      races.set(race.id, race);
+    }
     const plans = new Map<string, z.infer<typeof planSnapshotSchema>>();
-    for (const plan of [currentPlan, linked]) {
+    for (const plan of [currentPlan, linked, ...consumed.plans]) {
       if (!plan) continue;
       const previous = plans.get(plan.id);
       if (previous && JSON.stringify(previous) !== JSON.stringify(plan))
@@ -213,7 +231,7 @@ export function buildRacePlanImpactProjectionInput(
             kind: 'immutable_race_pin',
             id: JSON.stringify([record.versionId, item.id]),
           });
-          if (item.anchor.entityId !== event.id)
+          if (!races.has(item.anchor.entityId))
             fatal.push({ kind: 'race_anchor_body', id: item.anchor.entityId });
         }
       return { record, sourcePlan: sourcePlan(record.linkedTrainingPlanVersionId) };
@@ -291,7 +309,9 @@ export function buildRacePlanImpactProjectionInput(
         calendar,
         collectorSelection,
       };
-    const ports = createRaceRelativeScheduleCalculationPorts();
+    const ports = createRaceRelativeScheduleCalculationPorts(
+      [...races.values()].sort((a, b) => compare(a.id, b.id)),
+    );
     const input: RaceRelativeScheduleImpactInput = {
       event,
       newLocalDate: intent.newLocalDate,

@@ -2921,3 +2921,145 @@ it('D rejects a forged current source head/hash rather than classifying a confli
   });
   await expect(capture(athlete, event.id)).rejects.toMatchObject({ code: 'INVALID_CONTEXT' });
 });
+
+it('E exports only exact consumed own historical/current Plan and race bodies, deterministically once per source', async () => {
+  const athlete = await account(),
+    historical = await training(athlete, draft(), false),
+    current = await training(athlete),
+    event = await create(athlete, { planVersionId: historical }),
+    other = await create(athlete, { localDate: '2026-10-08' });
+  await seedNutrition(athlete, [
+    nutrition(historical, [
+      { entity: 'race', entityId: other.id },
+      { entity: 'session', entityId: 'session' },
+    ]),
+  ]);
+  const measured = await measuredCapture(athlete, event.id);
+  const captured = await measured.result;
+  expect(captured.consumedSources.plans.map((plan) => plan.id)).toEqual(
+    [historical, current].sort(),
+  );
+  expect(captured.consumedSources.races.map((race) => race.id)).toEqual(
+    [event.id, other.id].sort(),
+  );
+  expect(captured.consumedSources.plans.find((plan) => plan.id === historical)).toEqual(
+    captured.linkedPlan,
+  );
+  expect(captured.consumedSources.plans.find((plan) => plan.id === current)).toEqual(
+    captured.currentTraining?.snapshot,
+  );
+  expect(captured.consumedSources.races.find((race) => race.id === other.id)?.localDate).toBe(
+    '2026-10-08',
+  );
+  expect(new Set(captured.consumedSources.plans.map((plan) => plan.id)).size).toBe(2);
+  expect(
+    measured.queries.filter(
+      ({ sql, parameters }) =>
+        sql.includes('AS created_at,draft FROM plan_snapshot WHERE athlete_id=$1 AND id=$2') &&
+        parameters?.[1] === historical,
+    ),
+  ).toHaveLength(1);
+  expect(
+    measured.queries.filter(
+      ({ sql, parameters }) =>
+        sql.startsWith('SELECT revision,values_json FROM race_event') &&
+        parameters?.[1] === other.id,
+    ),
+  ).toHaveLength(1);
+  const repeated = await capture(athlete, event.id);
+  expect(repeated.consumedSources).toEqual(captured.consumedSources);
+  expect(repeated.readSetDigest).toBe(captured.readSetDigest);
+  expect(captured.coverage.complete).toBe(false);
+});
+it('E consumed source body changes alter readSet digest while immutable historical Plan remains exact', async () => {
+  const athlete = await account(),
+    historical = await training(athlete, draft(), false),
+    event = await create(athlete, { planVersionId: historical }),
+    other = await create(athlete);
+  await seedNutrition(athlete, [nutrition(historical, [{ entity: 'race', entityId: other.id }])]);
+  const before = await capture(athlete, event.id);
+  await races.updateRaceEvent(athlete, other.id, {
+    expectedRevision: 1,
+    idempotencyKey: randomUUID(),
+    values: { ...values(), title: 'Changed synthetic anchor', localDate: '2026-10-09' },
+  });
+  const after = await capture(athlete, event.id);
+  expect(after.consumedSources.plans).toEqual(before.consumedSources.plans);
+  expect(after.consumedSources.races.find((race) => race.id === other.id)).toMatchObject({
+    revision: 2,
+    title: 'Changed synthetic anchor',
+    localDate: '2026-10-09',
+  });
+  expect(after.readSetDigest).not.toBe(before.readSetDigest);
+});
+it('E refuses foreign/missing/deleted race and orphan exact Plan sources rather than exporting another tenant body', async () => {
+  const alice = await account(),
+    bob = await account(),
+    foreign = await create(bob),
+    event = await create(alice);
+  const record = nutrition(null, [{ entity: 'race', entityId: foreign.id }]);
+  await seedNutrition(alice, [record]);
+  await expect(capture(alice, event.id)).rejects.toMatchObject({ code: 'SOURCE_UNAVAILABLE' });
+  await races.deleteRaceEvent(bob, foreign.id, {
+    expectedRevision: 1,
+    idempotencyKey: randomUUID(),
+  });
+  await expect(capture(alice, event.id)).rejects.toMatchObject({ code: 'SOURCE_UNAVAILABLE' });
+  const missing = await account(),
+    missingEvent = await create(missing);
+  await seedNutrition(missing, [nutrition(null, [{ entity: 'race', entityId: randomUUID() }])]);
+  await expect(capture(missing, missingEvent.id)).rejects.toMatchObject({
+    code: 'SOURCE_UNAVAILABLE',
+  });
+  // An orphan event reference is a valid stored tuple; nutrition's actual FK
+  // intentionally prevents constructing a nonexistent linked Plan fixture.
+  const orphanEvent = randomUUID(),
+    orphanValues = { ...values(), planVersionId: randomUUID() };
+  await owned(missing, async (client) => {
+    await client.query(
+      'INSERT INTO race_event(athlete_id,id,revision,values_json,recorded_at,updated_at) VALUES($1,$2,1,$3::jsonb,now(),now())',
+      [missing, orphanEvent, JSON.stringify(orphanValues)],
+    );
+    await client.query(
+      'INSERT INTO race_event_revision(athlete_id,entity_id,revision,values_json,created_at) VALUES($1,$2,1,$3::jsonb,now())',
+      [missing, orphanEvent, JSON.stringify(orphanValues)],
+    );
+  });
+  await expect(capture(missing, orphanEvent)).rejects.toMatchObject({ code: 'SOURCE_UNAVAILABLE' });
+});
+it('E includes all emitted copies of a shared current/linked Plan in scalar4MiB preflight before body transport', async () => {
+  const athlete = await account(),
+    body = draft();
+  const session = body.sessions[0];
+  if (!session) throw new Error('Missing session');
+  body.sessions = Array.from({ length: 250 }, (_, index) => ({
+    ...session,
+    id: `session-${index}`,
+    notes: 'x'.repeat(3000),
+  }));
+  const source = await training(athlete, body),
+    event = await create(athlete, { planVersionId: source });
+  const sourceBytes = Buffer.byteLength(JSON.stringify(body), 'utf8');
+  expect(sourceBytes).toBeLessThan(4194304);
+  // Each Plan remains within its real 1MiB SQL constraint. The unchanged
+  // nutrition bodies plus all three emitted Plan copies exceed the global cap.
+  expect(sourceBytes).toBeLessThan(1048576);
+  const records = Array.from({ length: 4 }, () =>
+    repeatedNutrition(null, event.id, 200, 'x'.repeat(2000)),
+  );
+  await seedNutrition(athlete, records);
+  const nutritionBytes = Buffer.byteLength(JSON.stringify(records), 'utf8');
+  expect(sourceBytes + nutritionBytes).toBeLessThan(4194304);
+  expect(sourceBytes * 3 + nutritionBytes).toBeGreaterThan(4194304);
+  const measured = await measuredCapture(athlete, event.id);
+  await expect(measured.result).rejects.toMatchObject({
+    code: 'CONTEXT_UNAVAILABLE',
+    bound: 'decoded_bytes',
+  });
+  expect(measured.bytes()).toBeLessThan(4096);
+  expect(
+    measured.queries.some(({ sql }) =>
+      sql.startsWith('SELECT id,revision,values_json FROM race_event'),
+    ),
+  ).toBe(false);
+});

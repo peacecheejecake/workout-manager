@@ -67,24 +67,34 @@ function bounded(value: unknown): void {
 
 /** Pure adapter only. Source ownership/freshness is the collector's responsibility;
  * no reads, approval, consent grant or lifecycle mutation occurs here. */
-export function createRaceRelativeScheduleCalculationPorts(): RaceRelativeScheduleCalculationPorts {
+export function createRaceRelativeScheduleCalculationPorts(
+  knownRaceEvents: unknown = [],
+): RaceRelativeScheduleCalculationPorts {
+  bounded(knownRaceEvents);
+  const decoded = z.array(raceEventSchema).max(5000).parse(knownRaceEvents);
+  const captured = new Map<string, z.infer<typeof raceEventSchema>>();
+  for (const event of decoded) {
+    const existing = captured.get(event.id);
+    if (existing && JSON.stringify(existing) !== JSON.stringify(event))
+      throw new Error('INVALID_CALCULATION_INPUT');
+    captured.set(event.id, event);
+  }
+  // Decode produces a private snapshot; later caller mutations cannot alter it.
+  const capturedBodies = [...captured.values()];
   return {
     resolveNutrition(raw: unknown) {
-      bounded(raw);
+      bounded({ capturedRaceEvents: capturedBodies, calculation: raw });
       const { item, record, sourcePlan, event } = nutritionInput.parse(raw);
       if (item.planVersionId !== record.versionId) throw new Error('INVALID_CALCULATION_INPUT');
       const linked = new Map<string, z.infer<typeof planDraftSchema>>();
       if (sourcePlan && record.linkedTrainingPlanVersionId !== null)
         linked.set(record.linkedTrainingPlanVersionId, sourcePlan);
-      // Preview consumes this explicit event only; no normal reader is wired
-      // to mutable current race data and no synthetic Plan session is created.
-      const result = projectNutritionItem(
-        item,
-        record,
-        linked,
-        record.timezone,
-        new Map([[event.id, event]]),
-      );
+      // Captured other-race anchors keep their own exact bodies. Only the
+      // explicit preview event overrides its ID for before/after calculation.
+      // No normal reader is wired to mutable races or synthetic Plan sessions.
+      const races = new Map(captured);
+      races.set(event.id, event);
+      const result = projectNutritionItem(item, record, linked, record.timezone, races);
       return timing.parse(
         'value' in result
           ? { state: 'resolved', date: result.date, localTime: result.value.localTime }
@@ -92,7 +102,7 @@ export function createRaceRelativeScheduleCalculationPorts(): RaceRelativeSchedu
       );
     },
     expandRoutine(raw: unknown) {
-      bounded(raw);
+      bounded({ capturedRaceEvents: capturedBodies, calculation: raw });
       const { schedule, sourcePlan } = routineInput.parse(raw);
       try {
         return expansion.parse({

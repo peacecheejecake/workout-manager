@@ -503,3 +503,129 @@ it.each([
     });
   },
 );
+
+it('captured other race bodies retain their own timing while the explicit preview event overrides only its ID', () => {
+  const input = raceNutrition();
+  const other = {
+    ...input.event,
+    id: '20000000-0000-4000-8000-000000000002',
+    localDate: '2026-03-11',
+    localStartTime: '07:00:00',
+  };
+  const known = [input.event, other];
+  const before = structuredClone(known);
+  const capturedPorts = createRaceRelativeScheduleCalculationPorts(known);
+  const changed = { ...input.event, revision: 2, localDate: '2026-03-10' };
+  expect(capturedPorts.resolveNutrition(input)).toEqual({
+    state: 'resolved',
+    date: '2026-03-08',
+    localTime: '01:30:00',
+  });
+  expect(capturedPorts.resolveNutrition({ ...input, event: changed })).toEqual({
+    state: 'resolved',
+    date: '2026-03-10',
+    localTime: '01:30:00',
+  });
+  input.item.anchor = {
+    kind: 'relative',
+    entity: 'race',
+    entityId: other.id,
+    point: 'start',
+    offsetMinutes: 0,
+  };
+  const otherTiming = { state: 'resolved', date: '2026-03-11', localTime: '07:00:00' };
+  expect(capturedPorts.resolveNutrition(input)).toEqual(otherTiming);
+  expect(capturedPorts.resolveNutrition({ ...input, event: changed })).toEqual(otherTiming);
+  expect(known).toEqual(before);
+  // The factory owns its decoded snapshot; callers cannot mutate a future preview.
+  other.localDate = '2026-03-12';
+  expect(capturedPorts.resolveNutrition(input)).toEqual(otherTiming);
+  expect(ports.resolveNutrition(input)).toEqual({ state: 'unresolved', reason: 'missing_anchor' });
+});
+it('deduplicates exact captured IDs independently of object key order and rejects conflicting bodies or revisions', () => {
+  const input = raceNutrition();
+  const reversed = Object.fromEntries(Object.entries(input.event).reverse());
+  const captured = createRaceRelativeScheduleCalculationPorts([input.event, reversed]);
+  expect(captured.resolveNutrition(input)).toEqual(ports.resolveNutrition(input));
+  for (const conflicting of [
+    { ...input.event, revision: 2 },
+    { ...input.event, localStartTime: null },
+  ])
+    expect(() => createRaceRelativeScheduleCalculationPorts([input.event, conflicting])).toThrow(
+      'INVALID_CALCULATION_INPUT',
+    );
+});
+it('other-race unknown starts, unknown ends and DST gaps remain unresolved without Plan timing substitution', () => {
+  const input = raceNutrition();
+  const other = {
+    ...input.event,
+    id: '20000000-0000-4000-8000-000000000002',
+    localStartTime: null,
+  };
+  input.item.anchor = {
+    kind: 'relative',
+    entity: 'race',
+    entityId: other.id,
+    point: 'start',
+    offsetMinutes: 0,
+  };
+  expect(createRaceRelativeScheduleCalculationPorts([other]).resolveNutrition(input)).toEqual({
+    state: 'unresolved',
+    reason: 'missing_anchor',
+  });
+  const gap = { ...other, localStartTime: '02:30:00' };
+  expect(createRaceRelativeScheduleCalculationPorts([gap]).resolveNutrition(input)).toEqual({
+    state: 'unresolved',
+    reason: 'ambiguous_local_time',
+  });
+  input.item.anchor.point = 'end';
+  expect(
+    createRaceRelativeScheduleCalculationPorts([
+      { ...other, localStartTime: '07:00:00', targetSeconds: 3600 },
+    ]).resolveNutrition(input),
+  ).toEqual({ state: 'unresolved', reason: 'missing_anchor' });
+});
+it('validates unknown captured arrays, strict event bodies and the existing 5000-input/4MiB limits', () => {
+  const event = raceNutrition().event;
+  for (const invalid of [
+    null,
+    {},
+    [null],
+    [{ ...event, approve: true }],
+    [{ ...event, id: 'not-a-uuid' }],
+    [{ ...event, revision: 0 }],
+  ])
+    expect(() => createRaceRelativeScheduleCalculationPorts(invalid)).toThrow();
+  const many = Array.from({ length: 5000 }, (_, index) => ({
+    ...event,
+    id: `20000000-0000-4000-8000-${index.toString(16).padStart(12, '0')}`,
+  }));
+  expect(() => createRaceRelativeScheduleCalculationPorts(many)).not.toThrow();
+  expect(() => createRaceRelativeScheduleCalculationPorts([...many, event])).toThrow();
+  expect(() => createRaceRelativeScheduleCalculationPorts(['x'.repeat(4194304)])).toThrow(
+    'INVALID_CALCULATION_INPUT',
+  );
+});
+it('applies one aggregate input byte budget to captured bodies plus each nutrition/routine calculation', () => {
+  const input = raceNutrition();
+  const known = Array.from({ length: 1500 }, (_, index) => ({
+    ...input.event,
+    id: `20000000-0000-4000-8000-${index.toString(16).padStart(12, '0')}`,
+    officialUrl: `https://example.invalid/${'x'.repeat(1600)}`,
+  }));
+  const original = input.sourcePlan.sessions[0];
+  if (!original) throw new Error('Missing session');
+  input.sourcePlan.sessions = Array.from({ length: 500 }, (_, index) => ({
+    ...original,
+    id: `session-${index}`,
+    notes: 'x'.repeat(4000),
+  }));
+  expect(Buffer.byteLength(JSON.stringify(known), 'utf8')).toBeLessThan(4194304);
+  expect(Buffer.byteLength(JSON.stringify(input), 'utf8')).toBeLessThan(4194304);
+  expect(Buffer.byteLength(JSON.stringify({ known, input }), 'utf8')).toBeGreaterThan(4194304);
+  const captured = createRaceRelativeScheduleCalculationPorts(known);
+  expect(() => captured.resolveNutrition(input)).toThrow('INVALID_CALCULATION_INPUT');
+  expect(() =>
+    captured.expandRoutine({ schedule: schedule(), sourcePlan: input.sourcePlan }),
+  ).toThrow('INVALID_CALCULATION_INPUT');
+});

@@ -541,3 +541,66 @@ it('blocks missing frozen blueprint and unassignable historical occurrences with
     missingFacts: expect.arrayContaining([{ kind: 'frozen_blueprint', id: 'blueprint-v1' }]),
   });
 });
+
+it('uses the captured historical Plan body without replacing it with the current head', () => {
+  const capture = fixture();
+  const historical = structuredClone(capture.linkedPlan);
+  const row = capture.nutrition[0];
+  if (!historical || !row) throw new Error('Missing fixture');
+  historical.id = '10000000-0000-4000-8000-000000000002';
+  historical.draft.sessions = historical.draft.sessions.map((session) => ({
+    ...session,
+    date: '2026-03-05',
+  }));
+  row.record.linkedTrainingPlanVersionId = historical.id;
+  row.sourceRelation = 'historical';
+  capture.consumedSources = { plans: [historical], races: [capture.event] };
+  const result = projected(capture, true);
+  expect(result.projection.nutrition[0]?.items[1]).toMatchObject({
+    state: 'unchanged',
+    before: { date: '2026-03-05' },
+    after: { date: '2026-03-05' },
+  });
+  expect(result.approvalAllowed).toBe(false);
+});
+
+it('keeps another captured race anchor unchanged when only the selected race moves', () => {
+  const capture = fixture();
+  const other = {
+    ...capture.event,
+    id: '20000000-0000-4000-8000-000000000002',
+    localDate: '2026-03-12',
+  };
+  const row = capture.nutrition[0];
+  if (!row) throw new Error('Missing fixture');
+  row.record.items = row.record.items.map((item) =>
+    item.id === 'race' && item.anchor.kind === 'relative'
+      ? { ...item, anchor: { ...item.anchor, entityId: other.id } }
+      : item,
+  );
+  capture.consumedSources = { plans: [], races: [other] };
+  const result = projected(capture);
+  expect(result.projection.nutrition[0]?.items[0]).toMatchObject({
+    state: 'unchanged',
+    before: { date: '2026-03-12' },
+    after: { date: '2026-03-12' },
+  });
+  expect(result.missingFacts).toContainEqual({
+    kind: 'immutable_race_pin',
+    id: JSON.stringify([nutritionId, 'race']),
+  });
+});
+
+it('rejects conflicting consumed source identities and malformed source bodies', () => {
+  const capture = fixture();
+  capture.consumedSources = { plans: [], races: [{ ...capture.event, revision: 2 }] };
+  expect(buildRacePlanImpactProjectionInput(capture, intent(capture))).toMatchObject({
+    status: 'blocked',
+    reason: 'source_identity_mismatch',
+  });
+  capture.consumedSources = { plans: [], races: [{ ...capture.event, localDate: 'invalid' }] };
+  expect(buildRacePlanImpactProjectionInput(capture, intent(capture))).toMatchObject({
+    status: 'blocked',
+    reason: 'invalid_input_or_capture',
+  });
+});
