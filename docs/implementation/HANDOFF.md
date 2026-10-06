@@ -273,3 +273,8 @@ M3-02l은 2026-10-05 로컬 서버·계약 수용을 완료했다. 개별 해제
 - 남은 UID 작업을 위한 정확한 resume-v2 script SHA-256 `dce43db9ab995d003a75241ef6dc5f33c82abb7da1a6b9c9457712d131466060`은 fresh context-less 독립 읽기 전용 검토를 통과했다. 설치/실행은 하지 않았다. AWS SSO 재연결 후 새 Linux 상태·copied baseline 무결성·권한을 확인하고, 정확한 새 실행 승인을 받은 다음 진행한다. 과거 v3 승인은 이 script 승인으로 전용하지 않는다. 운영 원장·전체 백업/격리 복원·503 해제는 별도 gate다.
 - 사용자 답변 대기: 비루트 AWS SSO 로그인 재연결 가능 시점, HealthKit 없는 WM Synthetic Performance가 실제 iPhone에서 지도/그리기 값을 표시하고 계속 열려 있는지, FUT-09 원문 제공 또는 원문 이식 보류 결정. 합성 성능값/예산은 미확정이며 기존 제품 collector를 개인 건강 자료에서 실행하지 않는다.
 - S22 추가 정책 답변 대기: generic app 동의의 처리 대상·철회 효과, generic provider를 개별 연동 기준으로 둘지 공통 상위 수집 gate로 사용할지. 별도 M2-01k 읽기 전용 대조에서 두 kind의 원장 저장은 확인했으나 실제 업무 gate consumer를 찾지 못했다. 기존 HealthKit/Garmin 결정은 유지하며 새 의미를 임의 구현하지 않는다.
+
+## 로컬 phase 통합 최신 상태 · 2026-10-06
+
+- M3 전체 독립 재검토는 base173d8d6 → headd132fb41 **APPROVE**, 이전 stale outbox P1 **FIXED**였다. main에 d132fb41을 fast-forward했고 clean을 확인했다. 정확한 diff·검토·실행/미실행 증거는 annotated tag `review/m3-02-20261006-registration-refresh`와 [phase 기록](progress/M3-02-phase-review-20261006.md)을 따른다. 앞선 대기/수정 중 문단은 그 시점 기록이며 o/h 운영·실기기 gate는 여전히 in_progress/not_executed다.
+- 병렬 M2 URL callback 로그·S22 준비는 [M2-01k §44](progress/M2-01k.md#44-url-로그s22-준비-전체-phase-통합-검증2026-10-06)의 고정 입력에서 전체 unit4398·PG1095(+upgrade1/pgoutput7) 및 identity 두 회차각309통과/12skip를 실제 확인했다. 승인된 main 위에 통합했고 exact diff의 독립 phase 검토는 아직 대기 중이다. app/provider 정책 답변과 운영/기기 증거를 로컬 검사로 대신하지 않는다.
