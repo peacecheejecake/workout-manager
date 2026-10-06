@@ -14,6 +14,13 @@ import {
 import { captureWorkerProtocol } from './tests/identity/diagnostics/protocol-capture';
 
 const repositoryDirectory = dirname(fileURLToPath(import.meta.url));
+const identitySuite = process.env['IDENTITY_E2E_SUITE'];
+if (
+  identitySuite !== undefined &&
+  !['general', 'app-consent', 'ai-settings-lifecycle'].includes(identitySuite)
+) {
+  throw new Error('Unknown isolated identity suite');
+}
 
 /**
  * The self-hosted basemap deployment, when one has been built on this machine.
@@ -79,6 +86,11 @@ if (diagnostics) {
 
 export default defineConfig({
   testDir: './tests/identity',
+  ...(identitySuite === 'general'
+    ? { testIgnore: ['**/app-consent.spec.ts', '**/ai-settings-lifecycle.spec.ts'] }
+    : identitySuite
+      ? { testMatch: `**/${identitySuite}.spec.ts` }
+      : {}),
   workers: 1,
   ...(diagnostics
     ? {
