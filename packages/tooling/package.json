@@ -6,7 +6,8 @@
   "exports": {
     "./tsconfig/base": "./tsconfig/base.json",
     "./tsconfig/bundler": "./tsconfig/bundler.json",
-    "./tsconfig/node": "./tsconfig/node.json"
+    "./tsconfig/node": "./tsconfig/node.json",
+    "./test-setup": "./test-setup.ts"
   },
   "scripts": {
     "typecheck": "tsc --project tsconfig.json",

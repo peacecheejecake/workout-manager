@@ -1,0 +1,89 @@
+.workspace {
+  display: grid;
+  gap: var(--space-5, 1.25rem);
+  min-width: 0;
+  color: var(--color-text, #182131);
+}
+.panel,
+.notice,
+.card,
+.form {
+  border: 1px solid var(--color-border, #ccd6d0);
+  border-radius: var(--radius-lg, 1rem);
+  background: var(--color-surface, #fff);
+  padding: var(--space-4, 1rem);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.notice {
+  background: var(--color-surface-subtle, #f3f7f4);
+}
+.list {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: var(--space-3, 0.75rem);
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2, 0.5rem);
+}
+.workspace button,
+.workspace input,
+.workspace select,
+.workspace textarea {
+  font: inherit;
+  color: inherit;
+  max-width: 100%;
+  box-sizing: border-box;
+  min-height: 44px;
+  border: 1px solid var(--color-border, #ccd6d0);
+  border-radius: var(--radius-control, 0.75rem);
+  padding: var(--space-2, 0.5rem);
+  background: var(--color-surface, #fff);
+}
+.workspace button {
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.workspace button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+.workspace :focus-visible {
+  outline: 3px solid var(--color-accent, #6256b8);
+  outline-offset: 2px;
+}
+.form {
+  margin-block-start: var(--space-4, 1rem);
+}
+.form fieldset {
+  border: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+  gap: var(--space-3, 0.75rem);
+  min-width: 0;
+}
+.field {
+  display: grid;
+  gap: var(--space-1, 0.25rem);
+  min-width: 0;
+}
+.field input,
+.field select,
+.field textarea {
+  width: 100%;
+}
+.field textarea {
+  min-height: 6rem;
+  resize: vertical;
+}
+.meta {
+  color: var(--color-text-muted, #536075);
+  font-variant-numeric: tabular-nums;
+}
+.panel[hidden] {
+  display: none;
+}

@@ -1852,7 +1852,17 @@
     {
       "id": "M2-02",
       "title": "대회·기록",
-      "dependsOn": ["M2-01", "M2-02a", "M2-02b", "M2-02c", "M2-02d", "M2-02e", "M2-02f"],
+      "dependsOn": [
+        "M2-01",
+        "M2-02a",
+        "M2-02b",
+        "M2-02c",
+        "M2-02d",
+        "M2-02e",
+        "M2-02f",
+        "M2-02g",
+        "M2-02h"
+      ],
       "kind": "task",
       "status": "not_started",
       "scope": "competitions; 코스 참조·결과"
@@ -2200,6 +2210,24 @@
       "status": "completed",
       "scope": "개별 삭제 CAS·최소 receipt·history/private purge·tenant별 collection privacyGeneration·독립 restore suppression ledger/exact replay. RaceEvent 삭제는 independent actual result를 조용히 삭제하지 않고 nullable link만 정리; linked Plan 자동 변경 금지. 설계/계약 root 직렬화 후 실제 PG·복원 수용, API 연결.",
       "evidence": "docs/implementation/progress/M2-02f.md"
+    },
+    {
+      "id": "M2-02g",
+      "title": "S15·S16 대회·실제 기록의 재사용 화면",
+      "dependsOn": ["M2-02f"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "인증된 세 원장 목록·명시 생성/수정/삭제·null/zero/출처/시간대·CAS/멱등성·Plan 영향 오류·private cache/draft reset. 코스 불변 참조와 실제 활동 연결, 공식 결과/기기 추정 구분. 재사용 module/DTO HTTP adapter/RTL 수용; shell/실제 브라우저 통합은 h로 구분.",
+      "evidence": "docs/implementation/progress/M2-02g.md"
+    },
+    {
+      "id": "M2-02h",
+      "title": "대회·기록 web/mobile host와 실제 인증 연결",
+      "dependsOn": ["M2-02g"],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "실제 Course/Plan/Activity named relation loader, S15/S16 thin web/mobile routes와 URL section, identity fixture races repository wiring, 실제 인증/API/DB E2E. PB 포함 정책 결정과 Plan 영향 preview/승인은 별도 미완료 추적; 합성 module 화면을 제품 통합으로 취급하지 않는다.",
+      "evidence": "docs/implementation/progress/M2-02h.md"
     }
   ]
 }

@@ -466,6 +466,31 @@ importers:
         specifier: 5.0.15
         version: 5.0.15(@types/react@19.3.0)(react@19.3.0)(use-sync-external-store@1.7.0(react@19.3.0))
 
+  packages/modules/competitions:
+    dependencies:
+      '@tanstack/react-query':
+        specifier: 5.102.8
+        version: 5.102.8(react@19.3.0)
+      '@workout/contracts':
+        specifier: workspace:*
+        version: link:../../contracts
+      '@workout/ui-foundation':
+        specifier: workspace:*
+        version: link:../../ui/foundation
+      react:
+        specifier: 19.3.0
+        version: 19.3.0
+      zod:
+        specifier: 4.6.5
+        version: 4.6.5
+    devDependencies:
+      '@workout/tooling':
+        specifier: workspace:*
+        version: link:../../tooling
+      react-dom:
+        specifier: 19.3.0
+        version: 19.3.0(react@19.3.0)
+
   packages/modules/courses:
     dependencies:
       '@tanstack/react-query':
