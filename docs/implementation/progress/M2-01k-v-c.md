@@ -228,3 +228,9 @@ M2-05 phase의 pinned UI `dd974084fe008397fe2ab2963191de6bea9e0380`에서 settin
 - 최종 spec SHA `96b733dcb51b8105f0d514c2dedf8eac5649e2265a23b1edc627a9be52740d1b`; context `b04060254f062f8681d447385704135f9e3c2d0bf3270802cee2378249a0b985`; catalog `50a2cbb1bd316ffed4e9941914e345679fc195d172f4b978468d0c9fec9f9f18`. `/private/tmp/wm-ai-settings-identity-actual-acceptance-20261007.md`와 회차별 inputs/cleanup 참조. r6 harness dead·socket/context absent·pg_isready2·5 ports listener0 확인; r4 개별PID/socket 포착 누락 한계는 그대로다.
 
 이는 M2-05 settings의 현재 processing 경계와 두 shell 연결을 C phase에서 수용하기 위한 의존성 통합이다. M2-05 전체나 S22v-f/native 노드를 완료 처리하지 않는다. Keyboard 전체·503 target lifecycle·전체 phase gate/독립 phase review·실기기·공개 HTTPS·유료 provider 호출은 미완료/NOT_EXECUTED로 남는다. Phase main 병합·push를 하지 않는다.
+
+### 별도 실제 키보드 typeahead 경로 · 2026-10-07
+
+Frozen repo3파일 변경 없이 tmp actual Chrome/PG14 케이스에서 제공자 focus→`o`→Enter(OpenAI), 모델 focus→`s`→Enter(Sol) 경로를 확인했다. Next r9 **1/1**, Vite r10 **1/1** 통과. 두 화면 실제 GET revision1·저장 status를 확인했으며 Vite는 모델 Enter 직전 PUT waiter를 설치해 실제200도 확인했다. Next는 특정 키 이벤트/응답의 직접 시간 상관을 측정하지 않았고 GET commit 사실만 기록한다. r8은 선택 확인 후 이미 Enter가 제출한 상태에서 두번째 PUT을 기다려 timeout된 전체 실패로 보존하며 r7은 tmp ESM pretest 실패다. r3/r4 화살표/Space+화살표 실패는 고치거나 pass로 바꾸지 않았다. 실제 확인된 keyboard 경로는 typeahead이며 화살표 진단의 차이는 여전히 한계로 남는다.
+
+Root가 `/private/tmp/wm-ai-settings-keyboard-r9-saved.png`를 직접 열어 OpenAI/Sol·실행 unconfigured 고지·저장 성공 상태와 개인 자료 없음 확인. Vite 저장 screenshot은 `/private/tmp/wm-ai-settings-keyboard-r10-saved.png`. 최종 보고 `/private/tmp/wm-ai-settings-identity-actual-acceptance-20261007.md` SHA256 `02c9a53a0ca0d05e7e20406d04f87a0a22cbc999b36284c4b73499225341214c`. Vite r10은 own PID/socket/context를 포착해 종료·파일/디렉터리 부재·pg_isready2·5port listener0를 확인했다. Next r9은 runnerexit0/runidcontext0/ports0만 포착해 개별PID/socket cleanup은 NOT_CAPTURED다. Phase/실기기/외부 API·공개 배포 수용 결과로 승격하지 않는다.
