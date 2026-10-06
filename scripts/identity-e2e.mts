@@ -94,6 +94,7 @@ import {
   grantGalleryMedia,
   grantActivityTracks,
   grantCourses,
+  grantRaces,
   grantCourseThumbnailWorker,
   grantResources,
   grantResourceRetrieval,
@@ -261,6 +262,7 @@ try {
     await grantGalleryMedia(adminUrl, 'workout_runtime');
     await grantActivityTracks(adminUrl, 'workout_runtime');
     await grantCourses(adminUrl, 'workout_runtime');
+    await grantRaces(adminUrl, 'workout_runtime');
     // This isolated, nonproduction fixture creates its own untrusted v3 analysis output.
     await admin.query('GRANT INSERT ON coaching_analysis_output TO workout_runtime');
     await admin.query(

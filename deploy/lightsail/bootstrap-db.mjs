@@ -137,6 +137,7 @@ async function bootstrap() {
     'grantGalleryMedia',
     'grantActivityTracks',
     'grantCourses',
+    'grantRaces',
     'grantGarmin',
     'grantHealthKitIngestion',
   ];

@@ -845,4 +845,9 @@ M1-06b 공식 수집이 Web 출시의 필수 조건이었다. 2026-09-27 결정�
 최소 병렬화는 M0-02 뒤 frontend/backend 분리다. 더 빠르게 진행하려고 승인 transaction·공유 schema·migration을 독립 구현 두 벌로 만드는 방식은 사용하지 않는다.
 
 
-M2-02d는 완료된 M2-02c 뒤 bounded 목록 조회를 구현한다. 현재 in_progress이며 storage id-asc 페이지의 collection `(revision, privacyGeneration)`과 cursor를 결속한다. 부모 M2-02 전체 수용은 여전히 미완료다.
+M2-02d는 완료된 M2-02c 뒤 bounded 목록 조회를 구현한다. 로컬 수용 completed이며 storage id-asc 페이지의 collection `(revision, privacyGeneration)`과 cursor를 결속한다. 부모 M2-02 전체 수용은 여전히 미완료다.
+
+
+M2-02e는 완료된 M2-02d 뒤 Fastify owner-scoped create/update/get/list API와 configured repository·역할 grant 연결을 진행한다. API 이후에도 S15/S16·삭제·PB·Plan 영향 승인은 남는다.
+
+M2-02e의 API·실제 격리 DB 수용은 completed다. 부모 M2-02의 UI/삭제/PB/Plan 영향 승인과 phase 검토는 계속 남는다.

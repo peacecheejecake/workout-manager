@@ -205,6 +205,7 @@ async function ensureDatabase() {
     'grantGalleryMedia',
     'grantActivityTracks',
     'grantCourses',
+    'grantRaces',
     'grantGarmin',
   ])
     await m[grant](owner, RUNTIME);

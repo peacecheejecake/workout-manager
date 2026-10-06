@@ -1841,9 +1841,18 @@
       "evidence": "docs/implementation/progress/M2-02d.md"
     },
     {
+      "id": "M2-02e",
+      "title": "대회·기록 owner-scoped API 연결",
+      "dependsOn": ["M2-02d"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "Fastify GET/list/create/update runtime boundaries·auth/CSRF·bounded cursor·stable errors; 실제 configured repository/role grants 연결",
+      "evidence": "docs/implementation/progress/M2-02e.md"
+    },
+    {
       "id": "M2-02",
       "title": "대회·기록",
-      "dependsOn": ["M2-01", "M2-02a", "M2-02b", "M2-02c", "M2-02d"],
+      "dependsOn": ["M2-01", "M2-02a", "M2-02b", "M2-02c", "M2-02d", "M2-02e"],
       "kind": "task",
       "status": "not_started",
       "scope": "competitions; 코스 참조·결과"

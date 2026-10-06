@@ -1,3 +1,4 @@
+import { createRaceRepository } from '@workout/server-persistence/races';
 import { createCoachingConstraintRepository } from '@workout/server-persistence/coaching-constraints';
 import { createCoreEvidenceSnapshotRepository } from '@workout/server-persistence/evidence-snapshots';
 import { createCoachingThreadRepository } from '@workout/server-persistence/coaching-threads';
@@ -409,6 +410,7 @@ export async function createConfiguredApi(
           }
         : {}),
       activities,
+      races: createRaceRepository(database),
       healthKitRegistration: createHealthKitRegistrationRepository(database),
       healthKitDeregistration: createHealthKitDeregistrationRepository(database),
       healthKitIngestion: createHealthKitIngestionRepository(database),

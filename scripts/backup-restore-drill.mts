@@ -43,6 +43,7 @@ import {
   grantGalleryMedia,
   grantActivityTracks,
   grantCourses,
+  grantRaces,
   grantCourseThumbnailWorker,
 } from '../packages/server/persistence/src/migrate.js';
 import { createGarminStore } from '../packages/server/persistence/src/garmin.js';
@@ -891,6 +892,7 @@ async function execute() {
     await grantGalleryMedia(url('drill_source'), 'drill_runtime');
     await grantActivityTracks(url('drill_source'), 'drill_runtime');
     await grantCourses(url('drill_source'), 'drill_runtime');
+    await grantRaces(url('drill_source'), 'drill_runtime');
     await grantCourseThumbnailWorker(url('drill_source'), 'drill_thumbnailer');
     const sourceDb = database('drill_source');
     const deletedAthlete = randomUUID();
