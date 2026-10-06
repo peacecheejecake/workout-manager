@@ -1,3 +1,14 @@
+import {
+  supplementaryExerciseVersionSchema,
+  supplementarySpecSchema,
+  supplementarySessionLinkSchema,
+  routineTemplateVersionSchema,
+} from '@workout/contracts/supplementary-core';
+import { insertSupplementarySessionLink } from '../src/supplementary-core.js';
+import {
+  integratedDependencyKinds,
+  decodeIntegratedDependencyInventory,
+} from '../src/race-plan-impact-dependencies.js';
 import { randomUUID } from 'node:crypto';
 import { Pool, type PoolClient } from 'pg';
 import { z } from 'zod';
@@ -15,7 +26,15 @@ import { planDraftSchema } from '@workout/contracts/planning';
 import type { RaceEventValues } from '@workout/contracts/race-commands';
 import { createDatabase, type Database } from '../src/database.js';
 import { createRaceRepository, type RaceRepository } from '../src/races.js';
-import { migrate, grantOperations, grantRaces } from '../src/migrate.js';
+import {
+  migrate,
+  grantOperations,
+  grantRaces,
+  grantRoutineCore,
+  grantRecoveryCore,
+  grantCheckIns,
+  grantCourses,
+} from '../src/migrate.js';
 import { captureRacePlanImpactContext } from '../src/race-plan-impact-context.js';
 import { dropIsolatedDatabase } from './drop-isolated-database.js';
 const adminUrl = z.string().min(1).parse(process.env['TEST_DATABASE_ADMIN_URL']);
@@ -205,11 +224,11 @@ beforeAll(async () => {
   owner = new Pool({ connectionString: url(ownerRole) });
   await grantOperations(url(ownerRole), runtimeRole);
   await grantRaces(url(ownerRole), runtimeRole);
-  // Read-only fixture grants cover context reads. No new production grants are asserted.
-  await owner.query(
-    `GRANT SELECT ON check_in_collection_head,coaching_constraint_head,consent,routine_schedule_head,routine_schedule_version,routine_blueprint_version,recovery_strategy_head,recovery_strategy_version TO "${runtimeRole}"`,
-  );
-  await owner.query(`GRANT SELECT,INSERT,UPDATE ON outbox TO "${runtimeRole}"`);
+  // The configured identity runtime uses these same domain grants; no fixture-only SELECT.
+  await grantRoutineCore(url(ownerRole), runtimeRole);
+  await grantRecoveryCore(url(ownerRole), runtimeRole);
+  await grantCheckIns(url(ownerRole), runtimeRole);
+  await grantCourses(url(ownerRole), runtimeRole);
   database = createDatabase({ connectionString: url(runtimeRole) });
   races = createRaceRepository(database);
 });
@@ -752,4 +771,424 @@ it('bounds5001 unique source identities before decoding adversarial stored sourc
     bound: 'unique_sources',
   });
   expect(measured.bytes()).toBeLessThan(4096);
+});
+
+it('strictly rejects missing, unexpected and duplicate dependency kinds before accepting an inventory', () => {
+  const valid = integratedDependencyKinds.map((kind) => ({ kind, state: 'present', revision: 0 }));
+  expect(decodeIntegratedDependencyInventory(valid)).toEqual(valid);
+  for (const bad of [
+    valid.slice(1),
+    [...valid.slice(1), valid[1]],
+    [...valid.slice(1), { kind: 'not_a_dependency', state: 'absent' }],
+    valid.map((item, index) => (index === 0 ? { ...item, revision: 2147483648 } : item)),
+    valid.map((item, index) => (index === 0 ? { ...item, unexpected: true } : item)),
+  ])
+    expect(() => decodeIntegratedDependencyInventory(bad)).toThrow('INVALID_CONTEXT');
+});
+
+it('distinguishes absent inventory from present zero and sees same-count actual corrections and tombstones', async () => {
+  const athlete = await account(),
+    event = await create(athlete);
+  const absent = await capture(athlete, event.id);
+  expect(absent.dependencyInventory).toEqual(
+    integratedDependencyKinds.map((kind) => ({ kind, state: 'absent' })),
+  );
+  await owned(athlete, (client) =>
+    client.query('INSERT INTO integrated_dependency_head(athlete_id) VALUES($1)', [athlete]),
+  );
+  const zero = await capture(athlete, event.id);
+  expect(zero.dependencyInventory).toEqual(
+    integratedDependencyKinds.map((kind) => ({ kind, state: 'present', revision: 0 })),
+  );
+  expect(zero.readSetDigest).not.toBe(absent.readSetDigest);
+  const activityId = randomUUID();
+  await owned(athlete, (client) =>
+    client.query(
+      'INSERT INTO activity_canonical(athlete_id,id,revision,original) VALUES($1,$2,1,$3::jsonb)',
+      [athlete, activityId, JSON.stringify({ title: 'Synthetic actual', distanceMeters: 0 })],
+    ),
+  );
+  const first = await capture(athlete, event.id);
+  await owned(athlete, (client) =>
+    client.query(
+      'UPDATE activity_canonical SET revision=revision+1,original=$3::jsonb WHERE athlete_id=$1 AND id=$2',
+      [athlete, activityId, JSON.stringify({ title: 'Corrected actual', distanceMeters: null })],
+    ),
+  );
+  const corrected = await capture(athlete, event.id);
+  expect(corrected.coreDependencies.activities.count).toBe(first.coreDependencies.activities.count);
+  expect(corrected.dependencyInventory.find((item) => item.kind === 'activity_revision')).toEqual({
+    kind: 'activity_revision',
+    state: 'present',
+    revision: 2,
+  });
+  expect(corrected.readSetDigest).not.toBe(first.readSetDigest);
+  await owned(athlete, (client) =>
+    client.query(
+      "INSERT INTO activity_source_head(athlete_id,kind,source_id,source_revision,content_hash,activity_id) VALUES($1,'fixture',$2,1,$3,$4)",
+      [athlete, randomUUID(), 'a'.repeat(64), activityId],
+    ),
+  );
+  await owned(athlete, (client) =>
+    client.query(
+      'UPDATE activity_canonical SET deleted=true,revision=revision+1 WHERE athlete_id=$1 AND id=$2',
+      [athlete, activityId],
+    ),
+  );
+  expect(
+    (await capture(athlete, event.id)).dependencyInventory.find(
+      (item) => item.kind === 'activity_revision',
+    ),
+  ).toMatchObject({ revision: 3 });
+  const other = await account(),
+    otherEvent = await create(other);
+  expect(
+    (await capture(other, otherEvent.id)).dependencyInventory.every(
+      (item) => item.state === 'absent',
+    ),
+  ).toBe(true);
+  expect(corrected.coverage.complete).toBe(false);
+  expect(corrected.coverage.missing).toContain('complete_catalog_and_actual_manifest');
+});
+
+function syntheticExercise(exerciseId: string = randomUUID(), versionId: string = randomUUID()) {
+  return supplementaryExerciseVersionSchema.parse({
+    schemaVersion: 2,
+    exerciseId,
+    versionId,
+    name: 'Synthetic balance',
+    family: 'balance_stability',
+    equipment: ['bodyweight'],
+    tags: [],
+    countDefinitions: [],
+    mediaAssetIds: [],
+    resourceVersionIds: [],
+    reviewState: 'unreviewed',
+    description: 'Frozen synthetic catalog',
+    safetyNotes: '',
+    supportedMetrics: ['duration'],
+    createdAt: '2026-10-01T00:00:00Z',
+  });
+}
+function syntheticSpec(exerciseVersionId: string, routineVersionId: string | null = null) {
+  return supplementarySpecSchema.parse({
+    schemaVersion: 2,
+    kind: 'supplementary',
+    routineVersionId,
+    blocks: [
+      {
+        id: 'block-one',
+        mode: 'single',
+        rounds: 1,
+        sets: [
+          {
+            id: 'target-one',
+            exerciseVersionId,
+            side: 'bilateral',
+            count: null,
+            durationSeconds: {
+              min: 10,
+              max: 10,
+              unit: 's',
+              basis: 'user_confirmed',
+              evidenceIds: [],
+            },
+            externalResistance: { kind: 'no_added_load' },
+            restAfterSeconds: 0,
+            tempo: null,
+            effort: null,
+          },
+        ],
+        restBetweenRoundsSeconds: null,
+      },
+    ],
+  });
+}
+async function seedExercise(
+  athlete: string,
+  definition = syntheticExercise(),
+  previous: ReturnType<typeof syntheticExercise> | null = null,
+) {
+  await owned(athlete, async (client) => {
+    await client.query(
+      'INSERT INTO supplementary_exercise_version(athlete_id,exercise_id,version_id,version,previous_version_id,previous_version,created_at,record_json) VALUES($1,$2,$3,$4,$5,$6,$7,$8::jsonb)',
+      [
+        athlete,
+        definition.exerciseId,
+        definition.versionId,
+        previous ? 2 : 1,
+        previous?.versionId ?? null,
+        previous ? 1 : null,
+        definition.createdAt,
+        JSON.stringify(definition),
+      ],
+    );
+    if (previous)
+      await client.query(
+        'UPDATE supplementary_exercise_head SET version=2,version_id=$3 WHERE athlete_id=$1 AND exercise_id=$2',
+        [athlete, definition.exerciseId, definition.versionId],
+      );
+    else
+      await client.query(
+        'INSERT INTO supplementary_exercise_head(athlete_id,exercise_id,version,version_id) VALUES($1,$2,1,$3)',
+        [athlete, definition.exerciseId, definition.versionId],
+      );
+  });
+  return definition;
+}
+function strengthDraft(count = 1) {
+  const body = draft(),
+    original = body.sessions[0];
+  if (!original) throw new Error('Missing synthetic session');
+  return planDraftSchema.parse({
+    ...body,
+    sessions: Array.from({ length: count }, (_, index) => ({
+      ...original,
+      id: `strength-${index}`,
+      sport: 'strength',
+    })),
+  });
+}
+async function seedLink(
+  athlete: string,
+  planVersionId: string,
+  plannedSessionId: string,
+  content: unknown,
+) {
+  const link = supplementarySessionLinkSchema.parse({
+    schemaVersion: 2,
+    planVersionId,
+    plannedSessionId,
+    content,
+  });
+  await owned(athlete, (client) =>
+    insertSupplementarySessionLink(
+      { athleteId: athlete, query: (sql, parameters) => client.query(sql, parameters) },
+      link,
+    ),
+  );
+}
+it('captures empty strength links, exact embedded copies and immutable historical references after catalog head changes', async () => {
+  const athlete = await account(),
+    firstExercise = await seedExercise(athlete);
+  const oldPlan = await training(athlete, strengthDraft(), false);
+  const current = await training(athlete, strengthDraft());
+  const event = await create(athlete, { planVersionId: oldPlan });
+  const absent = await capture(athlete, event.id);
+  expect(absent.supplementaryManifest.sessions).toHaveLength(2);
+  expect(absent.supplementaryManifest.sessions.every((row) => row.state === 'absent')).toBe(true);
+  await seedLink(athlete, oldPlan, 'strength-0', {
+    kind: 'embedded',
+    spec: syntheticSpec(firstExercise.versionId),
+  });
+  const pinned = await capture(athlete, event.id);
+  expect(pinned.supplementaryManifest.copies[0]?.link.planVersionId).toBe(oldPlan);
+  expect(pinned.supplementaryManifest.exercises).toMatchObject([
+    { exerciseId: firstExercise.exerciseId, versionId: firstExercise.versionId, version: 1 },
+  ]);
+  expect(pinned.readSetDigest).not.toBe(absent.readSetDigest);
+  await seedExercise(athlete, syntheticExercise(firstExercise.exerciseId), firstExercise);
+  const advanced = await capture(athlete, event.id);
+  expect(advanced.supplementaryManifest).toEqual(pinned.supplementaryManifest);
+  expect(advanced.readSetDigest).not.toBe(pinned.readSetDigest);
+  expect(advanced.currentTraining?.snapshot.id).toBe(current);
+  await expect(
+    owned(athlete, (client) =>
+      client.query(
+        'UPDATE supplementary_exercise_version SET record_json=record_json WHERE athlete_id=$1 AND version_id=$2',
+        [athlete, firstExercise.versionId],
+      ),
+    ),
+  ).rejects.toThrow('IMMUTABLE_SUPPLEMENTARY_RECORD');
+  expect(advanced.coverage.missing).toHaveLength(5);
+});
+
+it('captures exact routine frozen target copies and rejects an unexpected actual SQL target reference', async () => {
+  const athlete = await account(),
+    exercise = await seedExercise(athlete);
+  const routineId = randomUUID(),
+    versionId = randomUUID();
+  const template = routineTemplateVersionSchema.parse({
+    schemaVersion: 2,
+    routineId,
+    versionId,
+    title: 'Synthetic frozen routine',
+    purpose: 'Synthetic source',
+    requiredEquipment: ['bodyweight'],
+    spec: syntheticSpec(exercise.versionId, versionId),
+    createdAt: '2026-10-01T00:00:00Z',
+  });
+  await owned(athlete, async (client) => {
+    await client.query(
+      'INSERT INTO supplementary_routine_version(athlete_id,routine_id,version_id,version,created_at,record_json) VALUES($1,$2,$3,1,$4,$5::jsonb)',
+      [athlete, routineId, versionId, template.createdAt, JSON.stringify(template)],
+    );
+    await client.query(
+      'INSERT INTO supplementary_routine_head(athlete_id,routine_id,version,version_id) VALUES($1,$2,1,$3)',
+      [athlete, routineId, versionId],
+    );
+  });
+  const plan = await training(athlete, strengthDraft()),
+    event = await create(athlete);
+  await seedLink(athlete, plan, 'strength-0', {
+    kind: 'routine_version',
+    routineVersionId: versionId,
+  });
+  const captured = await capture(athlete, event.id);
+  expect(captured.supplementaryManifest.routines).toMatchObject([
+    { routineId, versionId, version: 1 },
+  ]);
+  expect(captured.supplementaryManifest.copies[0]?.targets).toEqual([
+    { block_id: 'block-one', target_set_id: 'target-one', exercise_version_id: exercise.versionId },
+  ]);
+  await owned(athlete, (client) =>
+    client.query(
+      'INSERT INTO supplementary_session_target_ref(athlete_id,plan_version_id,planned_session_id,block_id,target_set_id,exercise_version_id) VALUES($1,$2,$3,$4,$5,$6)',
+      [athlete, plan, 'strength-0', 'block-one', 'unexpected-target', exercise.versionId],
+    ),
+  );
+  await expect(capture(athlete, event.id)).rejects.toMatchObject({ code: 'SOURCE_UNAVAILABLE' });
+});
+
+it('does not expose another tenant catalog body or accept its immutable version reference', async () => {
+  const foreign = await account(),
+    foreignExercise = await seedExercise(foreign);
+  const athlete = await account(),
+    plan = await training(athlete, strengthDraft()),
+    event = await create(athlete);
+  await expect(
+    seedLink(athlete, plan, 'strength-0', {
+      kind: 'embedded',
+      spec: syntheticSpec(foreignExercise.versionId),
+    }),
+  ).rejects.toThrow('TARGET_LINK_INVALID');
+  expect((await capture(athlete, event.id)).supplementaryManifest.exercises).toEqual([]);
+  const rows = await database.tenant(athlete, (tx) =>
+    tx.query('SELECT record_json FROM supplementary_exercise_version WHERE version_id=$1', [
+      foreignExercise.versionId,
+    ]),
+  );
+  expect(rows.rows).toEqual([]);
+});
+
+it('rejects5001 supplementary target rows by scalar preflight before transporting any copy body', async () => {
+  const athlete = await account(),
+    exercise = await seedExercise(athlete),
+    plan = await training(athlete, strengthDraft()),
+    event = await create(athlete);
+  await seedLink(athlete, plan, 'strength-0', {
+    kind: 'embedded',
+    spec: syntheticSpec(exercise.versionId),
+  });
+  // Plain owner adds adversarial extra rows without disabling the real FK/immutable triggers.
+  await owned(athlete, (client) =>
+    client.query(
+      "INSERT INTO supplementary_session_target_ref(athlete_id,plan_version_id,planned_session_id,block_id,target_set_id,exercise_version_id) SELECT $1,$2,'strength-0','block-one','extra-'||i,$3 FROM generate_series(1,5000) i",
+      [athlete, plan, exercise.versionId],
+    ),
+  );
+  const measured = await measuredCapture(athlete, event.id);
+  await expect(measured.result).rejects.toMatchObject({
+    code: 'CONTEXT_UNAVAILABLE',
+    bound: 'unique_sources',
+  });
+  expect(measured.bytes()).toBeLessThan(4096);
+  expect(
+    measured.queries.some((item) =>
+      item.sql.startsWith('SELECT plan_version_id,planned_session_id,content_kind'),
+    ),
+  ).toBe(false);
+});
+
+it('includes embedded frozen bodies in the shared4MiB budget before DTO decode', async () => {
+  const athlete = await account(),
+    exercise = await seedExercise(athlete),
+    plan = await training(athlete, strengthDraft(100)),
+    event = await create(athlete);
+  const base = syntheticSpec(exercise.versionId),
+    block = base.blocks[0];
+  if (!block?.sets[0]) throw new Error('Missing synthetic target');
+  const set = block.sets[0];
+  const large = supplementarySpecSchema.parse({
+    ...base,
+    blocks: [
+      {
+        ...block,
+        sets: [
+          {
+            ...set,
+            durationSeconds: {
+              min: 10,
+              max: 10,
+              unit: 's',
+              basis: 'user_confirmed',
+              evidenceIds: Array.from(
+                { length: 400 },
+                (_, index) => `synthetic-${index}-${'x'.repeat(128)}`,
+              ),
+            },
+          },
+        ],
+      },
+    ],
+  });
+  await owned(athlete, async (client) => {
+    await client.query(
+      "INSERT INTO supplementary_session_link(athlete_id,plan_version_id,planned_session_id,content_kind,routine_version_id,embedded_spec_json) SELECT $1,$2,'strength-'||i,'embedded',NULL,$3::jsonb FROM generate_series(0,99) i",
+      [athlete, plan, JSON.stringify(large)],
+    );
+  });
+  const measured = await measuredCapture(athlete, event.id);
+  await expect(measured.result).rejects.toMatchObject({
+    code: 'CONTEXT_UNAVAILABLE',
+    bound: 'decoded_bytes',
+  });
+  expect(measured.bytes()).toBeLessThan(4096);
+  expect(
+    measured.queries.some((item) =>
+      item.sql.startsWith('SELECT plan_version_id,planned_session_id,content_kind'),
+    ),
+  ).toBe(false);
+}, 30000);
+
+it('fails closed on int4 dependency overflow and rolls back the actual mutation', async () => {
+  const athlete = await account(),
+    event = await create(athlete),
+    activityId = randomUUID();
+  await owned(athlete, async (client) => {
+    await client.query(
+      "INSERT INTO activity_canonical(athlete_id,id,revision,original) VALUES($1,$2,1,'{}'::jsonb)",
+      [athlete, activityId],
+    );
+    await client.query(
+      'UPDATE integrated_dependency_head SET activity_revision=2147483647 WHERE athlete_id=$1',
+      [athlete],
+    );
+  });
+  const before = await capture(athlete, event.id);
+  await expect(
+    owned(athlete, (client) =>
+      client.query('UPDATE activity_canonical SET revision=2 WHERE athlete_id=$1 AND id=$2', [
+        athlete,
+        activityId,
+      ]),
+    ),
+  ).rejects.toMatchObject({ code: '22003' });
+  expect((await capture(athlete, event.id)).readSetDigest).toBe(before.readSetDigest);
+});
+
+it('reads all12 real head columns distinctly without treating zero or unrelated tenant heads as absent', async () => {
+  const athlete = await account(),
+    event = await create(athlete);
+  await owned(athlete, async (client) => {
+    await client.query('INSERT INTO integrated_dependency_head(athlete_id) VALUES($1)', [athlete]);
+    // Synthetic inventory fixture, not a claim that this test invokes all12 domain producers.
+    await client.query(
+      `UPDATE integrated_dependency_head SET ${integratedDependencyKinds.map((kind, index) => `${kind}=${index}`).join(',')} WHERE athlete_id=$1`,
+      [athlete],
+    );
+  });
+  expect((await capture(athlete, event.id)).dependencyInventory).toEqual(
+    integratedDependencyKinds.map((kind, index) => ({ kind, state: 'present', revision: index })),
+  );
 });
