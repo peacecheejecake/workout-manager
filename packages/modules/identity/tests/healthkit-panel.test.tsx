@@ -55,6 +55,18 @@ function setup(
       ok: true as const,
       value: 'cancelled' as const,
     })),
+    manageHealthKitWorkouts: vi.fn(async () => ({
+      ok: true as const,
+      value: { status: 'opened' as const, managementId: '33333333-3333-4333-8333-333333333333' },
+    })),
+    healthKitWorkoutManagementStatus: vi.fn(async () => ({
+      ok: true as const,
+      value: { state: 'idle' as const, registeredCount: null, selectedCount: 0, resultCount: null },
+    })),
+    cancelHealthKitWorkoutManagement: vi.fn(async () => ({
+      ok: true as const,
+      value: 'cancelled' as const,
+    })),
     ...overrides,
   } satisfies NonNullable<HealthKitPanelProps['bridge']>;
   const onUnauthorized = vi.fn();
@@ -389,5 +401,266 @@ describe('native workout selection account UI', () => {
     );
     expect(screen.queryByText('현재 계정 등록 운동: 4개')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'iPhone 운동 선택·등록' })).toBeDisabled();
+  });
+  it('preserves native selection facts during a transient consent refresh and does not cancel its handle', async () => {
+    const user = userEvent.setup();
+    let settleConsent:
+      ((value: Awaited<ReturnType<AuthenticatedTransport['request']>>) => void) | undefined;
+    let reads = 0;
+    const { bridge } = setup(
+      async () => {
+        if (++reads === 1) return reply(consent(true, 1));
+        return await new Promise((resolve) => {
+          settleConsent = resolve;
+        });
+      },
+      {
+        getCapabilities: vi.fn(() => selectionCapabilities),
+        healthKitWorkoutSelectionStatus: vi.fn<SelectionBridge['healthKitWorkoutSelectionStatus']>(
+          async () => ({
+            ok: true,
+            value: { state: 'registered', registeredCount: 2, selectedCount: 0, resultCount: 1 },
+          }),
+        ),
+      },
+    );
+    await user.click(await screen.findByRole('button', { name: 'iPhone 운동 선택·등록' }));
+    expect(await screen.findByText('현재 계정 등록 운동: 2개')).toBeVisible();
+    await user.click(screen.getByRole('button', { name: '상태 다시 확인' }));
+    expect(await screen.findByText('HealthKit 상태를 확인하고 있습니다.')).toBeVisible();
+    expect(screen.getByText('현재 계정 등록 운동: 2개')).toBeVisible();
+    expect(bridge.cancelHealthKitWorkoutSelection).not.toHaveBeenCalled();
+    await act(async () => settleConsent?.(reply(consent(true, 1))));
+    expect(await screen.findByText('앱 동의: 허용됨')).toBeVisible();
+    expect(screen.getByText('최근 등록 결과: 1개')).toBeVisible();
+    expect(bridge.selectHealthKitWorkouts).toHaveBeenCalledOnce();
+  });
+
+  it('uses native status after cancellation and retains uncertainty about a transmitted registration', async () => {
+    const user = userEvent.setup();
+    let cancelled = false;
+    const { bridge } = selectionSetup({
+      healthKitWorkoutSelectionStatus: vi.fn<SelectionBridge['healthKitWorkoutSelectionStatus']>(
+        async () => ({
+          ok: true,
+          value: {
+            state: cancelled ? 'refresh_pending' : 'registering',
+            registeredCount: null,
+            selectedCount: cancelled ? 0 : 1,
+            resultCount: null,
+          },
+        }),
+      ),
+      cancelHealthKitWorkoutSelection: vi.fn<SelectionBridge['cancelHealthKitWorkoutSelection']>(
+        async () => {
+          cancelled = true;
+          return { ok: true, value: 'cancelled' };
+        },
+      ),
+    });
+    await user.click(await screen.findByRole('button', { name: 'iPhone 운동 선택·등록' }));
+    expect(await screen.findByText(/서버 등록 결과를 기다리고 있습니다/)).toBeVisible();
+    await user.click(screen.getByRole('button', { name: '운동 선택 취소' }));
+    expect(await screen.findByText(/수집 재개를 기다리고 있습니다/)).toBeVisible();
+    expect(screen.getByText('최근 등록 결과: 확인되지 않음')).toBeVisible();
+    expect(screen.queryByText(/운동 선택을 취소했습니다/)).not.toBeInTheDocument();
+    expect(bridge.healthKitWorkoutSelectionStatus).toHaveBeenLastCalledWith(
+      selectionId,
+      expect.any(AbortSignal),
+    );
+  });
+
+  it('does not let a late old-scope cancellation ACK read or replace the new account selection', async () => {
+    const user = userEvent.setup();
+    const nextHandle = '22222222-2222-4222-8222-222222222222';
+    const cancelSettlements: Array<
+      (value: Awaited<ReturnType<SelectionBridge['cancelHealthKitWorkoutSelection']>>) => void
+    > = [];
+    const cancellation = vi.fn<SelectionBridge['cancelHealthKitWorkoutSelection']>(
+      () =>
+        new Promise((resolve) => {
+          cancelSettlements.push(resolve);
+        }),
+    );
+    const select = vi
+      .fn<SelectionBridge['selectHealthKitWorkouts']>()
+      .mockResolvedValueOnce({ ok: true, value: { status: 'opened', selectionId } })
+      .mockResolvedValue({ ok: true, value: { status: 'opened', selectionId: nextHandle } });
+    const status = vi.fn<SelectionBridge['healthKitWorkoutSelectionStatus']>(async (handle) => ({
+      ok: true,
+      value: {
+        state: 'choosing',
+        registeredCount: null,
+        selectedCount: handle === nextHandle ? 2 : 1,
+        resultCount: null,
+      },
+    }));
+    const { props, rerender, tree } = selectionSetup({
+      selectHealthKitWorkouts: select,
+      healthKitWorkoutSelectionStatus: status,
+      cancelHealthKitWorkoutSelection: cancellation,
+    });
+    await user.click(await screen.findByRole('button', { name: 'iPhone 운동 선택·등록' }));
+    await user.click(screen.getByRole('button', { name: '운동 선택 취소' }));
+    const priorSignal = cancellation.mock.calls[0]?.[1];
+    rerender(
+      tree({ ...props, account: { athleteId: 'athlete-two', scopeId: 'native-login-two' } }),
+    );
+    expect(priorSignal?.aborted).toBe(true);
+    await user.click(await screen.findByRole('button', { name: 'iPhone 운동 선택·등록' }));
+    expect(await screen.findByText('선택 운동: 2개')).toBeVisible();
+    const statusCallsBeforeLateAck = status.mock.calls.length;
+    await act(async () => cancelSettlements[0]?.({ ok: true, value: 'cancelled' }));
+    expect(status).toHaveBeenCalledTimes(statusCallsBeforeLateAck);
+    expect(screen.getByText('현재 계정: athlete-two')).toBeVisible();
+    expect(screen.getByText('선택 운동: 2개')).toBeVisible();
+    expect(cancellation.mock.calls.every(([handle]) => handle === selectionId)).toBe(true);
+  });
+});
+
+const managementId = '33333333-3333-4333-8333-333333333333';
+function managementSetup(overrides: Partial<SelectionBridge> = {}) {
+  return setup(async () => reply(consent(true, 1)), {
+    getCapabilities: vi.fn(() => ({ ...capabilities, 'healthkit.workouts.management': true })),
+    ...overrides,
+  });
+}
+
+describe('native registration management account UI', () => {
+  it('requires an explicit native action and explains deletion and close semantics', async () => {
+    const { bridge } = managementSetup();
+    expect(await screen.findByRole('button', { name: 'iPhone 등록 운동 관리·해제' })).toBeEnabled();
+    expect(screen.getByText(/HealthKit 원본은 삭제하지 않습니다/)).toBeVisible();
+    expect(screen.getByText(/화면을 닫아도 이미 보낸 해제 요청은 취소되지 않습니다/)).toBeVisible();
+    expect(bridge.manageHealthKitWorkouts).not.toHaveBeenCalled();
+    expect(bridge.healthKitWorkoutManagementStatus).not.toHaveBeenCalled();
+    expect(screen.getByText('최근 해제 완료 결과: 확인되지 않음')).toBeVisible();
+  });
+  it('does not treat a close ACK as cleanup completion and displays release only after native status', async () => {
+    const user = userEvent.setup();
+    let released = false;
+    const { bridge } = managementSetup({
+      healthKitWorkoutManagementStatus: vi.fn<SelectionBridge['healthKitWorkoutManagementStatus']>(
+        async () => ({
+          ok: true,
+          value: {
+            state: released ? 'released' : 'pending_cleanup',
+            registeredCount: released ? 0 : null,
+            selectedCount: 0,
+            resultCount: released ? 1 : null,
+          },
+        }),
+      ),
+    });
+    await user.click(await screen.findByRole('button', { name: 'iPhone 등록 운동 관리·해제' }));
+    expect(
+      await screen.findByText(
+        '관련 기록을 정리하고 있습니다. 등록 귀속은 아직 해제되지 않았습니다.',
+      ),
+    ).toBeVisible();
+    await user.click(screen.getByRole('button', { name: '운동 관리 화면 닫기' }));
+    expect(bridge.cancelHealthKitWorkoutManagement).toHaveBeenCalledWith(
+      managementId,
+      expect.any(AbortSignal),
+    );
+    expect(screen.getByText('최근 해제 완료 결과: 확인되지 않음')).toBeVisible();
+    expect(
+      screen.queryByText('관련 기록 정리와 등록 귀속 해제를 확인했습니다.'),
+    ).not.toBeInTheDocument();
+    released = true;
+    await user.click(screen.getByRole('button', { name: '운동 해제 상태 다시 확인' }));
+    expect(
+      await screen.findByText('관련 기록 정리와 등록 귀속 해제를 확인했습니다.'),
+    ).toBeVisible();
+    expect(screen.getByText('최근 해제 완료 결과: 1개')).toBeVisible();
+  });
+  it('keeps an uncertain close result pending and recovers from a lost status response', async () => {
+    const user = userEvent.setup();
+    const status = vi
+      .fn<SelectionBridge['healthKitWorkoutManagementStatus']>()
+      .mockResolvedValueOnce({
+        ok: true,
+        value: {
+          state: 'pending_cleanup',
+          registeredCount: null,
+          selectedCount: 0,
+          resultCount: null,
+        },
+      })
+      .mockResolvedValueOnce({ ok: false, code: 'TIMEOUT' })
+      .mockResolvedValueOnce({
+        ok: true,
+        value: { state: 'released', registeredCount: 0, selectedCount: 0, resultCount: 1 },
+      });
+    managementSetup({
+      healthKitWorkoutManagementStatus: status,
+      cancelHealthKitWorkoutManagement: vi.fn<SelectionBridge['cancelHealthKitWorkoutManagement']>(
+        async () => ({ ok: false, code: 'TIMEOUT' }),
+      ),
+    });
+    await user.click(await screen.findByRole('button', { name: 'iPhone 등록 운동 관리·해제' }));
+    await user.click(screen.getByRole('button', { name: '운동 관리 화면 닫기' }));
+    expect(
+      await screen.findByText(
+        '관리 화면 닫기 결과를 확인하지 못했습니다. 해제 요청의 결과는 다시 확인하세요.',
+      ),
+    ).toBeVisible();
+    expect(screen.getByText('최근 해제 완료 결과: 확인되지 않음')).toBeVisible();
+    await user.click(screen.getByRole('button', { name: '운동 해제 상태 다시 확인' }));
+    expect(await screen.findByText('운동 해제 상태를 확인하지 못했습니다.')).toBeVisible();
+    expect(screen.queryByText('최근 해제 완료 결과: 1개')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '운동 해제 상태 다시 확인' }));
+    expect(await screen.findByText('최근 해제 완료 결과: 1개')).toBeVisible();
+  });
+  it('shows the legacy membership block without claiming release or offering an automatic retry', async () => {
+    const user = userEvent.setup();
+    const { bridge } = managementSetup({
+      healthKitWorkoutManagementStatus: vi.fn<SelectionBridge['healthKitWorkoutManagementStatus']>(
+        async () => ({
+          ok: true,
+          value: {
+            state: 'legacy_blocked',
+            registeredCount: null,
+            selectedCount: 0,
+            resultCount: null,
+          },
+        }),
+      ),
+    });
+    await user.click(await screen.findByRole('button', { name: 'iPhone 등록 운동 관리·해제' }));
+    expect(await screen.findByText(/과거 전송 자료의 운동 범위를 확인하지 못해/)).toBeVisible();
+    expect(screen.getByText('최근 해제 완료 결과: 확인되지 않음')).toBeVisible();
+    expect(bridge.manageHealthKitWorkouts).toHaveBeenCalledOnce();
+  });
+  it('cancels only its old management handle on account switch and discards a late status', async () => {
+    const user = userEvent.setup();
+    let settle:
+      | ((value: Awaited<ReturnType<SelectionBridge['healthKitWorkoutManagementStatus']>>) => void)
+      | undefined;
+    const status = vi.fn<SelectionBridge['healthKitWorkoutManagementStatus']>(
+      () =>
+        new Promise((resolve) => {
+          settle = resolve;
+        }),
+    );
+    const { bridge, props, tree, rerender } = managementSetup({
+      healthKitWorkoutManagementStatus: status,
+    });
+    await user.click(await screen.findByRole('button', { name: 'iPhone 등록 운동 관리·해제' }));
+    await waitFor(() => expect(status).toHaveBeenCalled());
+    const oldSignal = status.mock.calls[0]?.[1];
+    rerender(
+      tree({ ...props, account: { athleteId: 'athlete-two', scopeId: 'native-login-two' } }),
+    );
+    expect(oldSignal?.aborted).toBe(true);
+    expect(bridge.cancelHealthKitWorkoutManagement).toHaveBeenCalledWith(managementId);
+    await act(async () =>
+      settle?.({
+        ok: true,
+        value: { state: 'released', registeredCount: 0, selectedCount: 0, resultCount: 1 },
+      }),
+    );
+    expect(await screen.findByText('현재 계정: athlete-two')).toBeVisible();
+    expect(screen.queryByText('최근 해제 완료 결과: 1개')).not.toBeInTheDocument();
   });
 });

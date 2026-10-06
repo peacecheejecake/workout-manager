@@ -24,7 +24,9 @@
 		A30200052FE993A70072D4E8 /* HealthKitWorkoutUploader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30200062FE993A50072D4E8 /* HealthKitWorkoutUploader.swift */; };
 		A30200072FE993A70072D4E8 /* HealthKitWorkoutDebugProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30200082FE993A50072D4E8 /* HealthKitWorkoutDebugProbe.swift */; };
 		A30200112FE993A70072D4E8 /* HealthKitWorkoutSelection.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30200122FE993A50072D4E8 /* HealthKitWorkoutSelection.swift */; };
+		A30200152FE993A70072D4E8 /* HealthKitWorkoutManagement.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30200162FE993A50072D4E8 /* HealthKitWorkoutManagement.swift */; };
 		A30200132FE993A70072D4E8 /* HealthKitWorkoutSelectionViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30200142FE993A50072D4E8 /* HealthKitWorkoutSelectionViewController.swift */; };
+		A30200172FE993A70072D4E8 /* HealthKitWorkoutManagementViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30200182FE993A50072D4E8 /* HealthKitWorkoutManagementViewController.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -49,7 +51,9 @@
 		A30200072FE993A50072D4E8 /* App.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = App.entitlements; sourceTree = "<group>"; };
 		958DCC722DB07C7200EA8C5F /* debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = debug.xcconfig; path = ../debug.xcconfig; sourceTree = SOURCE_ROOT; };
 		A30200122FE993A50072D4E8 /* HealthKitWorkoutSelection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthKitWorkoutSelection.swift; sourceTree = "<group>"; };
+		A30200162FE993A50072D4E8 /* HealthKitWorkoutManagement.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthKitWorkoutManagement.swift; sourceTree = "<group>"; };
 		A30200142FE993A50072D4E8 /* HealthKitWorkoutSelectionViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthKitWorkoutSelectionViewController.swift; sourceTree = "<group>"; };
+		A30200182FE993A50072D4E8 /* HealthKitWorkoutManagementViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthKitWorkoutManagementViewController.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -93,7 +97,9 @@
 				A30200062FE993A50072D4E8 /* HealthKitWorkoutUploader.swift */,
 				A30200082FE993A50072D4E8 /* HealthKitWorkoutDebugProbe.swift */,
 				A30200142FE993A50072D4E8 /* HealthKitWorkoutSelectionViewController.swift */,
+				A30200182FE993A50072D4E8 /* HealthKitWorkoutManagementViewController.swift */,
 				A30200122FE993A50072D4E8 /* HealthKitWorkoutSelection.swift */,
+				A30200162FE993A50072D4E8 /* HealthKitWorkoutManagement.swift */,
 				A30200072FE993A50072D4E8 /* App.entitlements */,
 				50379B222058CBB4000EE86E /* capacitor.config.json */,
 				504EC3071FED79650016851F /* AppDelegate.swift */,
@@ -204,7 +210,9 @@
 				A30200052FE993A70072D4E8 /* HealthKitWorkoutUploader.swift in Sources */,
 				A30200072FE993A70072D4E8 /* HealthKitWorkoutDebugProbe.swift in Sources */,
 				A30200132FE993A70072D4E8 /* HealthKitWorkoutSelectionViewController.swift in Sources */,
+				A30200172FE993A70072D4E8 /* HealthKitWorkoutManagementViewController.swift in Sources */,
 				A30200112FE993A70072D4E8 /* HealthKitWorkoutSelection.swift in Sources */,
+				A30200152FE993A70072D4E8 /* HealthKitWorkoutManagement.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

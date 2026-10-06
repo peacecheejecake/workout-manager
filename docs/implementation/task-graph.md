@@ -790,8 +790,8 @@ Native shell·collector는 M1c 통합과 native feasibility 이후 M2 Web 확장
 | M3-02k HealthKit 전역 UUID 귀속 원장·수신 차단 | M3-02j | 전역 단일 활성 owner, 등록 epoch, 구형·미등록 배치 원자적 거절, 실제 DB 동시성·말소·rollback 검증 |
 | M3-02l HealthKit 운동 등록 API 경계 | M3-02k | 인증 계정·동의 revision 기반 등록/조회, 멱등·비공개 충돌·입력 제한; 개별 해제는 실제 객체 정리 뒤 귀속 해제·owner exact replay·export v30 |
 | M3-02m HealthKit 등록 UUID 범위의 native 수집 | M3-02l | ACK된 UUID만 query/outbox, 계정 전환·재설치·삭제·anchor를 합성 Swift harness로 검증 |
-| M3-02n HealthKit 운동 선택 UI·native bridge | M3-02j, M3-02m | 기기 내부 후보 조회와 명시적 계정 귀속 선언, UUID·원본 비반출, 오류·접근성 검증 |
-| M3-02o HealthKit 계정별 등록 통합·안전 배포 준비 | M3-02k–M3-02n | 기존 raw 감사, 서버 선배포·구형 앱 차단·safe rollback과 통합 검증; 실기기 수용은 M3-02h |
+| M3-02n HealthKit 운동 선택 UI·native bridge | M3-02j, M3-02m | [로컬 구현 수용 완료](progress/M3-02n.md): native 합성·SDK 및 웹 브라우저 검증. UIKit/VoiceOver·제품 HTTPS·실기기는 별도 미실행 |
+| M3-02o HealthKit 계정별 등록 통합·안전 배포 준비 | M3-02k–M3-02n | [진행 중](progress/M3-02o.md): 비식별 감사 실제 합성 PG 통과, 개별 해제 제품 연결·[안전 배포 준비](research/healthkit-registration-rollout-readiness.md). 운영 감사·배포/rollback·실기기는 미실행 |
 | M3-02 HealthKit collector | M3-01, M3-02a–M3-02o | native collector; anchor/tombstone/outbox/ack·실기기 |
 | M3-03 최종 Native 통합 | M3-02, G2 | M2 전체 모듈 재조합·실기기 lifecycle/IME/back/offline 회귀·출시 요건 |
 | G3 Native-inclusive 출시 gate | M3-03, G2-PUBLIC | Web 공개 출시 조건 + 실제 HealthKit·native 검증 |

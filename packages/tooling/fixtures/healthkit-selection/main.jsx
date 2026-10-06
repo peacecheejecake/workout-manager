@@ -21,6 +21,9 @@ let granted = true;
 let openedHandle = null;
 let outcome = 'idle';
 let oldHost = false;
+let managementScenario = 'pending_cleanup';
+let managementHandle = null;
+let managementOutcome = 'idle';
 
 function createFixtureBridge() {
   let sequence = 0;
@@ -38,7 +41,9 @@ function createFixtureBridge() {
               'healthkit.read': false,
               'healthkit.workouts': true,
               'auth.transport': true,
-              ...(oldHost ? {} : { 'healthkit.workouts.selection': true }),
+              ...(oldHost
+                ? {}
+                : { 'healthkit.workouts.selection': true, 'healthkit.workouts.management': true }),
             },
           };
         const reply = {
@@ -71,6 +76,32 @@ function createFixtureBridge() {
               resultCount: outcome === 'registered' ? 1 : null,
             },
           };
+        if (request.method === 'healthkit.workouts.manage') {
+          managementHandle = crypto.randomUUID();
+          managementOutcome = managementScenario;
+          return { ...reply, status: 'opened', managementId: managementHandle };
+        }
+        if (request.method === 'healthkit.workouts.cancelManagement') {
+          if (
+            request.payload.managementId === managementHandle &&
+            !['pending_cleanup', 'released', 'deregistering'].includes(managementOutcome)
+          )
+            managementOutcome = 'cancelled';
+          return { ...reply, status: 'cancelled' };
+        }
+        if (request.method === 'healthkit.workouts.managementStatus')
+          return {
+            ...reply,
+            status: {
+              state:
+                request.payload.managementId === managementHandle
+                  ? managementOutcome
+                  : 'unavailable',
+              registeredCount: managementOutcome === 'released' ? 0 : null,
+              selectedCount: 0,
+              resultCount: managementOutcome === 'released' ? 1 : null,
+            },
+          };
         if (request.method === 'api.healthkitConsent.write') {
           granted = request.payload.granted;
           return { ...reply, status: 200, body: { kind: 'healthkit', granted, revision: 1 } };
@@ -88,6 +119,7 @@ function Fixture() {
   const [readyBridge, setReadyBridge] = useState(null);
   const [selectedScenario, setSelectedScenario] = useState('choosing');
   const [narrow, setNarrow] = useState(false);
+  const [selectedManagementScenario, setSelectedManagementScenario] = useState('pending_cleanup');
   const transport = useMemo(
     () => ({
       async request() {
@@ -108,21 +140,43 @@ function Fixture() {
       <p>
         합성 상태만 사용하는 검증 fixture입니다. iPhone·HealthKit·제품 서버에 접근하지 않습니다.
       </p>
-      <label>
-        등록 결과 시나리오
-        <select
-          value={selectedScenario}
-          onChange={(event) => {
-            setSelectedScenario(event.target.value);
-            scenario = event.target.value;
-            if (openedHandle) outcome = scenario;
-          }}
-        >
-          {scenarios.map((value) => (
-            <option key={value}>{value}</option>
-          ))}
-        </select>
-      </label>
+      <label htmlFor="registration-scenario">등록 결과 시나리오</label>
+      <select
+        id="registration-scenario"
+        value={selectedScenario}
+        onChange={(event) => {
+          setSelectedScenario(event.target.value);
+          scenario = event.target.value;
+          if (openedHandle) outcome = scenario;
+        }}
+      >
+        {scenarios.map((value) => (
+          <option key={value}>{value}</option>
+        ))}
+      </select>
+      <label htmlFor="management-scenario">해제 결과 시나리오</label>
+      <select
+        id="management-scenario"
+        value={selectedManagementScenario}
+        onChange={(event) => {
+          setSelectedManagementScenario(event.target.value);
+          managementScenario = event.target.value;
+          if (managementHandle) managementOutcome = managementScenario;
+        }}
+      >
+        {[
+          'choosing',
+          'confirming',
+          'deregistering',
+          'pending_cleanup',
+          'released',
+          'offline',
+          'conflict',
+          'legacy_blocked',
+        ].map((value) => (
+          <option key={value}>{value}</option>
+        ))}
+      </select>
       <label>
         <input
           type="checkbox"

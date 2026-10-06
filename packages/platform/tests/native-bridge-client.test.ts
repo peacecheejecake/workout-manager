@@ -621,3 +621,111 @@ describe('native workout selection client', () => {
     expect(calls).toHaveLength(1);
   });
 });
+
+describe('native registration management client', () => {
+  const managementId = '33333333-3333-4333-8333-333333333333';
+  it('requires a separate capability and sends only the opaque management handle', async () => {
+    const commands: unknown[] = [];
+    const client = clientWith(async (request) => {
+      if (request.kind === 'hello')
+        return {
+          kind: 'hello.result',
+          version: 3,
+          id: request.id,
+          capabilities: {
+            ...capabilities,
+            'auth.transport': true,
+            'healthkit.workouts': true,
+            'healthkit.workouts.management': true,
+          },
+        };
+      commands.push(request);
+      return {
+        kind: 'command.result',
+        version: 3,
+        id: request.id,
+        method: request.method,
+        ...(request.method === 'healthkit.workouts.manage'
+          ? { status: 'opened', managementId }
+          : {
+              status:
+                request.method === 'healthkit.workouts.cancelManagement'
+                  ? 'cancelled'
+                  : {
+                      state: 'pending_cleanup',
+                      registeredCount: null,
+                      selectedCount: 0,
+                      resultCount: null,
+                    },
+            }),
+      };
+    });
+    await client.connect();
+    expect(await client.manageHealthKitWorkouts()).toEqual({
+      ok: true,
+      value: { status: 'opened', managementId },
+    });
+    expect(await client.healthKitWorkoutManagementStatus(managementId)).toEqual({
+      ok: true,
+      value: {
+        state: 'pending_cleanup',
+        registeredCount: null,
+        selectedCount: 0,
+        resultCount: null,
+      },
+    });
+    expect(await client.cancelHealthKitWorkoutManagement(managementId)).toEqual({
+      ok: true,
+      value: 'cancelled',
+    });
+    expect(commands).toEqual([
+      expect.objectContaining({ method: 'healthkit.workouts.manage', payload: {} }),
+      expect.objectContaining({
+        method: 'healthkit.workouts.managementStatus',
+        payload: { managementId },
+      }),
+      expect.objectContaining({
+        method: 'healthkit.workouts.cancelManagement',
+        payload: { managementId },
+      }),
+    ]);
+    const { client: oldClient, calls } = selectionClient();
+    await oldClient.connect();
+    expect(await oldClient.manageHealthKitWorkouts()).toEqual({ ok: false, code: 'UNAVAILABLE' });
+    expect(calls).toHaveLength(1);
+  });
+  it('rejects management status containing a private server operation identifier', async () => {
+    const client = clientWith(async (request) =>
+      request.kind === 'hello'
+        ? {
+            kind: 'hello.result',
+            version: 3,
+            id: request.id,
+            capabilities: {
+              ...capabilities,
+              'auth.transport': true,
+              'healthkit.workouts': true,
+              'healthkit.workouts.management': true,
+            },
+          }
+        : {
+            kind: 'command.result',
+            version: 3,
+            id: request.id,
+            method: request.method,
+            status: {
+              state: 'pending_cleanup',
+              registeredCount: null,
+              selectedCount: 0,
+              resultCount: null,
+              operationId: managementId,
+            },
+          },
+    );
+    await client.connect();
+    expect(await client.healthKitWorkoutManagementStatus(managementId)).toEqual({
+      ok: false,
+      code: 'INVALID_REPLY',
+    });
+  });
+});
