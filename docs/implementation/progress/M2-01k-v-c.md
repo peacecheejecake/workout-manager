@@ -1,6 +1,6 @@
 # M2-01k-v-c · S22 app revision과 evidence·승인 basis 호환
 
-상태: in_progress — 정식 migration100·runtime grants·source/export 수용을 진행했으나 fulltail/restore·처리 재개 수용은 미완료.
+상태: completed — graph에 명시된 app binding·freshness·성공 receipt·기존 조회/export 및 지원된 historical family 복원 경로의 로컬 수용 완료. 전체 archive·처리 재개·provider dispatch는 별도 미완료다.
 
 strict v1/v2를 파괴하지 않는 versioned app admission binding, capture/worker/candidate/v3/v4 승인 freshness와 철회→재동의의 구형 basis 거절; export/restore 이전 자료 읽기 유지.
 
@@ -254,3 +254,11 @@ Command는 `/private/tmp/wm-ai-settings-lifecycle-playwright-20261007.mts`를 ca
 Aside guide를 읽고 확인했지만 `aside session list`는 daemon auth challenge fetch 실패/Aside not running이었다. 앞선 잘못된 --json 옵션 실패도 별도이며 UI 검증 결과가 아니다. 실제 사용 도구는 Playwright Chrome이다. `/private/tmp/wm-ai-settings-lifecycle-actual-20261007-r1.log`, build log, `wm-ai-settings-lifecycle-r1-observed-inputs.json` 및 cleanup.json을 기록했다. Input hash 관찰은 runner 종료 후이므로 pre-run pin으로 주장하지 않는다. 정확 fixture PID/socket을 그 회차에서 수집하지 못한 한계(NOT_CAPTURED)를 보존한다. 종료코드0, 해당 run context0·private identity directory0·다섯 포트 listener0을 Root가 직접 확인했고 관찰 이후 source 변화0이다. 향후 전체 phase 수용은 새 HEAD 고정 전체 gate로 별도 실행한다.
 
 Helper SHA `22af960d7cce1968e7ee0ff58f57bef97cd094fa589dc734868947710decd8c2`, spec `c130083ca4e42728072213d5729cafb74eb81d05fd060630ba4a5f5247d5e4f5`. 이는 기존Down/SpaceDown keyboard 실패를 통과로 바꾸거나 public503 해제·live provider/budget/fullrestore·whole C 완료를 뜻하지 않는다. 해당 원래 실패와 external NOT_EXECUTED는 그대로 유지한다.
+
+## 원본 family→정상105 upgrade 로컬 수용 및 범위 종료 · 2026-10-07
+
+새 정식 integration test는 실제 source100 공개 producer/합성 worker의 원본 다섯 binding·material·승인 receipt를 authenticated historical family102 loader로 복원하고 정식 migrate로105까지 업그레이드한다. Source의 암호화된 appfalse2 prefix에서 원본 output read/export 유지, regrant3 전체 tail/duplicate에서 epoch1 보존·원래 successful receipt 동등 재생·새key stale 거절과 명시 binding absence/no-backfill을 확인한다. Family/tail 후속 SQL 실패 rollback과 재시도도 검증한다. Target material 재생성·guard 해제·ADMITTED/reopen은 없다. AI baseline은 source의 정확 consent row를 복사한 bounded owner fixture이며 full archive loader 증거로 부르지 않는다.
+
+Native agent final r6 실제PG14 1/1·skip0, TS/lint/format exit0을 Root가 source·보고·로그와 대조했다. Root도 동일 test를 자체 private Unix socket cluster에서 직접 실행해 **1/1·skip0·exit0**을 확인했다. /private/tmp/wm-family-upgrade105-root-20261007.log에 정상 shutdown·소유 directory 정리를 기록했다. Test SHA11186f993a63c6380a5b6a6e93982099efe2f57e6f4ebf551063741b0a9f446a, 상세 /private/tmp/wm-family-upgrade105-acceptance-20261007.md. 원래 r1 sandbox/r2-r3 fixture freshness 실패와 사후 hash 관찰 한계를 보존한다.
+
+현재 graph v-c 자체의 로컬 요구는 기존 registered source/export/worker/approval 검증과 이 지원된 복원 경로로 충족한다. 따라서 v-c를 completed로 전환한다. Source105 직접 family protocol·full account/private object archive·독립 witness와 authority·원자적 processing reopen·frozen job/provider dispatch는 미구현 또는 미수용이며 완료로 바꾸지 않는다. 운영 restore/PG17/실제 provider/native는 NOT_EXECUTED다. v-e가 다음 ready task이며 v-f는 v-e 완료까지 기다린다. 전체 phase gate/독립 검토/main merge는 아직 하지 않는다.
