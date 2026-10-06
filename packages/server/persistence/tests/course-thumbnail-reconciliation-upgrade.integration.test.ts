@@ -206,12 +206,22 @@ describe('migration 039 upgrade of a populated 038 database', () => {
       'reclaim_unreferenced_course_thumbnail_object',
       'settle_course_thumbnail_object_ref',
     ]);
-    for (const row of definers.rows)
-      expect(row.config, row.proname).toEqual(
-        repinned.has(row.proname)
-          ? ['search_path=pg_catalog, pg_temp']
-          : ['search_path=pg_catalog'],
-      );
+    for (const row of definers.rows) {
+      if (row.proname === 'course_thumbnail_reconcile_candidates') {
+        // 105 keeps the temporary namespace last and scopes planner settings to this call.
+        expect(row.config, row.proname).toEqual([
+          'search_path=pg_catalog, pg_temp',
+          'enable_seqscan=off',
+          'enable_bitmapscan=off',
+        ]);
+      } else {
+        expect(row.config, row.proname).toEqual(
+          repinned.has(row.proname)
+            ? ['search_path=pg_catalog, pg_temp']
+            : ['search_path=pg_catalog'],
+        );
+      }
+    }
   });
 
   it('backfills the index for references recorded before this table existed', async () => {

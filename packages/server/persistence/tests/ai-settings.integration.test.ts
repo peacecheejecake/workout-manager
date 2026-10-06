@@ -193,12 +193,12 @@ afterAll(async () => {
   for (const role of [runtimeRole, ownerRole]) await admin.query(`DROP ROLE IF EXISTS "${role}"`);
   await admin.end();
 });
-it('normal migrate001..104 installs authoritative checksums with plain owner/runtime', async () => {
+it('normal registered migrations install authoritative checksums with plain owner/runtime', async () => {
   const installed = (
     await owner.query('SELECT version,checksum FROM schema_migrations ORDER BY version')
   ).rows;
-  expect(installed).toHaveLength(104);
-  for (const [index, file] of migrationFileNames.slice(0, 104).entries())
+  expect(installed).toHaveLength(migrationFileNames.length);
+  for (const [index, file] of migrationFileNames.entries())
     expect(installed[index]).toEqual({
       version: index + 1,
       checksum: createHash('sha256')

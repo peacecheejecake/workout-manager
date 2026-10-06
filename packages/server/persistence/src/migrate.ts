@@ -110,6 +110,7 @@ const migrationFiles = [
   '102_restore_app_family_loader.sql',
   '103_global_openai_budget.sql',
   '104_ai_settings.sql',
+  '105_tenant_reconcile_bounds.sql',
 ] as const;
 
 /**

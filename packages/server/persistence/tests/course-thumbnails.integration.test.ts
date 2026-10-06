@@ -1811,9 +1811,9 @@ describe('M2-01m thumbnail object reconciliation', () => {
     expect(await watchedRef(render.finalKey)).toMatchObject({ settled_at: null });
   });
 
-  it('reads exactly one index row per candidate and touches no ledger table', async () => {
-    // A window of N candidates must cost N rows. This measures what the database actually
-    // read inside one transaction, not what the plan looked like.
+  it('returns one candidate without exceeding reported transaction counters', async () => {
+    // Preserve the transaction-counter regression signal. Nested PL/pgSQL queries can
+    // report zero on PostgreSQL14; separate nested-execution evidence proves scan bounds.
     const { athlete } = await athleteWithCourse('Bounded window');
     const watched = await admin.query(
       'SELECT count(*)::int AS count FROM course_thumbnail_object_ref WHERE settled_at IS NULL',
@@ -1839,6 +1839,17 @@ describe('M2-01m thumbnail object reconciliation', () => {
         ['', 1],
       );
       const after = await counters();
+      // The window size is clamped in the database, not trusted from the caller.
+      const clamped = await client.query(
+        'SELECT count(*)::int AS total FROM public.course_thumbnail_reconcile_candidates($1,$2)',
+        ['', 100000],
+      );
+      expect(Number(clamped.rows[0]?.['total'])).toBeLessThanOrEqual(1000);
+      const atLeastOne = await client.query(
+        'SELECT count(*)::int AS total FROM public.course_thumbnail_reconcile_candidates($1,$2)',
+        ['', 0],
+      );
+      expect(Number(atLeastOne.rows[0]?.['total'])).toBe(1);
       await client.query('ROLLBACK');
       expect(window.rows).toHaveLength(1);
       const read = (key: 'ledger' | 'refs') =>
@@ -1848,17 +1859,6 @@ describe('M2-01m thumbnail object reconciliation', () => {
     } finally {
       client.release();
     }
-    // The window size is clamped in the database, not trusted from the caller.
-    const clamped = await admin.query(
-      'SELECT count(*)::int AS total FROM public.course_thumbnail_reconcile_candidates($1,$2)',
-      ['', 100000],
-    );
-    expect(Number(clamped.rows[0]?.['total'])).toBeLessThanOrEqual(1000);
-    const atLeastOne = await admin.query(
-      'SELECT count(*)::int AS total FROM public.course_thumbnail_reconcile_candidates($1,$2)',
-      ['', 0],
-    );
-    expect(Number(atLeastOne.rows[0]?.['total'])).toBe(1);
   });
 
   it('gives the runtime role no reach into the reference index at all', async () => {

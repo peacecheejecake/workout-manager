@@ -1334,11 +1334,11 @@ describe('M2-01c private track storage', () => {
     }
   });
 
-  it('reads exactly one index row per candidate and touches no ledger table', async () => {
+  it('returns one candidate without exceeding reported transaction counters', async () => {
     // The first shape of this sweep unioned the ledger tables and applied the limit last: a
-    // window of one candidate read 498 rows on a real database. Here the work itself is
-    // measured — rows the statement pulled out of each table inside one transaction — so the
-    // claim is about what the database did, not about what the plan looked like.
+    // window of one candidate read 498 rows on a real database. Transaction counters remain
+    // a regression signal, but nested PL/pgSQL queries can report zero on PostgreSQL14.
+    // Physical scan bounds therefore need the separate nested-execution acceptance test.
     const athlete = randomUUID();
     await grantAppPurpose(athlete);
     const imported = await activities.importActivity(athlete, importInput());
@@ -1375,7 +1375,7 @@ describe('M2-01c private track storage', () => {
       expect(window.rows).toHaveLength(1);
       const read = (key: 'intents' | 'objects' | 'refs') =>
         Number(after?.[key] ?? 0) - Number(before?.[key] ?? 0);
-      // Neither ledger table is touched at all, and the index gives up one row.
+      // Keep the counter guard; a zero counter alone does not prove a physical scan bound.
       expect(read('intents')).toBe(0);
       expect(read('objects')).toBe(0);
       expect(read('refs')).toBeLessThanOrEqual(1);
