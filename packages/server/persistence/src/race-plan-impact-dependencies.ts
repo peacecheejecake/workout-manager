@@ -85,7 +85,9 @@ function canonical(value: unknown): string {
   const encoded = JSON.stringify(value);
   return encoded ?? fail('INVALID_CONTEXT');
 }
-const digest = (value: unknown) => createHash('sha256').update(canonical(value)).digest('hex');
+export const impactDependencyDigest = (value: unknown) =>
+  createHash('sha256').update(canonical(value)).digest('hex');
+const digest = impactDependencyDigest;
 const targetSchema = z.strictObject({
   block_id: localId,
   target_set_id: localId,

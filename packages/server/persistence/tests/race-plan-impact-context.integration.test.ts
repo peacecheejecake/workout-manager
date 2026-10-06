@@ -1,3 +1,6 @@
+import { createNutritionRepository } from '../src/nutrition-core.js';
+import { createCheckInRepository } from '../src/check-ins.js';
+import { createRoutineRepository } from '../src/routine-core.js';
 import {
   supplementaryExerciseVersionSchema,
   supplementarySpecSchema,
@@ -21,6 +24,8 @@ import { recoveryStrategyVersionSchema } from '@workout/contracts/recovery-core'
 import {
   routineBlueprintVersionSchema,
   routineScheduleVersionSchema,
+  routineOccurrenceSchema,
+  routineRunSchema,
 } from '@workout/contracts/routines';
 import { planDraftSchema } from '@workout/contracts/planning';
 import type { RaceEventValues } from '@workout/contracts/race-commands';
@@ -34,6 +39,7 @@ import {
   grantRecoveryCore,
   grantCheckIns,
   grantCourses,
+  grantNutritionCore,
 } from '../src/migrate.js';
 import { captureRacePlanImpactContext } from '../src/race-plan-impact-context.js';
 import { dropIsolatedDatabase } from './drop-isolated-database.js';
@@ -229,6 +235,7 @@ beforeAll(async () => {
   await grantRecoveryCore(url(ownerRole), runtimeRole);
   await grantCheckIns(url(ownerRole), runtimeRole);
   await grantCourses(url(ownerRole), runtimeRole);
+  await grantNutritionCore(url(ownerRole), runtimeRole);
   database = createDatabase({ connectionString: url(runtimeRole) });
   races = createRaceRepository(database);
 });
@@ -1191,4 +1198,835 @@ it('reads all12 real head columns distinctly without treating zero or unrelated 
   expect((await capture(athlete, event.id)).dependencyInventory).toEqual(
     integratedDependencyKinds.map((kind, index) => ({ kind, state: 'present', revision: index })),
   );
+});
+
+function bBlueprint(content: unknown = { kind: 'checklist', prompt: 'Synthetic report' }) {
+  return routineBlueprintVersionSchema.parse({
+    schemaVersion: 4,
+    routineId: randomUUID(),
+    versionId: randomUUID(),
+    title: 'Synthetic B frozen',
+    intent: 'Read context',
+    status: 'published',
+    tags: [],
+    steps: [
+      {
+        id: 'step',
+        title: 'Synthetic step',
+        content,
+        timing: { kind: 'user_scheduled' },
+        required: true,
+        choiceGroupId: null,
+      },
+    ],
+    choiceGroups: [],
+    estimatedDurationSeconds: null,
+    createdAt: '2026-01-01T00:00:00Z',
+  });
+}
+async function bSeedBlueprint(athlete: string, blueprint = bBlueprint(), head = true) {
+  await owned(athlete, async (client) => {
+    await client.query(
+      'INSERT INTO routine_blueprint_version(athlete_id,routine_id,version_id,version,record_json,created_at) VALUES($1,$2,$3,1,$4::jsonb,$5)',
+      [
+        athlete,
+        blueprint.routineId,
+        blueprint.versionId,
+        JSON.stringify(blueprint),
+        blueprint.createdAt,
+      ],
+    );
+    if (head)
+      await client.query(
+        "INSERT INTO routine_blueprint_head(athlete_id,routine_id,version_id,version,visibility) VALUES($1,$2,$3,1,'active')",
+        [athlete, blueprint.routineId, blueprint.versionId],
+      );
+  });
+  return blueprint;
+}
+async function bSeedSchedule(
+  athlete: string,
+  blueprint: ReturnType<typeof bBlueprint>,
+  source: string | null = null,
+) {
+  const record = routineScheduleVersionSchema.parse({
+    schemaVersion: 4,
+    id: randomUUID(),
+    versionId: randomUUID(),
+    blueprint: { id: blueprint.routineId, versionId: blueprint.versionId },
+    window: {
+      startDate: '2026-01-01',
+      endDateExclusive: '2026-02-01',
+      timezone: 'UTC',
+      maxOccurrences: 1000,
+    },
+    rule: { kind: 'dates', dates: ['2026-01-01'], localTime: null },
+    state: 'active',
+  });
+  await owned(athlete, async (client) => {
+    await client.query(
+      'INSERT INTO routine_schedule_version(athlete_id,schedule_id,version_id,blueprint_routine_id,blueprint_version_id,source_plan_version_id,record_json) VALUES($1,$2,$3,$4,$5,$6,$7::jsonb)',
+      [
+        athlete,
+        record.id,
+        record.versionId,
+        blueprint.routineId,
+        blueprint.versionId,
+        source,
+        JSON.stringify(record),
+      ],
+    );
+    await client.query(
+      'INSERT INTO routine_schedule_head(athlete_id,schedule_id,version_id) VALUES($1,$2,$3)',
+      [athlete, record.id, record.versionId],
+    );
+  });
+  return record;
+}
+async function bSeedOccurrence(
+  athlete: string,
+  schedule: ReturnType<typeof routineScheduleVersionSchema.parse>,
+  scheduledAt: string | null = null,
+  index = 0,
+) {
+  const record = routineOccurrenceSchema.parse({
+    id: randomUUID(),
+    schedule: { id: schedule.id, versionId: schedule.versionId },
+    blueprint: schedule.blueprint,
+    anchorKey: `anchor-${index}`,
+    scheduledAt,
+    timingStatus: scheduledAt === null ? 'unresolved' : 'resolved',
+    stepBindings: [],
+    selectedChoices: {},
+  });
+  await owned(athlete, (client) =>
+    client.query(
+      'INSERT INTO routine_occurrence(athlete_id,id,schedule_id,schedule_version_id,blueprint_routine_id,blueprint_version_id,anchor_key,scheduled_at,record_json) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)',
+      [
+        athlete,
+        record.id,
+        schedule.id,
+        schedule.versionId,
+        schedule.blueprint.id,
+        schedule.blueprint.versionId,
+        record.anchorKey,
+        scheduledAt,
+        JSON.stringify(record),
+      ],
+    ),
+  );
+  return record;
+}
+async function bSeedRun(
+  athlete: string,
+  blueprint: ReturnType<typeof bBlueprint>,
+  progress: unknown[] = [],
+  state: 'in_progress' | 'stopped' = 'stopped',
+  history = true,
+) {
+  const record = routineRunSchema.parse({
+    id: randomUUID(),
+    revision: 0,
+    blueprint: { id: blueprint.routineId, versionId: blueprint.versionId },
+    origin: { kind: 'unplanned' },
+    state,
+    progress,
+    selectedChoices: {},
+    startedAt: '2026-01-01T00:00:00Z',
+    endedAt: state === 'stopped' ? '2026-01-01T00:01:00Z' : null,
+  });
+  await owned(athlete, async (client) => {
+    await client.query(
+      'INSERT INTO routine_run(athlete_id,id,blueprint_routine_id,blueprint_version_id,occurrence_id,revision,state,record_json) VALUES($1,$2,$3,$4,NULL,0,$5,$6::jsonb)',
+      [athlete, record.id, blueprint.routineId, blueprint.versionId, state, JSON.stringify(record)],
+    );
+    if (history)
+      await client.query(
+        'INSERT INTO routine_run_revision(athlete_id,run_id,revision,record_json) VALUES($1,$2,0,$3::jsonb)',
+        [athlete, record.id, JSON.stringify(record)],
+      );
+  });
+  return record;
+}
+function bProgress(ref: unknown) {
+  return {
+    stepId: 'step',
+    revision: 1,
+    state: 'partial',
+    actualRefs: [ref],
+    occurredAt: '2026-01-01T00:00:00Z',
+    recordedAt: '2026-01-01T00:00:01Z',
+    reason: null,
+  };
+}
+
+it('B captures unresolved/outside-period historical occurrences and consumes their frozen historical source Plans', async () => {
+  const athlete = await account(),
+    event = await create(athlete),
+    blueprint = await bSeedBlueprint(athlete, undefined, false),
+    historical = await training(athlete, strengthDraft(), false);
+  const before = await capture(athlete, event.id);
+  const schedule = await bSeedSchedule(athlete, blueprint, historical),
+    unresolved = await bSeedOccurrence(athlete, schedule),
+    resolved = await bSeedOccurrence(athlete, schedule, '2026-01-01T00:00:00Z', 1);
+  const captured = await capture(athlete, event.id);
+  expect(captured.routineActualManifest.occurrences.map((row) => row.record.id).sort()).toEqual(
+    [unresolved.id, resolved.id].sort(),
+  );
+  expect(
+    captured.routineActualManifest.occurrences.every((row) => row.startedRun.state === 'absent'),
+  ).toBe(true);
+  expect(captured.routineActualManifest.blueprints[0]?.currentHead).toEqual({ state: 'absent' });
+  expect(captured.supplementaryManifest.sessions).toEqual([
+    { planVersionId: historical, plannedSessionId: 'strength-0', state: 'absent' },
+  ]);
+  expect(captured.readSetDigest).not.toBe(before.readSetDigest);
+  // Advance current schedule while keeping the immutable historical occurrence/source.
+  const versionId = randomUUID(),
+    next = routineScheduleVersionSchema.parse({ ...schedule, versionId, state: 'paused' });
+  await owned(athlete, async (client) => {
+    await client.query(
+      'INSERT INTO routine_schedule_version(athlete_id,schedule_id,version_id,prior_version_id,blueprint_routine_id,blueprint_version_id,source_plan_version_id,record_json) VALUES($1,$2,$3,$4,$5,$6,NULL,$7::jsonb)',
+      [
+        athlete,
+        schedule.id,
+        versionId,
+        schedule.versionId,
+        blueprint.routineId,
+        blueprint.versionId,
+        JSON.stringify(next),
+      ],
+    );
+    await client.query(
+      'UPDATE routine_schedule_head SET version_id=$3 WHERE athlete_id=$1 AND schedule_id=$2',
+      [athlete, schedule.id, versionId],
+    );
+  });
+  const advanced = await capture(athlete, event.id);
+  expect(advanced.routineActualManifest.schedules[0]?.versionId).toBe(schedule.versionId);
+  expect(advanced.routineActualManifest.occurrences[0]?.currentSchedule).toEqual({
+    state: 'present',
+    versionId,
+  });
+  expect(advanced.supplementaryManifest).toEqual(captured.supplementaryManifest);
+  expect(advanced.readSetDigest).not.toBe(captured.readSetDigest);
+});
+
+it('B sees actual runtime start revision0, checklist partial and stopped immutable progress without another Activity', async () => {
+  const athlete = await account(),
+    event = await create(athlete),
+    blueprint = await bSeedBlueprint(athlete),
+    schedule = await bSeedSchedule(athlete, blueprint),
+    occurrence = await bSeedOccurrence(athlete, schedule);
+  const before = await capture(athlete, event.id),
+    repository = createRoutineRepository(database);
+  const started = await repository.startRun(athlete, {
+    runId: randomUUID(),
+    blueprintVersionId: blueprint.versionId,
+    occurrenceId: occurrence.id,
+    idempotencyKey: randomUUID(),
+    confirmed: true,
+  });
+  const begun = await capture(athlete, event.id);
+  expect(begun.routineActualManifest.runs[0]?.record.revision).toBe(0);
+  expect(begun.routineActualManifest.occurrences[0]?.startedRun).toMatchObject({
+    state: 'present',
+    runId: started.run.id,
+    revision: 0,
+  });
+  expect(begun.readSetDigest).not.toBe(before.readSetDigest);
+  const partial = await repository.recordStep(athlete, {
+    runId: started.run.id,
+    stepId: 'step',
+    state: 'partial',
+    actualRefs: [],
+    occurredAt: '2026-01-01T00:00:00.000Z',
+    reason: null,
+    expectedRevision: 0,
+    idempotencyKey: randomUUID(),
+    confirmed: true,
+  });
+  await repository.changeRun(athlete, {
+    runId: started.run.id,
+    action: 'stop',
+    expectedRevision: partial.run.revision,
+    idempotencyKey: randomUUID(),
+    confirmed: true,
+  });
+  const stopped = await capture(athlete, event.id),
+    record = stopped.routineActualManifest.runs[0];
+  expect(record?.record).toMatchObject({
+    state: 'stopped',
+    progress: [{ state: 'partial', reason: null }],
+  });
+  expect(record?.actuals[0]?.fact).toMatchObject({
+    state: 'current',
+    requested: { kind: 'checklist_confirmation' },
+    content: { run_id: started.run.id, step_id: 'step', state: 'partial' },
+  });
+  expect(stopped.routineActualManifest.actualRosters.activities).toEqual([]);
+  expect(stopped.coverage.complete).toBe(false);
+});
+
+it('B preserves requested Activity revision after same-count correction/deletion without inventing historical canonical body', async () => {
+  const athlete = await account(),
+    event = await create(athlete),
+    blueprint = await bSeedBlueprint(
+      athlete,
+      bBlueprint({ kind: 'workout_template', ref: { id: randomUUID(), versionId: randomUUID() } }),
+    ),
+    activityId = randomUUID();
+  const original = {
+    title: 'Synthetic actual',
+    kind: 'strength',
+    startedAt: '2026-01-01T00:00:00Z',
+    durationSeconds: null,
+    durationKind: 'unknown',
+    timezone: 'UTC',
+    distanceMeters: 0,
+  };
+  await owned(athlete, async (client) => {
+    await client.query(
+      'INSERT INTO activity_canonical(athlete_id,id,revision,original) VALUES($1,$2,1,$3::jsonb)',
+      [athlete, activityId, JSON.stringify(original)],
+    );
+    await client.query(
+      "INSERT INTO activity_source_head(athlete_id,kind,source_id,source_revision,content_hash,activity_id) VALUES($1,'fixture',$2,1,$3,$4)",
+      [athlete, randomUUID(), 'a'.repeat(64), activityId],
+    );
+  });
+  const requested = {
+    kind: 'activity',
+    id: activityId,
+    revisionId: '1',
+    detailId: null,
+    allocationId: null,
+  };
+  await bSeedRun(athlete, blueprint, [bProgress(requested)]);
+  const first = await capture(athlete, event.id);
+  expect(first.routineActualManifest.runs[0]?.actuals[0]?.fact).toMatchObject({
+    state: 'current',
+    content: { original: { distanceMeters: 0, durationSeconds: null } },
+  });
+  await owned(athlete, (client) =>
+    client.query(
+      'UPDATE activity_canonical SET revision=2,original=$3::jsonb WHERE athlete_id=$1 AND id=$2',
+      [athlete, activityId, JSON.stringify({ ...original, distanceMeters: 10 })],
+    ),
+  );
+  const corrected = await capture(athlete, event.id);
+  expect(corrected.routineActualManifest.runs[0]?.actuals[0]?.fact).toEqual({
+    requested,
+    state: 'unavailable',
+    reason: 'requested_revision_unavailable',
+    current: { id: activityId, revision: 2, deleted: false },
+    content: null,
+  });
+  expect(corrected.readSetDigest).not.toBe(first.readSetDigest);
+  await owned(athlete, (client) =>
+    client.query(
+      'UPDATE activity_canonical SET revision=3,deleted=true WHERE athlete_id=$1 AND id=$2',
+      [athlete, activityId],
+    ),
+  );
+  const deleted = await capture(athlete, event.id);
+  expect(deleted.routineActualManifest.runs[0]?.actuals[0]?.fact).toMatchObject({
+    requested,
+    state: 'deleted',
+    content: null,
+  });
+  expect(deleted.routineActualManifest.runs[0]?.record.state).toBe('stopped');
+});
+
+it('B keeps absent/foreign references unavailable and does not expose foreign actual content', async () => {
+  const foreign = await account(),
+    athlete = await account(),
+    event = await create(athlete),
+    activityId = randomUUID(),
+    blueprint = await bSeedBlueprint(
+      athlete,
+      bBlueprint({ kind: 'workout_template', ref: { id: randomUUID(), versionId: randomUUID() } }),
+    );
+  await owned(foreign, (client) =>
+    client.query(
+      "INSERT INTO activity_canonical(athlete_id,id,revision,original) VALUES($1,$2,1,'{}'::jsonb)",
+      [foreign, activityId],
+    ),
+  );
+  const requested = {
+    kind: 'activity',
+    id: activityId,
+    revisionId: '1',
+    detailId: null,
+    allocationId: null,
+  };
+  await bSeedRun(athlete, blueprint, [bProgress(requested)]);
+  const context = await capture(athlete, event.id);
+  expect(context.routineActualManifest.runs[0]?.actuals[0]?.fact).toEqual({
+    requested,
+    state: 'unavailable',
+    reason: 'owned_reference_unavailable',
+    current: null,
+    content: null,
+  });
+  expect(context.routineActualManifest.actualRosters.activities).toEqual([]);
+});
+
+it('B marks unsupported source variants without adding writer support', async () => {
+  const athlete = await account(),
+    event = await create(athlete),
+    blueprint = await bSeedBlueprint(
+      athlete,
+      bBlueprint({ kind: 'recovery_method', ref: { id: randomUUID(), versionId: randomUUID() } }),
+    );
+  await bSeedRun(athlete, blueprint, [
+    bProgress({ kind: 'recovery_log', id: randomUUID(), revisionId: randomUUID() }),
+  ]);
+  const context = await capture(athlete, event.id);
+  expect(context.routineActualManifest.blueprints[0]?.unsupportedContent[0]).toMatchObject({
+    state: 'unavailable',
+    reason: 'producer_content_unsupported',
+  });
+  expect(context.routineActualManifest.runs[0]?.actuals[0]?.fact).toMatchObject({
+    state: 'unavailable',
+    reason: 'producer_actual_unsupported',
+    content: null,
+  });
+  expect(context.coverage.missing).toHaveLength(5);
+});
+
+it('B fails closed when current run history is absent or a requested current revision is forged', async () => {
+  const athlete = await account(),
+    event = await create(athlete),
+    blueprint = await bSeedBlueprint(athlete);
+  await bSeedRun(athlete, blueprint, [], 'stopped', false);
+  await expect(capture(athlete, event.id)).rejects.toMatchObject({ code: 'SOURCE_UNAVAILABLE' });
+  const other = await account(),
+    otherEvent = await create(other),
+    otherBlueprint = await bSeedBlueprint(
+      other,
+      bBlueprint({ kind: 'workout_template', ref: { id: randomUUID(), versionId: randomUUID() } }),
+    ),
+    activityId = randomUUID();
+  await owned(other, (client) =>
+    client.query(
+      "INSERT INTO activity_canonical(athlete_id,id,revision,original) VALUES($1,$2,1,'{}'::jsonb)",
+      [other, activityId],
+    ),
+  );
+  await bSeedRun(other, otherBlueprint, [
+    bProgress({
+      kind: 'activity',
+      id: activityId,
+      revisionId: '2',
+      detailId: null,
+      allocationId: null,
+    }),
+  ]);
+  await expect(capture(other, otherEvent.id)).rejects.toMatchObject({ code: 'INVALID_CONTEXT' });
+});
+
+it('B keeps exact historical check-in values after correction and a content-free deleted reference', async () => {
+  const athlete = await account(),
+    event = await create(athlete),
+    blueprint = await bSeedBlueprint(
+      athlete,
+      bBlueprint({ kind: 'checkin_template', ref: { id: randomUUID(), versionId: randomUUID() } }),
+    ),
+    repository = createCheckInRepository(database);
+  const values = {
+    observedAt: '2026-01-01T00:00:00Z',
+    timezone: 'UTC',
+    fatigue: 0,
+    discomfort: null,
+    bodyLocation: null,
+    note: null,
+  };
+  const created = await repository.createCheckIn(athlete, { idempotencyKey: randomUUID(), values });
+  await bSeedRun(athlete, blueprint, [
+    bProgress({ kind: 'checkin', id: created.id, revisionId: '1' }),
+  ]);
+  await repository.updateCheckIn(athlete, created.id, {
+    idempotencyKey: randomUUID(),
+    expectedRevision: 1,
+    reason: 'Synthetic correction',
+    values: { ...values, fatigue: 1 },
+  });
+  const historical = await capture(athlete, event.id);
+  expect(historical.routineActualManifest.runs[0]?.actuals[0]?.fact).toMatchObject({
+    state: 'historical',
+    requested: { revisionId: '1' },
+    current: { revision: 2 },
+    content: { fatigue: 0, discomfort: null },
+  });
+  expect(historical.routineActualManifest.blueprints[0]?.unsupportedContent).toMatchObject([
+    { reason: 'producer_content_unsupported' },
+  ]);
+  await repository.deleteCheckIn(athlete, created.id, {
+    idempotencyKey: randomUUID(),
+    expectedRevision: 2,
+  });
+  const deleted = await capture(athlete, event.id);
+  expect(deleted.routineActualManifest.runs[0]?.actuals[0]?.fact).toMatchObject({
+    state: 'deleted',
+    content: null,
+    current: { deleted: true, revision: 3 },
+  });
+});
+
+it('B bounds1001 occurrences before transporting their DTO bodies', async () => {
+  const athlete = await account(),
+    event = await create(athlete),
+    blueprint = await bSeedBlueprint(athlete),
+    schedule = await bSeedSchedule(athlete, blueprint);
+  const occurrence = routineOccurrenceSchema.parse({
+    id: randomUUID(),
+    schedule: { id: schedule.id, versionId: schedule.versionId },
+    blueprint: schedule.blueprint,
+    anchorKey: 'cap',
+    scheduledAt: null,
+    timingStatus: 'unresolved',
+    stepBindings: [],
+    selectedChoices: {},
+  });
+  await owned(athlete, (client) =>
+    client.query(
+      "INSERT INTO routine_occurrence(athlete_id,id,schedule_id,schedule_version_id,blueprint_routine_id,blueprint_version_id,anchor_key,scheduled_at,record_json) SELECT $1,g.id::uuid,$2,$3,$4,$5,'cap-'||i,NULL,jsonb_set(jsonb_set($6::jsonb,'{id}',to_jsonb(g.id)), '{anchorKey}',to_jsonb('cap-'||i)) FROM generate_series(1,1001) i CROSS JOIN LATERAL (SELECT gen_random_uuid()::text AS id WHERE i>0) g",
+      [
+        athlete,
+        schedule.id,
+        schedule.versionId,
+        blueprint.routineId,
+        blueprint.versionId,
+        JSON.stringify(occurrence),
+      ],
+    ),
+  ).catch((error) => {
+    throw error;
+  });
+  const measured = await measuredCapture(athlete, event.id);
+  await expect(measured.result).rejects.toMatchObject({ code: 'CONTEXT_LIMIT' });
+  expect(measured.bytes()).toBeLessThan(4096);
+});
+
+it('B includes run/history JSON in global4MiB preflight before decoding a large stopped draft', async () => {
+  const athlete = await account(),
+    event = await create(athlete),
+    blueprint = await bSeedBlueprint(athlete);
+  const payload = 'x'.repeat(400000);
+  await owned(athlete, async (client) => {
+    for (let index = 0; index < 6; index++) {
+      const record = routineRunSchema.parse({
+        id: randomUUID(),
+        revision: 0,
+        blueprint: { id: blueprint.routineId, versionId: blueprint.versionId },
+        origin: { kind: 'unplanned' },
+        state: 'stopped',
+        progress: [
+          {
+            stepId: 'step',
+            revision: 1,
+            state: 'stopped',
+            actualRefs: [],
+            occurredAt: null,
+            recordedAt: '2026-01-01T00:00:00Z',
+            reason: payload,
+          },
+        ],
+        selectedChoices: {},
+        startedAt: '2026-01-01T00:00:00Z',
+        endedAt: '2026-01-01T00:01:00Z',
+      });
+      await client.query(
+        "INSERT INTO routine_run(athlete_id,id,blueprint_routine_id,blueprint_version_id,revision,state,record_json) VALUES($1,$2,$3,$4,0,'stopped',$5::jsonb)",
+        [athlete, record.id, blueprint.routineId, blueprint.versionId, JSON.stringify(record)],
+      );
+      await client.query(
+        'INSERT INTO routine_run_revision(athlete_id,run_id,revision,record_json) VALUES($1,$2,0,$3::jsonb)',
+        [athlete, record.id, JSON.stringify(record)],
+      );
+    }
+  });
+  const measured = await measuredCapture(athlete, event.id);
+  await expect(measured.result).rejects.toMatchObject({
+    code: 'CONTEXT_UNAVAILABLE',
+    bound: 'decoded_bytes',
+  });
+  expect(measured.bytes()).toBeLessThan(4096);
+  expect(measured.queries.some((item) => item.sql.startsWith('SELECT r.id,r.blueprint'))).toBe(
+    false,
+  );
+});
+
+it('B preserves exact historical Intake UUID revision and reads its real null-body tombstone after deletion', async () => {
+  const athlete = await account(),
+    event = await create(athlete),
+    repository = createNutritionRepository(database);
+  const unknown = <U extends 'kcal' | 'g' | 'mL' | 'mg'>(unit: U) => ({
+    value: null,
+    unit,
+    status: 'unknown' as const,
+    evidenceIds: [],
+  });
+  const nutrients = {
+    energy: unknown('kcal'),
+    carbohydrate: unknown('g'),
+    protein: unknown('g'),
+    fat: unknown('g'),
+    fluid: unknown('mL'),
+    sodium: unknown('mg'),
+  };
+  const food = await repository.saveFood(athlete, {
+    idempotencyKey: randomUUID(),
+    expectedVersionId: null,
+    confirmed: true,
+    definition: {
+      foodId: 'synthetic-b-food',
+      name: 'Synthetic food',
+      basis: { kind: 'per_100g' },
+      nutrients,
+      provenance: {
+        kind: 'user_entered',
+        reference: null,
+        capturedAt: '2026-01-01T00:00:00Z',
+        reviewState: 'unreviewed',
+      },
+    },
+  });
+  const restoreGeneration = z
+    .uuid()
+    .parse((await owner.query('SELECT public.current_restore_generation() AS id')).rows[0]?.['id']);
+  const input = {
+    intakeId: randomUUID(),
+    confirmed: true as const,
+    occurredAt: '2026-01-01T00:00:00Z',
+    timezone: 'UTC',
+    foods: [
+      {
+        foodVersionId: food.versionId,
+        description: 'Synthetic food',
+        quantity: 0,
+        unit: 'g' as const,
+        sourceBasis: 'per_100g' as const,
+      },
+    ],
+    nutrientTotal: {
+      ...nutrients,
+      energy: { value: 0, unit: 'kcal' as const, status: 'reported' as const, evidenceIds: [] },
+    },
+    plannedItemId: null,
+    relatedSessionIds: [],
+    relatedActivityIds: [],
+    source: 'user' as const,
+    sourceRecordId: null,
+    notes: null,
+  };
+  const created = await repository.createIntake(athlete, {
+    ...input,
+    idempotencyKey: randomUUID(),
+    restoreGeneration,
+  });
+  const blueprint = await bSeedBlueprint(
+      athlete,
+      bBlueprint({
+        kind: 'nutrition_template',
+        ref: { id: randomUUID(), versionId: randomUUID() },
+      }),
+    ),
+    requested = { kind: 'intake', id: created.intakeId, revisionId: created.revisionId };
+  await bSeedRun(athlete, blueprint, [bProgress(requested)]);
+  await repository.correctIntake(athlete, {
+    ...input,
+    idempotencyKey: randomUUID(),
+    expectedRevision: 1,
+    notes: 'Synthetic correction',
+  });
+  const historical = await capture(athlete, event.id);
+  expect(historical.routineActualManifest.runs[0]?.actuals[0]?.fact).toMatchObject({
+    requested,
+    state: 'historical',
+    current: { revision: 2 },
+    content: {
+      revision: 1,
+      notes: null,
+      nutrientTotal: { energy: { value: 0 }, protein: { value: null } },
+    },
+  });
+  await repository.deleteIntake(athlete, {
+    idempotencyKey: randomUUID(),
+    intakeId: created.intakeId,
+    expectedRevision: 2,
+    confirmed: true,
+    reason: 'user_requested',
+  });
+  const deleted = await capture(athlete, event.id);
+  expect(deleted.routineActualManifest.runs[0]?.actuals[0]?.fact).toMatchObject({
+    requested,
+    state: 'deleted',
+    current: { status: 'deleted', revision: 3 },
+    content: null,
+  });
+  expect(deleted.routineActualManifest.actualRosters.intake).toMatchObject([
+    { id: created.intakeId, status: 'deleted', revision: 3 },
+  ]);
+});
+
+it('B keeps the frozen run blueprint after a new catalog head and captures the changed head facts', async () => {
+  const athlete = await account(),
+    event = await create(athlete),
+    blueprint = await bSeedBlueprint(athlete),
+    run = await bSeedRun(athlete, blueprint);
+  const before = await capture(athlete, event.id),
+    next = routineBlueprintVersionSchema.parse({
+      ...blueprint,
+      versionId: randomUUID(),
+      title: 'Synthetic changed catalog',
+    });
+  await createRoutineRepository(database).saveBlueprint(athlete, {
+    blueprint: next,
+    expectedVersionId: blueprint.versionId,
+    idempotencyKey: randomUUID(),
+    confirmed: true,
+  });
+  const after = await capture(athlete, event.id);
+  expect(after.routineActualManifest.runs[0]?.record).toEqual(run);
+  expect(after.routineActualManifest.blueprints[0]?.record).toEqual(blueprint);
+  expect(after.routineActualManifest.blueprints[0]?.currentHead).toMatchObject({
+    state: 'present',
+    versionId: next.versionId,
+    version: 2,
+  });
+  expect(after.readSetDigest).not.toBe(before.readSetDigest);
+});
+
+it('B rejects5001 unique actual refs before transporting stopped run JSON', async () => {
+  const athlete = await account(),
+    event = await create(athlete),
+    blueprint = await bSeedBlueprint(
+      athlete,
+      bBlueprint({ kind: 'recovery_method', ref: { id: randomUUID(), versionId: randomUUID() } }),
+    );
+  const refs = Array.from({ length: 5001 }, () => ({
+    kind: 'recovery_log',
+    id: randomUUID(),
+    revisionId: randomUUID(),
+  }));
+  const progress = {
+    stepId: 'step',
+    revision: 1,
+    state: 'stopped',
+    actualRefs: refs,
+    occurredAt: null,
+    recordedAt: '2026-01-01T00:00:00Z',
+    reason: null,
+  };
+  // Valid stored DTO bound by1MiB; exceeds product command's20-ref limit intentionally.
+  await bSeedRun(athlete, blueprint, [progress]);
+  const measured = await measuredCapture(athlete, event.id);
+  await expect(measured.result).rejects.toMatchObject({
+    code: 'CONTEXT_UNAVAILABLE',
+    bound: 'unique_sources',
+  });
+  expect(measured.bytes()).toBeLessThan(4096);
+  expect(measured.queries.some((item) => item.sql.startsWith('SELECT r.id,r.blueprint'))).toBe(
+    false,
+  );
+});
+
+it('B captures allocation refs as unavailable without using current body as unsupported allocation evidence', async () => {
+  const athlete = await account(),
+    event = await create(athlete),
+    blueprint = await bSeedBlueprint(
+      athlete,
+      bBlueprint({ kind: 'workout_template', ref: { id: randomUUID(), versionId: randomUUID() } }),
+    ),
+    activityId = randomUUID();
+  await owned(athlete, (client) =>
+    client.query(
+      "INSERT INTO activity_canonical(athlete_id,id,revision,original) VALUES($1,$2,1,'{}'::jsonb)",
+      [athlete, activityId],
+    ),
+  );
+  await bSeedRun(athlete, blueprint, [
+    bProgress({
+      kind: 'activity',
+      id: activityId,
+      revisionId: '1',
+      detailId: null,
+      allocationId: randomUUID(),
+    }),
+  ]);
+  const context = await capture(athlete, event.id);
+  expect(context.routineActualManifest.runs[0]?.actuals[0]?.fact).toMatchObject({
+    state: 'unavailable',
+    reason: 'producer_allocation_unsupported',
+    current: { id: activityId, revision: 1 },
+    content: null,
+  });
+});
+
+it('B bounds1001 runs before querying run current/history bodies', async () => {
+  const athlete = await account(),
+    event = await create(athlete),
+    blueprint = await bSeedBlueprint(athlete);
+  const record = routineRunSchema.parse({
+    id: randomUUID(),
+    revision: 0,
+    blueprint: { id: blueprint.routineId, versionId: blueprint.versionId },
+    origin: { kind: 'unplanned' },
+    state: 'stopped',
+    progress: [],
+    selectedChoices: {},
+    startedAt: '2026-01-01T00:00:00Z',
+    endedAt: '2026-01-01T00:01:00Z',
+  });
+  await owned(athlete, (client) =>
+    client.query(
+      "INSERT INTO routine_run(athlete_id,id,blueprint_routine_id,blueprint_version_id,revision,state,record_json) SELECT $1,g.id::uuid,$2,$3,0,'stopped',jsonb_set($4::jsonb,'{id}',to_jsonb(g.id)) FROM generate_series(1,1001) i CROSS JOIN LATERAL (SELECT gen_random_uuid()::text AS id WHERE i>0) g",
+      [athlete, blueprint.routineId, blueprint.versionId, JSON.stringify(record)],
+    ),
+  );
+  const measured = await measuredCapture(athlete, event.id);
+  await expect(measured.result).rejects.toMatchObject({ code: 'CONTEXT_LIMIT' });
+  expect(measured.bytes()).toBeLessThan(4096);
+  expect(measured.queries.some((item) => item.sql.startsWith('SELECT r.id,r.blueprint'))).toBe(
+    false,
+  );
+});
+
+it('B rejects a forged checklist confirmation revision on a real owned stopped run', async () => {
+  const athlete = await account(),
+    event = await create(athlete),
+    blueprint = await bSeedBlueprint(athlete),
+    runId = randomUUID(),
+    actualId = randomUUID(),
+    storedRevisionId = randomUUID();
+  await owned(athlete, async (client) => {
+    const record = routineRunSchema.parse({
+      id: runId,
+      revision: 0,
+      blueprint: { id: blueprint.routineId, versionId: blueprint.versionId },
+      origin: { kind: 'unplanned' },
+      state: 'stopped',
+      progress: [
+        bProgress({ kind: 'checklist_confirmation', id: actualId, revisionId: randomUUID() }),
+      ],
+      selectedChoices: {},
+      startedAt: '2026-01-01T00:00:00Z',
+      endedAt: '2026-01-01T00:01:00Z',
+    });
+    await client.query(
+      "INSERT INTO routine_run(athlete_id,id,blueprint_routine_id,blueprint_version_id,revision,state,record_json) VALUES($1,$2,$3,$4,0,'stopped',$5::jsonb)",
+      [athlete, runId, blueprint.routineId, blueprint.versionId, JSON.stringify(record)],
+    );
+    await client.query(
+      'INSERT INTO routine_run_revision(athlete_id,run_id,revision,record_json) VALUES($1,$2,0,$3::jsonb)',
+      [athlete, runId, JSON.stringify(record)],
+    );
+    await client.query(
+      "INSERT INTO routine_checklist_confirmation(athlete_id,id,run_id,step_id,revision_id,occurred_at,state) VALUES($1,$2,$3,'step',$4,'2026-01-01T00:00:00Z','partial')",
+      [athlete, actualId, runId, storedRevisionId],
+    );
+  });
+  await expect(capture(athlete, event.id)).rejects.toMatchObject({ code: 'INVALID_CONTEXT' });
 });

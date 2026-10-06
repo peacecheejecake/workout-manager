@@ -10,6 +10,7 @@ import {
   preservesSessionCompletions,
 } from '@workout/contracts/session-completion';
 import type { Transaction } from './database.js';
+import { captureRoutineActualManifest } from './race-plan-impact-routine-actuals.js';
 import { captureCoreEvidenceDependencies } from './evidence-dependencies.js';
 import {
   captureIntegratedDependencyInventory,
@@ -128,6 +129,11 @@ async function preflight(tx: Transaction, eventId: string) {
       recovery: decimal,
       routine: decimal,
       completions: decimal,
+      occurrences: decimal,
+      runs: decimal,
+      activities: decimal,
+      intake: decimal,
+      recovery_actuals: decimal,
     }),
     (
       await tx.query(
@@ -135,7 +141,12 @@ async function preflight(tx: Transaction, eventId: string) {
     (SELECT count(*)::text FROM (SELECT 1 FROM nutrition_plan_head WHERE athlete_id=$1 LIMIT 1001) n) AS nutrition,
     (SELECT count(*)::text FROM (SELECT 1 FROM recovery_strategy_head WHERE athlete_id=$1 LIMIT 1001) r) AS recovery,
     (SELECT count(*)::text FROM (SELECT 1 FROM routine_schedule_head WHERE athlete_id=$1 LIMIT 1001) r) AS routine,
-    (SELECT count(*)::text FROM (SELECT 1 FROM session_completion WHERE athlete_id=$1 LIMIT 1001) c) AS completions`,
+    (SELECT count(*)::text FROM (SELECT 1 FROM session_completion WHERE athlete_id=$1 LIMIT 1001) c) AS completions,
+    (SELECT count(*)::text FROM (SELECT 1 FROM routine_occurrence WHERE athlete_id=$1 LIMIT 1001) o) AS occurrences,
+    (SELECT count(*)::text FROM (SELECT 1 FROM routine_run WHERE athlete_id=$1 LIMIT 1001) r) AS runs,
+    (SELECT count(*)::text FROM (SELECT 1 FROM activity_canonical WHERE athlete_id=$1 LIMIT 1001) a) AS activities,
+    (SELECT count(*)::text FROM (SELECT 1 FROM intake_entry WHERE athlete_id=$1 LIMIT 1001) i) AS intake,
+    (SELECT count(*)::text FROM (SELECT 1 FROM recovery_action_log WHERE athlete_id=$1 LIMIT 1001) a) AS recovery_actuals`,
         [tx.athleteId],
       )
     ).rows[0],
@@ -150,6 +161,7 @@ async function preflight(tx: Transaction, eventId: string) {
       targets: decimal,
       routine_targets: decimal,
       strength_sessions: decimal,
+      actual_refs: decimal,
     }),
     (
       await tx.query(
@@ -160,6 +172,13 @@ async function preflight(tx: Transaction, eventId: string) {
       ON v.athlete_id=h.athlete_id AND v.strategy_id=h.strategy_id AND v.version_id=h.version_id WHERE h.athlete_id=$1),
     routine AS MATERIALIZED (SELECT v.record_json,v.source_plan_version_id FROM routine_schedule_head h LEFT JOIN routine_schedule_version v
       ON v.athlete_id=h.athlete_id AND v.schedule_id=h.schedule_id AND v.version_id=h.version_id WHERE h.athlete_id=$1),
+    occurrences AS MATERIALIZED (SELECT * FROM routine_occurrence WHERE athlete_id=$1),
+    runs AS MATERIALIZED (SELECT * FROM routine_run WHERE athlete_id=$1),
+    frozen_schedule_refs AS MATERIALIZED (SELECT DISTINCT schedule_version_id AS id FROM occurrences),
+    frozen_schedules AS MATERIALIZED (SELECT v.* FROM routine_schedule_version v JOIN frozen_schedule_refs ref ON v.version_id=ref.id WHERE v.athlete_id=$1),
+    blueprint_refs AS MATERIALIZED (SELECT blueprint_version_id AS id FROM occurrences UNION SELECT blueprint_version_id FROM runs UNION SELECT v.blueprint_version_id FROM routine_schedule_version v JOIN routine_schedule_head h ON h.athlete_id=v.athlete_id AND h.schedule_id=v.schedule_id AND h.version_id=v.version_id WHERE v.athlete_id=$1),
+    blueprints AS MATERIALIZED (SELECT v.record_json FROM routine_blueprint_version v JOIN blueprint_refs ref ON v.version_id=ref.id WHERE v.athlete_id=$1),
+    actual_refs AS MATERIALIZED (SELECT DISTINCT ref FROM runs r CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(r.record_json->'progress')='array' THEN r.record_json->'progress' ELSE '[]'::jsonb END) progress CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(progress->'actualRefs')='array' THEN progress->'actualRefs' ELSE '[]'::jsonb END) ref LIMIT 5001),
     anchors AS MATERIALIZED (SELECT item->'anchor' AS anchor FROM nutrition n CROSS JOIN LATERAL jsonb_array_elements(
       CASE WHEN jsonb_typeof(n.record_json->'items')='array' THEN n.record_json->'items' ELSE '[]'::jsonb END) item WHERE item->'anchor'->>'kind'='relative' LIMIT 5001),
     plan_refs AS MATERIALIZED (
@@ -167,6 +186,7 @@ async function preflight(tx: Transaction, eventId: string) {
       UNION SELECT values_json->>'planVersionId' FROM race_event WHERE athlete_id=$1 AND id=$2 AND NOT deleted
       UNION SELECT linked_training_plan_version_id::text FROM nutrition
       UNION SELECT source_plan_version_id::text FROM routine
+      UNION SELECT source_plan_version_id::text FROM frozen_schedules
       UNION SELECT ref->>'headVersionId' FROM recovery r CROSS JOIN LATERAL jsonb_array_elements(
         CASE WHEN jsonb_typeof(r.record_json->'draft'->'planRefs')='array' THEN r.record_json->'draft'->'planRefs' ELSE '[]'::jsonb END) ref WHERE ref->>'kind'='training' LIMIT 5001),
     race_refs AS MATERIALIZED (SELECT $2::text AS id UNION SELECT anchor->>'entityId' FROM anchors WHERE anchor->>'entity'='race'),
@@ -182,6 +202,20 @@ async function preflight(tx: Transaction, eventId: string) {
     bodies AS (
       SELECT record_json AS body FROM nutrition UNION ALL SELECT record_json FROM recovery UNION ALL SELECT record_json FROM routine
       UNION ALL SELECT record_json FROM session_completion WHERE athlete_id=$1
+      UNION ALL SELECT record_json FROM occurrences
+      UNION ALL SELECT record_json FROM runs
+      UNION ALL SELECT h.record_json FROM routine_run_revision h JOIN runs r ON h.run_id=r.id AND h.revision=r.revision WHERE h.athlete_id=$1
+      UNION ALL SELECT record_json FROM frozen_schedules
+      UNION ALL SELECT record_json FROM blueprints
+      UNION ALL SELECT c.original FROM activity_canonical c WHERE c.athlete_id=$1
+      UNION ALL SELECT o.values_json FROM activity_overlay o JOIN activity_canonical c ON c.athlete_id=o.athlete_id AND c.id=o.activity_id WHERE o.athlete_id=$1
+      UNION ALL SELECT r.record_json FROM intake_entry e JOIN intake_entry_revision r ON r.athlete_id=e.athlete_id AND r.intake_id=e.id AND r.revision=e.current_revision WHERE e.athlete_id=$1
+      UNION ALL SELECT r.record_json FROM recovery_action_log a JOIN recovery_action_revision r ON r.athlete_id=a.athlete_id AND r.action_id=a.action_id AND r.revision=a.revision WHERE a.athlete_id=$1
+      UNION ALL SELECT r.record_json FROM intake_entry_revision r JOIN actual_refs ref ON ref.ref->>'kind'='intake' AND r.intake_id=ref.ref->>'id' AND r.revision_id::text=ref.ref->>'revisionId' WHERE r.athlete_id=$1
+      UNION ALL SELECT c.values_json FROM check_in c JOIN actual_refs ref ON ref.ref->>'kind'='checkin' AND c.id::text=ref.ref->>'id' WHERE c.athlete_id=$1
+      UNION ALL SELECT h.values_json FROM check_in_revision h JOIN actual_refs ref ON ref.ref->>'kind'='checkin' AND h.check_in_id::text=ref.ref->>'id' AND h.revision::text=ref.ref->>'revisionId' WHERE h.athlete_id=$1
+      UNION ALL SELECT to_jsonb(c) FROM routine_checklist_confirmation c JOIN actual_refs ref ON ref.ref->>'kind'='checklist_confirmation' AND c.id::text=ref.ref->>'id' WHERE c.athlete_id=$1
+      UNION ALL SELECT to_jsonb(d) FROM supplementary_set_log d JOIN actual_refs ref ON ref.ref->>'kind'='activity' AND d.id::text=ref.ref->>'detailId' WHERE d.athlete_id=$1
       UNION ALL SELECT p.draft FROM plan_snapshot p JOIN plan_refs ref ON p.id::text=ref.id WHERE p.athlete_id=$1
       UNION ALL SELECT to_jsonb(t) FROM supplementary_targets t
       UNION ALL SELECT to_jsonb(t) FROM supplementary_routine_targets t
@@ -192,11 +226,12 @@ async function preflight(tx: Transaction, eventId: string) {
       UNION ALL SELECT h.values_json FROM race_event_revision h JOIN races e ON h.entity_id=e.id AND h.revision=e.revision WHERE h.athlete_id=$1)
     SELECT coalesce(sum(octet_length(body::text)+1024),0)::text AS bytes,
       (SELECT count(*)::text FROM anchors) AS anchors,
-      ((SELECT count(*) FROM plan_refs WHERE id IS NOT NULL)+(SELECT count(*) FROM race_refs WHERE id IS NOT NULL)+(SELECT count(*) FROM supplementary_routine_refs)+(SELECT count(*) FROM supplementary_exercise_refs))::text AS sources,
+      ((SELECT count(*) FROM plan_refs WHERE id IS NOT NULL)+(SELECT count(*) FROM race_refs WHERE id IS NOT NULL)+(SELECT count(*) FROM supplementary_routine_refs)+(SELECT count(*) FROM supplementary_exercise_refs)+(SELECT count(*) FROM frozen_schedule_refs)+(SELECT count(*) FROM blueprint_refs)+(SELECT count(*) FROM actual_refs))::text AS sources,
       (SELECT count(*)::text FROM supplementary_links) AS links,
       (SELECT count(*)::text FROM supplementary_targets) AS targets,
       (SELECT count(*)::text FROM supplementary_routine_targets) AS routine_targets,
-      (SELECT count(*)::text FROM strength_sessions) AS strength_sessions FROM bodies`,
+      (SELECT count(*)::text FROM strength_sessions) AS strength_sessions,
+      (SELECT count(*)::text FROM actual_refs) AS actual_refs FROM bodies`,
         [tx.athleteId, eventId],
       )
     ).rows[0],
@@ -204,9 +239,13 @@ async function preflight(tx: Transaction, eventId: string) {
   // Reference cap+1 is checked before byte accounting: oversized scalar rosters never
   // enter the DTO transport, even when both bounds would be exceeded.
   if (
-    [limits.links, limits.targets, limits.routine_targets, limits.strength_sessions].some(
-      (value) => BigInt(value) > BigInt(sourceCap),
-    )
+    [
+      limits.links,
+      limits.targets,
+      limits.routine_targets,
+      limits.strength_sessions,
+      limits.actual_refs,
+    ].some((value) => BigInt(value) > BigInt(sourceCap))
   )
     throw new RacePlanImpactContextError('CONTEXT_UNAVAILABLE', 'unique_sources');
   // The +1024 per transported body reserves bounded UTF-8 row metadata, not decoded JSON payload.
@@ -556,13 +595,15 @@ export async function captureRacePlanImpactContext(tx: Transaction, input: unkno
     });
   }
   let dependencyInventory: Awaited<ReturnType<typeof captureIntegratedDependencyInventory>>;
+  let routineActualManifest: Awaited<ReturnType<typeof captureRoutineActualManifest>>;
   let supplementaryManifest: Awaited<ReturnType<typeof captureSupplementaryReferenceManifest>>;
   try {
     dependencyInventory = await captureIntegratedDependencyInventory(tx);
+    routineActualManifest = await captureRoutineActualManifest(tx, sources);
     supplementaryManifest = await captureSupplementaryReferenceManifest(
       tx,
       await sources.consumedPlans(),
-      sources.sourceCount(),
+      sources.sourceCount() + routineActualManifest.uniqueSourceCount,
     );
   } catch (error) {
     if (error instanceof RaceImpactDependencyError)
@@ -592,6 +633,7 @@ export async function captureRacePlanImpactContext(tx: Transaction, input: unkno
     coreDependencies: core,
     dependencyInventory,
     supplementaryManifest,
+    routineActualManifest,
   };
   // capturedAt is metadata, never a changing freshness value.
   const readSetDigest = digest({ ...readSet, coreDependencies: { ...core, capturedAt: null } });
@@ -603,6 +645,7 @@ export async function captureRacePlanImpactContext(tx: Transaction, input: unkno
       captured: [
         'integrated_dependency_inventory',
         'immutable_supplementary_copy_references',
+        'routine_occurrence_run_and_actual_reference_facts',
       ] as const,
     },
     ...readSet,
