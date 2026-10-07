@@ -1,3 +1,8 @@
+import { mediaRetainedReadFactsSchema } from './race-plan-impact-media-read-facts.js';
+import {
+  validateMediaReadManifest,
+  type MediaReadManifestBlocker,
+} from './race-plan-impact-media-read-manifest.js';
 import {
   validateRoutineScheduleReadManifest,
   type RoutineScheduleReadBlocker,
@@ -571,6 +576,7 @@ const captureSchema = z.strictObject({
   manualActivityReadFacts: manualActivityReadFactsSchema.optional(),
   workoutTemplateSources: workoutTemplateSourceFactsSchema.optional(),
   resourceReadFacts: resourceRetainedReadFactsSchema.optional(),
+  mediaReadFacts: mediaRetainedReadFactsSchema.optional(),
   routines: z.array(routine).max(1000),
   coreDependencies: coreEvidenceDependencyManifestSchema,
   dependencyInventory: z.array(z.json()).length(12),
@@ -607,7 +613,8 @@ export type RaceImpactManifestBlocker = {
     | CourseReadBlocker
     | WorkoutTemplateReadBlocker['reason']
     | ResourceReadManifestBlocker['reason']
-    | RoutineScheduleReadBlocker;
+    | RoutineScheduleReadBlocker
+    | MediaReadManifestBlocker['reason'];
 };
 export type RaceImpactConsumedManifestResult =
   | { readonly status: 'blocked'; readonly blockers: readonly RaceImpactManifestBlocker[] }
@@ -1387,6 +1394,7 @@ export function validateRaceImpactConsumedManifest(
     ),
     ...(c.workoutTemplateSources === undefined ? {} : { sourceFacts: c.workoutTemplateSources }),
     ...(c.resourceReadFacts === undefined ? {} : { resourceReadFacts: c.resourceReadFacts }),
+    ...(c.mediaReadFacts === undefined ? {} : { mediaReadFacts: c.mediaReadFacts }),
   });
   for (const finding of workoutResult.blockers)
     block(`workoutTemplateSources.${finding.path}`, finding.reason);
@@ -1624,8 +1632,6 @@ export function validateRaceImpactConsumedManifest(
   });
   for (const finding of resourceResult.blockers)
     block(`resourceReadFacts.${finding.path}`, finding.reason);
-  if (supp.exercises.some((e) => e.mediaAssetIds.length))
-    block('supplementaryManifest.exercises.permissions', 'permission_port_missing');
   const am = c.sourcePermissionManifest.activityMediaPermissions;
   // Tenant-wide head/provider/consent inventories are metadata, not consumed
   // actual bodies or source permission. Keep their bytes in the read digest.
@@ -1637,7 +1643,16 @@ export function validateRaceImpactConsumedManifest(
     new Set(am.healthkit.map((row) => row.id.toLowerCase())).size !== am.healthkit.length
   )
     block('activityMediaPermissions.metadata', 'source_identity_mismatch');
-  if (am.media.length) block('activityMediaPermissions.media', 'permission_port_missing');
+  const mediaResult = validateMediaReadManifest({
+    requestedIds: [
+      ...supp.exercises.flatMap((e) => e.mediaAssetIds),
+      ...(c.workoutTemplateSources?.exercises.flatMap((e) => e.record.mediaAssetIds) ?? []),
+    ],
+    metadata: am.media,
+    ...(c.mediaReadFacts === undefined ? {} : { sourceFacts: c.mediaReadFacts }),
+  });
+  for (const finding of mediaResult.blockers)
+    block(`mediaReadFacts.${finding.path}`, finding.reason);
   const affectedNutrition = c.nutrition
     .filter((row) => row.relativeItems.some((item) => item.affected))
     .map((row) => row.aggregateId.toLowerCase());
@@ -1659,6 +1674,7 @@ export function validateRaceImpactConsumedManifest(
     (c.workoutTemplateSources?.exercises.length ?? 0) +
     (c.workoutTemplateSources?.targets.length ?? 0) +
     (c.resourceReadFacts?.facts.length ?? 0) +
+    (c.mediaReadFacts?.facts.length ?? 0) +
     c.consumedSources.plans.length +
     c.consumedSources.races.length +
     allNutrition.reduce((sum, n) => sum + n.record.items.length, 0) +

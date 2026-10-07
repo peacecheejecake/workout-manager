@@ -1750,15 +1750,50 @@ it('rejects5001 consumed routine timers by scalar preflight before transporting 
   ).toBe(false);
 });
 
-it.each([false, true])(
-  'validates public frozen workout template and linked manual actual with text resource %s through full readonly capture',
-  async (withResource) => {
+it.each([
+  { withResource: false, withMedia: false },
+  { withResource: true, withMedia: false },
+  { withResource: false, withMedia: true },
+])(
+  'validates public frozen workout template and linked manual actual with owned source %j through full readonly capture',
+  async ({ withResource, withMedia }) => {
     const athlete = await account(),
       event = await create(athlete),
       catalog = createSupplementaryRepository(database),
       routines = createRoutineRepository(database),
       activities = createActivityRepository(database);
     const resources = createPrivateTextResourceRepository(database);
+    const gallery = createGalleryMediaRepository(database);
+    let mediaId: string | null = null;
+    if (withMedia) {
+      const reserved = await gallery.reserveCreate(
+        athlete,
+        {
+          mediaKind: 'image',
+          album: null,
+          caption: 'Synthetic movement',
+          activityId: null,
+          capturedAt: null,
+          capturedLocalDate: null,
+        },
+        randomUUID(),
+      );
+      const hash = 'a'.repeat(64);
+      await gallery.prepareObject(athlete, reserved.uploadId, {
+        storageRef: `private/v1/tenants/${athlete}/gallery/${reserved.mediaItemId}/objects/uploads/${reserved.uploadId}/sha256/${hash}.png`,
+        file: {
+          originalFileName: 'synthetic.png',
+          mediaType: 'image/png',
+          byteSize: 2,
+          sha256: hash,
+        },
+      });
+      await gallery.markStaged(athlete, reserved.uploadId);
+      const finalized = await gallery.finalize(athlete, reserved.uploadId);
+      if (finalized.status !== 'available') throw Error('MEDIA_FIXTURE_UNAVAILABLE');
+      mediaId = finalized.item.id;
+    }
+
     const resource = withResource
       ? await resources.create(athlete, {
           sourceKind: 'text',
@@ -1783,7 +1818,7 @@ it.each([false, true])(
         equipment: ['bodyweight'],
         tags: [],
         countDefinitions: [],
-        mediaAssetIds: [],
+        mediaAssetIds: mediaId === null ? [] : [mediaId],
         resourceVersionIds: resource?.status === 'available' ? [resource.version.id] : [],
         reviewState: 'unreviewed',
         description: 'User defined synthetic movement',
@@ -1903,6 +1938,30 @@ it.each([false, true])(
     expect(scope.capture.workoutTemplateSources.exercises).toEqual([
       { record: exercise.definition, version: 1 },
     ]);
+    if (mediaId !== null) {
+      // Normal107 records descriptors but lacks the explicit SQL113 narrow port.
+      expect(scope.capture.mediaReadFacts.facts[0]).toMatchObject({
+        requestedId: mediaId,
+        state: 'owned',
+        record: { id: mediaId, accessRevision: 1 },
+        originalLedger: { sha256: 'a'.repeat(64), byteSize: 2, mediaType: 'image/png' },
+        cleanup: { status: 'unavailable', reason: 'READ_CAPABILITY_UNAVAILABLE' },
+      });
+      expect(scope.consumedScope.status).toBe('blocked');
+      expect(scope.capture.mediaReadFacts.authority).toBe('none');
+      await gallery.softDelete(athlete, mediaId, {
+        expectedAccessRevision: 1,
+        idempotencyKey: randomUUID(),
+      });
+      const deleted = await capture(athlete, event.id);
+      expect(deleted.mediaReadFacts.facts[0]).toMatchObject({
+        requestedId: mediaId,
+        state: 'deleted',
+        record: null,
+        current: { mediaItemId: mediaId, deleted: true, accessRevision: 2 },
+      });
+      return;
+    }
     expect(scope.consumedScope).toMatchObject({
       status: 'validated_read_scope',
       approvalAuthority: 'none',

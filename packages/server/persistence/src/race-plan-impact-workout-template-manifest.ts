@@ -1,3 +1,7 @@
+import {
+  mediaRetainedReadFactsSchema,
+  validateMediaRetainedReadFacts,
+} from './race-plan-impact-media-read-facts.js';
 import { z } from 'zod';
 import { workoutTemplateSourceFactsSchema } from './race-plan-impact-workout-template-sources.js';
 import { impactDependencyDigest as digest } from './race-plan-impact-dependencies.js';
@@ -51,6 +55,7 @@ export const workoutTemplateReadProjectionSchema = z.strictObject({
   catalogRows: z.array(workoutCatalogRowSchema).max(5000),
   sourceFacts: workoutTemplateSourceFactsSchema.optional(),
   resourceReadFacts: resourceRetainedReadFactsSchema.optional(),
+  mediaReadFacts: mediaRetainedReadFactsSchema.optional(),
 });
 export type WorkoutTemplateReadProjection = z.infer<typeof workoutTemplateReadProjectionSchema>;
 export type WorkoutTemplateReadBlocker = {
@@ -250,7 +255,22 @@ export function validateWorkoutTemplateReadSources(unknownProjection: unknown) {
           }
         }
       }
-      if (b.mediaAssetIds.length) block(epath, 'media_permission_port_missing');
+      if (b.mediaAssetIds.length) {
+        const retained = c.mediaReadFacts;
+        if (!retained) block(epath, 'media_permission_port_missing');
+        else {
+          if (validateMediaRetainedReadFacts(retained).status !== 'validated_read_sources')
+            block(epath, 'source_unavailable');
+          for (const mediaId of b.mediaAssetIds) {
+            const normalized = uuid.safeParse(mediaId);
+            const fact = retained.facts.find(
+              (row) => row.requestedId === (normalized.success ? normalized.data : mediaId),
+            );
+            if (!fact || fact.state !== 'owned' || fact.record === null)
+              block(epath, 'source_unavailable');
+          }
+        }
+      }
     }
   }
   for (const k of bodies.keys())

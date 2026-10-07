@@ -1,3 +1,4 @@
+import { mediaRetainedReadFactsSchema } from '../src/race-plan-impact-media-read-facts.js';
 import { expect, it } from 'vitest';
 import {
   routineTemplateVersionSchema,
@@ -482,4 +483,87 @@ it('cycle cannot escape unknown-boundary validation', () => {
   const value: { self?: unknown } = {};
   value.self = value;
   blocks(value, 'invalid_projection');
+});
+
+function withOwnedMedia() {
+  const { c, f } = owned(),
+    e = f.exercises[0];
+  if (!e) throw Error('exercise');
+  e.record.mediaAssetIds = [ids.activity];
+  refresh(c);
+  const hash = 'a'.repeat(64);
+  c.mediaReadFacts = mediaRetainedReadFactsSchema.parse({
+    requestedIds: [ids.activity],
+    authority: 'none',
+    freshness: 'not_checked',
+    sourceScope: 'db_recorded_descriptor_only',
+    facts: [
+      {
+        requestedId: ids.activity,
+        state: 'owned',
+        reason: null,
+        record: {
+          id: ids.activity,
+          mediaKind: 'image',
+          visibility: 'private',
+          includeForCoach: false,
+          album: null,
+          caption: null,
+          activityId: null,
+          capturedAt: null,
+          capturedLocalDate: null,
+          file: {
+            originalFileName: 'synthetic.png',
+            mediaType: 'image/png',
+            byteSize: 2,
+            sha256: hash,
+          },
+          preview: null,
+          accessRevision: 1,
+          createdAt: start,
+          updatedAt: start,
+        },
+        current: { mediaItemId: ids.activity, accessRevision: 1, deleted: false },
+        originalLedger: { sha256: hash, byteSize: 2, mediaType: 'image/png' },
+        originalObjectIdentityDigest: 'b'.repeat(64),
+        previewLedger: null,
+        cleanup: {
+          status: 'available',
+          source: {
+            schemaVersion: 1,
+            authority: 'db_cleanup_status_only',
+            mediaItemId: ids.activity,
+            expectedAccessRevision: 1,
+            observedAccessRevision: 1,
+            deleted: false,
+            inventoryComplete: true,
+            state: 'absent',
+            reason: null,
+            refs: [{ digest: 'c'.repeat(64), reason: null, state: 'absent' }],
+            digestVersion: 'postgres-jsonb-v1',
+            sourceDigest: 'd'.repeat(64),
+          },
+        },
+      },
+    ],
+  });
+  return c;
+}
+it('accepts exact consumed media descriptors while retaining no authority or byte existence claim', () => {
+  const result = validateWorkoutTemplateReadSources(withOwnedMedia());
+  expect(result.status).toBe('validated_read_sources');
+  expect(result.authority).toBe('none');
+  expect(result.freshness).toBe('not_checked');
+});
+it('blocks consumed media when its descriptor source changes or cleanup port is absent', () => {
+  const c = withOwnedMedia(),
+    fact = c.mediaReadFacts?.facts[0];
+  if (!fact?.record) throw Error('media');
+  fact.record.file.sha256 = 'e'.repeat(64);
+  blocks(c, 'source_unavailable');
+  const unavailable = withOwnedMedia(),
+    source = unavailable.mediaReadFacts?.facts[0];
+  if (!source) throw Error('media');
+  source.cleanup = { status: 'unavailable', reason: 'READ_CAPABILITY_UNAVAILABLE' };
+  blocks(unavailable, 'source_unavailable');
 });

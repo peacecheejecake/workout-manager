@@ -1,3 +1,4 @@
+import { captureMediaRetainedReadFacts } from './race-plan-impact-media-read-facts.js';
 import {
   raceProjectionIntentSchema,
   racePlanImpactCollectorSelectionSchema,
@@ -660,6 +661,7 @@ export async function captureRacePlanImpactContext(tx: Transaction, input: unkno
   let manualActivityReadFacts: ManualActivityReadFacts;
   let workoutTemplateSources: Awaited<ReturnType<typeof captureWorkoutTemplateSources>>;
   let resourceReadFacts: Awaited<ReturnType<typeof captureResourceRetainedReadFacts>>;
+  let mediaReadFacts: Awaited<ReturnType<typeof captureMediaRetainedReadFacts>>;
   let course: Awaited<ReturnType<typeof captureCourseReadSources>>;
   try {
     dependencyInventory = await captureIntegratedDependencyInventory(tx);
@@ -733,6 +735,11 @@ export async function captureRacePlanImpactContext(tx: Transaction, input: unkno
       sourcePermissionManifest.resources.map((row) => row.requestedVersionId),
       sourceBudget,
     );
+    mediaReadFacts = await captureMediaRetainedReadFacts(
+      tx,
+      sourcePermissionManifest.activityMediaPermissions.media.map((row) => row.requestedId),
+      sourceBudget,
+    );
     const activityFacts = routineActualManifest.runs.flatMap((run) =>
       run.actuals.flatMap((actual) =>
         actual.fact.requested.kind === 'activity' ? [actual.fact] : [],
@@ -790,6 +797,7 @@ export async function captureRacePlanImpactContext(tx: Transaction, input: unkno
     manualActivityReadFacts,
     workoutTemplateSources,
     resourceReadFacts,
+    mediaReadFacts,
     routines,
     coreDependencies: core,
     dependencyInventory,

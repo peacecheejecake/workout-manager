@@ -634,7 +634,7 @@ it('fails closed for resource cleanup and provider facts', () => {
     assetId: 'owned',
     cleanup: { state: 'unavailable' },
   });
-  blocked(c, 'permission_port_missing', 'activityMediaPermissions.media');
+  blocked(c, 'invalid_projection', 'mediaReadFacts.projection');
 });
 it('bounds cyclic/deep/oversized unknown input before runtime parsers', () => {
   const c = fixture(),
@@ -781,7 +781,7 @@ it('blocks exact exercise media refs until private permission/cleanup port exist
     exercise = c.supplementaryManifest.exercises[0];
   if (!exercise) throw Error('fixture');
   exercise.mediaAssetIds = ['asset'];
-  blocked(c, 'permission_port_missing', 'supplementaryManifest.exercises.permissions');
+  blocked(c, 'source_port_missing', 'mediaReadFacts.sourceFacts');
 });
 it('rejects a missing nutrition template catalog source even with a valid planned item', () => {
   const c = withNutritionRef();
@@ -1013,7 +1013,7 @@ it('blocks a specific unsupported actual-consuming run even with unrelated metad
   });
   blocked(c, 'invalid_capture', 'capture');
 });
-it('consumed media still requires its missing cleanup port when unused consent is granted or withdrawn', () => {
+it('unused media cannot become consumed or gain authority from a provider consent', () => {
   for (const granted of [true, false]) {
     const c = fixture();
     c.sourcePermissionManifest.activityMediaPermissions.consents = [
@@ -1026,7 +1026,7 @@ it('consumed media still requires its missing cleanup port when unused consent i
       state: 'unavailable',
       content: null,
     });
-    blocked(c, 'permission_port_missing', 'activityMediaPermissions.media');
+    blocked(c, 'unused_source', 'mediaReadFacts.metadata');
   }
 });
 it.each([
