@@ -7,6 +7,11 @@ import {
   type SuppressionRecord,
 } from './restore-suppression-records.js';
 
+import {
+  decodeSuppressionRecordColumnsV7,
+  type SuppressionRecordThroughV7,
+} from './restore-suppression-records-v7.js';
+
 // This is a local, content-free sequence envelope. It cannot replay a deletion.
 // In particular, its hash is not a remote durability acknowledgement.
 export const LOCAL_SEQUENCE_VERSION = 1;
@@ -64,7 +69,14 @@ const currentColumns = [
   ['manual_review_version_scope', 25],
   ['manual_review_version_key', 25],
 ] as const;
+const columnsV7 = [
+  ...currentColumns,
+  ['manual_review_v2_source_identity', 3802],
+  ['manual_review_v2_version_scope', 25],
+] as const;
 type Columns = readonly (readonly [string, number])[];
+const legacyProfiles: readonly Columns[] = [columns, currentColumns];
+const v7Profiles: readonly Columns[] = [columnsV7];
 
 const kinds = new Set([
   'manual_review_source_suppressed',
@@ -209,15 +221,18 @@ function tuple(reader: Reader, relationColumns: Columns): Map<string, string | n
   return values;
 }
 
-function validateRelation(reader: Reader): { id: number; columns: Columns } {
+function validateRelation(
+  reader: Reader,
+  profiles: readonly Columns[],
+): { id: number; columns: Columns } {
   const relationId = reader.uint32();
   if (reader.cstring() !== 'public' || reader.cstring() !== 'restore_suppression_event') {
     throw new Error('PGOUTPUT_UNEXPECTED_TABLE');
   }
   reader.byte(); // replica identity; publication emits only INSERT.
   const count = reader.uint16();
-  const relationColumns = count === columns.length ? columns : currentColumns;
-  if (count !== relationColumns.length) throw new Error('PGOUTPUT_SCHEMA_CHANGED');
+  const relationColumns = profiles.find((profile) => profile.length === count);
+  if (!relationColumns) throw new Error('PGOUTPUT_SCHEMA_CHANGED');
   for (const [name, oid] of relationColumns) {
     reader.byte(); // key flag
     if (reader.cstring() !== name || reader.uint32() !== oid)
@@ -234,6 +249,7 @@ function decodePgoutput<T>(
   fromLsn: string,
   project: (values: Map<string, string | null>) => T,
   id: (value: T) => string,
+  profiles: readonly Columns[] = legacyProfiles,
 ): { commitLsn: string; endLsn: string; events: T[] }[] {
   if (messages.length > MAX_PGOUTPUT_MESSAGES) throw new Error('PGOUTPUT_MESSAGES_LIMIT');
   if (messages.reduce((sum, message) => sum + message.length, 0) > MAX_PGOUTPUT_BYTES) {
@@ -258,7 +274,7 @@ function decodePgoutput<T>(
     } else if (type === 82) {
       // Relation
       if (!pending) throw new Error('PGOUTPUT_RELATION_OUTSIDE_TRANSACTION');
-      relation = validateRelation(reader);
+      relation = validateRelation(reader, profiles);
     } else if (type === 73) {
       // Insert
       if (
@@ -323,6 +339,28 @@ export function decodeSuppressionPgoutputRecords(
     fromLsn,
     validateSuppressionRecord,
     (record) => record.eventId,
+  ).map(({ commitLsn, endLsn, events }) => ({ commitLsn, endLsn, records: events }));
+}
+
+export type ReplayRecordTransactionV7 = {
+  commitLsn: string;
+  endLsn: string;
+  records: SuppressionRecordThroughV7[];
+};
+/** Explicit successor physical profile. Complete committed local diagnostics only;
+ * not an authenticated remote tail, continuity proof or restore admission. Older
+ * record versions must have NULL successor columns, as enforced by the V7 codec.
+ * Legacy envelope producers intentionally continue to use their original entry. */
+export function decodeSuppressionPgoutputRecordsV7(
+  messages: readonly Buffer[],
+  fromLsn: string,
+): ReplayRecordTransactionV7[] {
+  return decodePgoutput(
+    messages,
+    fromLsn,
+    decodeSuppressionRecordColumnsV7,
+    (record) => record.eventId,
+    v7Profiles,
   ).map(({ commitLsn, endLsn, events }) => ({ commitLsn, endLsn, records: events }));
 }
 

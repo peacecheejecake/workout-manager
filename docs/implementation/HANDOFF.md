@@ -471,3 +471,7 @@ Root lifecycle unit11/actualPG7·scopedTS/lint/format/diff·DB/roles잔존0을 �
 Record7 별도 strict 구조 codec의 unit49와 scopedstatic을 확인했다. full typed identity/namespace·legacy1..6 physical 변환을 보존하고 원 event/tail authentication으로 승격하지 않는다. SQL116/체인/목적helper는 WIP이며 public registry·pgoutput/export/restore activation은 아직 없다. 세부 증거는 [I 기록](progress/M2-02i.md)를 따른다.
 
 Consumed/semantic PG 초기8FAIL(strict envelope extra field), 수정 후7PASS/1FAIL(foreign error expectation)을 [I 기록](progress/M2-02i.md)에 보존한다. AI derived cleanup을 manual rawtext deny로 오인한 정책 결함을 발견해 purpose-specific guard/semantic projection과 SQL116을 수정 중이다. 현재 신규helper/chain/SQL116/pgoutput successor는 WIP이며 actualstore/restore/전체phase 통과가 아니다.
+
+## 목적별 사용·V7 consumer 로컬 검증 · 2026-10-07
+
+Root 신규 목적helper unit30·actualPG11·scopedTS/lint/format·DB/역할잔존0을 확인했다. AI 파생 정리와 own rawtext 수동 사용을 구분하고 exact source identity/삭제·frozen DTO를 유지한다. V7 pgoutput 신규24·기존 binary 회귀45도 통과했으나 실제 logical slot/원격 tail/archive restore는 미실행이다. [I 기록](progress/M2-02i.md)에 초기 실패와 최종 입력 SHA를 함께 보존했다. SQL116 trusted store/privacy hook 구현, 나머지 provider/course/media 실제 adapter 조사, J configured 경로 조사는 native 병렬로 이어진다. registry107·main/push0·I/J/전체 phase 미완료는 유지한다. 대회 삭제 시 승인 영양의 연결 해제 표시·재연결/재승인 전 대회 시각 사용 중단 결정을 재확인했으며 음식/수량/실제 섭취 보존은 유지한다.
