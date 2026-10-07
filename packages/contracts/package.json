@@ -249,6 +249,10 @@
       "types": "./src/nutrition-race-plan-v3.ts",
       "default": "./dist/nutrition-race-plan-v3.js"
     },
+    "./nutrition-race-plan-v4": {
+      "types": "./src/nutrition-race-plan-v4.ts",
+      "default": "./dist/nutrition-race-plan-v4.js"
+    },
     "./race-result-v2": {
       "types": "./src/race-result-v2.ts",
       "default": "./dist/race-result-v2.js"
