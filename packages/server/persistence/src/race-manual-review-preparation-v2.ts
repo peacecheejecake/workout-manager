@@ -1,3 +1,4 @@
+import { requireCurrentRaceManualReviewBindingV2In } from './race-manual-review-current-binding-v2.js';
 import { validateRaceSourceResponseBudget } from './race-plan-impact-context.js';
 import type { SourceBudget } from './race-plan-impact-nested-sources.js';
 import {
@@ -121,8 +122,19 @@ export async function prepareRaceManualReviewCompatibleV4In(
     expectedAppRevision: app.revision,
     expectedReadSetDigest: context.readSetDigest,
   });
+  const currentManualBinding = await requireCurrentRaceManualReviewBindingV2In(
+    tx,
+    {
+      athleteId: context.athleteId,
+      restoreGeneration: context.restoreGeneration,
+      event: context.event,
+      manualBasis: context.manualBasis,
+      readSetDigest: context.readSetDigest,
+    },
+    scope,
+  );
   const consumedScope = validateRaceImpactConsumedManifest(context, scope);
-  const base = { context, consumedScope, ...limitations };
+  const base = { context, consumedScope, currentManualBinding, ...limitations };
   const projection = preview.projection;
   if (projection.status !== 'projected')
     return bounded({

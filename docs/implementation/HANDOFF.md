@@ -459,3 +459,7 @@ Unplanned 원 실행 보존 후 Root unit213·scoped persistence/API TS·lint/fo
 - 현재 native 병렬은 실제 retention preparation 연결, current app/manual-policy binding 소비 연결, exact27 lifecycle parent edge binder다. 이 준비를 저장/삭제/복원·fullpermission/freshness/원자 승인 완료로 바꾸지 않는다. registry107/main/push0·I/J/phase in_progress를 유지한다.
 - iPhone 읽기 전용 조회의 첫 sandbox 실행은 CoreDeviceService 초기화 timeout으로 실패했다. sandbox 밖 재조회는 paired/OS27.0/tunnel unavailable이었다. 최초 실패의 빈 devices를 기기 부재로 해석하지 않는다. 앱 실행·설치·HealthKit 읽기·성능 측정0이며 별도 실기기 gate는 미완료다.
 - PB chip/gun·거리 비교, FUT-09 실제 원문, AWS 관리자 로그인 가능 시점을 다시 질문했다. 답변 전 기존 결정 대기를 유지한다.
+
+## Current app·retention 실제 preparation 수용 · 2026-10-07
+
+Root unit63·currentbinding/retention/consumer actualPG21·기존 preparation 회귀PG9·persistence TS/lint/format를 확인했다. 새 helper를 server preparation에서 실제 소비하고 full27 관측을 retained codec으로 연결하며 원 blocked 진단·none/not_checked/not_persisted를 유지한다. 증거/입력 SHA는 [I 기록](progress/M2-02i.md)에 기록했다. 저장·전체 permission/freshness·Evidence→Decision→Proposal·lifecycle/restore·원자승인/phase 수용은 미완료다. lifecycle binder 구현과 purpose/storage coherent 후속 설계를 native 병렬 진행한다. registry107/main/push0 및 기존 사용자 결정·외부 not_executed를 유지한다. 대회 삭제 영양은 연결 해제·재연결/재승인 전 대회 시각 사용 중단·음식/수량/실제 섭취 보존 결정을 재확인했다.
