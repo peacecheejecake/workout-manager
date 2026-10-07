@@ -1,12 +1,6 @@
 import { z } from 'zod';
-import { nutritionAnchorSchema } from './nutrition.js';
-import {
-  idSchema,
-  instantSchema,
-  localDateSchema,
-  localTimeSchema,
-  timeZoneSchema,
-} from './primitives.js';
+import { nutritionAnchorSchema, nutritionPlanItemSchema } from './nutrition.js';
+import { instantSchema, localDateSchema, localTimeSchema, timeZoneSchema } from './primitives.js';
 
 /** Contract foundation only: captured facts are not ownership, consent, freshness,
  * resolution or approval authority. Legacy bytes are not normalized into pins. */
@@ -15,7 +9,7 @@ const uuid = z
   .refine((value) => value === value.toLowerCase(), 'Expected canonical lowercase UUID');
 const eventRevision = z.number().int().min(1).max(2147483647);
 const digest = z.string().regex(/^[a-f0-9]{64}$/);
-const itemId = idSchema.max(128);
+const itemId = nutritionPlanItemSchema.shape.id;
 const maximumReferences = 5000;
 const maximumBytes = 512 * 1024;
 

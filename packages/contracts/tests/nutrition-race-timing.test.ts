@@ -367,3 +367,27 @@ describe('stored timing rosters match pins without upgrading legacy items', () =
     ).toBe(false);
   });
 });
+
+describe('timing binding uses the actual nutrition item identifier contract', () => {
+  it.each(['m'.repeat(201), '한'.repeat(201)])(
+    'preserves an existing long opaque item ID',
+    (itemId) => {
+      const input = {
+        ...roster,
+        items: [{ ...item, itemId }],
+        itemRaceTimingBindings: [{ itemId, binding: captured }],
+      };
+      expect(nutritionRaceTimingRosterSchema.parse(input)).toEqual(input);
+    },
+  );
+  it('still rejects a full timing envelope over 512 KiB', () => {
+    const itemId = 'm'.repeat(512 * 1024);
+    expect(
+      nutritionRaceTimingRosterSchema.safeParse({
+        ...roster,
+        items: [{ ...item, itemId }],
+        itemRaceTimingBindings: [{ itemId, binding: captured }],
+      }).success,
+    ).toBe(false);
+  });
+});

@@ -88,7 +88,8 @@ const planItemFields = {
   evidenceIds: uniqueIdsSchema.max(40),
   source: z.enum(['user_confirmed', 'reviewed_rule', 'draft_suggestion']),
 };
-function validatePlanItem(
+/** Shared refinements for versioned items; each caller validates its own anchor codec. */
+export function validateNutritionPlanItem(
   item: { targets: { metric: string }[]; foods: RecordedFoodPortion[]; instructions: string },
   context: z.RefinementCtx,
 ) {
@@ -109,7 +110,7 @@ function validatePlanItem(
 }
 export const nutritionPlanItemCoreSchema = z
   .strictObject(planItemFields)
-  .superRefine(validatePlanItem);
+  .superRefine(validateNutritionPlanItem);
 export type NutritionPlanItemCore = z.infer<typeof nutritionPlanItemCoreSchema>;
 
 const { planVersionId: omittedPlanVersionId, ...planItemDraftFields } = planItemFields;
@@ -117,7 +118,7 @@ void omittedPlanVersionId;
 export const nutritionPlanItemDraftSchema = z
   .strictObject({ ...planItemDraftFields, source: z.literal('user_confirmed') })
   .superRefine((item, context) => {
-    validatePlanItem(item, context);
+    validateNutritionPlanItem(item, context);
     for (const [index, target] of item.targets.entries()) {
       if (target.amount.basis !== 'user_confirmed') {
         context.addIssue({
@@ -182,6 +183,44 @@ export const nutritionPlanDraftSchema = z
   });
 export type NutritionPlanDraft = z.infer<typeof nutritionPlanDraftSchema>;
 
+/** Shared identity and envelope refinements; structural validation is not approval authority. */
+export function validateApprovedNutritionPlan(
+  plan: {
+    planId: string;
+    versionId: string;
+    version: number;
+    previousVersionId: string | null;
+    items: { id: string; planVersionId: string }[];
+  },
+  context: z.RefinementCtx,
+) {
+  validateUniqueItems(plan.items, context);
+  validatePlanSize(plan, context);
+  if (plan.planId === plan.versionId || plan.previousVersionId === plan.versionId) {
+    context.addIssue({
+      code: 'custom',
+      message: 'Aggregate and predecessor IDs must differ from the version ID',
+      path: ['versionId'],
+    });
+  }
+  if ((plan.version === 1) !== (plan.previousVersionId === null)) {
+    context.addIssue({
+      code: 'custom',
+      message: 'Only the first version may lack a predecessor',
+      path: ['previousVersionId'],
+    });
+  }
+  for (const [index, item] of plan.items.entries()) {
+    if (item.planVersionId !== plan.versionId) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Item must refer to its containing plan version',
+        path: ['items', index, 'planVersionId'],
+      });
+    }
+  }
+}
+
 /** The approved schedule is immutable. Absence from targets means unknown, never a target of zero. */
 export const nutritionPlanVersionSchema = z
   .strictObject({
@@ -194,33 +233,7 @@ export const nutritionPlanVersionSchema = z
     approvedAt: instantSchema,
     approvalId: uuidSchema,
   })
-  .superRefine((plan, context) => {
-    validateUniqueItems(plan.items, context);
-    validatePlanSize(plan, context);
-    if (plan.planId === plan.versionId || plan.previousVersionId === plan.versionId) {
-      context.addIssue({
-        code: 'custom',
-        message: 'Aggregate and predecessor IDs must differ from the version ID',
-        path: ['versionId'],
-      });
-    }
-    if ((plan.version === 1) !== (plan.previousVersionId === null)) {
-      context.addIssue({
-        code: 'custom',
-        message: 'Only the first version may lack a predecessor',
-        path: ['previousVersionId'],
-      });
-    }
-    for (const [index, item] of plan.items.entries()) {
-      if (item.planVersionId !== plan.versionId) {
-        context.addIssue({
-          code: 'custom',
-          message: 'Item must refer to its containing plan version',
-          path: ['items', index, 'planVersionId'],
-        });
-      }
-    }
-  });
+  .superRefine(validateApprovedNutritionPlan);
 export type NutritionPlanVersion = z.infer<typeof nutritionPlanVersionSchema>;
 
 /** The server assigns plan/version IDs and approval metadata after checking the expected head. */
