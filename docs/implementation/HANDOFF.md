@@ -357,3 +357,9 @@ Native 병렬 작업은 SQL108의 exact copied-channel 처리, immutable V2 pin�
 
 - phase/m2-02 구현 HEAD `0d4b59c6`에 exact own text resource 본문·version/hash/문단·current access tuple 및 workout/full consumed 검증을 커밋했다. Root unit522/522·actual PG77/77·persistence/API TS·lint/format·diff·전용DB/roles 잔존0이며 [I progress](progress/M2-02i.md)의 실패·한계를 따른다. 텍스트 현재/역사 원본을 유지하고 공개 삭제 후 소비를 차단한다. file/URL은 합성metadata producer만 검증했고 실제bytes/fetch0, 미디어 포트·전체 freshness/atomic 승인·저장/lifecycle/restore·운영/기기·독립phase review는 미완료다.
 - 다음 병렬 작업은 actual calendar projector에 근거한 routine schedule current/historical source companion, normal107 public producer PG 준비, Root actual calendar intent capture seam 조사다. Root가 공유 context/complete/graph를 통합하며 runnable I/J/phase 상태는 in_progress다. registry107/main `1d557358`/push0 및 기존 사용자 결정 대기는 유지한다.
+
+## calendar intent·routine source checkpoint · 2026-10-07
+
+- phase/m2-02 구현 HEAD `27583d6f`에 actual calendar intent/collector selection과 frozen routine schedule current/history source 검증을 커밋했다. Root 단위577/577·actual context67+preview16=83/83, 별도 unchanged helper7/7 및 TS/API TS/lint 통과, 테스트DB/roles 잔존0이다. 초기PG88/90·TS 오류·문서 format 실패는 보존하고 수정 내용을 [I progress](progress/M2-02i.md)에 구분한다. 일정/계획은 hypothetical preview로 읽으며 직접 변경하지 않는다.
+- 현재 native 병렬 작업은 미디어 current owned descriptor/immutable ledger/narrow cleanup correspondence helper와 정상 public producer DB 시험 준비다. Root가 shared capture/consumer·graph를 통합한다. source fact는 binary 존재·외부 삭제·처리 동의·승인 권한을 증명하지 않는다. V4 candidate codec/storage/lifecycle successor 선결도 읽기 전용 조사 중이다.
+- registry107, full missing5/none/not_checked 및 I/J/phase in_progress를 유지한다. 대회 삭제 후 영양 연결 해제와 재연결·재승인까지 대회 시각 사용 중단 결정은 전체 writer/restore 수용까지 진행 중이다. main `1d557358`/push0, 독립 phase 검토·운영/실기기 gate 및 기존 사용자 결정 대기는 변경 없다.
