@@ -400,6 +400,18 @@ export async function grantRaces(connectionString: string, runtimeRole: string):
     await pool.query(`GRANT SELECT,INSERT ON outbox TO "${runtimeRole}"`);
     // enqueue replays the exact event through ON CONFLICT without granting lease writes.
     await pool.query(`GRANT UPDATE(idempotency_key) ON outbox TO "${runtimeRole}"`);
+    // SQL109 exposes a boolean for one owned proof source; its private ledger
+    // remains owner-only. Historical schemas have no such capability.
+    const proofSuppression = await pool.query(
+      "SELECT to_regprocedure('public.race_result_proof_source_suppressed(text,text,uuid)') IS NOT NULL AS available",
+    );
+    const capability = proofSuppression.rows[0]?.['available'];
+    if (proofSuppression.rows.length !== 1 || typeof capability !== 'boolean')
+      throw new Error('INVALID_RACE_PROOF_SUPPRESSION_CAPABILITY');
+    if (capability)
+      await pool.query(
+        `GRANT EXECUTE ON FUNCTION public.race_result_proof_source_suppressed(text,text,uuid) TO "${runtimeRole}"`,
+      );
     // Historical upgrade tests may stop at the race ledger migration.
     const deletion = await pool.query('SELECT 1 FROM schema_migrations WHERE version=99');
     if (deletion.rowCount)
