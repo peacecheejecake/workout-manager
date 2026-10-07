@@ -36,3 +36,13 @@
 실제 R1 frozen install·root tsc·관련 unit 14파일332개는 exit0이지만 consumer typecheck는 duplicate import로 exit2, format은 exit1이었다. 실패 원본을 보존했다. 수정 후 R2 frozen install, 강제 consumer typecheck 36/36(cache0), root tsc, 동일 unit 14파일332/332(skip0), 변경 TS/JS 7파일 ESLint, 전체 format 및 diff check가 모두 exit0이었다. Root가 원본 logs/results와 전후 tracked SHA 변화0을 대조했다. R2 private evidence: `/private/tmp/wm-m202-merge-bounded-r2-2fa39b38`; R1: `/private/tmp/wm-m202-merge-bounded-4abcf3a5`.
 
 이 통합 변경은 기존 검토된 두 구현을 합친 경계의 좁은 검증이다. 새 PG·build·browser·외부 provider·실기기·전체 M2-02 phase gate는 실행하지 않았으며 이전 실행을 새 HEAD 전체 수용으로 바꾸지 않는다. 자체 미커밋 PB 화면/진행 문서/fixture 5파일은 정확한 stash와 private SHA 백업으로 별도 보존한 뒤 통합 커밋 후 복원한다. I/J는 여전히 in_progress이고 공식 확인 producer/거리·시간 기준 및 전체 날짜 영향 승인은 미완료다.
+
+## 현재 후속 범위와 결정 · 2026-10-07
+
+위 HEAD와 정책은 각 당시 고정 기록이다. 최신 phase 구현 입력은 `c78b4e3e`이며 main은 `1d55735865c827f3870e6fa4b2effd418ed63677` 그대로이고 clean이다. Root 후속 phase 커밋 `6dcf9c39`(SQL110 lineage/retained reader), `74f1b23a`(legacy race read/PB 정책 안내), `57baa82e`(V4 standalone writer/V5 운영 시각 조회), `c78b4e3e`(명시 export35)를 기록했다. 실제 수용과 실패·skip·external NOT_EXECUTED는 I/J progress에 각각 보존한다.
+
+최신 사용자 결정은 직접 입력한 대회 기록도 PB에 인정하며 링크·인증 자료 첨부 마크와 진위 확인 완료를 구분하는 것이다. 대회 삭제 후 음식·수량·실제 섭취를 보존하고 연결 해제 상태로 표시하며, 명시 재연결·재승인 전에는 대회 시각 사용을 중단한다. chip/gun·거리 분류 정책 질문은 답변 대기다.
+
+후속 실제 PG는 lineage15/15·standalone writer11/11·legacy 운영 조회8/8·legacy race read6/6·export35 3/3이며 겹치는 집중 단위 수를 총수로 합산하지 않는다. PB 안내 identity2/2는 실제 합성 API/DB, 운영 안내 identity2/2는 실제 인증·계정 경로와 strictV5 integratedGET mock을 구분한다. 전체 race-date atomic 승인·private authenticated archive/restore·정식 migration registry/owner retarget·공개 V2/V4 transport/첨부·재연결/PB 화면은 완료되지 않았다. I/J 및 부모 phase in_progress, 전체 gate·독립 phase 검토·main 병합·push는 미실행이다.
+
+남은 working tree는 AI identity fixture의 외부 일회용PG 연결/수명 관리 후속 및 compatible preview PG 시험 준비다. 이들은 이 상태 기록 커밋에 포함하지 않는다. 별도 stash `ae34d998accb9819d6d9d1e929d9ce620fd55598`도 보존한다.
