@@ -570,7 +570,7 @@ it('configuration replacement cannot repin an existing factory to attacker ident
   expect(v.withVerifiedCurrentFamilyArtifact(h, (copy) => copy.source.generationId)).toBe(
     original.source.generationId,
   );
-  expect(calls).toBe(2);
+  expect(calls).toBe(3);
 });
 it('the pinned original resolver remains able to revoke its configured version per preparation', () => {
   const b = body();
@@ -592,4 +592,82 @@ it('the pinned original resolver remains able to revoke its configured version p
   expect(() => v.prepareVerifiedCurrentFamilyArtifact(signed)).toThrow(
     'INVALID_CURRENT_FAMILY_ARTIFACT',
   );
+});
+
+it('revocation after preparation rejects existing child handle before callback execution', () => {
+  const b = body();
+  let revoked = false,
+    callbacks = 0;
+  const v = createCurrentFamilyArtifactVerifier({
+    expected: expected(b),
+    resolveSourceKey: () => {
+      if (revoked) throw new Error('SOURCE_KEY_REVOKED');
+      return key;
+    },
+  });
+  const handle = v.prepareVerifiedCurrentFamilyArtifact(signCurrentFamilyArtifact(b, key));
+  revoked = true;
+  expect(() => v.withVerifiedCurrentFamilyArtifact(handle, () => callbacks++)).toThrow(
+    'INVALID_CURRENT_FAMILY_ARTIFACT',
+  );
+  expect(callbacks).toBe(0);
+});
+it('key replacement at the same configured version rejects existing handle before callback', () => {
+  const b = body();
+  let current = key,
+    callbacks = 0;
+  const v = createCurrentFamilyArtifactVerifier({
+    expected: expected(b),
+    resolveSourceKey: () => current,
+  });
+  const handle = v.prepareVerifiedCurrentFamilyArtifact(signCurrentFamilyArtifact(b, key));
+  current = otherKey;
+  expect(() => v.withVerifiedCurrentFamilyArtifact(handle, () => callbacks++)).toThrow(
+    'INVALID_CURRENT_FAMILY_ARTIFACT',
+  );
+  expect(callbacks).toBe(0);
+});
+it('mutation of the resolver returned key buffer cannot repin previously verified key material', () => {
+  const b = body(),
+    returned = Buffer.from(key);
+  let callbacks = 0;
+  const v = createCurrentFamilyArtifactVerifier({
+    expected: expected(b),
+    resolveSourceKey: () => returned,
+  });
+  const handle = v.prepareVerifiedCurrentFamilyArtifact(signCurrentFamilyArtifact(b, key));
+  returned.fill(2);
+  expect(() => v.withVerifiedCurrentFamilyArtifact(handle, () => callbacks++)).toThrow(
+    'INVALID_CURRENT_FAMILY_ARTIFACT',
+  );
+  expect(callbacks).toBe(0);
+});
+it('a detached returned key buffer mutation cannot change a handle verified from copied key bytes', () => {
+  const b = body(),
+    detached = Buffer.from(key);
+  let calls = 0;
+  const v = createCurrentFamilyArtifactVerifier({
+    expected: expected(b),
+    resolveSourceKey: () => (++calls === 1 ? detached : Buffer.from(key)),
+  });
+  const handle = v.prepareVerifiedCurrentFamilyArtifact(signCurrentFamilyArtifact(b, key));
+  detached.fill(2);
+  expect(v.withVerifiedCurrentFamilyArtifact(handle, (copy) => copy.rowsSha256)).toBe(b.rowsSha256);
+  expect(v.withVerifiedCurrentFamilyArtifact(handle, (copy) => copy.rowsSha256)).toBe(b.rowsSha256);
+  expect(calls).toBe(3);
+});
+it('invalid current key length rejects an existing handle without executing the callback', () => {
+  const b = body();
+  let current = key,
+    callbacks = 0;
+  const v = createCurrentFamilyArtifactVerifier({
+    expected: expected(b),
+    resolveSourceKey: () => current,
+  });
+  const handle = v.prepareVerifiedCurrentFamilyArtifact(signCurrentFamilyArtifact(b, key));
+  current = Buffer.alloc(31);
+  expect(() => v.withVerifiedCurrentFamilyArtifact(handle, () => callbacks++)).toThrow(
+    'INVALID_CURRENT_FAMILY_ARTIFACT',
+  );
+  expect(callbacks).toBe(0);
 });

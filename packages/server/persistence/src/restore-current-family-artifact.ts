@@ -524,9 +524,21 @@ export function createCurrentFamilyArtifactVerifier(configuration: {
   const expected = configuredIdentitySchema.parse(configuration.expected);
   const pinned = canonical(expected);
   // Pin the configured port identity, while the original resolver can still
-  // enforce key revocation/version policy on each preparation.
+  // enforce key revocation/version policy on preparation and callback use.
   const resolveSourceKey = configuration.resolveSourceKey;
-  const verified = new WeakMap<VerifiedCurrentFamilyChildBytes, CurrentFamilyArtifactBody>();
+  const verified = new WeakMap<
+    VerifiedCurrentFamilyChildBytes,
+    { body: CurrentFamilyArtifactBody; keyDigest: string }
+  >();
+  function currentSourceKey(): Uint8Array {
+    const value = resolveSourceKey(
+      expected.identity.sourceKeyId,
+      expected.identity.sourceKeyVersion,
+    );
+    if (!(value instanceof Uint8Array) || value.byteLength !== 32) reject();
+    // A resolver-owned mutable buffer is never retained as handle evidence.
+    return Uint8Array.from(value);
+  }
   function prepareVerifiedCurrentFamilyArtifact(
     bytes: Uint8Array,
   ): VerifiedCurrentFamilyChildBytes {
@@ -551,11 +563,7 @@ export function createCurrentFamilyArtifactVerifier(configuration: {
       void ___;
       void ____;
       if (canonical(identity) !== pinned) reject();
-      const key = resolveSourceKey(
-        expected.identity.sourceKeyId,
-        expected.identity.sourceKeyVersion,
-      );
-      if (!(key instanceof Uint8Array) || key.byteLength !== 32) reject();
+      const key = currentSourceKey();
       const wanted = createHmac('sha256', key).update(domain).update(canonical(body)).digest();
       if (!timingSafeEqual(wanted, Buffer.from(wrapper.hmacSha256, 'hex'))) reject();
       const handle: VerifiedCurrentFamilyChildBytes = Object.freeze({
@@ -565,7 +573,10 @@ export function createCurrentFamilyArtifactVerifier(configuration: {
         authority: 'none',
         admissionAllowed: false,
       });
-      verified.set(handle, body);
+      verified.set(handle, {
+        body,
+        keyDigest: createHash('sha256').update(key).digest('hex'),
+      });
       return handle;
     } catch {
       reject();
@@ -586,10 +597,17 @@ export function createCurrentFamilyArtifactVerifier(configuration: {
       }>,
     ) => T,
   ): T {
-    const body = verified.get(handle);
-    if (!body) reject();
+    const state = verified.get(handle);
+    if (!state) reject();
+    let key: Uint8Array;
+    try {
+      key = currentSourceKey();
+    } catch {
+      reject();
+    }
+    if (createHash('sha256').update(key).digest('hex') !== state.keyDigest) reject();
     // Hand a fresh decoded copy so callback mutation cannot alter factory evidence.
-    const copy = validateBody(JSON.parse(canonical(body)));
+    const copy = validateBody(JSON.parse(canonical(state.body)));
     return consume(
       copy,
       Object.freeze({
