@@ -160,3 +160,63 @@ it('Garmin retained metadata read is separate from pending consumed purpose/stor
     'garmin_policy_adapter_unavailable',
   );
 });
+
+it('Garmin core observations require exact app admission and cannot claim collection or provider authenticity', () => {
+  const sourcePurpose = {
+    adapterVersion: 2,
+    kind: 'own_garmin_current_core_activity',
+    activityId: 'a0000000-0000-4000-8000-000000000001',
+    canonicalRevision: 1,
+    source: { kind: 'fit', sourceId: 'Opaque-식-A', revision: 1, contentHash: 'a'.repeat(64) },
+    originalDigest: 'b'.repeat(64),
+    overlayDigest: null,
+    overlayRevision: null,
+    collectionPermission: 'not_captured',
+    collection: {
+      garminActivityId: '12345',
+      provider: 'garmin-connect-unofficial',
+      official: false,
+      outcome: 'imported',
+      collectedAt: '2026-10-07T00:00:00Z',
+    },
+    appAdmission: { kind: 'app', granted: true, revision: 3 },
+  };
+  const uses = {
+    purpose: 'manual_race_date_change',
+    facts: [
+      {
+        identity: {
+          kind: 'activity-canonical-values',
+          sourceId: sourcePurpose.activityId,
+          revision: 1,
+        },
+        use: 'core_manual',
+        reason: null,
+        sourceAuthentication: 'unverified',
+        sourcePurpose,
+        resourceAccess: null,
+      },
+    ],
+    authority: 'none',
+    permissionAuthority: 'none',
+    storage: 'not_persisted',
+    freshness: 'not_checked',
+    admissionAllowed: false,
+    approvalAllowed: false,
+  };
+  expect(raceManualConsumedUseFactsV2Schema.safeParse(uses).success).toBe(true);
+  for (const patch of [
+    { appAdmission: { kind: 'app', granted: false, revision: 3 } },
+    { collectionPermission: 'granted' },
+    { providerConsent: { granted: true } },
+    { source: { ...sourcePurpose.source, kind: 'garmin' } },
+    { collection: { ...sourcePurpose.collection, official: true } },
+  ]) {
+    expect(
+      raceManualConsumedUseFactsV2Schema.safeParse({
+        ...uses,
+        facts: [{ ...uses.facts[0], sourcePurpose: { ...sourcePurpose, ...patch } }],
+      }).success,
+    ).toBe(false);
+  }
+});

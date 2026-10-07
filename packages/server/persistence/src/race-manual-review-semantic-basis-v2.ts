@@ -54,7 +54,10 @@ function boundedResult<T>(result: T): T {
 /** Manual-purpose dependency projection only. AI review/coach/share cleanup metadata
  * remains in observed uses; it is not raw-text withdrawal or a permission seal.
  * Media purpose carries actual individual consent, finalized descriptor revision
- * and deletion inventory; these are relevant sources, never AI coach-use flags. */
+ * and deletion inventory; these are relevant sources, never AI coach-use flags.
+ * Garmin core use preserves actual appAdmission revision and current source/ledger
+ * tuples. collectionPermission remains not_captured: core use grants no collection
+ * or historical raw-source authority and observes no unused provider-consent head. */
 export const raceManualPurposeUseProjectionV2Schema = raceManualConsumedUseFactsV2Schema.extend({
   purposeProjectionVersion: z.literal(2),
   facts: z

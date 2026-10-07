@@ -365,3 +365,80 @@ it.each(['consent', 'claim', 'source', 'canonical'] as const)(
     });
   },
 );
+
+function garminCorePurposeBasis() {
+  const c = basis();
+  c.consumedUses.facts.push({
+    identity: { kind: 'activity-canonical-values', sourceId: eventId, revision: 1 },
+    use: 'core_manual',
+    reason: null,
+    resourceSource: null,
+    sourceAuthentication: 'unverified',
+    sourcePurpose: {
+      adapterVersion: 2,
+      kind: 'own_garmin_current_core_activity',
+      activityId: eventId,
+      canonicalRevision: 1,
+      source: { kind: 'fit', sourceId: 'Opaque-식-A', revision: 1, contentHash: 'a'.repeat(64) },
+      originalDigest: 'b'.repeat(64),
+      overlayDigest: null,
+      overlayRevision: null,
+      collectionPermission: 'not_captured',
+      collection: {
+        garminActivityId: '12345',
+        provider: 'garmin-connect-unofficial',
+        official: false,
+        outcome: 'imported',
+        collectedAt: '2026-10-07T00:00:00Z',
+      },
+      appAdmission: { kind: 'app', granted: true, revision: 1 },
+    },
+  });
+  return c;
+}
+it.each(['app', 'source', 'canonical', 'ledger', 'original', 'opaque'] as const)(
+  'Garmin core %s consumed observation drift is relevant, not collection authority',
+  (field) => {
+    const before = garminCorePurposeBasis(),
+      after = structuredClone(before),
+      p = after.consumedUses.facts[0]?.sourcePurpose;
+    if (p?.kind !== 'own_garmin_current_core_activity') throw Error('fixture');
+    if (field === 'app') p.appAdmission.revision++;
+    else if (field === 'source') p.source.revision++;
+    else if (field === 'canonical') p.canonicalRevision++;
+    else if (field === 'ledger') p.collection.garminActivityId = '54321';
+    else if (field === 'original') p.originalDigest = 'c'.repeat(64);
+    else p.source.sourceId = 'opaque-식-A';
+    expect(compareRaceManualSemanticBasisV2(before, after)).toMatchObject({
+      status: 'blocked',
+      reason: 'semantic_basis_changed',
+      authority: 'none',
+      approvalAllowed: false,
+    });
+  },
+);
+it('Garmin core purpose projection preserves actual app revision, strict unknown fields and unverified source scope', () => {
+  const c = garminCorePurposeBasis();
+  expect(compareRaceManualSemanticBasisV2(c, c)).toMatchObject({
+    status: 'matched_dependencies',
+    authority: 'none',
+  });
+  const f = c.consumedUses.facts[0];
+  expect(
+    raceManualSemanticBasisV2Schema.safeParse({
+      ...c,
+      consumedUses: {
+        ...c.consumedUses,
+        facts: [
+          { ...f, sourcePurpose: { ...f?.sourcePurpose, providerConsent: { granted: true } } },
+        ],
+      },
+    }).success,
+  ).toBe(false);
+  expect(
+    raceManualSemanticBasisV2Schema.safeParse({
+      ...c,
+      consumedUses: { ...c.consumedUses, facts: [{ ...f, sourceAuthentication: 'verified' }] },
+    }).success,
+  ).toBe(false);
+});

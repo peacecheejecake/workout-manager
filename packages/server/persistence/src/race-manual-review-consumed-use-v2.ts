@@ -1,4 +1,9 @@
 import {
+  captureRaceManualGarminPurposeV2In,
+  raceManualGarminCorePurposeObservationV2Schema,
+  raceManualGarminPurposeReasonV2Schema,
+} from './race-manual-review-garmin-purpose-v2.js';
+import {
   captureRaceManualHealthKitPurposeV2In,
   raceManualHealthKitPurposeObservationV2Schema,
   raceManualHealthKitPurposeReasonV2Schema,
@@ -33,6 +38,7 @@ const identity = raceManualReviewFullCopiedInventoryV2Schema.out.shape.refs.elem
 export const raceManualConsumedUseReasonV2Schema = z.enum([
   ...raceManualMediaPurposeReasonV2Schema.options,
   ...raceManualHealthKitPurposeReasonV2Schema.options,
+  ...raceManualGarminPurposeReasonV2Schema.options,
   'preparation_blocked',
   'source_unavailable',
   'source_tuple_mismatch',
@@ -65,6 +71,7 @@ export const raceManualConsumedUseFactsV2Schema = z.strictObject({
             raceManualSourcePurposeObservationV2Schema,
             raceManualMediaPurposeObservationV2Schema,
             raceManualHealthKitPurposeObservationV2Schema,
+            raceManualGarminCorePurposeObservationV2Schema,
           ])
           .nullable(),
         resourceAccess: z
@@ -258,10 +265,17 @@ export async function prepareRaceManualConsumedUseV2In(
             detail: z.unknown().nullable(),
           })
           .parse(canonical.content);
+        // Only the actual tenant-owned lineage captured in this transaction chooses
+        // Garmin. FIT/provider strings and supplied observations are not credentials.
+        const attributed = garminSources.has(
+          JSON.stringify([activity.source.kind, activity.source.sourceId]),
+        );
         const observed = await (
           activity.source.kind === 'healthkit'
             ? captureRaceManualHealthKitPurposeV2In
-            : captureRaceManualLocalActivityPurposeV2In
+            : attributed
+              ? captureRaceManualGarminPurposeV2In
+              : captureRaceManualLocalActivityPurposeV2In
         )(
           tx,
           {

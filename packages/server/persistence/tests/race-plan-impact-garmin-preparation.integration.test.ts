@@ -487,10 +487,30 @@ it('actual public collected FIT context and compatible preparation consume a dis
   const use = await inSnapshot(x.f.athlete, (tx) =>
     prepareRaceManualConsumedUseV2In(tx, x.f.intent, { bytes: 0n, sources: 0 }),
   );
-  expect(use.status).toBe('blocked');
-  if (use.status !== 'blocked') throw Error('Expected pending source-purpose closure');
-  if (!('uses' in use)) throw Error(JSON.stringify({ status: use.status, reason: use.reason }));
-  expect(use.uses.facts.some((f) => f.reason === 'garmin_policy_adapter_unavailable')).toBe(true);
+  expect(use.status).toBe('observed_manual_use');
+  if (use.status !== 'observed_manual_use') throw Error('Expected owned core processing');
+  expect(use).toMatchObject({
+    authority: 'none',
+    permissionAuthority: 'none',
+    approvalAllowed: false,
+    admissionAllowed: false,
+  });
+  const garmin = use.uses.facts.filter(
+    (f) => f.sourcePurpose?.kind === 'own_garmin_current_core_activity',
+  );
+  expect(garmin).toHaveLength(2);
+  for (const fact of garmin)
+    expect(fact).toMatchObject({
+      reason: null,
+      sourceAuthentication: 'unverified',
+      sourcePurpose: {
+        activityId: x.current.id,
+        source: x.source,
+        appAdmission: { kind: 'app', granted: true, revision: 1 },
+        collectionPermission: 'not_captured',
+      },
+    });
+  // Actual core-purpose observation is not final SQL storage/approval authority.
 });
 it('unattributed FIT stays local and foreign owned capture never acquires another tenant Garmin facts', async () => {
   const x = await collected(false),
