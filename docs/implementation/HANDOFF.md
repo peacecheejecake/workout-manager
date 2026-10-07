@@ -318,3 +318,9 @@ M2-01k-v-a~f의 각 로컬 구현·수용이 완료됐다. Root 통합 화면RTL
 - phase/m2-02의 루틴·회복 export34는 `fc99ff6a`, 공통 영양 계산 추출은 `96aa39a3`로 커밋했다. [L](progress/M2-02l.md)과 [I](progress/M2-02i.md)의 실제 수용·한계를 따른다. main은 `1d557358` clean이며 새 phase 병합·push는 하지 않았다.
 - [I의 운영 조회 V5](progress/M2-02i.md)는 계약→한 snapshot reader→API→실제 planner 패널을 미커밋 구현했다. Root unit191, 강제 consumer TS36/cached0, 루트 TS·contracts·Next/Vite build·변경 lint/format은 실제 통과했다. 실제 PG/browser는 NOT_EXECUTED, public V2 writer·영구 disconnect·명시 재연결/재승인·copied-body lifecycle·historical reader·전체 atomic 승인은 미완료다. 기존 source/history/export/restore를 로컬 mock으로 수용하지 않는다.
 - [J](progress/M2-02j.md)의 직접 입력 PB 안내·링크 첨부 표시도 미커밋이며 PB 계산·manual 첨부 저장은 미완료다. chip/gun·거리 분류 답변과 현재 미연결32개 shared-memory 정리 승인을 기다린다. 앞선31개 정리 승인은 재사용하지 않는다. 승인이 오면 실제 자원 상태를 재확인하고 PG/browser 검증을 재개한다.
+
+### 실제 DB 검증 차단 해소와 병렬 후속 · 2026-10-07
+
+Root는 설치된 PostgreSQL17.6 Docker 이미지의 localhost 전용·tmpfs·host-volume 미연결 일회용 서비스에서 V5 실제 SQL/RLS/cap/snapshot **8/8**을 확인했다. 입력268개 변화0, suite DB/role 각각0이며 [I의 최신 기록](progress/M2-02i.md)을 따른다. macOS IPC 삭제0이다. 앞선32개 정리 승인 대기는 이 실제 DB 시험을 더 이상 차단하지 않는다. 실제 browser는 아직 미실행이며 canonical identity fixture가 이 Docker 경로를 쓰도록 별도 opt-in 준비 중이다. 기본 local fixture·보안 gate는 유지한다.
+
+V3 disconnected 계약과 계산은 V1/V2 strict 의미를 유지하면서 새 상태를 표현한다. Root 계약55시험 및 actor helper79시험, contracts build/persistence TS를 확인했지만 authoritative marker·물리 삭제·API/current/history·receipt/export/restore·명시 재연결/재승인은 계속 구현 중이다. 번호108의 신규 storage migration, V3 영양 조회 API, 외부 일회용 PG17 identity fixture를 native agent별 분리 소유 범위로 병렬 진행한다. 미등록 migration 초안이나 합성 계약을 실제 privacy/승인/출시 통과로 표시하지 않는다. main은 `1d557358` clean으로 재확인했고 병합·push0이다.
