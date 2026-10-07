@@ -494,11 +494,15 @@ function validateBody(raw: unknown): CurrentFamilyArtifactBody {
   // checks require a typed SQL stage and independently authenticated parent family.
   return body;
 }
-export function currentFamilyRowsSha256(raw: unknown): string {
+/** Structural physical parsing only; no source, census, or admission authority. */
+export function parseCurrentFamilyPhysicalRows(raw: unknown): CurrentFamilyTypedRow[] {
   plain(raw, CURRENT_FAMILY_MAX_TOTAL_BYTES);
   const parsed = z.array(rowSchema).min(1).max(5000).safeParse(raw);
   if (!parsed.success || canonical(parsed.data) !== canonical(raw)) reject();
-  return checksum(parsed.data);
+  return parsed.data;
+}
+export function currentFamilyRowsSha256(raw: unknown): string {
+  return checksum(parseCurrentFamilyPhysicalRows(raw));
 }
 /** Producer encoding, not verification. Keys are configured independently of bytes. */
 export function signCurrentFamilyArtifact(raw: unknown, key: Uint8Array): Uint8Array {

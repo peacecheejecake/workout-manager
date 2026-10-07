@@ -1872,6 +1872,10 @@ function validateRows(raw: unknown): CurrentParentTypedRow[] {
   }
   return parsed.data;
 }
+/** Structural physical parsing only; no source, census, or admission authority. */
+export function parseCurrentParentPhysicalRows(raw: unknown): CurrentParentTypedRow[] {
+  return validateRows(raw);
+}
 export function currentParentRowsSha256(raw: unknown): string {
   return checksum(validateRows(raw));
 }
