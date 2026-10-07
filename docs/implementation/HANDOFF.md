@@ -312,3 +312,9 @@ M2-01k-v-a~f의 각 로컬 구현·수용이 완료됐다. Root 통합 화면RTL
 
 - 앞선 “공식 확인된 대회 기록만 PB” 결정은 새 사용자 답변으로 대체한다. 직접 입력한 대회 기록도 PB에 인정한다. 링크나 인증 첨부가 있으면 인증 마크를 제공한다. 첨부 존재와 실제 진위 검토 완료는 구분하며, 마크가 서버·공급자 검토 증거를 만들어내지는 않는다. 기기 추정 split의 대회 기록 자동 승격은 허용하지 않았다. chip/gun 분리와 종목별 거리 분류는 제안에 대한 명시 답변이 없어 아직 미확정이다. M2-02j의 기존 수용 기록은 당시 입력의 역사로 보존하고 새 정책 구현·검증을 별도로 수행한다.
 - 대회를 삭제하면 대회 시각을 바탕으로 이미 승인된 영양 일정은 연결 해제로 표시한다. 음식·수량·실제 섭취 기록은 보존하며 재연결·재승인 전까지 그 시각 사용을 중단한다. M2-02i의 versioned writer/read projection·freshness·원자적 승인·삭제 갱신 수용에 연결한다. 이 결정 기록만으로 제품 동작을 완료 처리하지 않는다.
+
+## 로컬 M2-02 후속 최신 상태 · 2026-10-07
+
+- phase/m2-02의 루틴·회복 export34는 `fc99ff6a`, 공통 영양 계산 추출은 `96aa39a3`로 커밋했다. [L](progress/M2-02l.md)과 [I](progress/M2-02i.md)의 실제 수용·한계를 따른다. main은 `1d557358` clean이며 새 phase 병합·push는 하지 않았다.
+- [I의 운영 조회 V5](progress/M2-02i.md)는 계약→한 snapshot reader→API→실제 planner 패널을 미커밋 구현했다. Root unit191, 강제 consumer TS36/cached0, 루트 TS·contracts·Next/Vite build·변경 lint/format은 실제 통과했다. 실제 PG/browser는 NOT_EXECUTED, public V2 writer·영구 disconnect·명시 재연결/재승인·copied-body lifecycle·historical reader·전체 atomic 승인은 미완료다. 기존 source/history/export/restore를 로컬 mock으로 수용하지 않는다.
+- [J](progress/M2-02j.md)의 직접 입력 PB 안내·링크 첨부 표시도 미커밋이며 PB 계산·manual 첨부 저장은 미완료다. chip/gun·거리 분류 답변과 현재 미연결32개 shared-memory 정리 승인을 기다린다. 앞선31개 정리 승인은 재사용하지 않는다. 승인이 오면 실제 자원 상태를 재확인하고 PG/browser 검증을 재개한다.
