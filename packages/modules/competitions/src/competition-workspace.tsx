@@ -28,6 +28,12 @@ import {
   type Draft,
   type Field,
 } from './race-forms';
+import {
+  calculateRacePersonalBests,
+  type RacePersonalBestPolicy,
+  type RacePersonalBestExclusion,
+} from './race-personal-bests';
+import type { RaceResult } from '@workout/contracts/races';
 import styles from './competitions.module.css';
 
 export type CompetitionSection = 'events' | 'results' | 'training-bests';
@@ -130,8 +136,8 @@ function WorkspaceContent(props: CompetitionWorkspaceProps & { athleteId: string
           직접 입력한 대회 기록도 PB 인정 대상입니다. 링크나 인증 자료가 첨부되면 첨부 마크를
           표시하며, 첨부만으로 진위 확인 완료를 뜻하지 않습니다. 기기 추정 split은 자동으로 PB에
           포함하지 않습니다. 원기록은 유지합니다. 현재 목록은 저장 ID 순서이며 PB 순위가 아닙니다.
-          최고 기록 계산과 비교는 아직 제공되지 않습니다. Chip/Gun 및 거리별 비교 기준은 아직
-          확정되지 않았습니다.
+          아래에서 비교 기준을 직접 선택해 PB를 계산할 수 있습니다. Chip/Gun 및 거리별 기본 비교
+          기준은 아직 확정되지 않았습니다.
         </p>
         <p>
           대회 날짜 변경의 연결 Plan 영향 미리보기와 별도 승인은 아직 제공되지 않습니다. 저장은
@@ -263,7 +269,9 @@ function WorkspaceContent(props: CompetitionWorkspaceProps & { athleteId: string
             </p>
           </>
         )}
-      />
+      >
+        {({ records, state }) => <PersonalBestComparison records={records} state={state} />}
+      </FamilyPanel>
       <FamilyPanel
         display={
           props.section === undefined || props.section === 'training-bests' ? 'active' : 'inactive'
@@ -348,6 +356,7 @@ function FamilyPanel<R extends RecordHead, V>({
   fields,
   parse,
   summary,
+  children,
 }: {
   display: 'active' | 'inactive';
   title: string;
@@ -359,6 +368,10 @@ function FamilyPanel<R extends RecordHead, V>({
   fields: (draft: Draft) => readonly Field[];
   parse: (draft: Draft) => V;
   summary: (record: R) => ReactNode;
+  children?: (data: {
+    records: readonly R[];
+    state: 'pending' | 'error' | 'partial' | 'complete';
+  }) => ReactNode;
 }) {
   const queryClient = useQueryClient();
   const queryKey = ['competitions', ...scope, family];
@@ -432,9 +445,17 @@ function FamilyPanel<R extends RecordHead, V>({
     }
   }
   const records = listing.data?.pages.flatMap((page) => page.items) ?? [];
+  const listingState = listing.isError
+    ? 'error'
+    : listing.isPending || listing.isFetching
+      ? 'pending'
+      : listing.hasNextPage
+        ? 'partial'
+        : 'complete';
   return (
     <section className={styles.panel} aria-label={title} hidden={display === 'inactive'}>
       <h2>{title}</h2>
+      {children?.({ records, state: listingState })}
       <div className={styles.actions}>
         <button
           type="button"
@@ -572,6 +593,191 @@ function FamilyPanel<R extends RecordHead, V>({
             void queryClient.resetQueries({ queryKey });
           }}
         />
+      ) : null}
+    </section>
+  );
+}
+const pbExclusions: Record<RacePersonalBestExclusion, string> = {
+  device_source: '기기 추정 출처',
+  outside_period: '비교 기간 밖',
+  after_cutoff: '기준일 이후',
+  distance_unknown: '공식 거리 미상',
+  distance_not_standard: '선택한 표준 종목 거리 아님',
+  time_unknown: '시간 미상',
+  time_zero: '0초 기록',
+};
+/** Consumes the panel's existing query pages. Only comparison inputs are local;
+ * server records and derived PB results are never copied into private state. */
+function PersonalBestComparison({
+  records,
+  state,
+}: {
+  records: readonly RaceResult[];
+  state: 'pending' | 'error' | 'partial' | 'complete';
+}) {
+  const uid = useId();
+  const [distance, setDistance] = useState('');
+  const [time, setTime] = useState('');
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [cutoff, setCutoff] = useState('');
+  const [policy, setPolicy] = useState<RacePersonalBestPolicy | null>(null);
+  const [inputError, setInputError] = useState<string | null>(null);
+  let comparison: ReturnType<typeof calculateRacePersonalBests> | null = null;
+  let resultError: string | null = null;
+  if (policy !== null && state !== 'pending' && state !== 'error') {
+    try {
+      comparison = calculateRacePersonalBests({ records, policy });
+    } catch {
+      resultError =
+        '기록의 형식 또는 비교 범위가 한도를 초과했습니다. 전체 PB를 계산할 수 없습니다.';
+    }
+  }
+  function compare(event: FormEvent) {
+    event.preventDefault();
+    if (
+      (distance !== 'standard' && distance !== 'exact') ||
+      !['chip', 'gun', 'both'].includes(time) ||
+      cutoff === ''
+    ) {
+      setInputError('거리, 시간 기준과 기준일을 직접 선택하세요.');
+      return;
+    }
+    const timeKinds: ('chip' | 'gun')[] =
+      time === 'both' ? ['chip', 'gun'] : time === 'chip' ? ['chip'] : ['gun'];
+    try {
+      const valid = calculateRacePersonalBests({
+        records: [],
+        policy: {
+          distance: { kind: distance },
+          timeKinds,
+          period: { from: from || null, to: to || null, cutoff },
+        },
+      }).policy;
+      setPolicy(valid);
+      setInputError(null);
+    } catch {
+      setInputError('비교 날짜와 기간을 확인하세요.');
+    }
+  }
+  return (
+    <section aria-label="거리별 PB 비교">
+      <h3>거리별 PB 비교</h3>
+      <p>비교 입력은 이 화면에만 적용됩니다. 기본 정책이나 기록을 저장하지 않습니다.</p>
+      <form className={styles.form} onSubmit={compare}>
+        <fieldset>
+          <legend>비교 기준</legend>
+          <div className={styles.field}>
+            <label htmlFor={`${uid}-distance`}>PB 거리 기준</label>
+            <select
+              id={`${uid}-distance`}
+              value={distance}
+              onChange={(e) => setDistance(e.target.value)}
+            >
+              <option value="">직접 선택</option>
+              <option value="standard">표준 종목의 정확한 거리</option>
+              <option value="exact">공식 거리의 정확한 m 값</option>
+            </select>
+          </div>
+          <div className={styles.field}>
+            <label htmlFor={`${uid}-time`}>PB 시간 기준</label>
+            <select id={`${uid}-time`} value={time} onChange={(e) => setTime(e.target.value)}>
+              <option value="">직접 선택</option>
+              <option value="chip">Chip</option>
+              <option value="gun">Gun</option>
+              <option value="both">Chip · Gun 각각 비교</option>
+            </select>
+          </div>
+          <div className={styles.field}>
+            <label htmlFor={`${uid}-from`}>PB 기간 시작 (선택)</label>
+            <input
+              id={`${uid}-from`}
+              type="date"
+              value={from}
+              onChange={(e) => setFrom(e.target.value)}
+            />
+          </div>
+          <div className={styles.field}>
+            <label htmlFor={`${uid}-to`}>PB 기간 끝 (선택)</label>
+            <input
+              id={`${uid}-to`}
+              type="date"
+              value={to}
+              onChange={(e) => setTo(e.target.value)}
+            />
+          </div>
+          <div className={styles.field}>
+            <label htmlFor={`${uid}-cutoff`}>PB 기준일</label>
+            <input
+              id={`${uid}-cutoff`}
+              type="date"
+              value={cutoff}
+              onChange={(e) => setCutoff(e.target.value)}
+            />
+          </div>
+        </fieldset>
+        <button type="submit">PB 비교 적용</button>
+      </form>
+      {inputError ? <p role="alert">{inputError}</p> : null}
+      {state === 'pending' ? (
+        <p role="status">기록을 불러오는 중입니다. PB 결과는 갱신 후 표시됩니다.</p>
+      ) : state === 'error' ? (
+        <p role="status">
+          기록을 불러오지 못해 PB 결과를 표시할 수 없습니다. 목록 새로고침으로 다시 확인하세요.
+        </p>
+      ) : null}
+      {policy === null ? (
+        <p>비교 기준을 선택하고 적용하세요.</p>
+      ) : (
+        <p>
+          적용 기준: {policy.distance.kind === 'standard' ? '표준 종목' : '정확한 m 값'} ·{' '}
+          {policy.timeKinds.map((k) => (k === 'chip' ? 'Chip' : 'Gun')).join(' · ')} ·{' '}
+          {policy.period.from ?? '시작 제한 없음'} ~ {policy.period.to ?? '끝 제한 없음'} · 기준일{' '}
+          {policy.period.cutoff}
+        </p>
+      )}
+      {resultError ? <p role="alert">{resultError}</p> : null}
+      {comparison ? (
+        <>
+          <p role="status">
+            {state === 'partial'
+              ? `불러온 ${records.length}개 기록 기준입니다. 다음 페이지가 있어 전체 PB 비교는 미완료입니다.`
+              : `전체 ${records.length}개 기록을 비교했습니다.`}
+          </p>
+          <p>
+            각 기록의 시간대에 따른 날짜로 비교합니다. 동률은 기록 날짜, 기록 ID 순으로 결정합니다.
+            첨부 근거는 진위 확인 완료를 뜻하지 않습니다.
+          </p>
+          {comparison.groups.length === 0 ? (
+            <p>선택한 기준의 PB 후보가 없습니다.</p>
+          ) : (
+            <ul aria-label="거리별 PB 결과">
+              {comparison.groups.map((group) => (
+                <li key={`${group.distance.meters}:${group.timeKind}`}>
+                  <strong>
+                    {group.distance.meters} m · {group.timeKind === 'chip' ? 'Chip' : 'Gun'} ·{' '}
+                    {group.best.seconds} 초
+                  </strong>
+                  {' · '}
+                  {group.best.record.localDate}
+                  {' · '}
+                  {group.best.record.source.kind === 'manual' ? '직접 입력' : '제출된 공식 출처'}
+                  {group.best.evidence.linkPresent ? ' · 링크 근거 있음' : ''}
+                </li>
+              ))}
+            </ul>
+          )}
+          <ul aria-label="PB 제외 사유">
+            {Object.entries(pbExclusions).map(([reason, label]) => {
+              const count = comparison.evaluations.filter((e) => e.exclusion === reason).length;
+              return count > 0 ? (
+                <li key={reason}>
+                  {label}: {count}개 시간 비교
+                </li>
+              ) : null;
+            })}
+          </ul>
+        </>
       ) : null}
     </section>
   );

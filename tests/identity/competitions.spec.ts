@@ -18,7 +18,8 @@ import {
 import { importCourse, shells, type Headers } from './course-editor-support';
 
 /** Real private OIDC + PostgreSQL fixture. No network interception or synthetic transport.
- * PB ranking and date-change Plan impact approval are separate, unfinished use cases.
+ * Explicit PB comparison uses these same public result pages; date-change Plan impact approval
+ * and V2 file attachments remain separate unfinished use cases.
  * Canonical /races, /races/:id and /records drive the shared authenticated shell.
  * /competitions remains a compatibility alias; no health draft values enter URLs.
  */
@@ -392,7 +393,9 @@ for (const shell of shells) {
       ).toBeVisible();
       await expect(alice.getByText(/직접 입력한 대회 기록도 PB 인정 대상입니다/)).toBeVisible();
       await expect(alice.getByText(/원기록은 유지합니다/)).toBeVisible();
-      await expect(alice.getByText(/최고 기록 계산과 비교는 아직 제공되지 않습니다/)).toBeVisible();
+      await expect(alice.getByText(/아래에서 비교 기준을 직접 선택해 PB를 계산/)).toBeVisible();
+      const pb = results.getByRole('region', { name: '거리별 PB 비교', exact: true });
+      await expect(pb.getByRole('list', { name: '거리별 PB 결과' })).toHaveCount(0);
       await expect(resultCard.getByText(/인증 자료 첨부 · 링크/)).toBeVisible();
       await expect(resultCard.getByText(/검토 시각 미상/)).toBeVisible();
       await expect(
@@ -403,8 +406,14 @@ for (const shell of shells) {
         'https://example.invalid/synthetic-result',
       );
       await expect(resultCard.getByText(/서버 인증|서버 미인증/)).toHaveCount(0);
+      await comparePersonalBests();
+      await expect(
+        pb.getByText('선택한 기준의 PB 후보가 없습니다.', { exact: true }),
+      ).toBeVisible();
+      await expect(pb.getByRole('list', { name: 'PB 제외 사유' }).getByText(/0초/)).toBeVisible();
       await resultCard.getByRole('button', { name: '편집', exact: true }).click();
       await results.getByLabel('날씨 메모').fill(`${prefix} 수정 날씨`);
+      await results.getByLabel('Chip 시간 (초)').fill('10');
       await saveForm(alice, results, `/bff/v1/race-results/${result.id}`, 'PATCH');
       const editedResult = raceResultSchema.parse(
         await readJson(alice, aliceHeaders, `/bff/v1/race-results/${result.id}`),
@@ -413,7 +422,38 @@ for (const shell of shells) {
         ...result,
         revision: result.revision + 1,
         weatherNote: `${prefix} 수정 날씨`,
+        chipSeconds: 10,
       });
+
+      // A second user-entered result participates without an official verification claim.
+      await results.getByRole('button', { name: '새 실제 대회 결과 등록' }).click();
+      await results.getByLabel('현지 날짜').fill('2080-01-04');
+      await results.getByLabel('IANA 시간대').fill('Pacific/Auckland');
+      await results.getByLabel('기록 출처', { exact: true }).selectOption('manual');
+      await results.getByLabel('Chip 시간 (초)').fill('15');
+      await results.getByLabel('Gun 시간 (초)').fill('9');
+      await results.getByLabel('공식 거리 (m)').fill('10000');
+      await results.getByLabel('날씨 메모').fill(`${prefix} 수동 PB`);
+      const manualPbReceipt = await saveForm(alice, results, '/bff/v1/race-results', 'POST');
+      const manualPb = raceResultSchema.parse(
+        await readJson(alice, aliceHeaders, `/bff/v1/race-results/${manualPbReceipt.id}`),
+      );
+      expect(manualPb.source).toEqual({ kind: 'manual' });
+      async function comparePersonalBests() {
+        await pb.getByLabel('PB 거리 기준').selectOption('standard');
+        await pb.getByLabel('PB 시간 기준').selectOption('both');
+        await pb.getByLabel('PB 기간 시작 (선택)').fill('2080-01-01');
+        await pb.getByLabel('PB 기간 끝 (선택)').fill('2080-01-31');
+        await pb.getByLabel('PB 기준일').fill('2080-01-31');
+        await pb.getByRole('button', { name: 'PB 비교 적용', exact: true }).click();
+      }
+      await comparePersonalBests();
+      await expect(pb.getByText('10000 m · Chip · 10 초', { exact: true })).toBeVisible();
+      await expect(pb.getByText('10000 m · Gun · 9 초', { exact: true })).toBeVisible();
+      await expect(pb.getByText(/직접 입력/)).toBeVisible();
+      await expect(
+        pb.getByRole('list', { name: 'PB 제외 사유' }).getByText(/시간 미상/),
+      ).toBeVisible();
 
       await nav.getByRole('button', { name: '훈련 기록', exact: true }).click();
       await bests.getByRole('button', { name: '새 훈련 기록 등록' }).click();
@@ -514,6 +554,19 @@ for (const shell of shells) {
         results.getByRole('listitem').filter({ hasText: `${prefix} 수정 날씨` }),
         `/bff/v1/race-results/${result.id}`,
       );
+      await comparePersonalBests();
+      await expect(pb.getByText('10000 m · Chip · 15 초', { exact: true })).toBeVisible();
+      await expect(pb.getByText('10000 m · Chip · 10 초', { exact: true })).toHaveCount(0);
+      await expect(pb.getByText('10000 m · Gun · 9 초', { exact: true })).toBeVisible();
+      await deleteCard(
+        alice,
+        results,
+        results.getByRole('listitem').filter({ hasText: `${prefix} 수동 PB` }),
+        `/bff/v1/race-results/${manualPb.id}`,
+      );
+      await expect(
+        pb.getByText('선택한 기준의 PB 후보가 없습니다.', { exact: true }),
+      ).toBeVisible();
       await nav.getByRole('button', { name: '목표 대회', exact: true }).click();
       await deleteCard(
         alice,

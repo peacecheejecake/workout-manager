@@ -349,7 +349,9 @@ it.each(['manual', 'device'] as const)(
     expect(
       screen.getByText(/기기 추정 split은 자동으로 PB에 포함하지 않습니다/),
     ).toBeInTheDocument();
-    expect(screen.getByText(/최고 기록 계산과 비교는 아직 제공되지 않습니다/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/아래에서 비교 기준을 직접 선택해 PB를 계산할 수 있습니다/),
+    ).toBeInTheDocument();
     expect(screen.queryByText(/인증 자료 첨부 · 링크/)).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: '첨부 기록 링크' })).not.toBeInTheDocument();
     expect(screen.getByText('Chip 0 초 · Gun 미상 초')).toBeInTheDocument();
@@ -873,3 +875,189 @@ it.each([
     expect(writes[1]?.idempotencyKey).toBe(writes[0]?.idempotencyKey);
   },
 );
+
+function pbRecord(index: number, values: Partial<typeof result> = {}) {
+  return raceResultSchema.parse({
+    ...result,
+    id: `10000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
+    source: { kind: 'manual' },
+    chipSeconds: 100,
+    gunSeconds: 110,
+    ...values,
+  });
+}
+async function applyPb(distance = 'standard', time = 'both') {
+  const user = userEvent.setup();
+  await user.selectOptions(screen.getByLabelText('PB 거리 기준'), distance);
+  await user.selectOptions(screen.getByLabelText('PB 시간 기준'), time);
+  fireEvent.change(screen.getByLabelText('PB 기준일'), { target: { value: '2026-10-31' } });
+  await user.click(screen.getByRole('button', { name: 'PB 비교 적용' }));
+}
+it('requires explicit comparison inputs and separates manual Chip/Gun, device, null and zero without writes', async () => {
+  const requests: TransportRequest[] = [];
+  const records = [
+    pbRecord(1, { source: result.source }),
+    pbRecord(2, { chipSeconds: 90, gunSeconds: 120 }),
+    pbRecord(3, {
+      source: { kind: 'device', providerLabel: 'Synthetic' },
+      chipSeconds: 1,
+      gunSeconds: 1,
+    }),
+    pbRecord(4, { chipSeconds: 0, gunSeconds: null }),
+  ];
+  render(
+    view(
+      transport((request) => {
+        requests.push(request);
+        return request.path.includes('/race-results')
+          ? { status: 200, body: page('race-result', records) }
+          : lists(request);
+      }),
+    ),
+  );
+  await screen.findByText('출처 device · Synthetic');
+  expect(screen.queryByRole('list', { name: '거리별 PB 결과' })).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'PB 비교 적용' }));
+  expect(screen.getByRole('alert')).toHaveTextContent('직접 선택');
+  await applyPb();
+  const winners = screen.getByRole('list', { name: '거리별 PB 결과' });
+  expect(winners).toHaveTextContent('10000 m · Chip · 90 초');
+  expect(winners).toHaveTextContent('10000 m · Gun · 110 초');
+  expect(winners).toHaveTextContent('직접 입력');
+  expect(winners).toHaveTextContent('제출된 공식 출처 · 링크 근거 있음');
+  expect(screen.getByRole('list', { name: 'PB 제외 사유' })).toHaveTextContent(
+    '기기 추정 출처: 2개 시간 비교',
+  );
+  expect(screen.getByRole('list', { name: 'PB 제외 사유' })).toHaveTextContent(
+    '0초 기록: 1개 시간 비교',
+  );
+  expect(screen.getByRole('list', { name: 'PB 제외 사유' })).toHaveTextContent(
+    '시간 미상: 1개 시간 비교',
+  );
+  expect(screen.getByText('Chip 0 초 · Gun 미상 초')).toBeInTheDocument();
+  expect(requests.every((request) => request.method === 'GET')).toBe(true);
+});
+it('applies explicit exact distance and local-date period, with stable date/UUID ties and no proof certification', async () => {
+  const records = [
+    pbRecord(1, { localDate: '2026-10-10', officialDistanceMeters: 1234 }),
+    pbRecord(2, { localDate: '2026-10-10', officialDistanceMeters: 1234, source: result.source }),
+    pbRecord(3, { localDate: '2026-10-09', chipSeconds: 1, officialDistanceMeters: 1234 }),
+    pbRecord(4, { localDate: '2026-11-01', chipSeconds: 1, officialDistanceMeters: 1234 }),
+  ];
+  render(
+    view(
+      transport((request) =>
+        request.path.includes('/race-results')
+          ? { status: 200, body: page('race-result', records) }
+          : lists(request),
+      ),
+    ),
+  );
+  await screen.findByText('2026-10-09 대회 결과');
+  fireEvent.change(screen.getByLabelText('PB 기간 시작 (선택)'), {
+    target: { value: '2026-10-10' },
+  });
+  await applyPb('standard', 'chip');
+  expect(screen.getByText('선택한 기준의 PB 후보가 없습니다.')).toBeInTheDocument();
+  await applyPb('exact', 'chip');
+  const winners = screen.getByRole('list', { name: '거리별 PB 결과' });
+  expect(winners).toHaveTextContent('1234 m · Chip · 100 초');
+  expect(winners).toHaveTextContent('2026-10-10 · 직접 입력');
+  expect(winners).not.toHaveTextContent('링크 근거 있음');
+  expect(screen.getByRole('list', { name: 'PB 제외 사유' })).toHaveTextContent('비교 기간 밖');
+  expect(screen.getByRole('list', { name: 'PB 제외 사유' })).toHaveTextContent('기준일 이후');
+  expect(
+    screen.getByText('첨부 근거는 진위 확인 완료를 뜻하지 않습니다.', { exact: false }),
+  ).toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText('PB 기간 시작 (선택)'), {
+    target: { value: '2026-11-01' },
+  });
+  fireEvent.change(screen.getByLabelText('PB 기간 끝 (선택)'), { target: { value: '2026-10-01' } });
+  await userEvent.click(screen.getByRole('button', { name: 'PB 비교 적용' }));
+  expect(screen.getByRole('alert')).toHaveTextContent('비교 날짜와 기간');
+  expect(winners).toHaveTextContent('100 초');
+});
+it('marks loaded pages as partial, recalculates after pagination and resets policy on private lifetime change', async () => {
+  const records = [pbRecord(1), pbRecord(2, { chipSeconds: 90 })];
+  const cursor = {
+    kind: 'race-result',
+    collection: { revision: 1, privacyGeneration: '0' },
+    afterId: records[0]?.id,
+  };
+  const api = transport((request) =>
+    request.path.includes('/race-results')
+      ? {
+          status: 200,
+          body: request.path.includes('cursor=')
+            ? page('race-result', [records[1]])
+            : page('race-result', [records[0]], cursor),
+        }
+      : lists(request),
+  );
+  const mounted = render(view(api));
+  await screen.findByText('출처 manual');
+  await applyPb('standard', 'chip');
+  expect(screen.getByText(/다음 페이지가 있어 전체 PB 비교는 미완료/)).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: '다음 실제 대회 결과 보기' }));
+  expect(await screen.findByText('전체 2개 기록을 비교했습니다.')).toBeInTheDocument();
+  expect(screen.getByRole('list', { name: '거리별 PB 결과' })).toHaveTextContent('90 초');
+  mounted.rerender(view(api, 'other', 'new-session'));
+  expect(await screen.findByText('비교 기준을 선택하고 적용하세요.')).toBeInTheDocument();
+  expect(screen.getByLabelText('PB 시간 기준')).toHaveValue('');
+  expect(screen.queryByRole('list', { name: '거리별 PB 결과' })).not.toBeInTheDocument();
+});
+it('recalculates after confirmed result deletion and hides stale winners after a failed refresh', async () => {
+  let records = [pbRecord(1, { chipSeconds: 90 }), pbRecord(2)];
+  let failed = false;
+  render(
+    view(
+      transport((request) => {
+        if (!request.path.includes('/race-results')) return lists(request);
+        if (request.method === 'DELETE') {
+          records = records.slice(1);
+          return { status: 200, body: { id, revision: 2 } };
+        }
+        return failed
+          ? { status: 409, body: { error: { code: 'RACE_CURSOR_STALE' } } }
+          : { status: 200, body: page('race-result', records) };
+      }),
+    ),
+  );
+  await screen.findAllByText('출처 manual');
+  await applyPb('standard', 'chip');
+  expect(screen.getByRole('list', { name: '거리별 PB 결과' })).toHaveTextContent('90 초');
+  const region = screen.getByRole('region', { name: '실제 대회 결과' });
+  const firstDelete = within(region).getAllByRole('button', { name: '삭제' })[0];
+  if (!firstDelete) throw new Error('MISSING_DELETE_CONTROL');
+  await userEvent.click(firstDelete);
+  await userEvent.click(screen.getByRole('button', { name: '삭제 확인' }));
+  await waitFor(() =>
+    expect(screen.getByRole('list', { name: '거리별 PB 결과' })).toHaveTextContent('100 초'),
+  );
+  failed = true;
+  await userEvent.click(within(region).getByRole('button', { name: '목록 새로고침' }));
+  expect(await screen.findByText(/기록을 불러오지 못해 PB 결과/)).toBeInTheDocument();
+  expect(screen.queryByRole('list', { name: '거리별 PB 결과' })).not.toBeInTheDocument();
+});
+
+it('rejects duplicate source revisions instead of silently choosing a PB winner', async () => {
+  render(
+    view(
+      transport((request) =>
+        request.path.includes('/race-results')
+          ? {
+              status: 200,
+              body: page('race-result', [
+                pbRecord(1),
+                pbRecord(1, { revision: 2, chipSeconds: 1 }),
+              ]),
+            }
+          : lists(request),
+      ),
+    ),
+  );
+  expect(await screen.findByRole('alert')).toHaveTextContent('서버 응답이 올바르지 않습니다');
+  await applyPb();
+  expect(screen.getByText(/기록을 불러오지 못해 PB 결과/)).toBeInTheDocument();
+  expect(screen.queryByRole('list', { name: '거리별 PB 결과' })).not.toBeInTheDocument();
+});

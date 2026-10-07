@@ -483,3 +483,7 @@ Consumed/semantic PG 초기8FAIL(strict envelope extra field), 수정 후7PASS/1
 ## 목적별 사용·V7 consumer 로컬 검증 · 2026-10-07
 
 Root 신규 목적helper unit30·actualPG11·scopedTS/lint/format·DB/역할잔존0을 확인했다. AI 파생 정리와 own rawtext 수동 사용을 구분하고 exact source identity/삭제·frozen DTO를 유지한다. V7 pgoutput 신규24·기존 binary 회귀45도 통과했으나 실제 logical slot/원격 tail/archive restore는 미실행이다. [I 기록](progress/M2-02i.md)에 초기 실패와 최종 입력 SHA를 함께 보존했다. SQL116 trusted store/privacy hook 구현, 나머지 provider/course/media 실제 adapter 조사, J configured 경로 조사는 native 병렬로 이어진다. registry107·main/push0·I/J/전체 phase 미완료는 유지한다. 대회 삭제 시 승인 영양의 연결 해제 표시·재연결/재승인 전 대회 시각 사용 중단 결정을 재확인했으며 음식/수량/실제 섭취 보존은 유지한다.
+
+## PB 화면 실제 소비자 연결 · 2026-10-07
+
+기존 결과 목록 pages에서 명시 비교 입력으로 PB를 계산하도록 연결했다. Root 두Host build 및 실제 OIDC/API/합성 DB Next·Vite identity2/2를 확인했고, 0초를 승자로 기대한 최초2FAIL은 기존 정책을 변경하지 않고 시험을 교정한 기록으로 보존했다. [J 기록](progress/M2-02j.md)을 따른다. V2 첨부 normal registry/owner/export/restore 및 실제 HTTP/UI 수용은 별도 미완료이며 J/phase in_progress를 유지한다. SQL116 첫 설치시험은 STABLE 함수를 index expression에 넣은 오류로 0PASS/28SKIP였다. 일반 lookup index로 수정한 R2는 아직 실제 재실행 전이며 성공으로 바꾸지 않는다. FIT는 앞단 strict manual companion 차단을 발견해 actual imported-source companion 연결이 필요하다. source/purpose/lifecycle/전체 원자 승인과 외부 gate를 계속 분리한다.
