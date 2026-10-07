@@ -27,6 +27,15 @@ import {
 } from './race-manual-public-preview.js';
 import { reserveSourceBudget, type SourceBudget } from './race-plan-impact-nested-sources.js';
 import { validateRaceSourceResponseBudget } from './race-plan-impact-context.js';
+import {
+  raceManualPublicImpactSchema,
+  type RaceManualPublicImpact,
+} from '@workout/contracts/race-manual-public-impact';
+import { previewRacePlanImpactTransaction } from './race-plan-impact-preview.js';
+import {
+  projectRaceManualPublicImpact,
+  RaceManualPublicImpactError,
+} from './race-manual-public-impact.js';
 
 const uuid = z.uuid().transform((v) => v.toLowerCase());
 const key = z
@@ -312,12 +321,62 @@ export async function readRaceManualPublicPreviewIn(
     throw new RaceManualPublicError('PUBLIC_INVALID_RESPONSE');
   return projectRaceManualPublicPreview(raw);
 }
+/** Fresh processing diagnostic in the caller's fenced snapshot. It creates no
+ * review, receipt, candidate, plan version or approval authority. */
+export async function impactRaceManualPublicIn(
+  tx: Transaction,
+  raw: unknown,
+  budget: SourceBudget = { bytes: 0n, sources: 0 },
+): Promise<RaceManualPublicImpact> {
+  assertRaceManualPlainV2(raw);
+  const command = raceManualPublicPrepareSchema.parse(raw);
+  const preview = await previewRacePlanImpactTransaction(tx, command.intent, budget);
+  if (preview.context.athleteId !== tx.athleteId)
+    throw new RaceManualPublicError('PUBLIC_INVALID_RESPONSE');
+  try {
+    // The first blocked capture need not have a calendar intent. Do not invent
+    // one or turn that incomplete context into a projected source.
+    const result =
+      preview.projection.status === 'blocked'
+        ? raceManualPublicImpactSchema.parse({
+            schemaVersion: 1,
+            status: 'blocked',
+            approvalAllowed: false,
+            persistence: 'not_stored',
+            freshness: 'not_checked',
+            domains: [],
+            reason:
+              preview.projection.reason === 'projection_bound'
+                ? 'limit_exceeded'
+                : preview.projection.reason === 'event_revision_conflict'
+                  ? 'stale_basis'
+                  : 'source_unavailable',
+          })
+        : projectRaceManualPublicImpact({ context: preview.context, intent: command.intent });
+    const responseBytes = BigInt(Buffer.byteLength(JSON.stringify(result), 'utf8'));
+    if (responseBytes > 4194304n - budget.bytes)
+      throw new RaceManualPublicError('PUBLIC_RESPONSE_LIMIT');
+    reserveSourceBudget(budget, responseBytes, 0);
+    return result;
+  } catch (error) {
+    if (error instanceof RaceManualPublicImpactError)
+      throw new RaceManualPublicError(
+        error.code === 'PUBLIC_IMPACT_LIMIT' ? 'PUBLIC_RESPONSE_LIMIT' : 'PUBLIC_INVALID_RESPONSE',
+      );
+    throw error;
+  }
+}
 export function createRaceManualPublicRepository(database: Database, options: Options = {}) {
   function snapshot<T>(athleteId: string, apply: (tx: Transaction) => Promise<T>) {
     if (!database.snapshotTenant) throw new RaceManualPublicError('PUBLIC_PORT_UNAVAILABLE');
     return database.snapshotTenant(athleteId, apply);
   }
   return {
+    async impact(athleteId: string, raw: unknown): Promise<RaceManualPublicImpact> {
+      assertRaceManualPlainV2(raw);
+      const command = raceManualPublicPrepareSchema.parse(raw);
+      return snapshot(athleteId, (tx) => impactRaceManualPublicIn(tx, command));
+    },
     async review(athleteId: string, raw: unknown) {
       assertRaceManualPlainV2(raw);
       const command = prepareCommand.parse(raw);

@@ -204,7 +204,7 @@ afterAll(async () => {
 
 // Public commands produce all health/plan rows. Owner setup below is identity-FK
 // only; raw108..116/118 are explicit unregistered staging, not normal107 activation.
-async function setup() {
+async function setup(options: { firstItemId?: string; unresolvedSession?: boolean } = {}) {
   const athlete = randomUUID(),
     owner = new Pool({ connectionString: url(ownerRole) });
   try {
@@ -248,7 +248,7 @@ async function setup() {
         id: 'session',
         blockId: 'block',
         date: '2026-10-06',
-        localStartTime: '08:00',
+        localStartTime: options.unresolvedSession ? null : '08:00',
         title: 'Planned only',
         sport: 'running',
         durationSeconds: 1800,
@@ -314,7 +314,7 @@ async function setup() {
           purpose: 'Retained synthetic food',
           linkedTrainingPlanVersionId: plan.id,
           items: [event, other].map((r, index) => ({
-            id: `meal-${index}`,
+            id: index === 0 ? (options.firstItemId ?? `meal-${index}`) : `meal-${index}`,
             category: 'before',
             title: 'Retained meal',
             anchor: {
@@ -945,4 +945,195 @@ it('selected preview is tenant scoped and genuine source purge exposes only the 
     reason: 'review_body_purged',
     preview: null,
   });
+});
+
+// Runtime source production is unchanged. Owner-only aggregate counts below
+// observe whether this fresh processing path accidentally wrote private artifacts.
+async function impactWriteCounts(athlete: string) {
+  const owner = new Pool({ connectionString: url(ownerRole) });
+  try {
+    await owner.query('BEGIN READ ONLY');
+    await owner.query("SELECT set_config('app.athlete_id',$1,true)", [athlete]);
+    const rows = (
+      await owner.query(
+        `SELECT
+      (SELECT count(*)::int FROM manual_race_evidence_v2 WHERE athlete_id=$1) evidence,
+      (SELECT count(*)::int FROM manual_race_decision_v2 WHERE athlete_id=$1) decisions,
+      (SELECT count(*)::int FROM manual_race_proposal_v2 WHERE athlete_id=$1) proposals,
+      (SELECT count(*)::int FROM manual_race_chain_receipt_v2 WHERE athlete_id=$1) chain_receipts,
+      (SELECT count(*)::int FROM race_manual_application_candidate_v1 WHERE athlete_id=$1) candidates,
+      (SELECT count(*)::int FROM race_manual_public_receipt_v1 WHERE athlete_id=$1) public_receipts,
+      (SELECT count(*)::int FROM outbox WHERE athlete_id=$1) outbox`,
+        [athlete],
+      )
+    ).rows;
+    await owner.query('COMMIT');
+    return rows;
+  } finally {
+    await owner.end();
+  }
+}
+it('fresh public impact projects all five planned domains without chain, receipt, outbox or actual writes', async () => {
+  const f = await setup(),
+    repo = createRaceManualPublicRepository(db);
+  const before = await domainCounts(f.athlete),
+    artifacts = await impactWriteCounts(f.athlete);
+  const currentRace = await f.races.getRaceEvent(f.athlete, f.event.id);
+  if (!currentRace) throw Error('SYNTHETIC_RACE_MISSING');
+  const result = await repo.impact(f.athlete, { schemaVersion: 1, intent: f.intent });
+  expect(result).toMatchObject({
+    schemaVersion: 1,
+    status: 'projected',
+    approvalAllowed: false,
+    persistence: 'not_stored',
+    freshness: 'not_checked',
+    race: {
+      before: { localDate: currentRace.localDate },
+      after: { localDate: f.intent.newLocalDate },
+    },
+    training: { state: 'present' },
+    nutrition: { state: 'present' },
+    recovery: { state: 'present' },
+    routines: { state: 'present' },
+  });
+  expect(JSON.stringify(result)).not.toContain(f.intake.intakeId);
+  expect(JSON.stringify(result)).not.toContain('applicationDigest');
+  expect(await domainCounts(f.athlete)).toEqual(before);
+  expect(await impactWriteCounts(f.athlete)).toEqual(artifacts);
+});
+it('public nullable session timing is an exact affected unresolved diagnostic without minting a review', async () => {
+  const f = await setup({ unresolvedSession: true });
+  const session = f.plan.draft.sessions[0],
+    sourceItem = f.nutrition.items[0];
+  if (!session || !sourceItem) throw Error('SYNTHETIC_SOURCE_MISSING');
+  const unresolved = await f.intakeRepo.savePlan(f.athlete, {
+    kind: 'create',
+    confirmed: true,
+    idempotencyKey: randomUUID(),
+    draft: {
+      period: f.nutrition.period,
+      timezone: f.nutrition.timezone,
+      purpose: 'Explicit unresolved session',
+      linkedTrainingPlanVersionId: f.plan.id,
+      items: [
+        {
+          category: sourceItem.category,
+          title: sourceItem.title,
+          foods: sourceItem.foods,
+          targets: sourceItem.targets,
+          instructions: sourceItem.instructions,
+          evidenceIds: [],
+          source: 'user_confirmed',
+          id: 'unresolved-session',
+          anchor: {
+            kind: 'relative',
+            entity: 'session',
+            entityId: session.id,
+            point: 'start',
+            offsetMinutes: 0,
+          },
+        },
+      ],
+    },
+  });
+  const before = await domainCounts(f.athlete),
+    artifacts = await impactWriteCounts(f.athlete);
+  const result = await createRaceManualPublicRepository(db).impact(f.athlete, {
+    schemaVersion: 1,
+    intent: f.intent,
+  });
+  expect(result.status).toBe('projected');
+  if (result.status !== 'projected') throw Error('PUBLIC_IMPACT_NOT_PROJECTED');
+  expect(result.resolutionRequirements).toContainEqual({
+    domain: 'nutrition',
+    aggregateId: unresolved.planId,
+    planVersionId: unresolved.versionId,
+    itemId: 'unresolved-session',
+    reason: 'affected_timing_unresolved',
+    editor: 'replace_anchor',
+  });
+  expect(result.nutrition.state).toBe('present');
+  if (result.nutrition.state !== 'present') throw Error('PUBLIC_NUTRITION_MISSING');
+  const member = result.nutrition.members.find((m) => m.aggregateId === unresolved.planId);
+  expect(member?.before.plan.items[0]?.foods).toEqual(sourceItem.foods);
+  expect(await domainCounts(f.athlete)).toEqual(before);
+  expect(await impactWriteCounts(f.athlete)).toEqual(artifacts);
+});
+it('long canonical nutrition item IDs and explicit anchor resolutions survive actual public capture', async () => {
+  const itemId = '식사-'.repeat(80) + '"끝',
+    f = await setup({ firstItemId: itemId });
+  const intent = {
+    ...f.intent,
+    resolutions: {
+      nutrition: [
+        {
+          planVersionId: f.nutrition.versionId,
+          itemId,
+          action: 'replace_anchor',
+          anchor: { kind: 'absolute', date: '2026-10-08', localTime: '08:30', timezone: 'UTC' },
+        },
+      ],
+      routines: [],
+    },
+  };
+  const artifacts = await impactWriteCounts(f.athlete);
+  const result = await createRaceManualPublicRepository(db).impact(f.athlete, {
+    schemaVersion: 1,
+    intent,
+  });
+  expect(result.status).toBe('projected');
+  if (result.status !== 'projected' || result.nutrition.state !== 'present')
+    throw Error('PUBLIC_IMPACT_NOT_PROJECTED');
+  const member = result.nutrition.members.find((m) => m.aggregateId === f.nutrition.planId),
+    originalItem = f.nutrition.items.find((item) => item.id === itemId);
+  if (!member || !originalItem) throw Error('SYNTHETIC_NUTRITION_ITEM_MISSING');
+  const beforeItem = member.before.plan.items.find((item) => item.id === itemId),
+    afterItem = member.after.plan.items.find((item) => item.id === itemId);
+  expect(beforeItem).toMatchObject({
+    id: itemId,
+    anchor: originalItem.anchor,
+    foods: originalItem.foods,
+  });
+  expect(afterItem).toEqual({ ...beforeItem, anchor: intent.resolutions.nutrition[0]?.anchor });
+  // Public hypothetical items are sorted by ID, so the retained ASCII item can
+  // precede the changed Korean ID. Membership, not its array position, is stable.
+  for (const unchanged of member.before.plan.items.filter((item) => item.id !== itemId))
+    expect(member.after.plan.items.find((item) => item.id === unchanged.id)).toEqual(unchanged);
+  expect(member.after.plan.items.map((item) => item.id).sort()).toEqual(
+    member.before.plan.items.map((item) => item.id).sort(),
+  );
+  expect(
+    result.resolutionRequirements.some((r) => r.domain === 'nutrition' && r.itemId === itemId),
+  ).toBe(false);
+  expect(await impactWriteCounts(f.athlete)).toEqual(artifacts);
+});
+it('fresh impact rejects foreign, stale and withdrawn processing without private artifacts', async () => {
+  const f = await setup(),
+    other = await setup(),
+    repo = createRaceManualPublicRepository(db);
+  const before = await impactWriteCounts(f.athlete),
+    foreignBefore = await impactWriteCounts(other.athlete);
+  await expect(
+    repo.impact(other.athlete, { schemaVersion: 1, intent: f.intent }),
+  ).rejects.toMatchObject({ code: 'EVENT_UNAVAILABLE' });
+  await expect(
+    repo.impact(f.athlete, {
+      schemaVersion: 1,
+      intent: { ...f.intent, expectedEvent: { id: f.event.id, revision: f.event.revision + 1 } },
+    }),
+  ).rejects.toMatchObject({ code: 'REVISION_CONFLICT' });
+  await f.consent.setConsent(f.athlete, {
+    kind: 'app',
+    granted: false,
+    expectedRevision: 1,
+    idempotencyKey: randomUUID(),
+  });
+  const afterWithdrawal = await impactWriteCounts(f.athlete);
+  await expect(
+    repo.impact(f.athlete, { schemaVersion: 1, intent: f.intent }),
+  ).rejects.toMatchObject({ code: 'APP_CONSENT_REQUIRED' });
+  expect(await impactWriteCounts(f.athlete)).toEqual(afterWithdrawal);
+  expect(await privateCounts(f.athlete)).toEqual([{ evidence: 0, candidates: 0 }]);
+  expect(before[0]?.['evidence']).toBe(0);
+  expect(await impactWriteCounts(other.athlete)).toEqual(foreignBefore);
 });

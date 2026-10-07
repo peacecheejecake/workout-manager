@@ -3,8 +3,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Database, Transaction } from '../src/database.js';
 import type * as SemanticModule from '../src/race-manual-review-semantic-basis-v2.js';
 import type * as ChainModule from '../src/race-manual-review-chain-v2.js';
+import type * as PreviewModule from '../src/race-plan-impact-preview.js';
+import type * as ImpactModule from '../src/race-manual-public-impact.js';
 import type * as ApprovalModule from '../src/race-manual-approval.js';
 const ports = vi.hoisted(() => ({
+  preview: vi.fn(),
+  impact: vi.fn(),
   semantic: vi.fn(),
   chain: vi.fn(),
   prepare: vi.fn(),
@@ -23,6 +27,16 @@ vi.mock('../src/race-manual-approval.js', async (importOriginal) => ({
   prepareRaceManualApprovalIn: ports.prepare,
   approveRaceManualApplicationIn: ports.approve,
 }));
+vi.mock('../src/race-plan-impact-preview.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof PreviewModule>()),
+  previewRacePlanImpactTransaction: ports.preview,
+}));
+vi.mock('../src/race-manual-public-impact.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof ImpactModule>()),
+  projectRaceManualPublicImpact: ports.impact,
+}));
+import { RacePlanImpactPreviewError } from '../src/race-plan-impact-preview.js';
+import { RaceManualPublicImpactError } from '../src/race-manual-public-impact.js';
 import { createRaceManualPublicRepository } from '../src/race-manual-public.js';
 const hash = 'a'.repeat(64);
 function reference() {
@@ -350,4 +364,134 @@ describe('retained public preview plumbing', () => {
       createRaceManualPublicRepository(db).readPreview('synthetic', randomUUID()),
     ).rejects.toThrow('PUBLIC_PORT_UNAVAILABLE');
   });
+});
+
+const blockedImpact = {
+  schemaVersion: 1,
+  status: 'blocked',
+  reason: 'source_unavailable',
+  domains: [],
+  approvalAllowed: false,
+  persistence: 'not_stored',
+  freshness: 'not_checked',
+};
+function impactCommand() {
+  return {
+    schemaVersion: 1,
+    intent: { ...command().intent, resolutions: { nutrition: [], routines: [] } },
+  };
+}
+describe('transient impact processing boundary (mock ports, not source authority)', () => {
+  it.each(['idempotencyKey', 'candidateId', 'expectedBasis', 'approvalAllowed'])(
+    'rejects caller %s before capture',
+    async (field) => {
+      const query = vi.fn<Transaction['query']>(),
+        a = adapter(query);
+      await expect(
+        createRaceManualPublicRepository(a.db).impact('synthetic', {
+          ...impactCommand(),
+          [field]: 'caller',
+        }),
+      ).rejects.toThrow();
+      expect(a.counts()).toEqual({ commits: 0, rollbacks: 0 });
+      expect(ports.preview).not.toHaveBeenCalled();
+    },
+  );
+  it('requires a snapshot port without an RC fallback', async () => {
+    const a = adapter(vi.fn<Transaction['query']>());
+    await expect(
+      createRaceManualPublicRepository({
+        tenant: a.db.tenant,
+        exclusiveTenant: a.db.exclusiveTenant,
+        close: a.db.close,
+      }).impact('synthetic', impactCommand()),
+    ).rejects.toThrow('PUBLIC_PORT_UNAVAILABLE');
+    expect(ports.preview).not.toHaveBeenCalled();
+  });
+  it('uses one snapshot budget and recomputes from its context without receipt or writes', async () => {
+    const query = vi.fn<Transaction['query']>(),
+      a = adapter(query),
+      input = impactCommand();
+    const context = { athleteId: 'synthetic' };
+    ports.preview.mockResolvedValue({ context, projection: { status: 'projected' } });
+    ports.impact.mockReturnValue(blockedImpact);
+    expect(await createRaceManualPublicRepository(a.db).impact('synthetic', input)).toEqual(
+      blockedImpact,
+    );
+    expect(ports.preview).toHaveBeenCalledWith(
+      expect.objectContaining({ athleteId: 'synthetic' }),
+      input.intent,
+      expect.objectContaining({ sources: 0 }),
+    );
+    expect(ports.impact).toHaveBeenCalledWith({ context, intent: input.intent });
+    expect(query).not.toHaveBeenCalled();
+    for (const write of [ports.semantic, ports.chain, ports.prepare, ports.approve])
+      expect(write).not.toHaveBeenCalled();
+    expect(a.counts()).toEqual({ commits: 1, rollbacks: 0 });
+  });
+  it('keeps incomplete first capture contentless without fabricating a calendar intent', async () => {
+    const a = adapter(vi.fn<Transaction['query']>());
+    ports.preview.mockResolvedValue({
+      context: { athleteId: 'synthetic', privateBody: 'secret' },
+      projection: { status: 'blocked', reason: 'missing_facts' },
+    });
+    expect(
+      await createRaceManualPublicRepository(a.db).impact('synthetic', impactCommand()),
+    ).toEqual(blockedImpact);
+    expect(ports.impact).not.toHaveBeenCalled();
+  });
+  it('rejects foreign captured scope before projection', async () => {
+    const a = adapter(vi.fn<Transaction['query']>());
+    ports.preview.mockResolvedValue({
+      context: { athleteId: 'foreign' },
+      projection: { status: 'projected' },
+    });
+    await expect(
+      createRaceManualPublicRepository(a.db).impact('synthetic', impactCommand()),
+    ).rejects.toThrow('PUBLIC_INVALID_RESPONSE');
+    expect(ports.impact).not.toHaveBeenCalled();
+    expect(a.counts()).toEqual({ commits: 0, rollbacks: 1 });
+  });
+  it.each(['APP_CONSENT_REQUIRED', 'REVISION_CONFLICT'] as const)(
+    'preserves finite %s capture error',
+    async (code) => {
+      const a = adapter(vi.fn<Transaction['query']>());
+      ports.preview.mockRejectedValue(new RacePlanImpactPreviewError(code));
+      await expect(
+        createRaceManualPublicRepository(a.db).impact('synthetic', impactCommand()),
+      ).rejects.toMatchObject({ code });
+      expect(ports.impact).not.toHaveBeenCalled();
+    },
+  );
+  it.each([
+    ['PUBLIC_IMPACT_INVALID_CONTEXT', 'PUBLIC_INVALID_RESPONSE'],
+    ['PUBLIC_IMPACT_LIMIT', 'PUBLIC_RESPONSE_LIMIT'],
+  ] as const)('sanitizes mapper %s', async (code, expected) => {
+    const a = adapter(vi.fn<Transaction['query']>());
+    ports.preview.mockResolvedValue({
+      context: { athleteId: 'synthetic' },
+      projection: { status: 'projected' },
+    });
+    ports.impact.mockImplementation(() => {
+      throw new RaceManualPublicImpactError(code);
+    });
+    await expect(
+      createRaceManualPublicRepository(a.db).impact('synthetic', impactCommand()),
+    ).rejects.toThrow(expected);
+  });
+});
+
+it('impact reserves its response against the same source budget without truncation', async () => {
+  const a = adapter(vi.fn<Transaction['query']>());
+  ports.preview.mockImplementation(async (_tx, _intent, budget) => {
+    budget.bytes = 4194303n;
+    return {
+      context: { athleteId: 'synthetic' },
+      projection: { status: 'blocked', reason: 'missing_facts' },
+    };
+  });
+  await expect(
+    createRaceManualPublicRepository(a.db).impact('synthetic', impactCommand()),
+  ).rejects.toThrow('PUBLIC_RESPONSE_LIMIT');
+  expect(a.counts()).toEqual({ commits: 0, rollbacks: 1 });
 });

@@ -581,3 +581,7 @@ Aside 실제 확인으로 빠진 Host template 경로를 발견·교정했고 Ro
 ## 날짜 변경 두 Host 수용·복원 identity SQL 후속 · 2026-10-08
 
 Root actual Chromium Next/Vite 날짜 검토 R3 **2/2** 및 RTL99/platform focused219를 통과했다. Aside에서 발견한 동일 세션 focus 재조회 초안 소실과 실제 승인 뒤 성공 안내 소실을 교정했고 R1/R2 실패는 [I 기록](progress/M2-02i.md)에 보존했다. direct date PATCH409·검토 전후 no-write·별도 명시승인·새 event revision·keep_plan head 보존·320/768/1280 reflow를 실제 확인했다. 실제 SQL125 fixed116 identity target 적용도 R2 **1/1**이고 CLOSED 유지/credential4 empty/logout replay deny 보존을 확인했으나 전체 restore/admission은 미완료다. normalregistry107/main/push0를 유지한다. 미해결 진단 서비스·해결 UI/ended 정책, allfour 승인 후 public nutrition V4 조회 및 consumer 지원을 병렬 진행한다. 전체phase/운영503/native/외부 not_executed는 유지한다.
+
+## 공개 영향 진단 실제 DB 수용 · 2026-10-08
+
+Root actual PG R2 15/15·unit43/43 및 cleanup0로 non-stored five-domain 영향 서비스의 소유권·동의·revision·긴 ID 해결을 검증했다. R1 fixture sorted-item 오류14/1은 [I 기록](progress/M2-02i.md)에 보존했다. candidate/receipt/plan head 쓰기는 없으며 HTTP/UI/whole phase 완료가 아니다. 병렬 nutrition V4 consumer/API 구현을 회수해 Root rebuild·두Host 수용을 진행하고 ended unresolved의 frozen 보존 정책 모순을 별도 교정한다. normalregistry107/main/push0와 공개503·native·외부 not_executed를 유지한다.
