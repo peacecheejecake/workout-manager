@@ -289,15 +289,73 @@ it('rejects malformed replies, invalid cursor/input and browser supplied verifie
   ).rejects.toEqual(new RaceRequestError(409, 'RACE_CURSOR_STALE'));
 });
 
-it('shows source/verification, zero, missing values and pending PB policy without claiming ranking', async () => {
-  render(view(transport(lists)));
-  expect(screen.getByText('목표 대회 불러오는 중입니다.')).toBeInTheDocument();
-  expect(await screen.findByText('가을 대회')).toBeInTheDocument();
-  expect(screen.getByText(/서버 미인증/)).toBeInTheDocument();
-  expect(screen.getByText('Chip 0 초 · Gun 미상 초')).toBeInTheDocument();
-  expect(screen.getByText(/device-estimated-split/)).toBeInTheDocument();
-  expect(screen.getByText('PB 포함 기준 · 정책 미정')).toBeInTheDocument();
-});
+it.each([null, '2026-10-10T03:00:00.000Z'])(
+  'marks an attached link without promoting a source claim or review timestamp %s to authenticity confirmation',
+  async (verifiedAt) => {
+    const displayed = raceResultSchema.parse({
+      ...result,
+      source: { ...result.source, verifiedAt },
+    });
+    const api = transport((request) =>
+      request.path.includes('/race-results')
+        ? { status: 200, body: page('race-result', [displayed]) }
+        : lists(request),
+    );
+    render(view(api));
+    expect(screen.getByText('목표 대회 불러오는 중입니다.')).toBeInTheDocument();
+    expect(await screen.findByText('가을 대회')).toBeInTheDocument();
+    expect(screen.getByText(/제출된 출처 공식 주최자/)).toBeInTheDocument();
+    expect(
+      screen.getByText(verifiedAt === null ? /검토 시각 미상/ : /검토 시각 기록 2026-10-10/),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/인증 자료 첨부 · 링크/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/제출된 출처와 검토 시각만으로 기록의 진위가 확인되었다고/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/서버 인증|서버 미인증/)).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '첨부 기록 링크' })).toHaveAttribute(
+      'href',
+      result.source.kind === 'official' ? result.source.resultUrl : '',
+    );
+    expect(screen.getByText('Chip 0 초 · Gun 미상 초')).toBeInTheDocument();
+    expect(screen.getByText(/device-estimated-split/)).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: 'PB 포함 기준 · 직접 입력한 대회 기록 포함' }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/현재 목록은 저장 ID 순서이며 PB 순위가 아닙니다/)).toBeInTheDocument();
+  },
+);
+
+it.each(['manual', 'device'] as const)(
+  'keeps the original %s result without inventing attachment or authenticity evidence',
+  async (kind) => {
+    const displayed = raceResultSchema.parse({
+      ...result,
+      source: kind === 'manual' ? { kind } : { kind, providerLabel: 'Synthetic device' },
+    });
+    render(
+      view(
+        transport((request) =>
+          request.path.includes('/race-results')
+            ? { status: 200, body: page('race-result', [displayed]) }
+            : lists(request),
+        ),
+      ),
+    );
+    expect(
+      await screen.findByText(kind === 'manual' ? '출처 manual' : '출처 device · Synthetic device'),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/직접 입력한 대회 기록도 PB 인정 대상입니다/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/기기 추정 split은 자동으로 PB에 포함하지 않습니다/),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/최고 기록 계산과 비교는 아직 제공되지 않습니다/)).toBeInTheDocument();
+    expect(screen.queryByText(/인증 자료 첨부 · 링크/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: '첨부 기록 링크' })).not.toBeInTheDocument();
+    expect(screen.getByText('Chip 0 초 · Gun 미상 초')).toBeInTheDocument();
+    expect(screen.queryByText(/서버 인증|서버 미인증/)).not.toBeInTheDocument();
+  },
+);
 
 it('preserves edits and same payload key after network failure and shows success only after commit', async () => {
   const user = userEvent.setup();

@@ -44,6 +44,10 @@ import {
   type TrainingBestListPage,
 } from '@workout/contracts/race-queries';
 import { enqueue, PersistenceConflict } from './outbox.js';
+import {
+  projectStoredRaceResultLegacyRead,
+  RaceResultLegacyProjectionError,
+} from './race-result-legacy-projection.js';
 
 export class RaceRepositoryError extends Error {
   constructor(
@@ -118,6 +122,49 @@ type Command =
   | TrainingBestUpdateCommand;
 const uuid = raceEventSchema.shape.id;
 const maxRevision = 2147483647;
+
+const legacyResultReadBytes = 16 * 1024;
+const resultReadScalar = z.strictObject({
+  count: z.number().int().min(0).max(101),
+  bytes: z
+    .string()
+    .max(20)
+    .regex(/^[0-9]+$/),
+  maximum: z
+    .string()
+    .max(20)
+    .regex(/^[0-9]+$/),
+});
+async function requireBoundedLegacyResults(
+  tx: Transaction,
+  id: string | null,
+  after: string | null,
+  limit: number,
+) {
+  // Protect the driver before fetching JSON. Call while holding the same tenant
+  // command lock as result writes and privacy redaction; no consent is required.
+  const result = await tx.query(
+    `SELECT count(*)::int AS count,coalesce(sum(n),0)::text AS bytes,coalesce(max(n),0)::text AS maximum FROM
+    (SELECT octet_length(values_json::text) AS n FROM race_result WHERE athlete_id=$1 AND NOT deleted
+    AND ($2::uuid IS NULL OR id=$2::uuid) AND ($3::uuid IS NULL OR id>$3::uuid) ORDER BY id ASC LIMIT $4) bounded`,
+    [tx.athleteId, id, after, limit],
+  );
+  if (result.rows.length !== 1) throw new RaceResultLegacyProjectionError();
+  const scalar = resultReadScalar.parse(result.rows[0]);
+  if (
+    scalar.count > limit ||
+    BigInt(scalar.maximum) > BigInt(legacyResultReadBytes) ||
+    BigInt(scalar.bytes) > BigInt(limit * legacyResultReadBytes)
+  )
+    throw new RaceResultLegacyProjectionError();
+}
+function legacyResultRow(row: Record<string, unknown>) {
+  return projectStoredRaceResultLegacyRead({
+    id: row['id'],
+    revision: row['revision'],
+    values: row['values_json'],
+  });
+}
 
 async function requireActivity(tx: Transaction, activityId: string) {
   const rows = await tx.query(
@@ -353,11 +400,18 @@ export function createRaceRepository(
   ): Promise<T | null> {
     const target = uuid.parse(id);
     return database.tenant(athleteId, async (tx) => {
+      if (table === tables['race-result']) {
+        await lockAppAdmission(tx);
+        await requireBoundedLegacyResults(tx, target, null, 1);
+      }
       const rows = await tx.query(
         `SELECT id,revision,values_json FROM ${table} WHERE athlete_id=$1 AND id=$2 AND NOT deleted`,
         [athleteId, target],
       );
+      if (table === tables['race-result'] && rows.rows.length > 1)
+        throw new RaceResultLegacyProjectionError();
       const row = rows.rows[0];
+      if (row && table === tables['race-result']) return schema.parse(legacyResultRow(row));
       // No joins to unavailable source content: only the stored, pinned identifiers survive.
       return row
         ? schema.parse({
@@ -402,17 +456,23 @@ export function createRaceRepository(
         );
         if (!anchor.rows[0]) throw new RaceRepositoryError('RACE_CURSOR_UNAVAILABLE');
       }
+      if (kind === 'race-result')
+        await requireBoundedLegacyResults(tx, null, query.cursor?.afterId ?? null, query.limit + 1);
       const rows = await tx.query(
         `SELECT id,revision,values_json FROM ${tables[kind]} WHERE athlete_id=$1 AND NOT deleted AND ($2::uuid IS NULL OR id>$2::uuid) ORDER BY id ASC LIMIT $3`,
         [athleteId, query.cursor?.afterId ?? null, query.limit + 1],
       );
+      if (kind === 'race-result' && rows.rows.length > query.limit + 1)
+        throw new RaceResultLegacyProjectionError();
       const pageRows = rows.rows.slice(0, query.limit);
       const items = pageRows.map((row) =>
-        itemSchema.parse({
-          ...z.record(z.string(), z.unknown()).parse(row['values_json']),
-          id: row['id'],
-          revision: row['revision'],
-        }),
+        kind === 'race-result'
+          ? itemSchema.parse(legacyResultRow(row))
+          : itemSchema.parse({
+              ...z.record(z.string(), z.unknown()).parse(row['values_json']),
+              id: row['id'],
+              revision: row['revision'],
+            }),
       );
       const last = pageRows.at(-1);
       return pageSchema.parse({

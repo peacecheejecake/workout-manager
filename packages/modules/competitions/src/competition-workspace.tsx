@@ -125,10 +125,13 @@ function WorkspaceContent(props: CompetitionWorkspaceProps & { athleteId: string
         </nav>
       ) : null}
       <aside className={styles.notice}>
-        <h2>PB 포함 기준 · 정책 미정</h2>
+        <h2>PB 포함 기준 · 직접 입력한 대회 기록 포함</h2>
         <p>
-          현재 목록은 저장 ID 순서이며 PB 순위가 아닙니다. 공식 출처와 서버 인증 여부를 구분하며,
-          기기 추정 split은 공식 대회 PB로 승격하지 않습니다.
+          직접 입력한 대회 기록도 PB 인정 대상입니다. 링크나 인증 자료가 첨부되면 첨부 마크를
+          표시하며, 첨부만으로 진위 확인 완료를 뜻하지 않습니다. 기기 추정 split은 자동으로 PB에
+          포함하지 않습니다. 원기록은 유지합니다. 현재 목록은 저장 ID 순서이며 PB 순위가 아닙니다.
+          최고 기록 계산과 비교는 아직 제공되지 않습니다. Chip/Gun 및 거리별 비교 기준은 아직
+          확정되지 않았습니다.
         </p>
         <p>
           대회 날짜 변경의 연결 Plan 영향 미리보기와 별도 승인은 아직 제공되지 않습니다. 저장은
@@ -227,14 +230,20 @@ function WorkspaceContent(props: CompetitionWorkspaceProps & { athleteId: string
             <p>
               출처 {record.source.kind}
               {record.source.kind === 'official'
-                ? ` · ${record.source.authority} · ${record.source.verifiedAt === null ? '서버 미인증' : `서버 인증 ${record.source.verifiedAt}`}`
+                ? ` · 제출된 출처 ${record.source.authority} · ${record.source.verifiedAt === null ? '검토 시각 미상' : `검토 시각 기록 ${record.source.verifiedAt}`}`
                 : record.source.kind === 'device'
                   ? ` · ${record.source.providerLabel}`
                   : ''}
             </p>
             {record.source.kind === 'official' ? (
+              <p>
+                인증 자료 첨부 · 링크. 제출된 출처와 검토 시각만으로 기록의 진위가 확인되었다고
+                판단하지 않습니다.
+              </p>
+            ) : null}
+            {record.source.kind === 'official' ? (
               <a href={record.source.resultUrl} rel="noreferrer" target="_blank">
-                공식 기록 링크
+                첨부 기록 링크
               </a>
             ) : null}
             <p>
@@ -632,7 +641,7 @@ function RecordEditor<V>({
       <h3>{title} 입력</h3>
       <p>
         빈 선택값은 미상입니다. 시간은 초, 거리는 m 단위입니다. 코스는 선택한 고정 버전으로
-        연결됩니다. 공식 인증 시각은 서버만 기록합니다.
+        연결됩니다. 검토 시각은 서버만 기록하며, 시각만으로 진위 확인 완료를 뜻하지 않습니다.
       </p>
       <fieldset disabled={pending}>
         <legend>기록 값</legend>

@@ -387,6 +387,22 @@ for (const shell of shells) {
         verifiedAt: null,
       });
       const resultCard = results.getByRole('listitem').filter({ hasText: `${prefix} 날씨` });
+      await expect(
+        alice.getByRole('heading', { name: 'PB 포함 기준 · 직접 입력한 대회 기록 포함' }),
+      ).toBeVisible();
+      await expect(alice.getByText(/직접 입력한 대회 기록도 PB 인정 대상입니다/)).toBeVisible();
+      await expect(alice.getByText(/원기록은 유지합니다/)).toBeVisible();
+      await expect(alice.getByText(/최고 기록 계산과 비교는 아직 제공되지 않습니다/)).toBeVisible();
+      await expect(resultCard.getByText(/인증 자료 첨부 · 링크/)).toBeVisible();
+      await expect(resultCard.getByText(/검토 시각 미상/)).toBeVisible();
+      await expect(
+        resultCard.getByText(/제출된 출처와 검토 시각만으로 기록의 진위가 확인되었다고/),
+      ).toBeVisible();
+      await expect(resultCard.getByRole('link', { name: '첨부 기록 링크' })).toHaveAttribute(
+        'href',
+        'https://example.invalid/synthetic-result',
+      );
+      await expect(resultCard.getByText(/서버 인증|서버 미인증/)).toHaveCount(0);
       await resultCard.getByRole('button', { name: '편집', exact: true }).click();
       await results.getByLabel('날씨 메모').fill(`${prefix} 수정 날씨`);
       await saveForm(alice, results, `/bff/v1/race-results/${result.id}`, 'PATCH');
@@ -428,6 +444,7 @@ for (const shell of shells) {
       expect(editedBest).toEqual({ ...best, revision: best.revision + 1, elapsedSeconds: null });
 
       bobHeaders = await login(bob, 'Bob');
+      await grantApp(bob, bobHeaders);
       for (const endpoint of [
         `races/${event.id}`,
         `race-results/${result.id}`,
