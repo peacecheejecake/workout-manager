@@ -75,3 +75,10 @@ export const raceManualPublicReviewResultSchema = z.discriminatedUnion('status',
   }),
 ]);
 export type RaceManualPublicReviewResult = z.infer<typeof raceManualPublicReviewResultSchema>;
+
+/** Injected protocol support only; not installed storage, consent or approval authority. */
+export const raceManualPublicCapabilitiesSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  dateChangeReviews: z.boolean(),
+});
+export type RaceManualPublicCapabilities = z.infer<typeof raceManualPublicCapabilitiesSchema>;

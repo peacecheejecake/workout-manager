@@ -230,3 +230,30 @@ it('honors cancellation before sending and after uncertain late response', async
   });
   expect(request).toHaveBeenCalledTimes(1);
 });
+
+it.each([true, false])('reads explicit capability %s with no write key', async (supported) => {
+  const { api, request } = setup({ schemaVersion: 1, dateChangeReviews: supported });
+  expect(await api.capabilities()).toEqual({ schemaVersion: 1, dateChangeReviews: supported });
+  expect(request).toHaveBeenCalledExactlyOnceWith({
+    path: '/bff/v1/race-date-change-reviews/capabilities',
+    method: 'GET',
+    body: null,
+    idempotencyKey: null,
+  });
+});
+it.each([
+  { schemaVersion: 1 },
+  { schemaVersion: 1, dateChangeReviews: 'true' },
+  { schemaVersion: 1, dateChangeReviews: true, approvalAllowed: true },
+])('rejects invalid or authority-bearing capability %#', async (value) => {
+  const { api } = setup(value);
+  await expect(api.capabilities()).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
+});
+it('does not infer capability from missing endpoint or send an aborted read', async () => {
+  const { api, request } = setup({ error: { code: 'NOT_FOUND' } }, 404);
+  await expect(api.capabilities()).rejects.toMatchObject({ status: 404, code: 'NOT_FOUND' });
+  const abort = new AbortController();
+  abort.abort();
+  await expect(api.capabilities(abort.signal)).rejects.toBeDefined();
+  expect(request).toHaveBeenCalledTimes(1);
+});

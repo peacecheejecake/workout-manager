@@ -4,6 +4,7 @@ import {
   raceManualPublicPrepareSchema,
   raceManualPublicApproveSchema,
   raceManualPublicReviewResultSchema,
+  raceManualPublicCapabilitiesSchema,
 } from '@workout/contracts/race-manual-public';
 import {
   raceManualPublicPreviewSchema,
@@ -153,6 +154,17 @@ export function createRaceManualPublicApi(transport: AuthenticatedTransport) {
     );
   }
   return {
+    async capabilities(signal?: AbortSignal) {
+      return request(
+        '/bff/v1/race-date-change-reviews/capabilities',
+        'GET',
+        null,
+        null,
+        raceManualPublicCapabilitiesSchema,
+        () => 200,
+        signal,
+      );
+    },
     async review(raceId: unknown, body: unknown, idempotencyKey: unknown, signal?: AbortSignal) {
       const id = parse(uuid, raceId, true);
       const command = parse(raceManualPublicPrepareSchema, body, true);

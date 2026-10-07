@@ -1,3 +1,4 @@
+import { raceManualPublicCapabilitiesSchema } from '@workout/contracts/race-manual-public';
 import { raceResultCapabilitiesSchema } from '@workout/contracts/race-result-capabilities';
 import type { RaceRepository } from '@workout/server-persistence/races';
 import { registerRaceRoutes } from './race-routes.js';
@@ -232,6 +233,20 @@ export function registerProductRoutes(
   if (repositories.routines) registerRoutineRoutes(routes, repositories.routines, principal);
   if (repositories.recovery) registerRecoveryRoutes(routes, repositories.recovery, principal);
   if (repositories.activities) registerActivityRoutes(routes, repositories.activities, principal);
+  routes.get(
+    '/race-date-change-reviews/capabilities',
+    { exposeHeadRoute: false },
+    async (request, reply) => {
+      input(emptyQuery, request.query);
+      principal(request);
+      return reply.header('cache-control', 'private, no-store').send(
+        raceManualPublicCapabilitiesSchema.parse({
+          schemaVersion: 1,
+          dateChangeReviews: repositories.raceManualPublic !== undefined,
+        }),
+      );
+    },
+  );
   routes.get('/race-results/capabilities', { exposeHeadRoute: false }, async (request, reply) => {
     input(emptyQuery, request.query);
     principal(request);

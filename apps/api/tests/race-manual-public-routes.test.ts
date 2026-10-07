@@ -380,3 +380,42 @@ describe('manual public plugin with actual parent hooks and mocked repositories'
     expect(disabled.repo.readPreview).not.toHaveBeenCalled();
   });
 });
+
+it.each([true, false])(
+  'explicit protocol capability reports injection %s without calling writes',
+  async (enabled) => {
+    const { app, repo } = setup(true, enabled);
+    const response = await app.inject({
+      method: 'GET',
+      url: '/bff/v1/race-date-change-reviews/capabilities',
+      headers,
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ schemaVersion: 1, dateChangeReviews: enabled });
+    expect(response.headers['cache-control']).toBe('private, no-store');
+    for (const fn of Object.values(repo)) expect(fn).not.toHaveBeenCalled();
+  },
+);
+it('capability requires authentication and rejects unknown query', async () => {
+  const absent = setup(false);
+  expect(
+    (
+      await absent.app.inject({
+        method: 'GET',
+        url: '/bff/v1/race-date-change-reviews/capabilities',
+        headers,
+      })
+    ).statusCode,
+  ).toBe(401);
+  const present = setup();
+  expect(
+    (
+      await present.app.inject({
+        method: 'GET',
+        url: '/bff/v1/race-date-change-reviews/capabilities?candidateId=' + id,
+        headers,
+      })
+    ).statusCode,
+  ).toBe(400);
+  for (const fn of Object.values(present.repo)) expect(fn).not.toHaveBeenCalled();
+});
