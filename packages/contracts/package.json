@@ -256,6 +256,10 @@
     "./race-result-v2": {
       "types": "./src/race-result-v2.ts",
       "default": "./dist/race-result-v2.js"
+    },
+    "./race-result-capabilities": {
+      "types": "./src/race-result-capabilities.ts",
+      "default": "./dist/race-result-capabilities.js"
     }
   },
   "scripts": {

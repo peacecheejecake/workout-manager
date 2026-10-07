@@ -1175,3 +1175,38 @@ it.each([
   ).rejects.toThrow('ROUTE_NOT_ALLOWED');
   expect(fetchMock).not.toHaveBeenCalled();
 });
+
+describe('race capabilities exact transport route', () => {
+  it('carries only the exact GET through the existing session', async () => {
+    fetchMock.mockResolvedValue(
+      json({ schemaVersion: 1, legacyResults: true, proofResultsV2: false }),
+    );
+    await createSessionTransport(session, vi.fn()).request({
+      method: 'GET',
+      path: '/bff/v1/race-results/capabilities',
+      body: null,
+      idempotencyKey: null,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+  it.each([
+    ['DELETE', '/bff/v1/race-results/capabilities'],
+    ['PUT', '/bff/v1/race-results/capabilities'],
+    ['POST', '/bff/v1/race-results/capabilities'],
+    ['PATCH', '/bff/v1/race-results/capabilities'],
+    ['GET', '/bff/v1/race-results/capabilities?schemaVersion=1'],
+    ['GET', '/bff/v1/race-results/capabilities?'],
+    ['GET', '/bff/v1/race-results/capabilities/'],
+    ['GET', '/bff/v1/race-results/capabilities-other'],
+  ] as const)('rejects %s %s before fetch', async (method, path) => {
+    await expect(
+      createSessionTransport(session, vi.fn()).request({
+        method,
+        path,
+        body: null,
+        idempotencyKey: null,
+      }),
+    ).rejects.toThrow('ROUTE_NOT_ALLOWED');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
