@@ -11,6 +11,7 @@ import {
 } from '@workout/contracts/routines';
 import { sessionCompletionSchema } from '@workout/contracts/session-completion';
 import {
+  raceRetainedUnplannedRunSchema,
   raceScheduleTimingSchema,
   raceRoutineExpansionSchema,
 } from './race-relative-schedule-impact.js';
@@ -261,6 +262,26 @@ export const raceRelativeScheduleImpactResultCompatibleV4BodySchema = z.discrimi
         calendar: racePlanImpactProjectedSchema,
         nutrition: z.array(nutrition).max(1000),
         routines: z.array(routine).max(1000),
+        retainedUnplannedRuns: z
+          .array(
+            z
+              .strictObject({
+                state: z.literal('retained_unplanned'),
+                blueprint: routineBlueprintVersionSchema,
+                run: routineRunSchema,
+              })
+              .superRefine((row, ctx) => {
+                if (
+                  !raceRetainedUnplannedRunSchema.safeParse({
+                    blueprint: row.blueprint,
+                    run: row.run,
+                  }).success
+                )
+                  ctx.addIssue({ code: 'custom', message: 'Invalid retained unplanned tuple' });
+              }),
+          )
+          .max(1000)
+          .optional(),
         requiresResolution: z.boolean(),
         completionReports: z.array(sessionCompletionSchema).max(1000),
       })
@@ -275,6 +296,31 @@ export const raceRelativeScheduleImpactResultCompatibleV4BodySchema = z.discrimi
             value.completionReports.length
         )
           fail('Duplicate output rosters');
+        if (value.retainedUnplannedRuns !== undefined) {
+          const ids = new Set<string>();
+          const blueprints = new Map<string, unknown>();
+          for (const row of [...value.routines, ...value.retainedUnplannedRuns]) {
+            const identity = JSON.stringify([row.blueprint.routineId, row.blueprint.versionId]);
+            const previous = blueprints.get(identity);
+            if (previous !== undefined && !same(previous, row.blueprint))
+              fail('Divergent frozen blueprint body');
+            blueprints.set(identity, row.blueprint);
+          }
+          let visits = 0;
+          for (const row of value.routines)
+            for (const run of row.runs) {
+              if (run.origin.kind !== 'planned' || ids.has(run.id))
+                fail('Scheduled run roster mismatch');
+              ids.add(run.id);
+            }
+          for (const row of value.retainedUnplannedRuns) {
+            if (ids.has(row.run.id)) fail('Duplicate retained run');
+            ids.add(row.run.id);
+            visits += 1 + row.blueprint.steps.length + row.run.progress.length;
+            for (const progress of row.run.progress) visits += progress.actualRefs.length;
+          }
+          if (visits > 5000) fail('Retained run visit bound');
+        }
         const unresolved =
           value.nutrition.some((row) =>
             row.items.some((entry) => entry.notice === 'affected_unresolved_requires_resolution'),

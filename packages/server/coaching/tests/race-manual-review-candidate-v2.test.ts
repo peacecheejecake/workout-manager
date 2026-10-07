@@ -16,6 +16,7 @@ import {
   assembleRaceManualReviewCandidateCompatibleV4,
   raceManualReviewCandidateV2InputSchema,
   raceManualReviewCandidateV2ResultSchema,
+  raceManualReviewCandidateV2BodySchema,
 } from '../src/race-manual-review-candidate-v2.js';
 const eventId = '20000000-0000-4000-8000-000000000001',
   planId = '10000000-0000-4000-8000-000000000001',
@@ -526,4 +527,46 @@ it('uses UTF16 order for opaque ID sets and preserves the saved semantic record 
     '\uE000',
     'unlinked',
   ]);
+});
+
+it('retains canonical unplanned roster and rejects omitted output without inventing schedule', () => {
+  const value = input();
+  const { input: p } = routineInput();
+  const scheduled = p.routines[0];
+  if (!scheduled) throw Error('fixture');
+  value.projectionInput = {
+    ...p,
+    routines: [],
+    retainedUnplannedRuns: [
+      {
+        blueprint: scheduled.blueprint,
+        run: routineRunSchema.parse({
+          ...scheduled.runs[0],
+          origin: { kind: 'unplanned' },
+          id: 'Run-B',
+        }),
+      },
+      {
+        blueprint: scheduled.blueprint,
+        run: routineRunSchema.parse({
+          ...scheduled.runs[0],
+          origin: { kind: 'unplanned' },
+          id: 'Run-A',
+        }),
+      },
+    ],
+  };
+  const result = assembled(value);
+  expect(result.body.projection.retainedUnplannedRuns?.map((r) => r.run.id)).toEqual([
+    'Run-A',
+    'Run-B',
+  ]);
+  expect(result.body.projection.routines).toEqual([]);
+  expect(result.approvalAllowed).toBe(false);
+  expect(
+    raceManualReviewCandidateV2BodySchema.safeParse({
+      ...result.body,
+      projection: { ...result.body.projection, retainedUnplannedRuns: [] },
+    }).success,
+  ).toBe(false);
 });

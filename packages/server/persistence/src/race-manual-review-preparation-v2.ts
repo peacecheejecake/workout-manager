@@ -47,6 +47,11 @@ function canonicalProjection(
     [...rows].sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0));
   return {
     ...projection,
+    ...(projection.retainedUnplannedRuns === undefined
+      ? {}
+      : {
+          retainedUnplannedRuns: sort(projection.retainedUnplannedRuns, (row) => row.run.id),
+        }),
     nutrition: sort(projection.nutrition, (row) => row.planVersionId).map((row) => ({
       ...row,
       items: sort(row.items, (item) => item.itemId),

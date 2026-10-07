@@ -329,27 +329,32 @@ export function buildRacePlanImpactProjectionInput(
       const ownedOccurrences = occurrences.filter(
         (value) => value.schedule.versionId === row.record.versionId,
       );
-      const ownedRuns = runs.filter((run) =>
-        run.origin.kind === 'planned'
-          ? ownedOccurrences.some(
-              (value) => run.origin.kind === 'planned' && value.id === run.origin.occurrenceId,
-            )
-          : run.blueprint.versionId === blueprint.versionId,
+      const ownedRuns = runs.filter(
+        (run) =>
+          run.origin.kind === 'planned' &&
+          ownedOccurrences.some(
+            (value) => run.origin.kind === 'planned' && value.id === run.origin.occurrenceId,
+          ),
       );
-      if (
-        ownedRuns.some((run) => run.origin.kind !== 'planned') &&
-        schedules.filter((value) => value.record.blueprint.versionId === blueprint.versionId)
-          .length > 1
-      )
-        fatal.push({ kind: 'routine_run_schedule', id: blueprint.versionId });
       routines.push({ ...row, blueprint, occurrences: ownedOccurrences, runs: ownedRuns });
     }
     for (const occurrence of occurrences)
       if (!schedules.some((row) => row.record.versionId === occurrence.schedule.versionId))
         fatal.push({ kind: 'routine_run_schedule', id: occurrence.schedule.versionId });
-    for (const run of runs)
-      if (!routines.some((row) => row.runs.some((value) => value.id === run.id)))
+    const retainedUnplannedRuns: NonNullable<
+      RaceRelativeScheduleImpactInputCompatibleV4['retainedUnplannedRuns']
+    > = [];
+    for (const run of runs) {
+      if (run.origin.kind === 'unplanned') {
+        const blueprint = blueprints.find(
+          (row) => row.routineId === run.blueprint.id && row.versionId === run.blueprint.versionId,
+        );
+        if (!blueprint) fatal.push({ kind: 'frozen_blueprint', id: run.blueprint.versionId });
+        else retainedUnplannedRuns.push({ blueprint, run });
+      } else if (!routines.some((row) => row.runs.some((value) => value.id === run.id)))
         fatal.push({ kind: 'routine_run_schedule', id: run.id });
+    }
+    retainedUnplannedRuns.sort((a, b) => compare(a.run.id, b.run.id));
     const ordered = (facts: RaceProjectionMissingFact[]) =>
       [...new Map(facts.map((fact) => [JSON.stringify(fact), fact])).values()].sort((a, b) =>
         compare(JSON.stringify(a), JSON.stringify(b)),
@@ -381,6 +386,7 @@ export function buildRacePlanImpactProjectionInput(
         })),
       })),
       routines,
+      retainedUnplannedRuns,
       resolutions: intent.resolutions,
     };
     const projection = projectRaceRelativeScheduleImpactCompatibleV4(input, ports);

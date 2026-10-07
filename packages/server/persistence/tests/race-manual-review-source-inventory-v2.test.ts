@@ -502,3 +502,27 @@ it('guards external inventory accessors and aggregate output bytes', () => {
   entry.copiedLocations = ['x'.repeat(4194304)];
   expect(raceManualReviewSourceInventoryV2Schema.safeParse(output).success).toBe(false);
 });
+
+it('indexes independent unplanned original blueprint/run at exact candidate locations', () => {
+  const { input: projectionInput } = routineInput();
+  const scheduled = projectionInput.routines[0];
+  if (!scheduled) throw Error('fixture');
+  const run = routineRunSchema.parse({
+    ...scheduled.runs[0],
+    origin: { kind: 'unplanned' },
+    id: 'Run-食',
+  });
+  projectionInput.routines = [];
+  projectionInput.retainedUnplannedRuns = [{ blueprint: scheduled.blueprint, run }];
+  const value = input();
+  value.projectionInput = projectionInput;
+  const result = enumerateRaceManualReviewCopiedSourcesV2(assembled(value));
+  expect(result.inventoryState).toBe('mapped');
+  const ref = result.refs.find(
+    (row) => row.identity.kind === 'routine-run' && row.identity.sourceId === run.id,
+  );
+  expect(ref?.copiedLocations).toEqual([
+    'body.projectionInput.retainedUnplannedRuns[0].run',
+    'body.projection.retainedUnplannedRuns[0].run',
+  ]);
+});

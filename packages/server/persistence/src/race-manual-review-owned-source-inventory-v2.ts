@@ -443,13 +443,13 @@ function correspondence(
     }
   }
 }
-/** Retained correspondence only. Caller must use its authenticated fenced snapshot
- * transaction. No injected read callback, processing permission or SQL seal exists. */
-export async function captureRaceManualReviewOwnedSourceInventoryV2In(
+/** One strict ref, actual same-tx owned row/DTO correspondence only. No seal,
+ * permission or admission. Caller counts original source visits before dedup. */
+export async function captureRaceManualReviewOwnedSourceRefV2In(
   tx: Transaction,
-  unknownCandidate: unknown,
+  unknownRef: unknown,
   budget: SourceBudget,
-): Promise<RaceManualReviewOwnedSourceInventoryV2> {
+) {
   parse(
     z.strictObject({
       bytes: z.bigint().min(0n).max(4194304n),
@@ -457,22 +457,13 @@ export async function captureRaceManualReviewOwnedSourceInventoryV2In(
     }),
     budget,
   );
-  const candidate = parse(raceManualReviewCandidateV2ResultSchema, unknownCandidate);
-  if (candidate.status !== 'assembled_readonly' || candidate.body.athleteId !== tx.athleteId)
-    throw new RaceImpactDependencyError('INVALID_CONTEXT');
-  const inventory = enumerateRaceManualReviewCopiedSourcesV2(candidate);
-  if (inventory.inventoryState !== 'mapped' || !inventory.allCopiedBodiesIndexed)
-    throw new RaceImpactDependencyError('INVALID_CONTEXT');
-  // Candidate/locally derived refs retain their own ingress/output limits.
-  // Only actual owned response bodies consume response bytes; locations keep
-  // the existing pre-dedup visit guard and are not physical transfer counts.
-  reserveSourceBudget(
-    budget,
-    0n,
-    inventory.refs.reduce((n, r) => n + r.copiedLocations.length, 0),
+  const ref = parse(
+    plainGuard.pipe(z.strictObject({ identity: identitySchema, dtoDigest: hash })),
+    unknownRef,
   );
+  const refs = [ref];
   const facts: z.infer<typeof factSchema>[] = [];
-  for (const ref of inventory.refs) {
+  for (const ref of refs) {
     const id = ref.identity,
       s = selector(tx.athleteId, id);
     const unavailable = (reason: z.infer<typeof reasons>) =>
@@ -544,6 +535,46 @@ export async function captureRaceManualReviewOwnedSourceInventoryV2In(
     }
     facts.push({ identity: id, state: 'matched', dtoDigest: digest, reason: null });
   }
+  if (facts.length !== 1) throw new RaceImpactDependencyError('INVALID_CONTEXT');
+  return parse(factSchema, facts[0]);
+}
+/** Retained correspondence only. Caller must use its authenticated fenced snapshot
+ * transaction. No injected read callback, processing permission or SQL seal exists. */
+export async function captureRaceManualReviewOwnedSourceInventoryV2In(
+  tx: Transaction,
+  unknownCandidate: unknown,
+  budget: SourceBudget,
+): Promise<RaceManualReviewOwnedSourceInventoryV2> {
+  parse(
+    z.strictObject({
+      bytes: z.bigint().min(0n).max(4194304n),
+      sources: z.number().int().min(0).max(5000),
+    }),
+    budget,
+  );
+  const candidate = parse(raceManualReviewCandidateV2ResultSchema, unknownCandidate);
+  if (candidate.status !== 'assembled_readonly' || candidate.body.athleteId !== tx.athleteId)
+    throw new RaceImpactDependencyError('INVALID_CONTEXT');
+  const inventory = enumerateRaceManualReviewCopiedSourcesV2(candidate);
+  if (inventory.inventoryState !== 'mapped' || !inventory.allCopiedBodiesIndexed)
+    throw new RaceImpactDependencyError('INVALID_CONTEXT');
+  // Candidate/locally derived refs retain their own ingress/output limits.
+  // Only actual owned response bodies consume response bytes; locations keep
+  // the existing pre-dedup visit guard and are not physical transfer counts.
+  reserveSourceBudget(
+    budget,
+    0n,
+    inventory.refs.reduce((n, r) => n + r.copiedLocations.length, 0),
+  );
+  const facts: z.infer<typeof factSchema>[] = [];
+  for (const ref of inventory.refs)
+    facts.push(
+      await captureRaceManualReviewOwnedSourceRefV2In(
+        tx,
+        { identity: ref.identity, dtoDigest: ref.dtoDigest },
+        budget,
+      ),
+    );
   const result = raceManualReviewOwnedSourceInventoryV2Schema.parse({
     scope: inventory.scope,
     status: facts.every((f) => f.state === 'matched') ? 'observed_correspondence' : 'blocked',

@@ -87,6 +87,7 @@
     "./race-manual-review-preparation-v2": "./src/race-manual-review-preparation-v2.ts",
     "./race-manual-review-source-inventory-v2": "./src/race-manual-review-source-inventory-v2.ts",
     "./race-manual-review-full-copied-inventory-v2": "./src/race-manual-review-full-copied-inventory-v2.ts",
+    "./race-manual-review-full-owned-source-inventory-v2": "./src/race-manual-review-full-owned-source-inventory-v2.ts",
     "./race-manual-review-owned-source-inventory-v2": "./src/race-manual-review-owned-source-inventory-v2.ts",
     "./race-manual-review-owned-binding-consumer-v2": "./src/race-manual-review-owned-binding-consumer-v2.ts"
   },

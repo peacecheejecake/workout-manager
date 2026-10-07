@@ -133,11 +133,60 @@ const inputSchema = z.strictObject({
 const inputSchemaCompatibleV3 = inputSchema.extend({
   nutrition: z.array(nutritionContextCompatibleV3).max(1000),
 });
-export const raceRelativeScheduleImpactInputCompatibleV4Schema = inputSchema.extend({
-  nutrition: z
-    .array(nutritionContextCompatibleV3.extend({ record: nutritionPlanVersionCompatibleV4Schema }))
-    .max(1000),
-});
+/** Frozen unplanned origin: it has no schedule/occurrence to project or approve. */
+export const raceRetainedUnplannedRunSchema = z
+  .strictObject({ blueprint: routineBlueprintVersionSchema, run: routineRunSchema })
+  .superRefine((row, ctx) => {
+    const steps = new Set(row.blueprint.steps.map((step) => step.id));
+    if (
+      row.run.origin.kind !== 'unplanned' ||
+      row.run.blueprint.id !== row.blueprint.routineId ||
+      row.run.blueprint.versionId !== row.blueprint.versionId ||
+      row.run.progress.some((progress) => !steps.has(progress.stepId)) ||
+      Object.entries(row.run.selectedChoices).some(
+        ([groupId, stepId]) =>
+          !row.blueprint.choiceGroups.some(
+            (group) => group.id === groupId && group.stepIds.includes(stepId),
+          ),
+      )
+    )
+      ctx.addIssue({ code: 'custom', message: 'Unplanned frozen source mismatch' });
+  });
+export const raceRelativeScheduleImpactInputCompatibleV4Schema = inputSchema
+  .extend({
+    nutrition: z
+      .array(
+        nutritionContextCompatibleV3.extend({ record: nutritionPlanVersionCompatibleV4Schema }),
+      )
+      .max(1000),
+    retainedUnplannedRuns: z.array(raceRetainedUnplannedRunSchema).max(1000).optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.retainedUnplannedRuns === undefined) return;
+    const ids = new Set<string>();
+    const blueprints = new Map<string, unknown>();
+    for (const row of [...value.routines, ...value.retainedUnplannedRuns]) {
+      const identity = JSON.stringify([row.blueprint.routineId, row.blueprint.versionId]);
+      const previous = blueprints.get(identity);
+      if (previous !== undefined && !same(previous, row.blueprint))
+        ctx.addIssue({ code: 'custom', message: 'Divergent frozen blueprint body' });
+      blueprints.set(identity, row.blueprint);
+    }
+    let visits = 0;
+    for (const row of value.routines)
+      for (const run of row.runs) {
+        if (run.origin.kind !== 'planned' || ids.has(run.id))
+          ctx.addIssue({ code: 'custom', message: 'Scheduled run origin/roster mismatch' });
+        ids.add(run.id);
+      }
+    for (const row of value.retainedUnplannedRuns) {
+      if (ids.has(row.run.id)) ctx.addIssue({ code: 'custom', message: 'Duplicate retained run' });
+      ids.add(row.run.id);
+      visits += 1 + row.blueprint.steps.length + row.run.progress.length;
+      for (const progress of row.run.progress) visits += progress.actualRefs.length;
+    }
+    if (visits > 5000) ctx.addIssue({ code: 'custom', message: 'Retained run visit bound' });
+  });
 export type RaceRelativeScheduleImpactInputCompatibleV4 = z.infer<
   typeof raceRelativeScheduleImpactInputCompatibleV4Schema
 >;
@@ -603,6 +652,13 @@ function projectRaceRelativeScheduleImpactInternal(
         ) ||
         routines.some((context) => context.notice === 'affected_unresolved_requires_resolution'),
       completionReports: input.completionReports,
+      ...(input.retainedUnplannedRuns === undefined
+        ? {}
+        : {
+            retainedUnplannedRuns: [...input.retainedUnplannedRuns]
+              .sort((a, b) => (a.run.id < b.run.id ? -1 : a.run.id > b.run.id ? 1 : 0))
+              .map((row) => ({ state: 'retained_unplanned' as const, ...row })),
+          }),
     };
   } catch (error) {
     if (error instanceof ProjectionFailure) return reject(error.reason);

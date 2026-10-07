@@ -652,3 +652,46 @@ it('rejects conflicting exact race bodies before exposing shared ports', () => {
     reason: 'source_identity_mismatch',
   });
 });
+
+for (const scheduleCount of [0, 1, 2])
+  it(`captures unplanned frozen run separately with ${scheduleCount} same-blueprint schedules`, () => {
+    const capture = withRoutine();
+    const row = capture.routineActualManifest.runs[0];
+    const schedule = capture.routineActualManifest.schedules[0];
+    if (!row || !schedule) throw Error('fixture');
+    row.record = routineRunSchema.parse({ ...row.record, origin: { kind: 'unplanned' } });
+    capture.routineActualManifest.occurrences = [];
+    capture.routineActualManifest.schedules = Array.from({ length: scheduleCount }, (_, i) => ({
+      ...schedule,
+      scheduleId: `schedule-${i}`,
+      versionId: `schedule-version-${i}`,
+      record: { ...schedule.record, id: `schedule-${i}`, versionId: `schedule-version-${i}` },
+    }));
+    const original = structuredClone(row.record);
+    const result = buildRacePlanImpactProjectionInput(capture, intent(capture));
+    expect(result.status).toBe('projected');
+    if (result.status !== 'projected') throw Error('fixture');
+    expect(result.input.retainedUnplannedRuns?.[0]?.run).toEqual(original);
+    expect(result.projection.retainedUnplannedRuns?.[0]?.run).toEqual(original);
+    expect(result.input.routines.every((r) => r.runs.length === 0)).toBe(true);
+    expect(result.missingFacts.some((fact) => fact.kind === 'actual_reference_unavailable')).toBe(
+      true,
+    );
+    expect(result.approvalAllowed).toBe(false);
+  });
+it('blocks missing frozen blueprint for independent unplanned run', () => {
+  const capture = withRoutine();
+  const row = capture.routineActualManifest.runs[0];
+  if (!row) throw Error('fixture');
+  row.record = routineRunSchema.parse({ ...row.record, origin: { kind: 'unplanned' } });
+  capture.routineActualManifest.schedules = [];
+  capture.routineActualManifest.occurrences = [];
+  capture.routineActualManifest.blueprints = [];
+  expect(buildRacePlanImpactProjectionInput(capture, intent(capture))).toMatchObject({
+    status: 'blocked',
+    reason: 'missing_facts',
+    missingFacts: expect.arrayContaining([
+      { kind: 'frozen_blueprint', id: row.record.blueprint.versionId },
+    ]),
+  });
+});

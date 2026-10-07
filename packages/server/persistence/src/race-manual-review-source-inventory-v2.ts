@@ -358,6 +358,28 @@ export function enumerateRaceManualReviewCopiedSourcesV2(
         );
       return schedule;
     };
+    const retainedUnplanned = (rows: NonNullable<typeof p.retainedUnplannedRuns>, prefix: string) =>
+      rows.forEach((row, i) => {
+        add(
+          {
+            kind: 'routine-blueprint-version',
+            sourceId: row.blueprint.routineId,
+            versionId: row.blueprint.versionId,
+          },
+          row.blueprint,
+          `${prefix}[${i}].blueprint`,
+        );
+        add(
+          { kind: 'routine-run', sourceId: row.run.id, revision: row.run.revision },
+          row.run,
+          `${prefix}[${i}].run`,
+        );
+      });
+    retainedUnplanned(p.retainedUnplannedRuns ?? [], 'body.projectionInput.retainedUnplannedRuns');
+    retainedUnplanned(
+      body.projection.retainedUnplannedRuns ?? [],
+      'body.projection.retainedUnplannedRuns',
+    );
     for (const [i, context] of p.routines.entries())
       routine(context, `body.projectionInput.routines[${i}]`);
     for (const [i, context] of body.projection.routines.entries()) {

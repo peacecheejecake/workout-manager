@@ -1561,3 +1561,81 @@ it.each(['fit', 'fixture', 'healthkit'] as const)(
     );
   },
 );
+
+it('indexes independent unplanned copies across context/sourceInput/candidate and rejects omitted roster', () => {
+  const value = input((c) => {
+    withRun(c);
+    c.routineActualManifest.schedules = [];
+    c.routines = [];
+    c.rosters.routine = [];
+  });
+  const result = mapped(value);
+  const original = value.context.routineActualManifest.runs[0]?.record;
+  if (!original) throw Error('fixture');
+  const ref = result.refs.find(
+    (r) => r.identity.kind === 'routine-run' && r.identity.sourceId === original.id,
+  );
+  expect(ref?.dtoDigest).toBe(digest(original));
+  expect(ref?.copiedLocations).toEqual(
+    expect.arrayContaining([
+      'context.routineActualManifest.runs[0].record',
+      'sourceInput.projectionInput.retainedUnplannedRuns[0].run',
+      'candidate.body.projectionInput.retainedUnplannedRuns[0].run',
+      'candidate.body.projection.retainedUnplannedRuns[0].run',
+    ]),
+  );
+  const omitted = structuredClone(value);
+  omitted.sourceInput.projectionInput.retainedUnplannedRuns = [];
+  expect(enumerate(omitted)).toMatchObject({
+    inventoryState: 'blocked',
+    blockers: expect.arrayContaining([
+      expect.objectContaining({ reason: 'correspondence_mismatch' }),
+    ]),
+  });
+});
+
+it('rejects rehashed omitted input/output unplanned roster while context retains the actual run', () => {
+  const value = structuredClone(
+    input((c) => {
+      withRun(c);
+      c.routineActualManifest.schedules = [];
+      c.routines = [];
+      c.rosters.routine = [];
+    }),
+  );
+  value.sourceInput.projectionInput.retainedUnplannedRuns = [];
+  value.candidate.body.projectionInput.retainedUnplannedRuns = [];
+  value.candidate.body.projection.retainedUnplannedRuns = [];
+  value.candidate.digest = digest(value.candidate.body);
+  expect(enumerate(value)).toMatchObject({
+    inventoryState: 'blocked',
+    blockers: expect.arrayContaining([
+      expect.objectContaining({ location: 'sourceInput', reason: 'correspondence_mismatch' }),
+    ]),
+  });
+});
+it('rejects rehashed changed unplanned progress contents despite unchanged identity', () => {
+  const value = structuredClone(
+    input((c) => {
+      withRun(c);
+      c.routineActualManifest.schedules = [];
+      c.routines = [];
+      c.rosters.routine = [];
+    }),
+  );
+  for (const row of [
+    value.sourceInput.projectionInput.retainedUnplannedRuns?.[0],
+    value.candidate.body.projectionInput.retainedUnplannedRuns?.[0],
+    value.candidate.body.projection.retainedUnplannedRuns?.[0],
+  ]) {
+    if (!row?.run.progress[0]) throw Error('fixture');
+    row.run.progress[0].reason = 'Altered original report';
+  }
+  value.candidate.digest = digest(value.candidate.body);
+  expect(enumerate(value)).toMatchObject({
+    inventoryState: 'blocked',
+    blockers: expect.arrayContaining([
+      expect.objectContaining({ reason: 'correspondence_mismatch' }),
+    ]),
+  });
+});

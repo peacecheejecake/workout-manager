@@ -630,3 +630,154 @@ it('keeps the internal body union strict even without the successor envelope wra
     }).success,
   ).toBe(false);
 });
+
+function unplannedInput(scheduleCount = 0) {
+  const { input } = routineInput();
+  const scheduled = input.routines[0];
+  if (!scheduled) throw Error('fixture');
+  const run = routineRunSchema.parse({
+    ...scheduled.runs[0],
+    id: 'Run-食-A',
+    origin: { kind: 'unplanned' },
+  });
+  input.retainedUnplannedRuns = [{ blueprint: scheduled.blueprint, run }];
+  input.routines = Array.from({ length: scheduleCount }, (_, i) => ({
+    ...scheduled,
+    record: { ...scheduled.record, id: `schedule-${i}`, versionId: `schedule-version-${i}` },
+    runs: [],
+    occurrences: [],
+  }));
+  return { input, run };
+}
+for (const count of [0, 1, 2])
+  it(`retains independent unplanned run with ${count} unrelated same-blueprint schedules`, () => {
+    const { input, run } = unplannedInput(count);
+    const original = structuredClone(input);
+    const result = output(input);
+    expect(result.retainedUnplannedRuns).toEqual([
+      {
+        state: 'retained_unplanned',
+        blueprint: original.retainedUnplannedRuns?.[0]?.blueprint,
+        run,
+      },
+    ]);
+    expect(result.routines.every((row) => row.runs.length === 0)).toBe(true);
+    expect(input).toEqual(original);
+    expect(result.approval.status).toBe('blocked');
+  });
+it('rejects wrong unplanned blueprint tuple and planned origin in retained roster', () => {
+  const { input } = unplannedInput();
+  const row = input.retainedUnplannedRuns?.[0];
+  if (!row) throw Error('fixture');
+  row.run.blueprint.versionId = 'foreign-version';
+  expect(projectRaceRelativeScheduleImpactCompatibleV4(input, ports())).toMatchObject({
+    status: 'rejected',
+    reason: 'invalid_input',
+  });
+  row.run.blueprint.versionId = row.blueprint.versionId;
+  row.run.origin = { kind: 'planned', occurrenceId: 'unowned-occurrence' };
+  expect(raceRelativeScheduleImpactInputCompatibleV4Schema.safeParse(input).success).toBe(false);
+});
+it('rejects duplicate retained roster and output unknown schedule/timing fields', () => {
+  const { input } = unplannedInput();
+  const result = output(input);
+  expect(
+    raceRelativeScheduleImpactResultCompatibleV4Schema.safeParse({
+      ...result,
+      retainedUnplannedRuns: result.retainedUnplannedRuns?.map((row) => ({
+        ...row,
+        scheduleVersionId: 'invented',
+      })),
+    }).success,
+  ).toBe(false);
+  expect(
+    raceRelativeScheduleImpactResultCompatibleV4Schema.safeParse({
+      ...result,
+      retainedUnplannedRuns: result.retainedUnplannedRuns?.map((row) => ({
+        ...row,
+        timing: { state: 'resolved' },
+      })),
+    }).success,
+  ).toBe(false);
+  const row = input.retainedUnplannedRuns?.[0];
+  if (!row) throw Error('fixture');
+  expect(
+    raceRelativeScheduleImpactInputCompatibleV4Schema.safeParse({
+      ...input,
+      retainedUnplannedRuns: [row, row],
+    }).success,
+  ).toBe(false);
+});
+it('bounds unplanned roster count and rejects external oversized original bodies', () => {
+  const { input } = unplannedInput();
+  const row = input.retainedUnplannedRuns?.[0];
+  if (!row) throw Error('fixture');
+  expect(
+    raceRelativeScheduleImpactInputCompatibleV4Schema.safeParse({
+      ...input,
+      retainedUnplannedRuns: Array.from({ length: 1001 }, (_, i) => ({
+        ...row,
+        run: { ...row.run, id: `run-${i}` },
+      })),
+    }).success,
+  ).toBe(false);
+  expect(
+    projectRaceRelativeScheduleImpactCompatibleV4(
+      {
+        ...input,
+        retainedUnplannedRuns: [{ ...row, run: { ...row.run, id: 'x'.repeat(4194305) } }],
+      },
+      ports(),
+    ),
+  ).toMatchObject({ status: 'rejected', reason: 'projection_bound' });
+});
+it('leaves legacy V1 output without successor retained roster', () => {
+  const legacy = projectRaceRelativeScheduleImpact(fixture(1), ports());
+  expect('retainedUnplannedRuns' in legacy).toBe(false);
+});
+
+it('rejects divergent blueprint body for the same immutable tuple and extra output run', () => {
+  const { input } = unplannedInput(1);
+  const row = input.retainedUnplannedRuns?.[0];
+  if (!row) throw Error('fixture');
+  const original = structuredClone(input);
+  row.blueprint = { ...row.blueprint, title: 'Forged same-version body' };
+  expect(raceRelativeScheduleImpactInputCompatibleV4Schema.safeParse(input).success).toBe(false);
+  const result = output(original);
+  expect(
+    raceRelativeScheduleImpactResultCompatibleV4Schema.safeParse({
+      ...result,
+      retainedUnplannedRuns: [
+        ...(result.retainedUnplannedRuns ?? []),
+        ...(result.retainedUnplannedRuns ?? []),
+      ],
+    }).success,
+  ).toBe(false);
+});
+
+it('charges retained source visits before duplicate-body reuse within the 1000-run cap', () => {
+  const { input } = unplannedInput();
+  const row = input.retainedUnplannedRuns?.[0];
+  if (!row) throw Error('fixture');
+  const blueprint = routineBlueprintVersionSchema.parse({
+    ...row.blueprint,
+    steps: Array.from({ length: 5 }, (_, i) => ({
+      id: `step-${i}`,
+      title: 'Synthetic',
+      content: { kind: 'checklist', prompt: 'Synthetic' },
+      timing: { kind: 'user_scheduled' },
+      required: true,
+      choiceGroupId: null,
+    })),
+  });
+  const retained = Array.from({ length: 1000 }, (_, i) => ({
+    blueprint,
+    run: { ...row.run, id: `run-${i}` },
+  }));
+  expect(
+    raceRelativeScheduleImpactInputCompatibleV4Schema.safeParse({
+      ...input,
+      retainedUnplannedRuns: retained,
+    }).success,
+  ).toBe(false);
+});

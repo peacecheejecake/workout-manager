@@ -563,6 +563,23 @@ export function enumerateRaceManualReviewFullCopiedSourcesV2(
         `sourceInput.projectionInput.completionReports[${i}]`,
       ),
     );
+    (input.retainedUnplannedRuns ?? []).forEach((row, i) => {
+      const path = `sourceInput.projectionInput.retainedUnplannedRuns[${i}]`;
+      add(
+        {
+          kind: 'routine-blueprint-version',
+          sourceId: row.blueprint.routineId,
+          versionId: row.blueprint.versionId,
+        },
+        row.blueprint,
+        path + '.blueprint',
+      );
+      add(
+        { kind: 'routine-run', sourceId: row.run.id, revision: row.run.revision },
+        row.run,
+        path + '.run',
+      );
+    });
     input.routines.forEach((r, i) => {
       const path = `sourceInput.projectionInput.routines[${i}]`;
       add(

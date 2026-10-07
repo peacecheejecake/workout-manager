@@ -143,7 +143,20 @@ const bodySchema = z.strictObject({
   coverage,
   ...limitationShape,
 });
-export const raceManualReviewCandidateV2BodySchema = plainGuard.pipe(bodySchema);
+export const raceManualReviewCandidateV2BodySchema = plainGuard
+  .pipe(bodySchema)
+  .superRefine((value, ctx) => {
+    const original = value.projectionInput.retainedUnplannedRuns;
+    const projected = value.projection.retainedUnplannedRuns;
+    const sorted = (rows: NonNullable<typeof original>) =>
+      [...rows].sort((a, b) => compare(a.run.id, b.run.id));
+    if (
+      (original === undefined) !== (projected === undefined) ||
+      canonical(sorted(original ?? [])) !==
+        canonical(sorted((projected ?? []).map(({ blueprint, run }) => ({ blueprint, run }))))
+    )
+      ctx.addIssue({ code: 'custom', message: 'Retained unplanned source/output roster mismatch' });
+  });
 const reasonSchema = z.enum([
   'invalid_input',
   'projection_bound',
@@ -263,6 +276,10 @@ export function assembleRaceManualReviewCandidateCompatibleV4(
       unresolved: z.infer<typeof bodySchema.shape.unresolvedBindingItems> = [];
     const consumed = new Set<string>();
     let visits = input.sourceFacts.nutritionRacePins.length;
+    for (const row of p.retainedUnplannedRuns ?? []) {
+      visits += 1 + row.blueprint.steps.length + row.run.progress.length;
+      for (const progress of row.run.progress) visits += progress.actualRefs.length;
+    }
     for (const context of projection.nutrition) {
       visits += context.items.length;
       for (const entry of context.items) {
@@ -326,6 +343,11 @@ export function assembleRaceManualReviewCandidateCompatibleV4(
       [...rows].sort((a, b) => compare(identity(a), identity(b)));
     const normalizedInput = {
       ...p,
+      ...(p.retainedUnplannedRuns === undefined
+        ? {}
+        : {
+            retainedUnplannedRuns: sort(p.retainedUnplannedRuns, (row) => row.run.id),
+          }),
       sourcePlans: sort(p.sourcePlans, (row) => row.id),
       completionReports: sort(p.completionReports, (row) => row.sessionId),
       nutrition: sort(p.nutrition, (row) => row.record.versionId).map((row) => ({
@@ -344,6 +366,11 @@ export function assembleRaceManualReviewCandidateCompatibleV4(
     };
     const normalizedProjection = {
       ...projection,
+      ...(projection.retainedUnplannedRuns === undefined
+        ? {}
+        : {
+            retainedUnplannedRuns: sort(projection.retainedUnplannedRuns, (row) => row.run.id),
+          }),
       nutrition: sort(projection.nutrition, (row) => row.planVersionId).map((row) => ({
         ...row,
         items: sort(row.items, (entry) => entry.itemId),
