@@ -1,5 +1,6 @@
 import {
   captureConstraintRestoreLedger,
+  captureOwnedConstraintRestoreLedger,
   parseConstraintRestoreLedger,
   restoreConstraintLedger,
 } from './coaching-constraint-restore.mjs';
@@ -146,6 +147,74 @@ async function exportCurrentDrillAccount(database: Database, athleteId: string) 
   ])
     assert.deepEqual(rows, []);
   return value;
+}
+
+const MAX_DRILL_AI_EVENT_BYTES = 4096;
+function parseDrillAiTransitionArtifact(value: unknown) {
+  const record = (input: unknown, keys: readonly string[]): Record<string, unknown> => {
+    assert.ok(input !== null && typeof input === 'object' && !Array.isArray(input));
+    assert.deepEqual(Object.keys(input).sort(), [...keys].sort());
+    return Object.fromEntries(Object.entries(input));
+  };
+  assert.ok(Buffer.byteLength(JSON.stringify(value), 'utf8') <= MAX_DRILL_AI_EVENT_BYTES);
+  const artifact = record(value, ['schemaVersion', 'purpose', 'events']);
+  assert.equal(artifact.schemaVersion, 1);
+  assert.equal(artifact.purpose, 'synthetic_archive_ai_transition_replay');
+  const values: unknown = artifact.events;
+  assert.ok(Array.isArray(values) && values.length === 1);
+  const events = values.map((value: unknown) => {
+    const row = record(value, [
+      'athlete_id',
+      'event_id',
+      'occurred_at',
+      'previous_revision',
+      'previous_granted',
+      'revision',
+      'granted',
+    ]);
+    const athleteId: unknown = row.athlete_id;
+    const eventId: unknown = row.event_id;
+    const occurredAt: unknown = row.occurred_at;
+    const previousRevision: unknown = row.previous_revision;
+    const revision: unknown = row.revision;
+    const uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
+    assert.ok(typeof athleteId === 'string' && uuid.test(athleteId));
+    assert.ok(typeof eventId === 'string' && uuid.test(eventId));
+    assert.ok(
+      typeof occurredAt === 'string' &&
+        /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d{1,6})?\+00$/.test(occurredAt),
+    );
+    const instant = Date.parse(occurredAt.replace(' ', 'T').replace('+00', 'Z'));
+    assert.ok(Number.isFinite(instant));
+    assert.equal(
+      new Date(instant).toISOString().slice(0, 19).replace('T', ' '),
+      occurredAt.slice(0, 19),
+    );
+    assert.ok(
+      typeof previousRevision === 'number' &&
+        Number.isSafeInteger(previousRevision) &&
+        previousRevision >= 1 &&
+        previousRevision <= 2147483646,
+    );
+    assert.ok(typeof revision === 'number' && revision === previousRevision + 1);
+    assert.equal(row.previous_granted, true);
+    assert.equal(row.granted, false);
+    // Preserve PostgreSQL's original UTC text, including microseconds; no timestamp re-encoding.
+    return {
+      athlete_id: athleteId,
+      event_id: eventId,
+      occurred_at: occurredAt,
+      previous_revision: previousRevision,
+      previous_granted: true as const,
+      revision,
+      granted: false as const,
+    };
+  });
+  return {
+    schemaVersion: 1 as const,
+    purpose: 'synthetic_archive_ai_transition_replay' as const,
+    events,
+  };
 }
 
 // Separate current revocation facts, never a copy of private snapshot bodies or messages.
@@ -1277,6 +1346,133 @@ function assertCoachingCandidateRowsPurged(
 // caller commits or rolls back). Every entry must be accounted for; an erased tenant's entry
 // is satisfied by its erasure and counted, anything the database function cannot verify
 // throws, and an entry of any other shape is refused here before it reaches the database.
+type DrillRestoreQueryPort = Pick<PoolClient, 'query'>;
+// Privileged inspector only: hashes complete table rows under UTC without emitting bodies.
+// ONLY parent plus each leaf covers rows once; sequence counters are nontransactional and excluded.
+async function captureDrillRowFingerprints(inspector: Pool, expectedCatalog: DrillCatalog) {
+  const client = await inspector.connect();
+  try {
+    await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+    await client.query("SET LOCAL TimeZone='UTC'");
+    const roster = await client.query<{ schema: string; name: string; kind: string }>(
+      `SELECT n.nspname AS schema,c.relname AS name,c.relkind::text AS kind FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=ANY($1::text[]) AND c.relkind IN ('r','p') AND NOT EXISTS(SELECT 1 FROM pg_depend d WHERE d.classid='pg_class'::regclass AND d.objid=c.oid AND d.deptype='e') ORDER BY n.nspname COLLATE "C",c.relkind::text COLLATE "C",c.relname COLLATE "C"`,
+      [drillUserSchemas],
+    );
+    assert.deepEqual(
+      roster.rows,
+      expectedCatalog.entries
+        .filter((entry) => entry.kind === 'r' || entry.kind === 'p')
+        .map(({ schema, name, kind }) => ({ schema, name, kind }))
+        .sort((left, right) => {
+          for (const key of ['schema', 'kind', 'name'] as const) {
+            if (left[key] < right[key]) return -1;
+            if (left[key] > right[key]) return 1;
+          }
+          return 0;
+        }),
+    );
+    assert.ok(roster.rows.length > 0 && roster.rows.length <= 4096);
+    const facts: { schema: string; name: string; kind: string; count: number; sha256: string }[] =
+      [];
+    let totalBytes = 0;
+    let totalRows = 0;
+    for (const relation of roster.rows) {
+      const quoted = (name: string) => '"' + name.replaceAll('"', '""') + '"';
+      await client.query(
+        `DECLARE drill_rows NO SCROLL CURSOR FOR SELECT to_jsonb(x)::text AS body FROM ONLY ${quoted(relation.schema)}.${quoted(relation.name)} x ORDER BY to_jsonb(x)::text COLLATE "C"`,
+      );
+      const digest = createHash('sha256');
+      let count = 0;
+      for (;;) {
+        const batch = await client.query<{ body: string }>('FETCH FORWARD 128 FROM drill_rows');
+        if (batch.rows.length === 0) break;
+        for (const row of batch.rows) {
+          assert.equal(typeof row.body, 'string');
+          const bytes = Buffer.byteLength(row.body);
+          assert.ok(bytes <= 4 * 1024 * 1024);
+          totalBytes += bytes;
+          totalRows += 1;
+          assert.ok(totalBytes <= 256 * 1024 * 1024 && totalRows <= 100000);
+          digest.update(String(bytes) + ':').update(row.body);
+          count += 1;
+        }
+      }
+      await client.query('CLOSE drill_rows');
+      facts.push({ ...relation, count, sha256: digest.digest('hex') });
+    }
+    await client.query('COMMIT');
+    return facts;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function drillBackendPid(client: DrillRestoreQueryPort): Promise<number> {
+  const result = await client.query<{ pid: number }>('SELECT pg_backend_pid() AS pid');
+  assert.equal(result.rowCount, 1);
+  const pid = result.rows[0]?.pid;
+  assert.ok(typeof pid === 'number' && Number.isSafeInteger(pid) && pid > 0);
+  return pid;
+}
+
+type DrillReplayWitness = { phase: 'start' | 'checkpoint' | 'commit' | 'rollback'; pid: number };
+type DrillEnterRestoreTenant = (athleteId: string) => Promise<void>;
+async function withDrillOwnedReplay<T>(
+  owner: Pool,
+  expectedOwners: readonly string[],
+  operation: (client: DrillRestoreQueryPort, enterTenant: DrillEnterRestoreTenant) => Promise<T>,
+  witness?: (fact: DrillReplayWitness) => void,
+): Promise<T> {
+  assert.ok(expectedOwners.length > 0 && expectedOwners.length <= 1000);
+  assert.equal(new Set(expectedOwners).size, expectedOwners.length);
+  const owners = [...expectedOwners].sort();
+  for (const athleteId of owners)
+    assert.match(
+      athleteId,
+      /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/,
+    );
+  const client = await owner.connect();
+  try {
+    await client.query('BEGIN');
+    witness?.({ phase: 'start', pid: await drillBackendPid(client) });
+    await client.query('SELECT pg_advisory_xact_lock(77210,1)');
+    const identity = await client.query(
+      `SELECT current_user AS role,session_user AS session_role,rolsuper,rolbypassrls,rolcreatedb,rolcreaterole FROM pg_roles WHERE rolname=current_user`,
+    );
+    assert.deepEqual(identity.rows, [
+      {
+        role: 'drill_owner',
+        session_role: 'drill_owner',
+        rolsuper: false,
+        rolbypassrls: false,
+        rolcreatedb: false,
+        rolcreaterole: false,
+      },
+    ]);
+    for (const athleteId of owners)
+      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,77206))', [athleteId]);
+    for (const athleteId of owners)
+      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [athleteId]);
+    const enterTenant: DrillEnterRestoreTenant = async (athleteId) => {
+      assert.ok(owners.includes(athleteId));
+      await client.query("SELECT set_config('app.athlete_id',$1,true)", [athleteId]);
+    };
+    const result = await operation(client, enterTenant);
+    await client.query('COMMIT');
+    witness?.({ phase: 'commit', pid: await drillBackendPid(client) });
+    return result;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    witness?.({ phase: 'rollback', pid: await drillBackendPid(client) });
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 type CourseDeletionReplay = {
   deleted: string[];
   absent: string[];
@@ -1284,8 +1480,9 @@ type CourseDeletionReplay = {
   erasure_satisfied: string[];
 };
 async function replayCourseDeletionLedger(
-  restored: Pool,
+  restored: DrillRestoreQueryPort,
   value: unknown,
+  enterTenant: DrillEnterRestoreTenant,
 ): Promise<CourseDeletionReplay> {
   assert.ok(Array.isArray(value) && value.length > 0);
   const outcome: CourseDeletionReplay = {
@@ -1307,7 +1504,7 @@ async function replayCourseDeletionLedger(
         typeof deletedAt === 'string' &&
         !Number.isNaN(Date.parse(deletedAt)),
     );
-    await restored.query("SELECT set_config('app.athlete_id',$1,true)", [owner]);
+    await enterTenant(owner);
     const erased = await restored.query('SELECT 1 FROM tenant_erasure WHERE athlete_id=$1', [
       owner,
     ]);
@@ -1353,7 +1550,11 @@ type ShareBudgetReplay = {
   already_applied: string[];
   erasure_satisfied: string[];
 };
-async function replayShareBudgetLedger(restored: Pool, value: unknown): Promise<ShareBudgetReplay> {
+async function replayShareBudgetLedger(
+  restored: DrillRestoreQueryPort,
+  value: unknown,
+  enterTenant: DrillEnterRestoreTenant,
+): Promise<ShareBudgetReplay> {
   assert.ok(Array.isArray(value) && value.length > 0);
   const outcome: ShareBudgetReplay = {
     inserted: [],
@@ -1382,7 +1583,7 @@ async function replayShareBudgetLedger(restored: Pool, value: unknown): Promise<
         typeof zoneId === 'string' &&
         numbers.every((number) => Number.isInteger(number)),
     );
-    await restored.query("SELECT set_config('app.athlete_id',$1,true)", [owner]);
+    await enterTenant(owner);
     const erased = await restored.query('SELECT 1 FROM tenant_erasure WHERE athlete_id=$1', [
       owner,
     ]);
@@ -1593,6 +1794,8 @@ async function execute() {
   const restoredObjectRoot = join(directory, 'restored-objects');
   const ledgerFile = join(directory, 'post-backup-erasure-ledger.json');
   const cleanupLedgerFile = join(directory, 'post-backup-encrypted-cleanup-ledger.json');
+  // Private local SQL-origin artifact; not authenticated complete-tail admission evidence.
+  const aiTransitionFile = join(tmpdir(), 'backup-original-ai-withdrawal-event.json');
   const evidenceWithdrawalLedgerFile = join(
     directory,
     'post-backup-evidence-withdrawal-ledger.json',
@@ -2344,8 +2547,18 @@ async function execute() {
     assert.ok(!unofficialExport.includes(unofficialEnvelope.ciphertext));
     assert.ok(!unofficialExport.includes('encrypted_session'));
     checks.push('unofficial_garmin_session_seeded_and_absent_from_export');
-    // These extra tenants add no identity, provider connection or activity to the original checks.
+    // These extra tenants add no provider connection or activity; the withdrawn tenant
+    // has a named synthetic identity so exact owner replay can verify its account.
     const withdrawnAthlete = randomUUID();
+    assert.equal(
+      (
+        await sourceAdminPool.query(
+          'INSERT INTO identity_private.account(athlete_id,issuer,subject) VALUES($1,$2,$3)',
+          [withdrawnAthlete, 'https://synthetic.invalid', 'drill-withdrawn'],
+        )
+      ).rowCount,
+      1,
+    );
     // This tenant later withdraws AI permission only; its positive core setup
     // still needs a separate explicit app permission before plan/thread storage.
     const withdrawnAppConsent = await createConsentRepository(sourceDb).setConsent(
@@ -3913,6 +4126,40 @@ async function execute() {
       expectedRevision: aiConsent.revision,
       idempotencyKey: randomUUID(),
     });
+    const aiCaptureClient = await sourceAdminPool.connect();
+    let originalAiArtifact: ReturnType<typeof parseDrillAiTransitionArtifact>;
+    try {
+      await aiCaptureClient.query('BEGIN READ ONLY');
+      await aiCaptureClient.query("SET LOCAL TIME ZONE 'UTC'");
+      const original = await aiCaptureClient.query(
+        `SELECT athlete_id,event_id::text AS event_id,occurred_at::text AS occurred_at,
+          consent_previous_revision AS previous_revision,consent_previous_granted AS previous_granted,
+          consent_revision AS revision,consent_granted AS granted
+        FROM restore_suppression_event e WHERE athlete_id=$1 AND kind='ai_consent_transition'
+          AND record_version=1 AND target_id IS NULL AND consent_previous_revision=$2
+          AND consent_previous_granted=true AND consent_revision=$3 AND consent_granted=false
+          AND NOT EXISTS(SELECT 1 FROM jsonb_each(to_jsonb(e)) x
+            WHERE x.key<>ALL(ARRAY['event_id','record_version','athlete_id','kind','occurred_at','target_id',
+              'consent_previous_revision','consent_previous_granted','consent_revision','consent_granted'])
+              AND x.value<>'null'::jsonb)`,
+        [withdrawnAthlete, aiConsent.revision, revokedConsent.revision],
+      );
+      assert.equal(original.rowCount, 1);
+      originalAiArtifact = parseDrillAiTransitionArtifact({
+        schemaVersion: 1,
+        purpose: 'synthetic_archive_ai_transition_replay',
+        events: original.rows,
+      });
+      await aiCaptureClient.query('COMMIT');
+    } catch (error) {
+      await aiCaptureClient.query('ROLLBACK');
+      throw error;
+    } finally {
+      aiCaptureClient.release();
+    }
+    const originalAiBytes = Buffer.from(JSON.stringify(originalAiArtifact), 'utf8');
+    const originalAiHash = createHash('sha256').update(originalAiBytes).digest('hex');
+    await writeFile(aiTransitionFile, originalAiBytes, { mode: 0o600, flag: 'wx' });
     const withdrawnEvidence = await createCoreEvidenceSnapshotRepository(sourceDb).read(
       withdrawnAthlete,
       beforeWithdrawal.id,
@@ -4215,7 +4462,7 @@ async function execute() {
     // that brings back the backup's lower one. One more link against the first area, and a
     // second area made after the backup, one link cut against it, then the area deleted — so
     // the restored cluster never had it and only its budget row can remember the place.
-    const budgetOf = async (owner: Pool, zoneId: string) =>
+    const budgetOf = async (owner: DrillRestoreQueryPort, zoneId: string) =>
       (
         await owner.query<{ links_cut: number }>(
           'SELECT links_cut FROM course_share_area_budget WHERE athlete_id=$1 AND zone_id=$2',
@@ -4427,7 +4674,7 @@ async function execute() {
       'full',
     );
     checks.push('full_archive_target_user_metadata_plain_owner_exact_catalog_retarget');
-    // Protected maintenance below still uses the historical mixed administrator Pool.
+    // Archive inspection remains administrator-scoped; protected replay below acquires its own plain-owner lease.
     // Metadata transfer does not establish leased owner replay or authenticated reopening.
     // M2-01s: the archive predates the erasure, so before any replay the restored cluster
     // holds every course row and every object the erased tenant had. This is what makes
@@ -4699,328 +4946,603 @@ async function execute() {
       backupAiOwners,
     );
     assert.deepEqual(replayWithdrawalLedger, evidenceWithdrawalLedger);
-    await restored.query('BEGIN');
-    try {
-      for (const entry of replayLedger) {
-        assert.ok(
-          typeof entry === 'object' &&
-            entry !== null &&
-            'athlete_id' in entry &&
-            typeof entry.athlete_id === 'string',
-        );
-        await restored.query("SELECT set_config('app.athlete_id',$1,true)", [entry.athlete_id]);
-        await restored.query('SELECT public.erase_account($1)', [entry.athlete_id]);
-      }
-      await restoreConstraintLedger(
-        restored,
-        parseConstraintRestoreLedger(
-          JSON.parse(await readFile(constraintLedgerFile, 'utf8')) as unknown,
-          backupConstraintOwners,
+    const aiArtifactStat = await lstat(aiTransitionFile);
+    assert.ok(aiArtifactStat.isFile() && !aiArtifactStat.isSymbolicLink());
+    assert.equal(aiArtifactStat.mode & 0o777, 0o600);
+    assert.ok(aiArtifactStat.size <= MAX_DRILL_AI_EVENT_BYTES);
+    const aiReplayBytes = await readFile(aiTransitionFile);
+    assert.equal(createHash('sha256').update(aiReplayBytes).digest('hex'), originalAiHash);
+    const aiReplayArtifact = parseDrillAiTransitionArtifact(
+      JSON.parse(aiReplayBytes.toString('utf8')) as unknown,
+    );
+    assert.deepEqual(aiReplayArtifact, originalAiArtifact);
+    const restoredOwner = pool('drill_restore', 'drill_owner');
+    const maintenanceOwners: string[] = [
+      deletedAthlete,
+      retainedAthlete,
+      removedConstraintAthlete,
+      withdrawnAthlete,
+      absentConsentAthlete,
+      sharingAthlete,
+    ].sort();
+    assert.equal(new Set(maintenanceOwners).size, 6);
+    const parsedConstraintReplay = parseConstraintRestoreLedger(
+      JSON.parse(await readFile(constraintLedgerFile, 'utf8')) as unknown,
+      backupConstraintOwners,
+    );
+    const inspectedConstraints = await captureConstraintRestoreLedger(
+      restored,
+      backupConstraintOwners,
+    );
+    const constraintReplayOwners = [
+      ...new Set(
+        [...inspectedConstraints.subjects, ...parsedConstraintReplay.subjects].map(
+          (row) => row.athleteId,
         ),
+      ),
+    ].sort();
+    parseConstraintRestoreLedger(parsedConstraintReplay, constraintReplayOwners);
+    for (const athleteId of constraintReplayOwners)
+      assert.ok(maintenanceOwners.includes(athleteId));
+    // Inspector roster check: plain owner RLS must not silently leave another credential tenant untouched.
+    for (const table of [
+      'garmin_attempt',
+      'garmin_connection',
+      'garmin_unofficial_run',
+      'garmin_unofficial_connection',
+    ]) {
+      const tenants = await restored.query<{ athlete_id: string }>(
+        `SELECT DISTINCT athlete_id FROM ${table}`,
       );
-      // Test fail-closed replay against real restored rows. The helper deliberately does not
-      // commit/rollback: maintenance owns the transaction, including earlier owner changes.
-      const safeConstraints = await captureConstraintRestoreLedger(
-        restored,
-        backupConstraintOwners,
-      );
-      const originalConstraintSubject = backupConstraintLedger.subjects.find(
-        (row) => row.athleteId === retainedAthlete,
-      );
-      const safeConstraintHead = safeConstraints.subjects.find(
-        (row) => row.athleteId === removedConstraintAthlete,
-      )?.head;
-      assert.ok(originalConstraintSubject && safeConstraintHead);
-      const invalidConstraintLedgers = [
-        {
-          ...safeConstraints,
-          subjects: safeConstraints.subjects.filter((row) => row.athleteId !== retainedAthlete),
-        },
-        {
-          ...safeConstraints,
-          subjects: safeConstraints.subjects.map((row) =>
-            row.athleteId === retainedAthlete ? { ...row, rows: row.rows.slice(1) } : row,
-          ),
-        },
-        {
-          ...safeConstraints,
-          subjects: safeConstraints.subjects.map((row) =>
-            row.athleteId === retainedAthlete
-              ? {
-                  ...row,
-                  rows: row.rows.map((item) =>
-                    item.deleted
-                      ? item
-                      : { ...item, text: 'Synthetic same-revision contradiction' },
-                  ),
-                }
-              : row,
-          ),
-        },
-        {
-          ...safeConstraints,
-          subjects: safeConstraints.subjects.map((row) =>
-            row.athleteId === retainedAthlete ? originalConstraintSubject : row,
-          ),
-        },
-        {
-          ...safeConstraints,
-          subjects: safeConstraints.subjects.map((row) =>
-            row.athleteId === removedConstraintAthlete
-              ? {
-                  ...row,
-                  head: { ...safeConstraintHead, revision: safeConstraintHead.revision + 1 },
-                  rows: row.rows.map((item) =>
-                    item.deleted
-                      ? {
-                          ...item,
-                          revision: item.revision + 1,
-                          deleted: false,
-                          text: 'Synthetic forbidden resurrection',
-                        }
-                      : item,
-                  ),
-                }
-              : row,
-          ),
-        },
-      ];
-      for (const invalid of invalidConstraintLedgers) {
-        await restored.query('SAVEPOINT invalid_constraint_replay');
-        await restored.query("SELECT set_config('app.athlete_id',$1,true)", [retainedAthlete]);
-        await restored.query(
-          "UPDATE coaching_constraint_head SET updated_at='2000-01-01T00:00:00Z' WHERE athlete_id=$1",
-          [retainedAthlete],
-        );
-        await assert.rejects(() => restoreConstraintLedger(restored, invalid));
-        await restored.query('ROLLBACK TO SAVEPOINT invalid_constraint_replay');
-        await restored.query('RELEASE SAVEPOINT invalid_constraint_replay');
-        assert.deepEqual(
-          (await captureConstraintRestoreLedger(restored, backupConstraintOwners)).subjects,
-          safeConstraints.subjects,
-        );
-      }
-      checks.push(
-        'invalid_constraint_ledger_owner_row_revision_and_tombstone_replay_fails_closed_with_caller_rollback',
-      );
-      // Owner maintenance runs before runtime access; tenant context is required by immutable triggers.
-      for (const entry of replayWithdrawalLedger.snapshots) {
-        await restored.query("SELECT set_config('app.athlete_id',$1,true)", [entry.athlete_id]);
-        await restored.query(
-          'UPDATE core_evidence_snapshot SET body=NULL,purged_reason=$3 WHERE athlete_id=$1 AND id=$2 AND body IS NOT NULL',
-          [entry.athlete_id, entry.id, entry.purged_reason],
-        );
-      }
-      let skippedErasedConsentOwners = 0;
-      for (const consent of replayWithdrawalLedger.consents) {
-        await restored.query("SELECT set_config('app.athlete_id',$1,true)", [consent.athlete_id]);
-        const erased = await restored.query('SELECT 1 FROM tenant_erasure WHERE athlete_id=$1', [
-          consent.athlete_id,
-        ]);
-        if (erased.rowCount !== 0) {
-          assert.equal(
-            (
-              await restored.query('SELECT 1 FROM consent WHERE athlete_id=$1', [
-                consent.athlete_id,
-              ])
-            ).rowCount,
-            0,
-          );
-          skippedErasedConsentOwners++;
-          continue;
-        }
-        if (consent.state.kind === 'absent') {
-          await restored.query("DELETE FROM consent WHERE athlete_id=$1 AND kind='ai'", [
-            consent.athlete_id,
-          ]);
-          assert.equal(
-            (
-              await restored.query("SELECT 1 FROM consent WHERE athlete_id=$1 AND kind='ai'", [
-                consent.athlete_id,
-              ])
-            ).rowCount,
-            0,
-          );
-          continue;
-        }
-        // Fail closed if the purported latest ledger would overwrite a newer or contradictory state.
-        const applied = await restored.query(
-          `INSERT INTO consent(athlete_id,kind,revision,granted) VALUES($1,$2,$3,$4)
-           ON CONFLICT(athlete_id,kind) DO UPDATE SET revision=EXCLUDED.revision,granted=EXCLUDED.granted
-           WHERE consent.revision<EXCLUDED.revision OR (consent.revision=EXCLUDED.revision AND consent.granted=EXCLUDED.granted)
-           RETURNING athlete_id`,
-          [consent.athlete_id, consent.kind, consent.state.revision, consent.state.granted],
-        );
-        assert.equal(applied.rowCount, 1);
-      }
-      assert.equal(skippedErasedConsentOwners, 1);
-      await restored.query('DELETE FROM identity_private.session');
-      await restored.query('DELETE FROM identity_private.login_attempt');
-      // Old backup grants can have been rotated/disconnected since the snapshot.
-      // Retain domain data, but require fresh OAuth and replay only the latest cleanup ledger.
-      await restored.query('DELETE FROM garmin_attempt');
-      await restored.query(
-        "UPDATE garmin_connection SET generation=generation+1,state='reconnect_required',encrypted_tokens=NULL,user_id=NULL,permissions='[]',connected_at=NULL,access_expires_at=NULL,refresh_expires_at=NULL,lease_id=NULL,lease_until=NULL,attempt_expires_at=NULL,attempt_session_id=NULL",
-      );
-      await restored.query('DELETE FROM garmin_private.revocation');
-      await restored.query('DELETE FROM garmin_private.ownership');
-      const cleanupJson = await readFile(cleanupLedgerFile, 'utf8');
-      await restored.query(
-        'INSERT INTO garmin_private.revocation SELECT * FROM jsonb_populate_recordset(NULL::garmin_private.revocation,$1::jsonb)',
-        [cleanupJson],
-      );
-      await restored.query(
-        'UPDATE garmin_private.revocation SET lease_id=NULL,lease_until=NULL,prepared=false',
-      );
-      // M1-06b-tmp: an unofficial Garmin session in the backup may be one the owner has since
-      // disconnected, erased or rotated, and it can never be revoked at Garmin. It is never
-      // revived: every restored session is discarded and the owner logs in again. The pinned
-      // profile and the activity ledger are kept (they are not credentials); an in-flight run
-      // is closed. Nothing is added to the official revocation queue.
-      await restored.query(
-        "UPDATE garmin_unofficial_run SET state='failed_transient',finished_at=greatest(started_at,clock_timestamp()) WHERE state='running'",
-      );
-      await restored.query(
-        "UPDATE garmin_unofficial_connection SET state=CASE WHEN state='connected' THEN 'reconnect_required' ELSE state END,encrypted_session=NULL,session_generation=session_generation+1,lease_id=NULL,lease_until=NULL,run_requested_at=NULL",
-      );
-      // Activity deletions that happened after the backup are suppression, not a cache:
-      // the restored cluster must re-apply them before any runtime read, and must reclaim
-      // the track objects the archive brought back with them.
-      const activityDeletionJson: unknown = JSON.parse(
-        await readFile(activityDeletionLedgerFile, 'utf8'),
-      );
-      assert.ok(Array.isArray(activityDeletionJson) && activityDeletionJson.length > 0);
-      let replayedDeletions = 0;
-      let erasureSatisfiedDeletions = 0;
-      let absentDeletions = 0;
-      for (const entry of activityDeletionJson) {
-        assert.ok(typeof entry === 'object' && entry !== null && !Array.isArray(entry));
-        const row = entry as Record<string, unknown>;
-        const owner = row['athlete_id'];
-        const activityId = row['activity_id'];
-        const kind = row['kind'];
-        const sourceId = row['source_id'];
-        const revision = row['revision'];
-        const sourceRevision = row['source_revision'];
-        const contentHash = row['content_hash'];
-        assert.ok(
-          typeof owner === 'string' &&
-            typeof activityId === 'string' &&
-            typeof kind === 'string' &&
-            typeof sourceId === 'string' &&
-            typeof revision === 'number' &&
-            Number.isInteger(revision) &&
-            revision > 0 &&
-            typeof sourceRevision === 'number' &&
-            Number.isInteger(sourceRevision) &&
-            sourceRevision > 0 &&
-            typeof contentHash === 'string',
-        );
-        await restored.query("SELECT set_config('app.athlete_id',$1,true)", [owner]);
-        const erased = await restored.query('SELECT 1 FROM tenant_erasure WHERE athlete_id=$1', [
-          owner,
-        ]);
-        if (erased.rowCount !== 0) {
-          // Erasure already removed this tenant's activities, which satisfies the entry
-          // more completely than suppression would. Counted, not silently skipped, so a
-          // ledger entry can never be lost without the count showing it.
-          assert.equal(
-            (
-              await restored.query(
-                'SELECT 1 FROM activity_canonical WHERE athlete_id=$1 AND id=$2',
-                [owner, activityId],
-              )
-            ).rowCount,
-            0,
-          );
-          erasureSatisfiedDeletions += 1;
-          continue;
-        }
-        const present = await restored.query(
-          'SELECT 1 FROM activity_canonical WHERE athlete_id=$1 AND id=$2',
-          [owner, activityId],
-        );
-        if (present.rowCount === 0) {
-          // M2-01y: an activity recorded after the dump and deleted before the ledger was
-          // captured. The restored cluster has no row for it — no canonical row, no source
-          // head — so there is nothing to tombstone and no source to suppress. Skipping it
-          // would let a device re-sync import the deleted activity again as a new one. The
-          // replay rebuilds exactly what suppression needs from the ledger (a deleted
-          // canonical row with no activity values, the source head, the suppression row) and
-          // arms the purge of the activity's object directory; the function refuses — and so
-          // rolls the whole replay back — anything it cannot verify.
-          assert.deepEqual(
-            (
-              await restored.query<{ replayed: boolean }>(
-                'SELECT public.replay_absent_activity_deletion($1,$2,$3,$4,$5,$6,$7) AS replayed',
-                [owner, activityId, kind, sourceId, sourceRevision, revision, contentHash],
-              )
-            ).rows,
-            [{ replayed: true }],
-          );
-          absentDeletions += 1;
-          continue;
-        }
-        await restored.query(
-          `INSERT INTO activity_suppression(athlete_id,kind,source_id) VALUES($1,$2,$3)
-           ON CONFLICT DO NOTHING`,
-          [owner, kind, sourceId],
-        );
-        // Fail closed if the restored row is already ahead of the ledger.
-        const applied = await restored.query(
-          `UPDATE activity_canonical SET deleted=true,revision=$3
-           WHERE athlete_id=$1 AND id=$2 AND revision<=$3 RETURNING id`,
-          [owner, activityId, revision],
-        );
-        assert.equal(applied.rowCount, 1);
-        replayedDeletions += 1;
-      }
-      assert.equal(
-        replayedDeletions + erasureSatisfiedDeletions + absentDeletions,
-        activityDeletionJson.length,
-      );
-      assert.equal(erasureSatisfiedDeletions, 1);
-      assert.equal(absentDeletions, 1);
-      // M2-01ao: course deletions after the backup are suppression too. Every entry is
-      // accounted for — applied to a restored course, recorded for a course the dump never
-      // had, found already applied, or satisfied by the tenant's erasure — or the whole
-      // replay rolls back.
-      const courseReplay = await replayCourseDeletionLedger(
-        restored,
-        JSON.parse(await readFile(courseDeletionLedgerFile, 'utf8')) as unknown,
-      );
-      assert.deepEqual(
-        { ...courseReplay, deleted: [...courseReplay.deleted].sort() },
-        {
-          // M2-01k-o: the shared course deleted after the backup is replayed like the owner's.
-          deleted: [
-            ownerDeletedCourse.course.courseId,
-            linkOfCourseDeletedAfterBackup.courseId,
-          ].sort(),
-          absent: [gapBornCourse.course.courseId],
-          already_applied: [preBackupDeletedCourse.course.courseId],
-          erasure_satisfied: [erasedRetryCourse.course.courseId],
-        },
-      );
-      // M2-01as: the restored budget rows are the backup's; the ledger raises the first
-      // area's to the links made since, keeps the deleted second area as a tombstone, and
-      // leaves the erased tenant's to its erasure.
-      assert.equal(await budgetOf(restored, firstArea.zoneId), 3);
-      const budgetReplay = await replayShareBudgetLedger(
-        restored,
-        JSON.parse(await readFile(shareBudgetLedgerFile, 'utf8')) as unknown,
-      );
-      assert.equal(budgetReplay.raised.length, 1);
-      assert.equal(budgetReplay.inserted.length, 1);
-      assert.equal(budgetReplay.already_applied.length, 0);
-      assert.equal(budgetReplay.erasure_satisfied.length, 1);
-      assert.deepEqual(budgetReplay.raised, [firstArea.zoneId]);
-      assert.deepEqual(budgetReplay.inserted, [secondArea.zoneId]);
-      await restored.query('COMMIT');
-    } catch (error) {
-      await restored.query('ROLLBACK');
-      throw error;
+      for (const tenant of tenants.rows) assert.ok(maintenanceOwners.includes(tenant.athlete_id));
     }
+    const replayOwnedArchive = async (
+      checkpoint: (stage: 'after-constraint' | 'after-budget') => Promise<void>,
+      witness: (fact: DrillReplayWitness) => void,
+    ) =>
+      withDrillOwnedReplay(
+        restoredOwner,
+        maintenanceOwners,
+        async (restored, enterTenant) => {
+          for (const entry of replayLedger) {
+            assert.ok(
+              typeof entry === 'object' &&
+                entry !== null &&
+                'athlete_id' in entry &&
+                typeof entry.athlete_id === 'string',
+            );
+            await enterTenant(entry.athlete_id);
+            await restored.query('SELECT public.erase_account($1)', [entry.athlete_id]);
+          }
+          await restoreConstraintLedger(
+            restored,
+            parseConstraintRestoreLedger(
+              JSON.parse(await readFile(constraintLedgerFile, 'utf8')) as unknown,
+              backupConstraintOwners,
+            ),
+            constraintReplayOwners,
+            enterTenant,
+          );
+          witness({ phase: 'checkpoint', pid: await drillBackendPid(restored) });
+          await checkpoint('after-constraint');
+          // Test fail-closed replay against real restored rows. The helper deliberately does not
+          // commit/rollback: maintenance owns the transaction, including earlier owner changes.
+          const safeConstraints = await captureOwnedConstraintRestoreLedger(
+            restored,
+            constraintReplayOwners,
+            enterTenant,
+          );
+          const originalConstraintSubject = backupConstraintLedger.subjects.find(
+            (row) => row.athleteId === retainedAthlete,
+          );
+          const safeConstraintHead = safeConstraints.subjects.find(
+            (row) => row.athleteId === removedConstraintAthlete,
+          )?.head;
+          assert.ok(originalConstraintSubject && safeConstraintHead);
+          const invalidConstraintLedgers = [
+            {
+              ...safeConstraints,
+              subjects: safeConstraints.subjects.filter((row) => row.athleteId !== retainedAthlete),
+            },
+            {
+              ...safeConstraints,
+              subjects: safeConstraints.subjects.map((row) =>
+                row.athleteId === retainedAthlete ? { ...row, rows: row.rows.slice(1) } : row,
+              ),
+            },
+            {
+              ...safeConstraints,
+              subjects: safeConstraints.subjects.map((row) =>
+                row.athleteId === retainedAthlete
+                  ? {
+                      ...row,
+                      rows: row.rows.map((item) =>
+                        item.deleted
+                          ? item
+                          : { ...item, text: 'Synthetic same-revision contradiction' },
+                      ),
+                    }
+                  : row,
+              ),
+            },
+            {
+              ...safeConstraints,
+              subjects: safeConstraints.subjects.map((row) =>
+                row.athleteId === retainedAthlete ? originalConstraintSubject : row,
+              ),
+            },
+            {
+              ...safeConstraints,
+              subjects: safeConstraints.subjects.map((row) =>
+                row.athleteId === removedConstraintAthlete
+                  ? {
+                      ...row,
+                      head: { ...safeConstraintHead, revision: safeConstraintHead.revision + 1 },
+                      rows: row.rows.map((item) =>
+                        item.deleted
+                          ? {
+                              ...item,
+                              revision: item.revision + 1,
+                              deleted: false,
+                              text: 'Synthetic forbidden resurrection',
+                            }
+                          : item,
+                      ),
+                    }
+                  : row,
+              ),
+            },
+          ];
+          for (const invalid of invalidConstraintLedgers) {
+            await restored.query('SAVEPOINT invalid_constraint_replay');
+            await enterTenant(retainedAthlete);
+            await restored.query(
+              "UPDATE coaching_constraint_head SET updated_at='2000-01-01T00:00:00Z' WHERE athlete_id=$1",
+              [retainedAthlete],
+            );
+            await assert.rejects(() =>
+              restoreConstraintLedger(restored, invalid, constraintReplayOwners, enterTenant),
+            );
+            await restored.query('ROLLBACK TO SAVEPOINT invalid_constraint_replay');
+            await restored.query('RELEASE SAVEPOINT invalid_constraint_replay');
+            assert.deepEqual(
+              (
+                await captureOwnedConstraintRestoreLedger(
+                  restored,
+                  constraintReplayOwners,
+                  enterTenant,
+                )
+              ).subjects,
+              safeConstraints.subjects,
+            );
+          }
+          checks.push(
+            'invalid_constraint_ledger_owner_row_revision_and_tombstone_replay_fails_closed_with_caller_rollback',
+          );
+          // Owner maintenance runs before runtime access; tenant context is required by immutable triggers.
+          for (const entry of replayWithdrawalLedger.snapshots) {
+            await enterTenant(entry.athlete_id);
+            await restored.query(
+              'UPDATE core_evidence_snapshot SET body=NULL,purged_reason=$3 WHERE athlete_id=$1 AND id=$2 AND body IS NOT NULL',
+              [entry.athlete_id, entry.id, entry.purged_reason],
+            );
+          }
+          let skippedErasedConsentOwners = 0;
+          for (const consent of replayWithdrawalLedger.consents) {
+            await enterTenant(consent.athlete_id);
+            const erased = await restored.query(
+              'SELECT 1 FROM tenant_erasure WHERE athlete_id=$1',
+              [consent.athlete_id],
+            );
+            if (erased.rowCount !== 0) {
+              assert.equal(
+                (
+                  await restored.query('SELECT 1 FROM consent WHERE athlete_id=$1', [
+                    consent.athlete_id,
+                  ])
+                ).rowCount,
+                0,
+              );
+              skippedErasedConsentOwners++;
+              continue;
+            }
+            if (consent.state.kind === 'absent') {
+              await restored.query("DELETE FROM consent WHERE athlete_id=$1 AND kind='ai'", [
+                consent.athlete_id,
+              ]);
+              assert.equal(
+                (
+                  await restored.query("SELECT 1 FROM consent WHERE athlete_id=$1 AND kind='ai'", [
+                    consent.athlete_id,
+                  ])
+                ).rowCount,
+                0,
+              );
+              continue;
+            }
+            const head = await restored.query(
+              "SELECT revision,granted FROM consent WHERE athlete_id=$1 AND kind='ai' FOR UPDATE",
+              [consent.athlete_id],
+            );
+            const expectedHead = {
+              revision: consent.state.revision,
+              granted: consent.state.granted,
+            };
+            if (
+              head.rows.length === 1 &&
+              head.rows[0]?.revision === expectedHead.revision &&
+              head.rows[0]?.granted === expectedHead.granted
+            ) {
+              assert.deepEqual(head.rows, [expectedHead]);
+              // A normal source event has no restore receipt. Equal state is read-only, never replayed/backfilled.
+              continue;
+            }
+            const event = aiReplayArtifact.events.find(
+              (event) => event.athlete_id === consent.athlete_id,
+            );
+            assert.ok(event);
+            assert.deepEqual(head.rows, [
+              { revision: event.previous_revision, granted: event.previous_granted },
+            ]);
+            assert.deepEqual(expectedHead, { revision: event.revision, granted: event.granted });
+            await restored.query("SET LOCAL TIME ZONE 'UTC'");
+            const args = [
+              event.athlete_id,
+              event.event_id,
+              event.occurred_at,
+              event.previous_revision,
+              event.previous_granted,
+              event.revision,
+              event.granted,
+            ];
+            assert.deepEqual(
+              (
+                await restored.query(
+                  'SELECT public.replay_ai_consent_transition_exact($1,$2,$3,$4,$5,$6,$7) AS outcome',
+                  args,
+                )
+              ).rows,
+              [{ outcome: 'transitioned' }],
+            );
+            assert.deepEqual(
+              (
+                await restored.query(
+                  `SELECT athlete_id,event_id::text AS event_id,occurred_at::text AS occurred_at,
+              consent_previous_revision AS previous_revision,consent_previous_granted AS previous_granted,
+              consent_revision AS revision,consent_granted AS granted
+            FROM restore_suppression_event WHERE event_id=$1 AND kind='ai_consent_transition' AND record_version=1 AND target_id IS NULL`,
+                  [event.event_id],
+                )
+              ).rows,
+              [event],
+            );
+            assert.deepEqual(
+              (
+                await restored.query(
+                  `SELECT athlete_id,event_id::text AS event_id,occurred_at::text AS occurred_at,
+              previous_revision,previous_granted,consent_revision AS revision,consent_granted AS granted
+            FROM restore_ai_consent_replay_receipt WHERE event_id=$1`,
+                  [event.event_id],
+                )
+              ).rows,
+              [event],
+            );
+            const outbox = await restored.query(
+              'SELECT id::text AS id,idempotency_key,topic,payload FROM outbox WHERE athlete_id=$1 AND id=$2',
+              [event.athlete_id, event.event_id],
+            );
+            assert.deepEqual(outbox.rows, [
+              {
+                id: event.event_id,
+                idempotency_key: `restore:ai_consent:${event.event_id}`,
+                topic: 'consent.changed',
+                payload: { kind: 'ai', granted: event.granted, revision: event.revision },
+              },
+            ]);
+            assert.deepEqual(
+              (
+                await restored.query(
+                  'SELECT public.replay_ai_consent_transition_exact($1,$2,$3,$4,$5,$6,$7) AS outcome',
+                  args,
+                )
+              ).rows,
+              [{ outcome: 'already_applied' }],
+            );
+            assert.deepEqual(
+              (
+                await restored.query(
+                  "SELECT revision,granted FROM consent WHERE athlete_id=$1 AND kind='ai'",
+                  [consent.athlete_id],
+                )
+              ).rows,
+              [expectedHead],
+            );
+            assert.deepEqual(
+              (
+                await restored.query(
+                  'SELECT id::text AS id,idempotency_key,topic,payload FROM outbox WHERE athlete_id=$1 AND id=$2',
+                  [event.athlete_id, event.event_id],
+                )
+              ).rows,
+              outbox.rows,
+            );
+          }
+          assert.equal(skippedErasedConsentOwners, 1);
+          await restored.query("SELECT set_config('app.athlete_id','',true)");
+          await restored.query('DELETE FROM identity_private.session');
+          await restored.query('DELETE FROM identity_private.login_attempt');
+          // Old backup grants can have been rotated/disconnected since the snapshot.
+          // Retain domain data, but require fresh OAuth and replay only the latest cleanup ledger.
+          for (const athleteId of maintenanceOwners) {
+            await enterTenant(athleteId);
+            const attempts = await restored.query(
+              'SELECT 1 FROM garmin_attempt WHERE athlete_id=$1',
+              [athleteId],
+            );
+            assert.equal(
+              (await restored.query('DELETE FROM garmin_attempt WHERE athlete_id=$1', [athleteId]))
+                .rowCount,
+              attempts.rowCount,
+            );
+            const connections = await restored.query(
+              'SELECT 1 FROM garmin_connection WHERE athlete_id=$1',
+              [athleteId],
+            );
+            assert.equal(
+              (
+                await restored.query(
+                  "UPDATE garmin_connection SET generation=generation+1,state='reconnect_required',encrypted_tokens=NULL,user_id=NULL,permissions='[]',connected_at=NULL,access_expires_at=NULL,refresh_expires_at=NULL,lease_id=NULL,lease_until=NULL,attempt_expires_at=NULL,attempt_session_id=NULL WHERE athlete_id=$1",
+                  [athleteId],
+                )
+              ).rowCount,
+              connections.rowCount,
+            );
+          }
+          await restored.query("SELECT set_config('app.athlete_id','',true)");
+          await restored.query('DELETE FROM garmin_private.revocation');
+          await restored.query('DELETE FROM garmin_private.ownership');
+          const cleanupJson = await readFile(cleanupLedgerFile, 'utf8');
+          await restored.query(
+            'INSERT INTO garmin_private.revocation SELECT * FROM jsonb_populate_recordset(NULL::garmin_private.revocation,$1::jsonb)',
+            [cleanupJson],
+          );
+          await restored.query(
+            'UPDATE garmin_private.revocation SET lease_id=NULL,lease_until=NULL,prepared=false',
+          );
+          // M1-06b-tmp: an unofficial Garmin session in the backup may be one the owner has since
+          // disconnected, erased or rotated, and it can never be revoked at Garmin. It is never
+          // revived: every restored session is discarded and the owner logs in again. The pinned
+          // profile and the activity ledger are kept (they are not credentials); an in-flight run
+          // is closed. Nothing is added to the official revocation queue.
+          for (const athleteId of maintenanceOwners) {
+            await enterTenant(athleteId);
+            const running = await restored.query(
+              "SELECT 1 FROM garmin_unofficial_run WHERE athlete_id=$1 AND state='running'",
+              [athleteId],
+            );
+            assert.equal(
+              (
+                await restored.query(
+                  "UPDATE garmin_unofficial_run SET state='failed_transient',finished_at=greatest(started_at,clock_timestamp()) WHERE state='running' AND athlete_id=$1",
+                  [athleteId],
+                )
+              ).rowCount,
+              running.rowCount,
+            );
+            const connections = await restored.query(
+              'SELECT 1 FROM garmin_unofficial_connection WHERE athlete_id=$1',
+              [athleteId],
+            );
+            assert.equal(
+              (
+                await restored.query(
+                  "UPDATE garmin_unofficial_connection SET state=CASE WHEN state='connected' THEN 'reconnect_required' ELSE state END,encrypted_session=NULL,session_generation=session_generation+1,lease_id=NULL,lease_until=NULL,run_requested_at=NULL WHERE athlete_id=$1",
+                  [athleteId],
+                )
+              ).rowCount,
+              connections.rowCount,
+            );
+          }
+          // Activity deletions that happened after the backup are suppression, not a cache:
+          // the restored cluster must re-apply them before any runtime read, and must reclaim
+          // the track objects the archive brought back with them.
+          const activityDeletionJson: unknown = JSON.parse(
+            await readFile(activityDeletionLedgerFile, 'utf8'),
+          );
+          assert.ok(Array.isArray(activityDeletionJson) && activityDeletionJson.length > 0);
+          let replayedDeletions = 0;
+          let erasureSatisfiedDeletions = 0;
+          let absentDeletions = 0;
+          for (const entry of activityDeletionJson) {
+            assert.ok(typeof entry === 'object' && entry !== null && !Array.isArray(entry));
+            const row = entry as Record<string, unknown>;
+            const owner = row['athlete_id'];
+            const activityId = row['activity_id'];
+            const kind = row['kind'];
+            const sourceId = row['source_id'];
+            const revision = row['revision'];
+            const sourceRevision = row['source_revision'];
+            const contentHash = row['content_hash'];
+            assert.ok(
+              typeof owner === 'string' &&
+                typeof activityId === 'string' &&
+                typeof kind === 'string' &&
+                typeof sourceId === 'string' &&
+                typeof revision === 'number' &&
+                Number.isInteger(revision) &&
+                revision > 0 &&
+                typeof sourceRevision === 'number' &&
+                Number.isInteger(sourceRevision) &&
+                sourceRevision > 0 &&
+                typeof contentHash === 'string',
+            );
+            await enterTenant(owner);
+            const erased = await restored.query(
+              'SELECT 1 FROM tenant_erasure WHERE athlete_id=$1',
+              [owner],
+            );
+            if (erased.rowCount !== 0) {
+              // Erasure already removed this tenant's activities, which satisfies the entry
+              // more completely than suppression would. Counted, not silently skipped, so a
+              // ledger entry can never be lost without the count showing it.
+              assert.equal(
+                (
+                  await restored.query(
+                    'SELECT 1 FROM activity_canonical WHERE athlete_id=$1 AND id=$2',
+                    [owner, activityId],
+                  )
+                ).rowCount,
+                0,
+              );
+              erasureSatisfiedDeletions += 1;
+              continue;
+            }
+            const present = await restored.query(
+              'SELECT 1 FROM activity_canonical WHERE athlete_id=$1 AND id=$2',
+              [owner, activityId],
+            );
+            if (present.rowCount === 0) {
+              // M2-01y: an activity recorded after the dump and deleted before the ledger was
+              // captured. The restored cluster has no row for it — no canonical row, no source
+              // head — so there is nothing to tombstone and no source to suppress. Skipping it
+              // would let a device re-sync import the deleted activity again as a new one. The
+              // replay rebuilds exactly what suppression needs from the ledger (a deleted
+              // canonical row with no activity values, the source head, the suppression row) and
+              // arms the purge of the activity's object directory; the function refuses — and so
+              // rolls the whole replay back — anything it cannot verify.
+              assert.deepEqual(
+                (
+                  await restored.query<{ replayed: boolean }>(
+                    'SELECT public.replay_absent_activity_deletion($1,$2,$3,$4,$5,$6,$7) AS replayed',
+                    [owner, activityId, kind, sourceId, sourceRevision, revision, contentHash],
+                  )
+                ).rows,
+                [{ replayed: true }],
+              );
+              absentDeletions += 1;
+              continue;
+            }
+            await restored.query(
+              `INSERT INTO activity_suppression(athlete_id,kind,source_id) VALUES($1,$2,$3)
+           ON CONFLICT DO NOTHING`,
+              [owner, kind, sourceId],
+            );
+            // Fail closed if the restored row is already ahead of the ledger.
+            const applied = await restored.query(
+              `UPDATE activity_canonical SET deleted=true,revision=$3
+           WHERE athlete_id=$1 AND id=$2 AND revision<=$3 RETURNING id`,
+              [owner, activityId, revision],
+            );
+            assert.equal(applied.rowCount, 1);
+            replayedDeletions += 1;
+          }
+          assert.equal(
+            replayedDeletions + erasureSatisfiedDeletions + absentDeletions,
+            activityDeletionJson.length,
+          );
+          assert.equal(erasureSatisfiedDeletions, 1);
+          assert.equal(absentDeletions, 1);
+          // M2-01ao: course deletions after the backup are suppression too. Every entry is
+          // accounted for — applied to a restored course, recorded for a course the dump never
+          // had, found already applied, or satisfied by the tenant's erasure — or the whole
+          // replay rolls back.
+          const courseReplay = await replayCourseDeletionLedger(
+            restored,
+            JSON.parse(await readFile(courseDeletionLedgerFile, 'utf8')) as unknown,
+            enterTenant,
+          );
+          assert.deepEqual(
+            { ...courseReplay, deleted: [...courseReplay.deleted].sort() },
+            {
+              // M2-01k-o: the shared course deleted after the backup is replayed like the owner's.
+              deleted: [
+                ownerDeletedCourse.course.courseId,
+                linkOfCourseDeletedAfterBackup.courseId,
+              ].sort(),
+              absent: [gapBornCourse.course.courseId],
+              already_applied: [preBackupDeletedCourse.course.courseId],
+              erasure_satisfied: [erasedRetryCourse.course.courseId],
+            },
+          );
+          // M2-01as: the restored budget rows are the backup's; the ledger raises the first
+          // area's to the links made since, keeps the deleted second area as a tombstone, and
+          // leaves the erased tenant's to its erasure.
+          await enterTenant(sharingAthlete);
+          assert.equal(await budgetOf(restored, firstArea.zoneId), 3);
+          const budgetReplay = await replayShareBudgetLedger(
+            restored,
+            JSON.parse(await readFile(shareBudgetLedgerFile, 'utf8')) as unknown,
+            enterTenant,
+          );
+          assert.equal(budgetReplay.raised.length, 1);
+          assert.equal(budgetReplay.inserted.length, 1);
+          assert.equal(budgetReplay.already_applied.length, 0);
+          assert.equal(budgetReplay.erasure_satisfied.length, 1);
+          assert.deepEqual(budgetReplay.raised, [firstArea.zoneId]);
+          assert.deepEqual(budgetReplay.inserted, [secondArea.zoneId]);
+          witness({ phase: 'checkpoint', pid: await drillBackendPid(restored) });
+          await checkpoint('after-budget');
+        },
+        witness,
+      );
+    const replayFacts: {
+      stage: string;
+      witness: DrillReplayWitness[];
+      relationCount: number;
+      fingerprintSha256: string;
+      before: Awaited<ReturnType<typeof captureDrillRowFingerprints>>;
+      after: Awaited<ReturnType<typeof captureDrillRowFingerprints>>;
+    }[] = [];
+    for (const stage of ['after-constraint', 'after-budget'] as const) {
+      const before = await captureDrillRowFingerprints(restored, sourceCatalog);
+      const checksLength = checks.length;
+      const witness: DrillReplayWitness[] = [];
+      const injected = new Error(`DRILL_FAULT_${stage}`);
+      await assert.rejects(
+        replayOwnedArchive(
+          async (reached) => {
+            if (reached === stage) throw injected;
+          },
+          (fact) => witness.push(fact),
+        ),
+        (error: unknown) => error === injected,
+      );
+      checks.length = checksLength;
+      assert.equal(witness.filter((fact) => fact.phase === 'commit').length, 0);
+      assert.equal(witness.filter((fact) => fact.phase === 'rollback').length, 1);
+      assert.equal(witness[0]?.phase, 'start');
+      assert.ok(witness.some((fact) => fact.phase === 'checkpoint'));
+      assert.equal(new Set(witness.map((fact) => fact.pid)).size, 1);
+      const after = await captureDrillRowFingerprints(restored, sourceCatalog);
+      assert.deepEqual(after, before);
+      replayFacts.push({
+        stage,
+        witness,
+        relationCount: before.length,
+        fingerprintSha256: createHash('sha256').update(JSON.stringify(before)).digest('hex'),
+        before,
+        after,
+      });
+    }
+    const faultEvidence = JSON.stringify({ schemaVersion: 1, faults: replayFacts });
+    assert.ok(Buffer.byteLength(faultEvidence) <= 4 * 1024 * 1024);
+    await writeFile(join(tmpdir(), 'backup-replay-fault-witness.json'), faultEvidence, {
+      mode: 0o600,
+      flag: 'wx',
+    });
+    const successWitness: DrillReplayWitness[] = [];
+    await replayOwnedArchive(
+      async () => {},
+      (fact) => successWitness.push(fact),
+    );
+    assert.equal(successWitness.filter((fact) => fact.phase === 'commit').length, 1);
+    assert.equal(successWitness.filter((fact) => fact.phase === 'rollback').length, 0);
+    assert.equal(new Set(successWitness.map((fact) => fact.pid)).size, 1);
+    await writeFile(
+      join(tmpdir(), 'backup-replay-success-witness.json'),
+      JSON.stringify({ schemaVersion: 1, successWitness }),
+      { mode: 0o600, flag: 'wx' },
+    );
     assert.equal(await budgetOf(restored, firstArea.zoneId), 4);
     assert.equal(await budgetOf(restored, secondArea.zoneId), 1);
     assert.equal(
@@ -5034,11 +5556,11 @@ async function execute() {
     );
     checks.push('latest_share_budget_ledger_replayed_before_runtime_access');
     // Replaying it again raises nothing.
-    await restored.query('BEGIN');
-    try {
+    await withDrillOwnedReplay(restoredOwner, maintenanceOwners, async (restored, enterTenant) => {
       const again = await replayShareBudgetLedger(
         restored,
         JSON.parse(await readFile(shareBudgetLedgerFile, 'utf8')) as unknown,
+        enterTenant,
       );
       assert.deepEqual(
         { ...again, already_applied: [...again.already_applied].sort() },
@@ -5050,11 +5572,7 @@ async function execute() {
         },
       );
       assert.equal(again.erasure_satisfied.length, 1);
-      await restored.query('COMMIT');
-    } catch (error) {
-      await restored.query('ROLLBACK');
-      throw error;
-    }
+    });
     assert.equal(await budgetOf(restored, firstArea.zoneId), 4);
     checks.push('share_budget_ledger_replay_is_idempotent');
     checks.push('latest_erasure_replayed_before_runtime_access');
@@ -5082,9 +5600,8 @@ async function execute() {
     const replayedCourseLedger = JSON.parse(
       await readFile(courseDeletionLedgerFile, 'utf8'),
     ) as unknown;
-    await restored.query('BEGIN');
-    try {
-      const again = await replayCourseDeletionLedger(restored, replayedCourseLedger);
+    await withDrillOwnedReplay(restoredOwner, maintenanceOwners, async (restored, enterTenant) => {
+      const again = await replayCourseDeletionLedger(restored, replayedCourseLedger, enterTenant);
       assert.deepEqual(
         { ...again, already_applied: [...again.already_applied].sort() },
         {
@@ -5099,36 +5616,42 @@ async function execute() {
           erasure_satisfied: [erasedRetryCourse.course.courseId],
         },
       );
-      await restored.query('COMMIT');
-    } catch (error) {
-      await restored.query('ROLLBACK');
-      throw error;
-    }
+    });
     assert.deepEqual(await courseReplayState(), courseStateAfterReplay);
     checks.push('course_deletion_ledger_replay_is_idempotent');
     // An entry the restored cluster cannot verify — here a tenant it has no account for —
     // aborts the replay, and the caller's rollback leaves nothing of the entries before it.
-    await restored.query('BEGIN');
+    const unknownReplayTenant = randomUUID();
     await assert.rejects(
       () =>
-        replayCourseDeletionLedger(restored, [
-          ...(replayedCourseLedger as unknown[]),
-          {
-            athlete_id: randomUUID(),
-            course_id: randomUUID(),
-            deleted_at: new Date().toISOString(),
-          },
-        ]),
+        withDrillOwnedReplay(
+          restoredOwner,
+          [...maintenanceOwners, unknownReplayTenant],
+          (client, enterTenant) =>
+            replayCourseDeletionLedger(
+              client,
+              [
+                ...(replayedCourseLedger as unknown[]),
+                {
+                  athlete_id: unknownReplayTenant,
+                  course_id: randomUUID(),
+                  deleted_at: new Date().toISOString(),
+                },
+              ],
+              enterTenant,
+            ),
+        ),
       /COURSE_REPLAY_TENANT_UNKNOWN/,
     );
-    await restored.query('ROLLBACK');
-    await restored.query('BEGIN');
     await assert.rejects(() =>
-      replayCourseDeletionLedger(restored, [
-        { ...(replayedCourseLedger as Record<string, unknown>[])[0], name: 'no extra fields' },
-      ]),
+      withDrillOwnedReplay(restoredOwner, maintenanceOwners, (client, enterTenant) =>
+        replayCourseDeletionLedger(
+          client,
+          [{ ...(replayedCourseLedger as Record<string, unknown>[])[0], name: 'no extra fields' }],
+          enterTenant,
+        ),
+      ),
     );
-    await restored.query('ROLLBACK');
     assert.deepEqual(await courseReplayState(), courseStateAfterReplay);
     checks.push('invalid_course_deletion_ledger_entry_fails_closed_with_caller_rollback');
     assertCoachingCandidateRowsPurged(
@@ -5526,7 +6049,7 @@ async function execute() {
     ]) {
       assert.ok(!JSON.stringify(withdrawnExport).includes(body.synthetic));
     }
-    assert.deepEqual(withdrawnExport.data.consents, [revokedConsent]);
+    assert.deepEqual(withdrawnExport.data.consents, [revokedConsent, withdrawnAppConsent]);
     checks.push(
       'restored_withdrawn_evidence_and_model_output_stay_purged_in_read_export_and_receipt',
     );
@@ -5548,7 +6071,7 @@ async function execute() {
     );
     const absentExport = await exportCurrentDrillAccount(restoreDb, absentConsentAthlete);
     if (absentExport.schemaVersion !== 33) throw new Error('Expected evidence export v33');
-    assert.deepEqual(absentExport.data.consents, []);
+    assert.deepEqual(absentExport.data.consents, [absentAiTenantAppConsent]);
     assert.equal(absentExport.data.evidenceSnapshots.length, 1);
     assert.equal(absentExport.data.evidenceSnapshots[0]?.id, beforeConsentDeletion.snapshot.id);
     assert.equal(absentExport.data.evidenceSnapshots[0]?.body, null);

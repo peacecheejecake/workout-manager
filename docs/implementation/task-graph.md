@@ -843,4 +843,6 @@ M2-01k-v-a~f는 app 처리 의미 확정 뒤 새 admission·직접 저장·basis
 
 ## AI 설정의 실제 실행 연결 · 2026-10-07
 
+현재 제품의 전체 인증 복원은 [EXT-RESTORE](progress/EXT-RESTORE.md)로 별도 추적한다. `EXT-RESTOREa`는 M2-02i/j/k와 M2-01k-v-c 뒤의 최종 schema에 대해 typed full-family/완전 tail/postconditions/admission을 구현·실DB 검증한다. `EXT-RESTOREb`는 독립 최신 witness·운영 전체 백업/격리 복원을 실제 검증한다. M2-01k·EXT-HOSTING·G2-PUBLIC은 전체 gate를, M2-05b/c는 로컬 capability를 기다린다. 기존 historical100→102→upgrade105 지원과 ordinary107/fault2를 현재 schema의 complete restore로 확대하지 않는다. 기존 미완료 요구와 상태를 보존하며 DDL 번호는 phase 통합 후 Root가 직렬 배정한다.
+
 설정 선택의 로컬 수용과 실제 코칭 실행을 구분한다. M2-01k-w-a의 같은 거래 준비만 검증 완료다. 기존 미시작 w-b~e는 요구를 보존해 M2-05a~d로 일대일 이관했다: M2-02 통합 → immutable job → complete freshness → 글로벌 월 예산 dispatch → 실제 OpenAI 수용. 내부 M2-06은 M2-05c, 공개 G2-PUBLIC은 실제 외부 M2-05d도 요구한다. [준비 기록](progress/M2-01k-w.md)과 [실행 기록](progress/M2-05-execution.md)을 따른다. 별도 대회 phase의 현황은 [고정 branch 기록](progress/M2-02-branch-state.md)이며, 이 그래프에 상태를 기록한 것이 해당 코드를 C나 main에 병합했다는 뜻은 아니다.

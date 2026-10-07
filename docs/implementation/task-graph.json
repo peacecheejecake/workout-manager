@@ -86,7 +86,7 @@
     {
       "id": "EXT-HOSTING",
       "title": "실제 호스팅(HTTPS 도메인·TLS·secret manager)",
-      "dependsOn": ["EXT-OIDC"],
+      "dependsOn": ["EXT-OIDC", "EXT-RESTORE"],
       "kind": "external",
       "status": "in_progress",
       "scope": "외부 조건(EXT-OIDC에서 분리; 사용자 결정 2026-09-29: AWS 서울 리전에서 호스팅 진행, 2026-10-04: 월 10만 원 상한은 AWS 계정 전체에 적용, HTTPS 호스트는 workout.red-10-proto.xyz): 공개 HTTPS 도메인과 TLS ingress, Zitadel에 https redirect(/bff/v1/auth/callback)·post-logout(/account) 등록, NODE_ENV=production과 __Host-/Secure cookie, OIDC 값의 secret manager 전달, 배포 환경에서 로그인·계정 전환·로그아웃·만료 확인(EXT-OIDC 체크리스트 4·7의 앱 cancelled 경로·10 UI·11 포함). Zitadel Back은 access_denied를 보내지 않았으므로 취소 경로는 실제 공급자에서 접근 가능한 별도 취소 수단 또는 명시적인 공급자 오류 응답으로 확인하고, 불가능하면 미검증으로 남긴다. 배포 전 ODbL 고지가 있는 타일·장소/고도 배포와 전국 graph로 재빌드(M0-06b-odbl, 사용자 결정: 호스팅 때 재빌드). 공개 페이지의 스크립트 링크마다 활성 manifest SHA-256과 실제 응답 바이트를 확인하고, Vite 호스트가 /map/basemap/**를 직접 서빙하면 Next 동적 route와 동등한 활성 배포·해시 제한 또는 보호된 proxy를 적용한다.",
@@ -1804,7 +1804,8 @@
         "M2-01k-v-d",
         "M2-01k-v-e",
         "M2-01k-v-f",
-        "M2-01k-w-a"
+        "M2-01k-w-a",
+        "EXT-RESTORE"
       ],
       "kind": "task",
       "status": "in_progress",
@@ -1922,7 +1923,7 @@
     {
       "id": "G2-PUBLIC",
       "title": "Web MVP 공개 출시 gate",
-      "dependsOn": ["G2", "EXT-HOSTING", "M2-05d"],
+      "dependsOn": ["G2", "EXT-HOSTING", "M2-05d", "EXT-RESTORE"],
       "kind": "gate",
       "status": "not_started",
       "scope": "사용자 결정(2026-09-27): 호스팅을 내부 준비 판정 뒤로 미룬다. 공개 Web 출시는 G2의 제품 수용과 EXT-HOSTING의 공개 HTTPS/TLS, Zitadel 배포 redirect·logout·취소·만료 검증, NODE_ENV=production·__Host-/Secure cookie, secret manager, ODbL 고지 지도 산출물 재빌드 증거를 모두 요구한다. 미실행·partial 항목은 통과로 표시하지 않으며 공식 Garmin 연동은 별도 후속 범위다."
@@ -2261,7 +2262,7 @@
     {
       "id": "M2-05b",
       "title": "AI dispatch의 complete freshness 검증",
-      "dependsOn": ["M2-05a"],
+      "dependsOn": ["M2-05a", "EXT-RESTOREa"],
       "kind": "task",
       "status": "not_started",
       "scope": "기존 M2-01k-w-c의 미시작 범위를 일대일 이관(2026-10-07); Same-transaction full dependency manifest·absent heads·actual/overlay/ACL/suppression·consent/policy/catalog·restore generation·outbox lease의 authoritative 재검증. CLOSED 우회 금지.",
@@ -2270,7 +2271,7 @@
     {
       "id": "M2-05c",
       "title": "AI 월 예산과 lease dispatch 연결",
-      "dependsOn": ["M2-05b"],
+      "dependsOn": ["M2-05b", "EXT-RESTOREa"],
       "kind": "task",
       "status": "not_started",
       "scope": "기존 M2-01k-w-d의 미시작 범위를 일대일 이관(2026-10-07); 모든 사용자 합산 서울 월50,000원 reserve→fresh marker commit→거래 밖 HTTP→settle/finish. ambiguous 전송 재시도 금지, 취소/철회/lease loss·완전한 budget 원장/복원 검증.",
@@ -2374,6 +2375,33 @@
       "status": "completed",
       "scope": "S22 app admission의 race6 create/update receipt-first 신규처리 gate, 기존 조회·삭제·export·성공 replay 유지 및 실제PG/HTTP/OIDC Next·Vite 계정동의·철회초안·재동의 수용 완료. 날짜 영향 고정 basis/승인은 M2-02i, 공식 PB는 M2-02j, 실기기·운영·phase review는 별도.",
       "evidence": "docs/implementation/progress/M2-02-branch-state.md"
+    },
+    {
+      "id": "EXT-RESTOREa",
+      "title": "현재 schema의 완전한 인증 복원 protocol 구현·로컬 수용",
+      "dependsOn": ["M2-01k-v-c", "M2-02i", "M2-02j", "M2-02k"],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "기존 M2-01k의 broader 복원 수용 공백을 명시 추적. 승인된 phase 통합 schema의 independently pinned 전체 table/object inventory, 새로운 versioned authenticated full-family loader·완전한 suppression/budget tail·target-bound postconditions와 원자적 admission. 역사 source100→target102→upgrade105는 보존하며 literal widening/임의 guard 해제 금지. M2-02 schema 확정 후 Root가 신규 DDL을 직렬 배정하며 번호를 선예약하지 않는다. 실제 plain-owner PG 전체 family·privacy·mixed rollback·foreign/collision/partial denial·원 receipt replay 수용 필요.",
+      "evidence": "docs/implementation/progress/EXT-RESTORE.md"
+    },
+    {
+      "id": "EXT-RESTOREb",
+      "title": "운영의 독립 witness·전체 백업/격리 복원·admission 수용",
+      "dependsOn": ["EXT-RESTOREa", "EXT-OIDC"],
+      "kind": "external",
+      "status": "not_started",
+      "scope": "실제 AWS source snapshot/slot/LSN·독립적으로 보존된 최신 baseline/tail/index/head/witness/ACK·키/객체 retention, 새로운 target identity와 global ledger·삭제 suppression을 검증한 전체 격리 복원 및 RPO/RTO 증거. 실제 운영 변경은 정확히 검토된 script와 필요한 사용자 승인으로 실행한다. Local signed fixtures/SQL-origin 단일 event/ordinary dump로 외부 completeness나 processing reopen을 증명하지 않는다.",
+      "evidence": "docs/implementation/progress/EXT-RESTORE.md"
+    },
+    {
+      "id": "EXT-RESTORE",
+      "title": "현재 제품의 완전한 인증 복원 및 공개 전환 gate",
+      "dependsOn": ["EXT-RESTOREa", "EXT-RESTOREb"],
+      "kind": "gate",
+      "status": "not_started",
+      "scope": "기존 map/운영 backup acceptance와 제품 출시 요구를 완전한 현재-schema 복원으로 연결한다. ordinary107/fault2 및 historical family 지원은 부분 증거이며 전체 gate를 완료하지 않는다. 운영의 정확한 최종 schema·privacy·전체 budget ledger·독립 최신 tail/witness·target-bound admission 증거를 모두 요구한다.",
+      "evidence": "docs/implementation/progress/EXT-RESTORE.md"
     }
   ]
 }
