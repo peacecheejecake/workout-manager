@@ -467,3 +467,7 @@ Root unit63·currentbinding/retention/consumer actualPG21·기존 preparation �
 ## Lifecycle binder·schema2 저장 구현 전환 · 2026-10-07
 
 Root lifecycle unit11/actualPG7·scopedTS/lint/format/diff·DB/roles잔존0을 확인했다. target 개수만 비교하지 않고 정확 exercise/version/target namespace tuple을 대조한다. [I 기록](progress/M2-02i.md)의 actual7은 모든27 source 삭제/restore 수용이 아니다. Native3 agent가 consumed purpose/semanticbasis, 미등록 SQL116 store+all27hooks, trusted chain service를 비중복범위로 병렬 구현한다. Root는 strict successor event codec·공유등록/실DB/Git·graph를 직렬 통합한다. 저장은 canonical Evidence1+Decision/ProposalFK이며 적용은 false이고 fullatomicapproval 별도다. registry107/main/push0·phasein_progress·외부 gate를 유지한다.
+
+Record7 별도 strict 구조 codec의 unit49와 scopedstatic을 확인했다. full typed identity/namespace·legacy1..6 physical 변환을 보존하고 원 event/tail authentication으로 승격하지 않는다. SQL116/체인/목적helper는 WIP이며 public registry·pgoutput/export/restore activation은 아직 없다. 세부 증거는 [I 기록](progress/M2-02i.md)를 따른다.
+
+Consumed/semantic PG 초기8FAIL(strict envelope extra field), 수정 후7PASS/1FAIL(foreign error expectation)을 [I 기록](progress/M2-02i.md)에 보존한다. AI derived cleanup을 manual rawtext deny로 오인한 정책 결함을 발견해 purpose-specific guard/semantic projection과 SQL116을 수정 중이다. 현재 신규helper/chain/SQL116/pgoutput successor는 WIP이며 actualstore/restore/전체phase 통과가 아니다.

@@ -50,6 +50,10 @@ const manualReviewColumns = [
   'manual_review_version_key',
 ] as const;
 const currentColumnNames = [...columnNames, ...manualReviewColumns];
+/** Physical V1–V6 columns, for an explicit successor decoder. */
+export function suppressionRecordColumnNamesV6(): readonly string[] {
+  return [...currentColumnNames];
+}
 const manualReviewKinds = [
   'race-event',
   'plan-snapshot',
@@ -280,6 +284,8 @@ function validTimestamp(value: string): string {
     throw new Error('PGOUTPUT_INVALID_RECORD');
   return value;
 }
+
+export { validTimestamp as validateSuppressionOccurredAt };
 
 function revision(values: Values, name: string, min = 1, max = 2147483647): number {
   const raw = required(values, name);

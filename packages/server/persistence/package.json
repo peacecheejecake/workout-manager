@@ -94,7 +94,8 @@
     "./race-manual-review-owned-binding-consumer-v2": "./src/race-manual-review-owned-binding-consumer-v2.ts",
     "./race-manual-review-current-binding-v2": "./src/race-manual-review-current-binding-v2.ts",
     "./race-manual-review-retention-preparation-v2": "./src/race-manual-review-retention-preparation-v2.ts",
-    "./race-manual-review-lifecycle-inventory-v2": "./src/race-manual-review-lifecycle-inventory-v2.ts"
+    "./race-manual-review-lifecycle-inventory-v2": "./src/race-manual-review-lifecycle-inventory-v2.ts",
+    "./restore-suppression-records-v7": "./src/restore-suppression-records-v7.ts"
   },
   "devDependencies": {
     "@types/pg": "8.23.1",
