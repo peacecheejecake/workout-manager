@@ -150,6 +150,14 @@ APPROVE를 받았다. 당시 기록 갱신의 검토 refresh 후 main에 반영�
 
 ## 다음 작업 순서
 
+현재 실행 기준(2026-10-07): main `1d557358`, `phase/m2-02` 최신 검증 커밋 `2e56edd8`. 뒤에 이어지는 2026-09-27 기록은 역사적 스냅샷이며 최신 수용으로 승격하지 않는다.
+
+1. **M2-02i/j ready 구현**: I의 실제 목적별 source adapter·trusted Evidence→Decision→Proposal 저장·삭제/복원 closure·전체 도메인 원자 승인, J의 configured V2 증빙 경로·첨부/PB 화면을 완료한다. 비중복 scope를 native agent에 배정하고 Root가 shared schema/registry·실DB·graph/Git를 직렬 통합한다. PB chip/gun·거리 분류는 답변 대기를 유지한다.
+2. **M2-02 phase 검증·독립 검토**: runnable 노드 완료 후 전체 install/generated/lint/TS/build/unit/integration/identity 두 회차/format 및 해당 drill을 실제 실행하고, base/head를 고정한 context-less `gpt-6-sol` high 읽기 전용 phase review를 받는다. 승인과 기록 후 main fast-forward만 수행하며 push는 사용자 작업이다.
+3. **후속 graph·외부 gate**: I/J/K/L 완료 뒤 EXT-RESTOREa/b를 진행한다. AWS 인증 재개·실제 서버 상태와 새 실행 승인 없이는 recovery/drill/백업/복원/공개503 전환을 실행하지 않는다. 실기기 성능·제품 HealthKit·운영 OIDC·back-channel·ODbL 공개응답은 각각 실제 증거를 확보한다. FUT-09 실제 원문과 외부 `not_executed`는 별도 대기다.
+
+### 과거 실행 순서 스냅샷 · 2026-09-27
+
 M0-06c의 실제 wake는 위 최신 기록으로 확인했다. 미저장 Back 확인창의 버튼별 기계 기록은 없으며 제품 native host 통합은 M3-01이다.
 
 1. **M2-01k 남은 gate**: `M2-01k-t`에서 Vite의 대시보드·웰빙·활동 편집 경로와 두 shell의
