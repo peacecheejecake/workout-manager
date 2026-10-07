@@ -440,3 +440,9 @@ Native 병렬 작업은 SQL108의 exact copied-channel 처리, immutable V2 pin�
 ## FUT-09 원문 링크 접근 재확인 · 2026-10-07
 
 기준 공유 링크 `https://chatgpt.com/share/6aa89754-1ea4-83ee-b91a-5ed2a1955bd9`의 웹 조회는 제목만 반환하고 본문0이었다. Aside CLI1.26.916.1741/skill3의 guide와 guide repl을 읽었으며 skills list는 daemon auth challenge 실패/Aside not running으로 exit1이었다. 사용자 선호 in-app Browser로 해당 정확URL을 열어 실제 DOM의 `Could not load this ChatGPT conversation`을 확인했다. 원문 확보/날짜 추출/이식·활성화는 완료하지 않았다. 사용자의 앞선 sample 요청을 위한 [원문 전달 예시](shared-plan-original-example.md)를 추가했으며 합성 양식을 실제 원문으로 대체하지 않는다. 원문 파일·텍스트·접근 가능한 링크 수신을 기다린다.
+
+## 재개 · fullowned PG 및 SQL115 설치 오류 · 2026-10-07
+
+- 대회 삭제 답변을 재확인했다. 기존 승인 영양은 연결 해제 표시, 재연결·재승인 전 대회 시각 사용 중단이며 음식·수량·실제 섭취는 보존한다. 기존 결정과 동일하며 제품 writer/restore 수용을 완료로 바꾸지 않는다.
+- 실제 PG fullowned7 PASS / SQL115 설치 구문 오류·18 SKIP로 전체 exit1이다. 별도 core PG23와 unit43은 PASS다. channel R5의 5 PASS 중 하나는 unplanned projection gap 관찰이며 기능 완료 증거가 아니다. [I 기록](progress/M2-02i.md)에 실제 로그와 한계를 추가했다.
+- Native 3 agent를 SQL115 수정, original frozen unplanned retained roster 구현, broad channel fullowned PG 준비에 병렬 배정했다. Root가 실제 DB·공통 export·graph/Git를 직렬 통합한다. registry107/main `1d557358`/push0·I/J/phase in_progress, 기존 사용자 결정/외부 gate 대기를 유지한다.
