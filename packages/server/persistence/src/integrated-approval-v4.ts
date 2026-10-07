@@ -500,7 +500,10 @@ async function saveNutrition(
   }
   if (
     write.proposed.items.some(
-      (item) => item.anchor.kind === 'relative' && !sessions.has(item.anchor.entityId),
+      // Legacy writes have no owned immutable race capture; session IDs cannot authorize races.
+      (item) =>
+        item.anchor.kind === 'relative' &&
+        (item.anchor.entity !== 'session' || !sessions.has(item.anchor.entityId)),
     )
   )
     throw new IntegratedApprovalV4Error('CANDIDATE_NOT_APPROVABLE');

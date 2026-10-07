@@ -639,11 +639,20 @@ describe('M1c-04 integrated approval v4 persistence', () => {
     ).rejects.toMatchObject({ code: 'CANDIDATE_NOT_APPROVABLE' });
   });
 
-  it.each(['session', 'unlinked-session', 'food'] as const)(
+  it.each(['session', 'unlinked-session', 'food', 'race-session-collision'] as const)(
     'rejects an invalid nutrition %s reference and rolls every domain back',
     async (reference) => {
-      const fixture = await seed();
+      const collisionId = randomUUID();
+      const fixture = await seed(
+        true,
+        reference === 'race-session-collision' ? collisionId : undefined,
+      );
       const input = await prepareInput(fixture);
+      if (reference === 'race-session-collision') {
+        const training = input.writes.find((write) => write.domain === 'training');
+        if (!training) throw new Error('Missing collision training write');
+        training.proposed.sessions = collisionSessions(collisionId, '2080-01-02');
+      }
       const nutrition = input.writes.find((write) => write.domain === 'nutrition');
       if (!nutrition) throw new Error('Missing nutrition write');
       if (reference === 'unlinked-session') {
@@ -658,8 +667,9 @@ describe('M1c-04 integrated approval v4 persistence', () => {
             reference !== 'food'
               ? {
                   kind: 'relative',
-                  entity: 'session',
-                  entityId: 'missing-session',
+                  entity: reference === 'race-session-collision' ? 'race' : 'session',
+                  entityId:
+                    reference === 'race-session-collision' ? collisionId : 'missing-session',
                   point: 'start',
                   offsetMinutes: 0,
                 }

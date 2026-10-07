@@ -6,6 +6,8 @@ import type {
   NutritionPlanDraft,
   SaveFoodDefinitionVersionRequest,
 } from '@workout/contracts/nutrition-core';
+import type { PlanDraft } from '@workout/contracts/planning';
+import { createConsentRepository } from '../src/repositories.js';
 import { createDatabase, type Database } from '../src/database.js';
 import { grantNutritionCore, grantOperations, migrate } from '../src/migrate.js';
 import { createNutritionRepository } from '../src/nutrition-core.js';
@@ -214,6 +216,121 @@ describe('M1b-01 nutrition persistence', () => {
         tx.query("UPDATE nutrition_plan_version SET record_json='{}'::jsonb"),
       ),
     ).rejects.toMatchObject({ code: '42501' });
+  });
+
+  it('does not authorize a missing race through an owned historical session UUID and preserves successful session receipts', async () => {
+    const athlete = await grantedAthlete();
+    const sessionId = randomUUID();
+    const trainingId = randomUUID();
+    const training: PlanDraft = {
+      title: 'Synthetic historical training',
+      timezone: 'UTC',
+      periods: (['season', 'wave', 'phase', 'block'] as const).map((level, index, levels) => ({
+        id: level,
+        parentId: index === 0 ? null : (levels[index - 1] ?? null),
+        level,
+        title: level,
+        startDate: '2026-09-01',
+        endDateExclusive: '2026-10-01',
+        timezone: 'UTC',
+        intent: '',
+        isPartial: false,
+      })),
+      sessions: [
+        {
+          id: sessionId,
+          blockId: 'block',
+          date: '2026-09-18',
+          localStartTime: '08:00',
+          title: 'Owned session',
+          sport: 'running',
+          durationSeconds: 0,
+          distanceMeters: null,
+          targetRpe: null,
+          purpose: '',
+          notes: '',
+          priority: 'normal',
+          locks: { date: false, time: false, intensity: false },
+          steps: [],
+        },
+      ],
+    };
+    // Exact immutable historical plan fixture, not an implemented race writer.
+    const owner = await maintenanceOwner.connect();
+    try {
+      await owner.query('BEGIN');
+      await owner.query("SELECT set_config('app.athlete_id',$1,true)", [athlete]);
+      await owner.query(
+        'INSERT INTO plan_snapshot(athlete_id,id,version,draft) VALUES($1,$2,1,$3::jsonb)',
+        [athlete, trainingId, JSON.stringify(training)],
+      );
+      await owner.query('COMMIT');
+    } finally {
+      await owner.release();
+    }
+    const proposed = draft();
+    proposed.linkedTrainingPlanVersionId = trainingId;
+    const item = proposed.items[0];
+    if (!item) throw new Error('Missing meal fixture');
+    item.anchor = {
+      kind: 'relative',
+      entity: 'session',
+      entityId: sessionId,
+      point: 'end',
+      offsetMinutes: 0,
+    };
+    const repository = makeRepository();
+    const request = {
+      kind: 'create' as const,
+      confirmed: true as const,
+      idempotencyKey: randomUUID(),
+      draft: proposed,
+    };
+    const saved = await repository.savePlan(athlete, request);
+    const raceDraft = structuredClone(proposed);
+    const raceItem = raceDraft.items[0];
+    if (!raceItem || raceItem.anchor.kind !== 'relative')
+      throw new Error('Missing relative fixture');
+    raceItem.anchor.entity = 'race';
+    const state = () =>
+      database.tenant(
+        athlete,
+        async (tx) =>
+          (
+            await tx.query(`SELECT
+      (SELECT count(*)::int FROM nutrition_plan_version) versions,
+      (SELECT count(*)::int FROM nutrition_plan_head) heads,
+      (SELECT count(*)::int FROM nutrition_plan_history) history,
+      (SELECT count(*)::int FROM command_receipt) receipts,
+      (SELECT count(*)::int FROM outbox) outbox`)
+          ).rows[0],
+      );
+    const before = await state();
+    for (const command of [
+      { ...request, idempotencyKey: randomUUID(), draft: raceDraft },
+      {
+        kind: 'update' as const,
+        confirmed: true as const,
+        idempotencyKey: randomUUID(),
+        planId: saved.planId,
+        expectedHeadVersionId: saved.versionId,
+        draft: raceDraft,
+      },
+    ])
+      await expect(repository.savePlan(athlete, command)).rejects.toMatchObject({
+        code: 'SESSION_LINK_INVALID',
+      });
+    expect(await state()).toEqual(before);
+    expect((await repository.readPlan(athlete, saved.planId))?.head).toEqual(saved);
+    await createConsentRepository(database).setConsent(athlete, {
+      kind: 'app',
+      granted: false,
+      expectedRevision: 1,
+      idempotencyKey: randomUUID(),
+    });
+    const withdrawn = await state();
+    expect(await repository.savePlan(athlete, request)).toEqual(saved);
+    expect(await state()).toEqual(withdrawn);
   });
 
   it('freezes food definitions and intake revisions, preserving reported zero versus unknown', async () => {

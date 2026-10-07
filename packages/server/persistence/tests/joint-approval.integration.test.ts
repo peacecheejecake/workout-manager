@@ -193,7 +193,7 @@ function expectedBasis(
     evidenceSnapshotId: evidenceId,
   };
 }
-async function seed(withSetPrerequisites = false) {
+async function seed(withSetPrerequisites = false, sessionId = 'session-1') {
   const athleteId = randomUUID();
   await createConsentRepository(database).setConsent(athleteId, {
     kind: 'app',
@@ -206,13 +206,22 @@ async function seed(withSetPrerequisites = false) {
     confirmed: true,
     expectedVersionId: null,
     idempotencyKey: randomUUID(),
-    draft: planDraft(),
+    draft: {
+      ...planDraft(),
+      sessions: planDraft().sessions.map((session) => ({ ...session, id: sessionId })),
+    },
   });
   const nutrition = await createNutritionRepository(database).savePlan(athleteId, {
     kind: 'create',
     confirmed: true,
     idempotencyKey: randomUUID(),
-    draft: mealDraft(training.id),
+    draft: {
+      ...mealDraft(training.id),
+      items: mealDraft(training.id).items.map((item) => ({
+        ...item,
+        anchor: { ...item.anchor, entityId: sessionId },
+      })),
+    },
   });
   let setPrerequisites: { executionId: string; exerciseVersionId: string } | null = null;
   if (withSetPrerequisites) {
@@ -269,7 +278,7 @@ async function seed(withSetPrerequisites = false) {
     await createCoachingThreadRepository(database).create(athleteId, {
       planVersionId: training.id,
       title: 'Joint fixture',
-      scope: { kind: 'session', targetId: 'session-1' },
+      scope: { kind: 'session', targetId: sessionId },
       message: 'Review training and food together',
       idempotencyKey: randomUUID(),
     })
@@ -329,7 +338,11 @@ async function seed(withSetPrerequisites = false) {
   expect(captured.basis).toEqual(basis);
   return { athleteId, training, nutrition, runId, captured, setPrerequisites };
 }
-async function prepare(data: Awaited<ReturnType<typeof seed>>, invalidFood = false) {
+async function prepare(
+  data: Awaited<ReturnType<typeof seed>>,
+  invalidFood = false,
+  anchorEntity: 'session' | 'race' = 'session',
+) {
   const proposed = structuredClone(data.training.draft);
   proposed.title = 'Adjusted plan';
   const session = proposed.sessions[0];
@@ -337,6 +350,9 @@ async function prepare(data: Awaited<ReturnType<typeof seed>>, invalidFood = fal
   session.date = '2080-01-03';
   const foodVersionId = randomUUID();
   const meal = proposedMeal(data.nutrition);
+  for (const item of meal.items) {
+    if (item.anchor.kind === 'relative') item.anchor.entity = anchorEntity;
+  }
   if (invalidFood) {
     const item = meal.items[0];
     if (!item) throw new Error('Missing fixture meal');
@@ -623,6 +639,50 @@ describe('M1b-03 V022-A30–A32 atomic joint approval', () => {
     if (lost[0]?.status === 'rejected')
       expect(lost[0].reason).toMatchObject({ code: 'STALE_BASIS' });
     expect(await counts(data.athleteId)).toMatchObject({ plans: 2, nutrition: 2, approvals: 1 });
+  });
+
+  it('rejects a missing race sharing an owned historical session UUID, but approves and replays the session namespace', async () => {
+    const sessionId = randomUUID();
+    const data = await seed(false, sessionId);
+    const raceCandidate = await prepare(data, false, 'race');
+    const state = (athleteId: string) =>
+      database.tenant(
+        athleteId,
+        async (tx) =>
+          (
+            await tx.query(`SELECT
+      (SELECT count(*)::int FROM plan_snapshot) plans,
+      (SELECT count(*)::int FROM plan_history) plan_history,
+      (SELECT count(*)::int FROM nutrition_plan_version) nutrition,
+      (SELECT count(*)::int FROM nutrition_plan_history) nutrition_history,
+      (SELECT count(*)::int FROM outbox WHERE topic='joint.candidate_approved') approvals,
+      (SELECT count(*)::int FROM command_receipt) receipts,
+      (SELECT count(*)::int FROM outbox) outbox`)
+          ).rows[0],
+      );
+    const before = await state(data.athleteId);
+    await expect(
+      repository().approve(data.athleteId, approval(raceCandidate)),
+    ).rejects.toMatchObject({ code: 'NUTRITION_REFERENCE_INVALID' });
+    expect(await state(data.athleteId)).toEqual(before);
+    // Candidate preparation consumes its run state; use a separate public producer run.
+    const sessionData = await seed(false, sessionId);
+    const sessionCandidate = await prepare(sessionData);
+    const command = approval(sessionCandidate);
+    const saved = await repository().approve(sessionData.athleteId, command);
+    expect(saved.nutrition[0]?.items[0]?.anchor).toMatchObject({
+      entity: 'session',
+      entityId: sessionId,
+    });
+    await createConsentRepository(database).setConsent(sessionData.athleteId, {
+      kind: 'app',
+      granted: false,
+      expectedRevision: 1,
+      idempotencyKey: randomUUID(),
+    });
+    const after = await state(sessionData.athleteId);
+    expect(await repository().approve(sessionData.athleteId, command)).toEqual(saved);
+    expect(await state(sessionData.athleteId)).toEqual(after);
   });
 
   it('rolls back the training version when nutrition persistence fails', async () => {

@@ -187,7 +187,11 @@ async function validatePlanDraft(tx: Transaction, draft: SaveNutritionPlanVersio
       : await ownedTrainingPlan(tx, draft.linkedTrainingPlanVersionId);
   const sessions = new Set(training?.sessions.map((session) => session.id) ?? []);
   for (const item of draft.items) {
-    if (item.anchor.kind === 'relative' && !sessions.has(item.anchor.entityId))
+    // Legacy writes have no owned immutable race capture; session IDs cannot authorize races.
+    if (
+      item.anchor.kind === 'relative' &&
+      (item.anchor.entity !== 'session' || !sessions.has(item.anchor.entityId))
+    )
       throw new NutritionReferenceError('SESSION_LINK_INVALID');
   }
   await validateFoodPortions(

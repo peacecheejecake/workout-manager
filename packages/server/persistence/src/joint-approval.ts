@@ -729,7 +729,11 @@ async function saveNutritionPlan(
       : [],
   );
   for (const item of proposed.items) {
-    if (item.anchor.kind === 'relative' && !sessions.has(item.anchor.entityId))
+    // Legacy writes have no owned immutable race capture; session IDs cannot authorize races.
+    if (
+      item.anchor.kind === 'relative' &&
+      (item.anchor.entity !== 'session' || !sessions.has(item.anchor.entityId))
+    )
       throw new JointApprovalError('NUTRITION_REFERENCE_INVALID');
   }
   const foodIds = [
