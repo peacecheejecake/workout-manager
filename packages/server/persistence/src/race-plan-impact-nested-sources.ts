@@ -48,6 +48,78 @@ function foodProvenanceFacts(value: z.infer<typeof foodDefinitionVersionSchema>[
         : { state: 'present' as const, digest: digest(value.reference) },
   };
 }
+/** Exact owned immutable food version plus separate current head/provenance facts.
+ * This read establishes no permission, approval or source-authentication authority. */
+export async function captureRaceFoodVersionSourceIn(
+  tx: Transaction,
+  requestedVersionId: string,
+  budget: SourceBudget,
+) {
+  const versionId = parse(uuid, requestedVersionId).toLowerCase();
+  if (
+    typeof budget.bytes !== 'bigint' ||
+    budget.bytes < 0n ||
+    !Number.isSafeInteger(budget.sources) ||
+    budget.sources < 0
+  )
+    throw new RaceImpactDependencyError('INVALID_CONTEXT');
+  reserveSourceBudget(budget, 0n);
+  await reserveBody(
+    tx,
+    budget,
+    'SELECT coalesce(sum(octet_length(v.record_json::text)+coalesce(octet_length(c.record_json::text),0)+2048),0)::text AS bytes FROM food_definition_version v LEFT JOIN food_definition_head h ON h.athlete_id=v.athlete_id AND h.food_id=v.food_id LEFT JOIN food_definition_version c ON c.athlete_id=h.athlete_id AND c.version_id=h.version_id WHERE v.athlete_id=$1 AND v.version_id=$2::uuid',
+    [tx.athleteId, versionId],
+  );
+  const rows = (
+    await tx.query(
+      `SELECT v.food_id,v.version_id,v.record_json,h.version_id AS current_version_id,c.record_json->'provenance' AS current_provenance FROM food_definition_version v LEFT JOIN food_definition_head h ON h.athlete_id=v.athlete_id AND h.food_id=v.food_id LEFT JOIN food_definition_version c ON c.athlete_id=h.athlete_id AND c.version_id=h.version_id WHERE v.athlete_id=$1 AND v.version_id=$2::uuid`,
+      [tx.athleteId, versionId],
+    )
+  ).rows;
+  if (rows.length > 1) throw new RaceImpactDependencyError('INVALID_CONTEXT');
+  if (!rows[0])
+    return {
+      requestedVersionId: versionId,
+      state: 'unavailable' as const,
+      content: null,
+      currentHead: null,
+    };
+  const row = parse(
+    z.strictObject({
+      food_id: localId,
+      version_id: uuid,
+      record_json: z.unknown(),
+      current_version_id: uuid.nullable(),
+      current_provenance: foodDefinitionVersionSchema.shape.provenance.nullable(),
+    }),
+    rows[0],
+  );
+  const record = parse(foodDefinitionVersionSchema, row.record_json);
+  if (
+    record.foodId !== row.food_id ||
+    record.versionId !== row.version_id ||
+    row.version_id !== versionId
+  )
+    throw new RaceImpactDependencyError('INVALID_CONTEXT');
+  return {
+    requestedVersionId: versionId,
+    state: row.current_version_id === versionId ? ('current' as const) : ('historical' as const),
+    content: {
+      foodId: record.foodId,
+      versionId: record.versionId,
+      digest: digest(record),
+      record,
+      provenance: foodProvenanceFacts(record.provenance),
+    },
+    currentHead: row.current_version_id
+      ? {
+          versionId: row.current_version_id,
+          provenance: row.current_provenance ? foodProvenanceFacts(row.current_provenance) : null,
+        }
+      : { state: 'absent' as const },
+  };
+}
+export type RaceFoodVersionSource = Awaited<ReturnType<typeof captureRaceFoodVersionSourceIn>>;
 /** Exact versions and current heads are separate. Newly consumed plans are returned to
  * the parent cache before supplementary copy capture. No period filtering or provider I/O. */
 export async function captureNestedNutritionSources(
@@ -66,61 +138,7 @@ export async function captureNestedNutritionSources(
   async function food(versionId: string) {
     const old = foodCache.get(versionId);
     if (old) return old;
-    const pending = (async () => {
-      await reserveBody(
-        tx,
-        budget,
-        'SELECT coalesce(sum(octet_length(v.record_json::text)+coalesce(octet_length(c.record_json::text),0)+2048),0)::text AS bytes FROM food_definition_version v LEFT JOIN food_definition_head h ON h.athlete_id=v.athlete_id AND h.food_id=v.food_id LEFT JOIN food_definition_version c ON c.athlete_id=h.athlete_id AND c.version_id=h.version_id WHERE v.athlete_id=$1 AND v.version_id=$2::uuid',
-        [tx.athleteId, versionId],
-      );
-      const rows = (
-        await tx.query(
-          `SELECT v.food_id,v.version_id,v.record_json,h.version_id AS current_version_id,c.record_json->'provenance' AS current_provenance FROM food_definition_version v LEFT JOIN food_definition_head h ON h.athlete_id=v.athlete_id AND h.food_id=v.food_id LEFT JOIN food_definition_version c ON c.athlete_id=h.athlete_id AND c.version_id=h.version_id WHERE v.athlete_id=$1 AND v.version_id=$2::uuid`,
-          [tx.athleteId, versionId],
-        )
-      ).rows;
-      if (rows.length > 1) throw new RaceImpactDependencyError('INVALID_CONTEXT');
-      if (!rows[0])
-        return {
-          requestedVersionId: versionId,
-          state: 'unavailable' as const,
-          content: null,
-          currentHead: null,
-        };
-      const row = parse(
-        z.strictObject({
-          food_id: localId,
-          version_id: uuid,
-          record_json: z.unknown(),
-          current_version_id: uuid.nullable(),
-          current_provenance: foodDefinitionVersionSchema.shape.provenance.nullable(),
-        }),
-        rows[0],
-      );
-      const record = parse(foodDefinitionVersionSchema, row.record_json);
-      if (record.foodId !== row.food_id || record.versionId !== versionId)
-        throw new RaceImpactDependencyError('INVALID_CONTEXT');
-      return {
-        requestedVersionId: versionId,
-        state:
-          row.current_version_id === versionId ? ('current' as const) : ('historical' as const),
-        content: {
-          foodId: record.foodId,
-          versionId: record.versionId,
-          digest: digest(record),
-          record,
-          provenance: foodProvenanceFacts(record.provenance),
-        },
-        currentHead: row.current_version_id
-          ? {
-              versionId: row.current_version_id,
-              provenance: row.current_provenance
-                ? foodProvenanceFacts(row.current_provenance)
-                : null,
-            }
-          : { state: 'absent' as const },
-      };
-    })();
+    const pending = captureRaceFoodVersionSourceIn(tx, versionId, budget);
     foodCache.set(versionId, pending);
     return pending;
   }

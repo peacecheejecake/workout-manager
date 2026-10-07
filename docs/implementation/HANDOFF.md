@@ -422,3 +422,9 @@ Native 병렬 작업은 SQL108의 exact copied-channel 처리, immutable V2 pin�
 - `s22_api_gate_design` 소유 NEW full-copied-inventory-v2 source/test는 별도 구현 중이다. context/sourceInput/candidate 모든 실제 copied path와 기존8+recovery+food/catalog/manualactual/course/resource/media/timer의 actual strict tuples를 map하고, schema에 없는 identity/provenance만 genuine unindexable로 보존한다. core8-only로 범위를 대체하지 않는다. actor DB/Git/공유파일 변경0; Root export/검증/통합 후만 수용한다.
 - `s22_phase_gate_checks`는 전체copied 채널의 existing grant/RLS·immutable/current actual row·DTO/SQL hash·delete/withdraw tuple 및 후속 readonly SQL 대응 포트를 읽기 전용으로 조사한다. DDL예약/privategrant/positive store0이며 fullmapper actor와 native로 조율한다. Root shared files/registry/graph/Git/실DB를 직렬 통합한다.
 - PB chip/gun 분리·공식 종목별 비교 질문을 다시 띄웠으며 답변 전 결정 대기로 유지한다. 전체purpose chain/copied lifecycle/restore/freshness/all-domain atomic approval·UI/E2E/phase review/main/push와 외부gate는 아직 미완료다. 현재 main `1d557358`이다.
+
+## 전체 copied body inventory 및 exact food 조회 후속 · 2026-10-07
+
+- `phase/m2-02`에서 fullcopied typed mapper 27identity와 기존 exact food reader 추출을 연결했다. immutable/observation/fragment·실제 copiedLocation payload digest를 구분하며 authority none/not_checked/not_persisted 및 missing5를 유지한다. 공개 subpath만 추가하고 HTTP/product writer 활성화0이다.
+- Root unit98/98, 실제 PG food7/7 + fullcopied public4/4 R2 + 기존 nested 회귀2/2(66 filtered skip), scoped persistence/API TS·lint/format/diff 및 actual DB/roles잔존0이다. 최초 fullcopied PG3PASS/1FAIL과 actor static/unit 실패는 별도 보존한다. 자세한 입력 SHA와 로그·scope는 [I](progress/M2-02i.md)의 최신 수용 절을 따른다. 전체channel DBpositive/whole phase gates나 lifecycle/storage/approval 완료로 확대하지 않는다.
+- Native 병렬은 NEW full-owned DTO adapter pair, 미등록 SQL115 relation-group observer/PGfixture pair, 남은 public channel PGfixture에 각각 비중복 소유를 배정했다. Root가 manifest/graph/Git·실제 DB 실행을 직렬 통합한다. registry107/I/J/phase in_progress·main `1d557358`/push0, 대회 삭제 영양 연결 해제·재연결/재승인 전 시각 사용 중단 및 기존 PB/FUT-09/AWS/iPhone 대기는 유지한다.
