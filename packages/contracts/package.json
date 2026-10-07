@@ -268,6 +268,14 @@
     "./race-manual-public": {
       "types": "./src/race-manual-public.ts",
       "default": "./dist/race-manual-public.js"
+    },
+    "./check-in-templates": {
+      "types": "./src/check-in-templates.ts",
+      "default": "./dist/check-in-templates.js"
+    },
+    "./race-manual-public-preview": {
+      "types": "./src/race-manual-public-preview.ts",
+      "default": "./dist/race-manual-public-preview.js"
     }
   },
   "scripts": {
