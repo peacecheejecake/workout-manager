@@ -463,3 +463,7 @@ Unplanned 원 실행 보존 후 Root unit213·scoped persistence/API TS·lint/fo
 ## Current app·retention 실제 preparation 수용 · 2026-10-07
 
 Root unit63·currentbinding/retention/consumer actualPG21·기존 preparation 회귀PG9·persistence TS/lint/format를 확인했다. 새 helper를 server preparation에서 실제 소비하고 full27 관측을 retained codec으로 연결하며 원 blocked 진단·none/not_checked/not_persisted를 유지한다. 증거/입력 SHA는 [I 기록](progress/M2-02i.md)에 기록했다. 저장·전체 permission/freshness·Evidence→Decision→Proposal·lifecycle/restore·원자승인/phase 수용은 미완료다. lifecycle binder 구현과 purpose/storage coherent 후속 설계를 native 병렬 진행한다. registry107/main/push0 및 기존 사용자 결정·외부 not_executed를 유지한다. 대회 삭제 영양은 연결 해제·재연결/재승인 전 대회 시각 사용 중단·음식/수량/실제 섭취 보존 결정을 재확인했다.
+
+## Lifecycle binder·schema2 저장 구현 전환 · 2026-10-07
+
+Root lifecycle unit11/actualPG7·scopedTS/lint/format/diff·DB/roles잔존0을 확인했다. target 개수만 비교하지 않고 정확 exercise/version/target namespace tuple을 대조한다. [I 기록](progress/M2-02i.md)의 actual7은 모든27 source 삭제/restore 수용이 아니다. Native3 agent가 consumed purpose/semanticbasis, 미등록 SQL116 store+all27hooks, trusted chain service를 비중복범위로 병렬 구현한다. Root는 strict successor event codec·공유등록/실DB/Git·graph를 직렬 통합한다. 저장은 canonical Evidence1+Decision/ProposalFK이며 적용은 false이고 fullatomicapproval 별도다. registry107/main/push0·phasein_progress·외부 gate를 유지한다.
