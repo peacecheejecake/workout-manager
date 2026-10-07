@@ -543,3 +543,7 @@ Garmin 저장 canonical Activity 수동 목적은 사용자 승인된 S22 app co
 ## current child artifact 인증 검증 · 2026-10-08
 
 Root가 15 child relation(14 durable와 archive-empty transient)의 strict signed-byte codec/factory opaque handle을 단위47/47, persistence TypeScript0, scoped ESLint0/Prettier0으로 재검증했다. source key resolver는 factory 생성 때 고정하되 매 준비 시 내부 키 철회 정책을 다시 조회한다. 입력2 SHA는 R5 동결값과 일치한다. 부모 closure·SQL row encoding·original tail stage·운영 restore는 이 child 인증으로 통과하지 않으며 별도 미완료다.
+
+## Garmin 최종 core 저장 실제 수용 · 2026-10-08
+
+Root가 신규11 및 기존 retained39/chain13/V7 publication6을 실제 격리 PG에서69/69로 검증했다. 초기9pass/2fixturefail을 보존하고 정확한 event/error namespace 기대만 교정했다. SQL116/test2 SHA 변경0, DB/roles/slot 잔존0이다. 수집·공식 인증·whole freshness/atomic approval·full restore·phase/main은 통과로 올리지 않았다. 병렬 후속은 current full-parent artifact 준비와 전체 영향 일정 원자 승인 최소 scope 감사다.
