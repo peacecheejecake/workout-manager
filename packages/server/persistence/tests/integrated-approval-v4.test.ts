@@ -5,7 +5,10 @@ import {
 } from '@workout/contracts/integrated-coaching';
 import { coreEvidenceBodyV2Schema } from '@workout/contracts/evidence-snapshots';
 import { nutritionPlanVersionV3Schema } from '@workout/contracts/nutrition-race-plan-v3';
-import { createIntegratedApprovalV4Repository } from '../src/integrated-approval-v4.js';
+import {
+  createIntegratedApprovalV4Repository,
+  decodeIntegratedNutritionPrevious,
+} from '../src/integrated-approval-v4.js';
 import {
   integratedCandidatePayloadDigest,
   integratedV4ContextDependencyKinds,
@@ -238,6 +241,7 @@ function fake(nutrition = false, disconnected = false) {
   };
   const database: Database = { tenant: transact, exclusiveTenant: transact, close: async () => {} };
   return {
+    record,
     repository: createIntegratedApprovalV4Repository(database, { policyVersion: 'test' }),
     value,
     queries,
@@ -364,5 +368,88 @@ describe('V4 copied-source classifier actual repository seams (mock DB, no owner
           q.sql.includes("kind='app'"),
       ),
     ).toBe(false);
+  });
+});
+
+describe('V4 legacy approval strict previous nutrition boundary (no reconnect authority)', () => {
+  function captured(version: 2 | 3 | 4) {
+    const base = fake(true).record;
+    return {
+      ...base,
+      schemaVersion: version,
+      items: base.items.map((item) => ({
+        ...item,
+        anchor: {
+          kind: 'relative',
+          entity: 'race',
+          entityId: id(20),
+          point: 'start',
+          offsetMinutes: -30,
+        },
+      })),
+      raceTimingPins: [
+        {
+          pinVersion: 1,
+          namespace: 'race-event-revision',
+          eventId: id(20),
+          eventRevision: 1,
+          sourceDigestVersion: 'race-event-values-canonical-v1',
+          sourceDigest: 'a'.repeat(64),
+          localDate: '2026-10-07',
+          localStartTime: null,
+          timezone: 'UTC',
+          start: { state: 'unknown', reason: 'start_time_not_recorded' },
+          end: { state: 'unknown', reason: 'race_end_not_recorded' },
+        },
+      ],
+      itemRaceTimingBindings: [
+        { itemId: 'Meal', binding: { state: 'captured', eventId: id(20), eventRevision: 1 } },
+      ],
+    };
+  }
+  it.each([2, 3, 4] as const)(
+    'decodes V%s without stripping captured pins, changing source timing or mutating original history',
+    (version) => {
+      const raw = captured(version),
+        before = JSON.stringify(raw);
+      const result = decodeIntegratedNutritionPrevious(raw, id(6), id(7), ['Meal']);
+      expect(result).toEqual(raw);
+      expect('schemaVersion' in result && result.schemaVersion).toBe(version);
+      expect(JSON.stringify(raw)).toBe(before);
+    },
+  );
+  it.each(['plan', 'version'] as const)('rejects mismatched exact previous %s tuple', (kind) => {
+    expect(() =>
+      decodeIntegratedNutritionPrevious(
+        captured(2),
+        kind === 'plan' ? id(21) : id(6),
+        kind === 'version' ? id(21) : id(7),
+        [],
+      ),
+    ).toThrow('STALE_BASIS');
+  });
+  it('compares canonical UUID logical tuple while preserving stored body bytes', () => {
+    const raw = captured(2);
+    expect(
+      decodeIntegratedNutritionPrevious(raw, id(6).toUpperCase(), id(7).toUpperCase(), []),
+    ).toEqual(raw);
+  });
+  it.each([3, 4] as const)(
+    'rejects legacy operational resurrection of a disconnected V%s item',
+    (version) => {
+      const raw = { ...fake(true, true).record, schemaVersion: version };
+      expect(() => decodeIntegratedNutritionPrevious(raw, id(6), id(7), ['Meal'])).toThrow(
+        'CANDIDATE_NOT_APPROVABLE',
+      );
+      expect(decodeIntegratedNutritionPrevious(raw, id(6), id(7), ['Independent'])).toEqual(raw);
+    },
+  );
+  it('keeps unknown wire fields and broken pin bindings invalid instead of treating as V1', () => {
+    expect(() =>
+      decodeIntegratedNutritionPrevious({ ...captured(2), unsupported: true }, id(6), id(7), []),
+    ).toThrow();
+    expect(() =>
+      decodeIntegratedNutritionPrevious({ ...captured(2), raceTimingPins: [] }, id(6), id(7), []),
+    ).toThrow();
   });
 });

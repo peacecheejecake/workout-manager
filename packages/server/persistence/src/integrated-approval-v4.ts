@@ -28,6 +28,7 @@ import {
   nutritionPlanVersionSchema,
   type NutritionPlanVersion,
 } from '@workout/contracts/nutrition-core';
+import { nutritionPlanVersionCompatibleV4Schema } from '@workout/contracts/nutrition-race-plan-v4';
 import { recoveryStrategyVersionSchema } from '@workout/contracts/recovery-core';
 import { planDraftSchema, type PlanDraft } from '@workout/contracts/planning';
 import {
@@ -544,6 +545,28 @@ async function assertFresh(
   }
 }
 
+/** Strict stored-version boundary; legacy approval never grants reconnect authority. */
+export function decodeIntegratedNutritionPrevious(
+  raw: unknown,
+  planId: string,
+  versionId: string,
+  proposedItemIds: readonly string[],
+) {
+  const previous = nutritionPlanVersionCompatibleV4Schema.parse(raw);
+  if (
+    uuid.parse(previous.planId) !== uuid.parse(planId) ||
+    uuid.parse(previous.versionId) !== uuid.parse(versionId)
+  )
+    throw new IntegratedApprovalV4Error('STALE_BASIS');
+  if (
+    previous.items.some(
+      (item) => item.anchor.kind === 'disconnected' && proposedItemIds.includes(item.id),
+    )
+  )
+    throw new IntegratedApprovalV4Error('CANDIDATE_NOT_APPROVABLE');
+  return previous;
+}
+
 async function saveNutrition(
   tx: Transaction,
   write: Extract<IntegratedWriteV4, { domain: 'nutrition' }>,
@@ -559,9 +582,17 @@ async function saveNutrition(
         )
       ).rows[0]
     : undefined;
-  const previous = previousRow
-    ? nutritionPlanVersionSchema.parse(previousRow['record_json'])
-    : null;
+  if (previousVersionId !== null && !previousRow)
+    throw new IntegratedApprovalV4Error('STALE_BASIS');
+  const previous =
+    previousRow && previousVersionId !== null
+      ? decodeIntegratedNutritionPrevious(
+          previousRow['record_json'],
+          write.aggregateId,
+          previousVersionId,
+          write.proposed.items.map((item) => item.id),
+        )
+      : null;
   const versionId = randomUUID();
   const approvalId = randomUUID();
   const linked = write.proposed.linkedTrainingPlanVersionId;
