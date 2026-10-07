@@ -46,6 +46,13 @@ import {
   type NutritionPlanReadV3,
   type NutritionPlansResponseV3,
 } from '@workout/contracts/nutrition-race-plan-v3';
+import {
+  nutritionPlanVersionCompatibleV4Schema,
+  nutritionPlanReadV4Schema,
+  nutritionPlansResponseV4Schema,
+  type NutritionPlanReadV4,
+  type NutritionPlansResponseV4,
+} from '@workout/contracts/nutrition-race-plan-v4';
 import { planSnapshotSchema } from '@workout/contracts/planning';
 import type { Database, Transaction } from './database.js';
 import { enqueue, PersistenceConflict } from './outbox.js';
@@ -376,7 +383,7 @@ async function readNutritionPlanIn(tx: Transaction, planId: string) {
   const row = rows.rows.find((row) => row['version_id'] === row['head_id']);
   if (row && BigInt(z.string().regex(/^\d+$/).parse(row['bytes'])) > 524288n)
     throw new NutritionReadLimitError();
-  const head = row ? nutritionPlanVersionCompatibleV3Schema.parse(row['record_json']) : null;
+  const head = row ? nutritionPlanVersionCompatibleV4Schema.parse(row['record_json']) : null;
   if (
     head &&
     row &&
@@ -435,7 +442,7 @@ async function listNutritionPlansIn(tx: Transaction, input: NutritionPlansQuery)
   const page = rows.rows.slice(0, input.limit);
   return {
     plans: page.map((row) => {
-      const plan = nutritionPlanVersionCompatibleV3Schema.parse(row['record_json']);
+      const plan = nutritionPlanVersionCompatibleV4Schema.parse(row['record_json']);
       if (plan.planId.toLowerCase() !== row['plan_id'])
         throw new Error('INVALID_NUTRITION_PLAN_RECORD');
       return plan;
@@ -563,7 +570,7 @@ export function createNutritionRepository(
       return database.tenant(athleteId, async (tx) => {
         const read = await readNutritionPlanIn(tx, id);
         if (read === null) return null;
-        if (read.head !== null && 'schemaVersion' in read.head && read.head.schemaVersion === 3)
+        if (read.head !== null && 'schemaVersion' in read.head && read.head.schemaVersion >= 3)
           throw new NutritionReadVersionError();
         return nutritionPlanReadV2Schema.parse({ schemaVersion: 2, ...read });
       });
@@ -573,6 +580,8 @@ export function createNutritionRepository(
       return database.tenant(athleteId, async (tx) => {
         const read = await readNutritionPlanIn(tx, id);
         if (read === null) return null;
+        if (read.head !== null && 'schemaVersion' in read.head && read.head.schemaVersion === 4)
+          throw new NutritionReadVersionError();
         const response = { schemaVersion: 3, ...read };
         if (Buffer.byteLength(JSON.stringify(response), 'utf8') > 524288)
           throw new NutritionReadLimitError();
@@ -581,12 +590,12 @@ export function createNutritionRepository(
     },
     listPlansV3(athleteId, query) {
       const input = nutritionPlansQuerySchema.parse(query);
-      return database.tenant(athleteId, async (tx) =>
-        nutritionPlansResponseV3Schema.parse({
-          schemaVersion: 3,
-          ...(await listNutritionPlansIn(tx, input)),
-        }),
-      );
+      return database.tenant(athleteId, async (tx) => {
+        const page = await listNutritionPlansIn(tx, input);
+        if (page.plans.some((plan) => 'schemaVersion' in plan && plan.schemaVersion === 4))
+          throw new NutritionReadVersionError();
+        return nutritionPlansResponseV3Schema.parse({ schemaVersion: 3, ...page });
+      });
     },
     listPlans(athleteId, query) {
       const input = nutritionPlansQuerySchema.parse(query);
@@ -603,7 +612,11 @@ export function createNutritionRepository(
         const page = rows.rows.slice(0, input.limit);
         for (const row of page) {
           const body = z.record(z.string(), z.unknown()).parse(row['record_json']);
-          if (body['schemaVersion'] === 2 || body['schemaVersion'] === 3)
+          if (
+            body['schemaVersion'] === 2 ||
+            body['schemaVersion'] === 3 ||
+            body['schemaVersion'] === 4
+          )
             throw new NutritionReadVersionError();
         }
         return nutritionPlansResponseSchema.parse({
@@ -930,3 +943,34 @@ export function createNutritionRepository(
 
 // Shared internal command seams; callers retain their own receipt/admission order.
 export { replayNutritionPlan, validateFoodPortions, ownedTrainingPlan, finish };
+
+export interface NutritionPlanV4Reader {
+  readPlanV4(athleteId: string, planId: string): Promise<NutritionPlanReadV4 | null>;
+  listPlansV4(athleteId: string, query: NutritionPlansQuery): Promise<NutritionPlansResponseV4>;
+}
+/** Explicit structural reader. Original V1–V4 bodies are retained; neither
+ * current race availability nor reconnect authority is inferred from this read. */
+export function createNutritionPlanV4Reader(database: Database): NutritionPlanV4Reader {
+  return {
+    readPlanV4(athleteId, planId) {
+      const id = requireUuid(planId);
+      return database.tenant(athleteId, async (tx) => {
+        const read = await readNutritionPlanIn(tx, id);
+        if (read === null) return null;
+        const response = { schemaVersion: 4, ...read };
+        if (Buffer.byteLength(JSON.stringify(response), 'utf8') > 524288)
+          throw new NutritionReadLimitError();
+        return nutritionPlanReadV4Schema.parse(response);
+      });
+    },
+    listPlansV4(athleteId, query) {
+      const input = nutritionPlansQuerySchema.parse(query);
+      return database.tenant(athleteId, async (tx) =>
+        nutritionPlansResponseV4Schema.parse({
+          schemaVersion: 4,
+          ...(await listNutritionPlansIn(tx, input)),
+        }),
+      );
+    },
+  };
+}
