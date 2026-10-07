@@ -2096,15 +2096,61 @@ it('B preserves exact historical Intake UUID revision and reads its real null-bo
     idempotencyKey: randomUUID(),
     restoreGeneration,
   });
-  const blueprint = await bSeedBlueprint(
-      athlete,
-      bBlueprint({
-        kind: 'nutrition_template',
-        ref: { id: randomUUID(), versionId: randomUUID() },
-      }),
-    ),
-    requested = { kind: 'intake', id: created.intakeId, revisionId: created.revisionId };
-  await bSeedRun(athlete, blueprint, [bProgress(requested)]);
+  const meal = await repository.savePlan(athlete, {
+    kind: 'create',
+    confirmed: true,
+    idempotencyKey: randomUUID(),
+    draft: {
+      period: { from: '2026-10-01', toInclusive: '2026-10-31' },
+      timezone: 'UTC',
+      purpose: 'Synthetic intake template',
+      linkedTrainingPlanVersionId: null,
+      items: [],
+    },
+  });
+  const blueprint = bBlueprint({
+      kind: 'nutrition_template',
+      ref: { id: meal.planId, versionId: meal.versionId },
+    }),
+    requested = { kind: 'intake' as const, id: created.intakeId, revisionId: created.revisionId },
+    routines = createRoutineRepository(database);
+  await routines.saveBlueprint(athlete, {
+    blueprint,
+    expectedVersionId: null,
+    idempotencyKey: randomUUID(),
+    confirmed: true,
+  });
+  const started = await routines.startRun(athlete, {
+    runId: randomUUID(),
+    blueprintVersionId: blueprint.versionId,
+    occurrenceId: null,
+    idempotencyKey: randomUUID(),
+    confirmed: true,
+  });
+  await expect(
+    routines.recordStep(athlete, {
+      runId: started.run.id,
+      stepId: 'step',
+      state: 'partial',
+      actualRefs: [requested],
+      occurredAt: '2026-01-01T00:00:01Z',
+      reason: null,
+      expectedRevision: 0,
+      idempotencyKey: randomUUID(),
+      confirmed: true,
+    }),
+  ).rejects.toMatchObject({ code: 'ACTUAL_TIME_MISMATCH' });
+  await routines.recordStep(athlete, {
+    runId: started.run.id,
+    stepId: 'step',
+    state: 'partial',
+    actualRefs: [requested],
+    occurredAt: input.occurredAt,
+    reason: null,
+    expectedRevision: 0,
+    idempotencyKey: randomUUID(),
+    confirmed: true,
+  });
   await repository.correctIntake(athlete, {
     ...input,
     idempotencyKey: randomUUID(),
@@ -2112,6 +2158,25 @@ it('B preserves exact historical Intake UUID revision and reads its real null-bo
     notes: 'Synthetic correction',
   });
   const historical = await capture(athlete, event.id);
+  const scoped = await database.tenant(athlete, (tx) =>
+    captureRacePlanImpactConsumedScope(tx, {
+      eventId: event.id,
+      expectedRevision: 1,
+      selection: { kind: 'keep_plan' },
+    }),
+  );
+  expect(scoped.consumedScope).toMatchObject({
+    status: 'validated_read_scope',
+    approvalAuthority: 'none',
+    freshness: 'not_checked',
+  });
+  expect(historical.manualIntakeReadFacts.facts[0]).toMatchObject({
+    requested,
+    state: 'historical',
+    current: { revision: 2 },
+    content: { revision: 1, notes: null },
+  });
+
   expect(historical.routineActualManifest.runs[0]?.actuals[0]?.fact).toMatchObject({
     requested,
     state: 'historical',
@@ -2139,6 +2204,29 @@ it('B preserves exact historical Intake UUID revision and reads its real null-bo
   expect(deleted.routineActualManifest.actualRosters.intake).toMatchObject([
     { id: created.intakeId, status: 'deleted', revision: 3 },
   ]);
+  expect(deleted.manualIntakeReadFacts.facts[0]).toMatchObject({
+    requested,
+    state: 'deleted',
+    content: null,
+  });
+  await owned(athlete, (client) =>
+    client.query("UPDATE consent SET granted=false,revision=2 WHERE athlete_id=$1 AND kind='app'", [
+      athlete,
+    ]),
+  );
+  const retained = await capture(athlete, event.id);
+  expect(retained.manualIntakeReadFacts).toEqual(deleted.manualIntakeReadFacts);
+  const denied = await database.tenant(athlete, (tx) =>
+    captureRacePlanImpactConsumedScope(tx, {
+      eventId: event.id,
+      expectedRevision: 1,
+      selection: { kind: 'keep_plan' },
+    }),
+  );
+  expect(denied.consumedScope).toMatchObject({
+    status: 'blocked',
+    blockers: [{ path: 'manualBasis.app', reason: 'manual_admission_unavailable' }],
+  });
 });
 
 it('B keeps the frozen run blueprint after a new catalog head and captures the changed head facts', async () => {

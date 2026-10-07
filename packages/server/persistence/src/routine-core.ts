@@ -905,7 +905,7 @@ export function createRoutineRepository(db: Database): RoutineRepository {
               throw new RoutineReferenceError('SKIPPED_WITH_ACTUAL');
             for (const ref of actualRefs) {
               const sourceTime = await validateActual(tx, ref, step.content.kind);
-              if (occurredAt !== null && occurredAt !== sourceTime)
+              if (occurredAt !== null && iso(occurredAt) !== sourceTime)
                 throw new RoutineReferenceError('ACTUAL_TIME_MISMATCH');
               occurredAt = sourceTime;
             }

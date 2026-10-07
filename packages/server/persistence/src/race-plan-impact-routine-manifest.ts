@@ -11,6 +11,10 @@ import { routineRunReadSchema } from '@workout/contracts/routine-commands';
 import { activityValuesSchema, activityOverlaySchema } from '@workout/contracts/activity';
 import { intakeEntryRecordSchema } from '@workout/contracts/nutrition-core';
 import { checkInValuesSchema } from '@workout/contracts/check-ins';
+import {
+  manualIntakeReadFactsSchema,
+  validateManualIntakeReadFacts,
+} from './race-plan-impact-intake-read-facts.js';
 import { impactDependencyDigest as digest } from './race-plan-impact-dependencies.js';
 const uuid = z.uuid();
 const opaque = z.string().min(1).max(200);
@@ -179,6 +183,8 @@ export const routineReadManifestSchema = z.strictObject({
 export const routineReadSourcesProjectionSchema = z.strictObject({
   manifest: routineReadManifestSchema,
   timerReads: z.array(routineRunReadSchema).max(1000).optional(),
+  // Retained read correspondence only; the full capture checks athlete scope.
+  intakeReadFacts: manualIntakeReadFactsSchema.optional(),
 });
 export type RoutineReadSourcesProjection = z.infer<typeof routineReadSourcesProjectionSchema>;
 export type RoutineReadBlocker = {
@@ -246,7 +252,8 @@ export function validateRoutineReadSources(input: unknown): {
       0,
     ) +
     m.occurrences.reduce((n, o) => n + o.record.stepBindings.length, 0) +
-    (c.timerReads ?? []).reduce((n, r) => n + r.timers.length, 0);
+    (c.timerReads ?? []).reduce((n, r) => n + r.timers.length, 0) +
+    (c.intakeReadFacts?.facts.length ?? 0);
   if (
     visits +
       m.runs.length +
@@ -293,6 +300,21 @@ export function validateRoutineReadSources(input: unknown): {
   const intake = buildMap(m.actualRosters.intake, (a) => a.id, 'actualRosters.intake');
   buildMap(m.actualRosters.recovery, (a) => a.id.toLowerCase(), 'actualRosters.recovery');
   const timers = buildMap(c.timerReads ?? [], (r) => r.run.id.toLowerCase(), 'timerReads');
+  const intakeRefs = m.runs.flatMap((r) =>
+    r.actuals.flatMap((a) => (a.fact.requested.kind === 'intake' ? [a.fact.requested] : [])),
+  );
+  const intakePortValid =
+    c.intakeReadFacts !== undefined &&
+    validateManualIntakeReadFacts(c.intakeReadFacts, {
+      athleteId: c.intakeReadFacts.athleteId,
+      refs: intakeRefs,
+    }).status === 'validated_retained_read_facts';
+  if (c.intakeReadFacts && !intakePortValid) block('intakeReadFacts', 'actual_membership_mismatch');
+  const intakePort = new Map(
+    (c.intakeReadFacts?.facts ?? []).map(
+      (f) => [JSON.stringify([f.requested.id, f.requested.revisionId.toLowerCase()]), f] as const,
+    ),
+  );
   for (const row of blueprints.values()) {
     if (
       !uuid.safeParse(row.record.routineId).success ||
@@ -455,7 +477,28 @@ export function validateRoutineReadSources(input: unknown): {
           block(`${path}.${a.stepId}`, 'actual_membership_mismatch');
       } else {
         // Typed stored bodies are facts, not provider/health processing admission.
-        block(`${path}.${a.stepId}`, 'actual_permission_port_missing');
+        const retained =
+          ref.kind === 'intake'
+            ? intakePort.get(JSON.stringify([ref.id, ref.revisionId.toLowerCase()]))
+            : undefined;
+        const matchesRetained =
+          intakePortValid &&
+          retained !== undefined &&
+          retained.state === f.state &&
+          retained.reason === f.reason &&
+          equal(retained.content, f.content) &&
+          retained.current !== null &&
+          equal(
+            {
+              id: retained.current.id,
+              revision: retained.current.revision,
+              revisionId: retained.current.revisionId,
+              status: retained.current.status,
+            },
+            f.current,
+          ) &&
+          retained.current.contentDigest === intake.get(retained.requested.id)?.contentDigest;
+        if (!matchesRetained) block(`${path}.${a.stepId}`, 'actual_permission_port_missing');
         if (ref.kind === 'activity') {
           const roster = activities.get(ref.id.toLowerCase()),
             body = activityContent.safeParse(f.content);

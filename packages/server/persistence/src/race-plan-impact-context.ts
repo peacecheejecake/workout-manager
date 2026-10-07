@@ -1,3 +1,4 @@
+import { captureManualIntakeReadFacts } from './race-plan-impact-intake-read-facts.js';
 import { captureCourseReadSources } from './race-plan-impact-course-sources.js';
 import {
   validateRaceImpactConsumedManifest,
@@ -621,6 +622,7 @@ export async function captureRacePlanImpactContext(tx: Transaction, input: unkno
   let recoverySources: Awaited<ReturnType<typeof captureRecoverySourceFacts>>;
   let recoveryNutritionSources: Awaited<ReturnType<typeof captureRecoveryNutritionSourceFacts>>;
   let routineTimerReads: Awaited<ReturnType<typeof captureRoutineTimerReads>>;
+  let manualIntakeReadFacts: Awaited<ReturnType<typeof captureManualIntakeReadFacts>>;
   let course: Awaited<ReturnType<typeof captureCourseReadSources>>;
   try {
     dependencyInventory = await captureIntegratedDependencyInventory(tx);
@@ -630,6 +632,15 @@ export async function captureRacePlanImpactContext(tx: Transaction, input: unkno
       sources: sources.sourceCount() + routineActualManifest.uniqueSourceCount,
     };
     course = await captureCourseReadSources(tx, event.course, sourceBudget);
+    manualIntakeReadFacts = await captureManualIntakeReadFacts(
+      tx,
+      routineActualManifest.runs.flatMap((run) =>
+        run.actuals.flatMap((actual) =>
+          actual.fact.requested.kind === 'intake' ? [actual.fact.requested] : [],
+        ),
+      ),
+      sourceBudget,
+    );
     recoverySources = await captureRecoverySourceFacts(
       tx,
       recovery.map((row) => row.record),
@@ -707,6 +718,7 @@ export async function captureRacePlanImpactContext(tx: Transaction, input: unkno
     recoverySources,
     recoveryNutritionSources,
     routineTimerReads,
+    manualIntakeReadFacts,
     routines,
     coreDependencies: core,
     dependencyInventory,

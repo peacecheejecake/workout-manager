@@ -1,3 +1,5 @@
+import { activeIntakeEntrySchema } from '@workout/contracts/nutrition-core';
+import { manualIntakeReadFactsSchema } from '../src/race-plan-impact-intake-read-facts.js';
 import { courseRevisionSchema } from '@workout/contracts/courses';
 import { courseContentDigest } from '@workout/server-courses/digest';
 import { courseReadManifestSchema } from '../src/race-plan-impact-course-manifest.js';
@@ -47,7 +49,11 @@ const absent = () => ({ state: 'absent' as const });
 const jsonRows = () => z.array(z.json()).parse([]);
 const presentVersion = () => ({ state: 'present' as const, versionId: scheduleVersion });
 function fixture() {
+  const manualIntakeFields: {
+    manualIntakeReadFacts?: z.infer<typeof manualIntakeReadFactsSchema>;
+  } = {};
   return {
+    ...manualIntakeFields,
     status: 'blocked' as const,
     coverage: {
       complete: false as const,
@@ -1081,6 +1087,7 @@ it.each([
     const c = withTrainingRef(options.historical, options.immutable),
       before = structuredClone(c),
       result = inspect(c);
+    if (result.status === 'blocked') expect(result.blockers).toEqual([]);
     expect(result.status).toBe('validated_read_scope');
     if (result.status === 'validated_read_scope') {
       expect(result.approvalAuthority).toBe('none');
@@ -2745,4 +2752,267 @@ it('binds original course body into complete readset rather than trusting a copi
       { path: 'course', reason: 'course_digest_mismatch' },
     ]),
   });
+});
+
+function withRetainedIntake(state: 'current' | 'historical' | 'deleted' = 'current') {
+  const c = withReadRun(),
+    run = c.routineTimerReads[0]?.run,
+    template = withNutritionRef();
+  c.nutrition = structuredClone(template.nutrition);
+  c.rosters.nutrition = structuredClone(template.rosters.nutrition);
+  c.sourcePermissionManifest.nestedNutritionSources = structuredClone(
+    template.sourcePermissionManifest.nestedNutritionSources,
+  );
+  c.sourcePermissionManifest.catalog = structuredClone(template.sourcePermissionManifest.catalog);
+  if (!run) throw Error('run fixture');
+  const blueprint = routineBlueprintVersionSchema.parse({
+    schemaVersion: 4,
+    routineId: blueprintId,
+    versionId: blueprintVersion,
+    title: 'Manual intake read',
+    intent: 'User record',
+    status: 'published',
+    tags: [],
+    steps: [
+      {
+        id: 'step',
+        title: 'Intake',
+        content: {
+          kind: 'nutrition_template',
+          ref: { id: plan, versionId: version },
+        },
+        timing: { kind: 'user_scheduled' },
+        required: true,
+        choiceGroupId: null,
+      },
+    ],
+    choiceGroups: [],
+    estimatedDurationSeconds: null,
+    createdAt: now,
+  });
+  c.routineActualManifest.blueprints = [
+    {
+      record: blueprint,
+      version: 1,
+      currentHead: {
+        state: 'present',
+        versionId: blueprintVersion,
+        version: 1,
+        visibility: 'active',
+        favorite: false,
+      },
+      unsupportedContent: [],
+    },
+  ];
+  const ref = { kind: 'intake' as const, id: 'manual-retained-intake', revisionId: version };
+  const datum = (unit: string, value: number | null) => ({
+    unit,
+    value,
+    status: value === null ? 'unknown' : 'reported',
+    evidenceIds: [],
+  });
+  const body = activeIntakeEntrySchema.parse({
+    intakeId: ref.id,
+    revisionId: version,
+    revision: 1,
+    status: 'active',
+    occurredAt: now,
+    recordedAt: now,
+    timezone: 'UTC',
+    foods: [
+      {
+        foodVersionId: null,
+        description: 'Zero portion',
+        quantity: 0,
+        unit: 'g',
+        sourceBasis: 'manual_total',
+      },
+    ],
+    nutrientTotal: {
+      energy: datum('kcal', 0),
+      carbohydrate: datum('g', null),
+      protein: datum('g', null),
+      fat: datum('g', null),
+      fluid: datum('mL', null),
+      sodium: datum('mg', null),
+    },
+    nutrientValueCoverage: 'partial',
+    plannedItemId: null,
+    relatedSessionIds: [],
+    relatedActivityIds: [],
+    source: 'user',
+    sourceRecordId: null,
+    notes: null,
+  });
+  const head = {
+    id: ref.id,
+    revision: state === 'current' ? 1 : 2,
+    revisionId: state === 'current' ? version : generation,
+    status: state === 'deleted' ? ('deleted' as const) : ('active' as const),
+    contentDigest: impactDependencyDigest(
+      state === 'deleted'
+        ? null
+        : state === 'historical'
+          ? { ...body, revision: 2, revisionId: generation }
+          : body,
+    ),
+  };
+  const content = state === 'deleted' ? null : body;
+  const updated = routineRunSchema.parse({
+    ...run,
+    revision: 1,
+    progress: [
+      {
+        stepId: 'step',
+        revision: 1,
+        state: 'performed',
+        actualRefs: [ref],
+        occurredAt: now,
+        recordedAt: now,
+        reason: null,
+      },
+    ],
+  });
+  const fact = {
+    requested: ref,
+    state,
+    reason: null,
+    current: {
+      id: head.id,
+      revision: head.revision,
+      revisionId: head.revisionId,
+      status: head.status,
+    },
+    content,
+  };
+  c.routineActualManifest.runs = [
+    {
+      record: updated,
+      historyDigest: impactDependencyDigest(updated),
+      actuals: [{ stepId: 'step', fact }],
+    },
+  ];
+  c.routineActualManifest.actualRosters.intake = [head];
+  c.routineActualManifest.uniqueSourceCount = 2;
+  c.routineTimerReads = [routineRunReadSchema.parse({ run: updated, timers: [] })];
+  c.manualIntakeReadFacts = manualIntakeReadFactsSchema.parse({
+    purpose: 'retained_manual_intake_read',
+    athleteId: athlete,
+    authority: 'none',
+    freshness: 'not_checked',
+    facts: [
+      {
+        ...fact,
+        current: head,
+        contentDigest: content === null ? null : impactDependencyDigest(content),
+      },
+    ],
+  });
+  return c;
+}
+it.each(['current', 'historical', 'deleted'] as const)(
+  'consumes retained manual intake %s through full readonly scope without copied deleted body',
+  (state) => {
+    const c = withRetainedIntake(state),
+      before = structuredClone(c.manualIntakeReadFacts),
+      result = inspect(c);
+    if (result.status === 'blocked') expect(result.blockers).toEqual([]);
+    expect(result.status).toBe('validated_read_scope');
+    if (result.status === 'validated_read_scope') {
+      expect(result.approvalAuthority).toBe('none');
+      expect(result.freshness).toBe('not_checked');
+      expect(result.remaining).toHaveLength(5);
+    }
+    expect(c.coverage.complete).toBe(false);
+    expect(c.manualIntakeReadFacts).toEqual(before);
+    const body = c.manualIntakeReadFacts?.facts[0]?.content;
+    if (state === 'deleted') expect(body).toBeNull();
+    else
+      expect(body).toMatchObject({
+        foods: [{ quantity: 0, foodVersionId: null }],
+        nutrientTotal: { energy: { value: 0 }, carbohydrate: { value: null } },
+      });
+  },
+);
+it('keeps manual intake actual permission unresolved when retained read port is absent', () => {
+  const c = withRetainedIntake();
+  delete c.manualIntakeReadFacts;
+  blocked(c, 'actual_permission_port_missing');
+});
+it('rejects foreign manual intake read scope before any approval authority', () => {
+  const c = withRetainedIntake();
+  if (!c.manualIntakeReadFacts) throw Error('fixture');
+  c.manualIntakeReadFacts.athleteId = 'foreign';
+  blocked(c, 'scope_mismatch', 'manualIntakeReadFacts');
+});
+it('rejects forged intake head even with an otherwise exact manual body', () => {
+  const c = withRetainedIntake(),
+    f = c.manualIntakeReadFacts?.facts[0];
+  if (!f?.current) throw Error('fixture');
+  f.current.revision = 2;
+  blocked(c, 'actual_permission_port_missing');
+});
+it.each(['extraction', 'user_with_source_record'] as const)(
+  'excludes %s intake source despite internally recomputed digests',
+  (kind) => {
+    const c = withRetainedIntake(),
+      f = c.manualIntakeReadFacts?.facts[0];
+    if (!f?.content || !f.current) throw Error('fixture');
+    f.content.source = kind === 'extraction' ? 'user_confirmed_extraction' : 'user';
+    f.content.sourceRecordId = plan;
+    f.contentDigest = impactDependencyDigest(f.content);
+    f.current.contentDigest = f.contentDigest;
+    const row = c.routineActualManifest.runs[0];
+    if (!row || typeof row !== 'object' || Array.isArray(row) || !('actuals' in row))
+      throw Error('fixture');
+    const facts = z
+      .array(
+        z.strictObject({
+          stepId: z.string(),
+          fact: z.strictObject({
+            requested: z.json(),
+            state: z.string(),
+            reason: z.null(),
+            current: z.json(),
+            content: z.json(),
+          }),
+        }),
+      )
+      .parse(row.actuals);
+    const actual = facts[0];
+    if (!actual) throw Error('fixture');
+    actual.fact.content = z.json().parse(f.content);
+    row.actuals = facts;
+    c.routineActualManifest.actualRosters.intake = [f.current];
+    blocked(c, 'actual_permission_port_missing');
+  },
+);
+it('rejects deleted intake body copied into routine facts instead of restoring it from history', () => {
+  const c = withRetainedIntake('deleted'),
+    row = c.routineActualManifest.runs[0];
+  if (!row || typeof row !== 'object' || Array.isArray(row) || !('actuals' in row))
+    throw Error('fixture');
+  const facts = z
+    .array(
+      z.strictObject({
+        stepId: z.string(),
+        fact: z.strictObject({
+          requested: z.json(),
+          state: z.string(),
+          reason: z.null(),
+          current: z.json(),
+          content: z.json(),
+        }),
+      }),
+    )
+    .parse(row.actuals);
+  const actual = facts[0];
+  if (!actual) throw Error('fixture');
+  actual.fact.content = z
+    .json()
+    .parse(withRetainedIntake().manualIntakeReadFacts?.facts[0]?.content);
+  row.actuals = facts;
+  blocked(c, 'actual_permission_port_missing');
+  blocked(c, 'actual_membership_mismatch');
+  expect(c.manualIntakeReadFacts?.facts[0]?.content).toBeNull();
 });

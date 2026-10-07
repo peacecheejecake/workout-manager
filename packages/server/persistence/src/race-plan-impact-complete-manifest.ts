@@ -1,3 +1,4 @@
+import { manualIntakeReadFactsSchema } from './race-plan-impact-intake-read-facts.js';
 import {
   courseReadManifestSchema,
   validateCourseReadManifest,
@@ -543,6 +544,7 @@ const captureSchema = z.strictObject({
   recoverySources: recoverySourceFactsSchema.optional(),
   recoveryNutritionSources: recoveryNutritionSources.optional(),
   routineTimerReads: z.array(routineRunReadSchema).max(1000).optional(),
+  manualIntakeReadFacts: manualIntakeReadFactsSchema.optional(),
   routines: z.array(routine).max(1000),
   coreDependencies: coreEvidenceDependencyManifestSchema,
   dependencyInventory: z.array(z.json()).length(12),
@@ -994,8 +996,11 @@ export function validateRaceImpactConsumedManifest(
         unavailable.kind === 'method' ? 'method_unavailable' : 'training_association_missing',
       );
   }
+  if (c.manualIntakeReadFacts !== undefined && c.manualIntakeReadFacts.athleteId !== c.athleteId)
+    block('manualIntakeReadFacts', 'scope_mismatch');
   const routineResult = validateRoutineReadSources({
     manifest: c.routineActualManifest,
+    ...(c.manualIntakeReadFacts === undefined ? {} : { intakeReadFacts: c.manualIntakeReadFacts }),
     ...(c.routineTimerReads === undefined ? {} : { timerReads: c.routineTimerReads }),
   });
   for (const finding of routineResult.blockers) {
@@ -1529,6 +1534,7 @@ export function validateRaceImpactConsumedManifest(
   const visits =
     refs.length +
     c.completions.length +
+    (c.manualIntakeReadFacts?.facts.length ?? 0) +
     c.consumedSources.plans.length +
     c.consumedSources.races.length +
     allNutrition.reduce((sum, n) => sum + n.record.items.length, 0) +

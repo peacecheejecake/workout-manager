@@ -1,4 +1,5 @@
 import { expect, it } from 'vitest';
+import { activeIntakeEntrySchema } from '@workout/contracts/nutrition-core';
 import {
   routineBlueprintVersionSchema,
   routineRunSchema,
@@ -564,4 +565,182 @@ it('preserves existing SQL023 blueprint capacity above512KiB within1MiB', () => 
   const c = fixture();
   blueprint(c).record.intent = 'x'.repeat(600000);
   expect(validateRoutineReadSources(c).status).toBe('validated_read_sources');
+});
+
+function manualIntake(state: 'current' | 'historical' | 'deleted' = 'current') {
+  const c = fixture();
+  const step = blueprint(c).record.steps[0];
+  if (!step) throw Error('fixture');
+  step.content = { kind: 'nutrition_template', ref: { id: id(9), versionId: id(10) } };
+  const ref = { kind: 'intake' as const, id: 'manual-intake', revisionId: id(11) };
+  const datum = (unit: string, value: number | null) => ({
+    unit,
+    value,
+    status: value === null ? 'unknown' : 'reported',
+    evidenceIds: [],
+  });
+  const body = activeIntakeEntrySchema.parse({
+    intakeId: ref.id,
+    revisionId: ref.revisionId,
+    revision: 1,
+    status: 'active',
+    occurredAt: at,
+    recordedAt: at,
+    timezone: 'UTC',
+    foods: [
+      {
+        foodVersionId: null,
+        description: 'Zero portion',
+        quantity: 0,
+        unit: 'g',
+        sourceBasis: 'manual_total',
+      },
+    ],
+    nutrientTotal: {
+      energy: datum('kcal', 0),
+      carbohydrate: datum('g', null),
+      protein: datum('g', null),
+      fat: datum('g', null),
+      fluid: datum('mL', null),
+      sodium: datum('mg', null),
+    },
+    nutrientValueCoverage: 'partial',
+    plannedItemId: null,
+    relatedSessionIds: [],
+    relatedActivityIds: [],
+    source: 'user',
+    sourceRecordId: null,
+    notes: null,
+  });
+  const head = {
+    id: ref.id,
+    revision: state === 'current' ? 1 : 2,
+    revisionId: state === 'current' ? ref.revisionId : id(12),
+    status: state === 'deleted' ? ('deleted' as const) : ('active' as const),
+    contentDigest: digest(
+      state === 'deleted'
+        ? null
+        : state === 'historical'
+          ? { ...body, revision: 2, revisionId: id(12) }
+          : body,
+    ),
+  };
+  const current = {
+    id: head.id,
+    revision: head.revision,
+    revisionId: head.revisionId,
+    status: head.status,
+  };
+  const content = state === 'deleted' ? null : body;
+  run(c).record.progress = [
+    {
+      stepId: 'review',
+      revision: 1,
+      state: 'performed',
+      actualRefs: [ref],
+      occurredAt: at,
+      recordedAt: at,
+      reason: null,
+    },
+  ];
+  run(c).actuals = [
+    { stepId: 'review', fact: { requested: ref, state, reason: null, current, content } },
+  ];
+  c.manifest.actualRosters.intake = [head];
+  c.intakeReadFacts = {
+    purpose: 'retained_manual_intake_read',
+    athleteId: 'synthetic-own',
+    authority: 'none',
+    freshness: 'not_checked',
+    facts: [
+      {
+        requested: ref,
+        state,
+        reason: null,
+        current: head,
+        content,
+        contentDigest: content === null ? null : digest(content),
+      },
+    ],
+  };
+  c.intakeReadFacts = structuredClone(c.intakeReadFacts);
+  sync(c);
+  return structuredClone(c);
+}
+it.each(['current', 'historical', 'deleted'] as const)(
+  'accepts exact manual retained intake %s without admission or approval authority',
+  (state) => {
+    const c = manualIntake(state),
+      before = JSON.stringify(c);
+    expect(validateRoutineReadSources(c)).toMatchObject({
+      status: 'validated_read_sources',
+      authority: 'none',
+      freshness: 'not_checked',
+    });
+    expect(JSON.stringify(c)).toBe(before);
+    if (state === 'deleted') expect(actual(c).fact.content).toBeNull();
+  },
+);
+it('keeps intake permission missing without the exact port', () => {
+  const c = manualIntake();
+  delete c.intakeReadFacts;
+  expect(reasons(c)).toContain('actual_permission_port_missing');
+});
+it.each(['body', 'head', 'state', 'ref', 'digest'] as const)(
+  'blocks retained intake %s mismatch',
+  (field) => {
+    const c = manualIntake(),
+      f = c.intakeReadFacts?.facts[0];
+    if (!f || !f.current || !f.content) throw Error('fixture');
+    if (field === 'body') {
+      f.content.notes = 'Changed';
+      f.contentDigest = digest(f.content);
+      f.current.contentDigest = f.contentDigest;
+    }
+    if (field === 'head') f.current.revision = 2;
+    if (field === 'state') f.state = 'historical';
+    if (field === 'ref') f.requested.id = 'different-intake';
+    if (field === 'digest') f.contentDigest = '0'.repeat(64);
+    expect(reasons(c)).toContain('actual_permission_port_missing');
+  },
+);
+it('rejects extraction intake even with internally matching body digests', () => {
+  const c = manualIntake(),
+    f = c.intakeReadFacts?.facts[0];
+  if (!f?.content || !f.current) throw Error('fixture');
+  f.content.source = 'user_confirmed_extraction';
+  f.content.sourceRecordId = id(20);
+  f.contentDigest = digest(f.content);
+  f.current.contentDigest = f.contentDigest;
+  actual(c).fact.content = structuredClone(f.content);
+  c.manifest.actualRosters.intake = [f.current];
+  expect(reasons(c)).toContain('actual_permission_port_missing');
+});
+it.each(['duplicate', 'unused'] as const)('rejects %s retained intake facts', (kind) => {
+  const c = manualIntake(),
+    port = c.intakeReadFacts,
+    f = port?.facts[0];
+  if (!port || !f) throw Error('fixture');
+  const extra = structuredClone(f);
+  if (kind === 'unused') extra.requested.id = 'unused-intake';
+  port.facts.push(extra);
+  expect(reasons(c)).toContain('actual_membership_mismatch');
+});
+it('rejects deleted intake copied body instead of silently accepting tombstone authority', () => {
+  const c = manualIntake('deleted');
+  actual(c).fact.content = actual(manualIntake()).fact.content;
+  expect(reasons(c)).toContain('actual_permission_port_missing');
+  expect(reasons(c)).toContain('actual_membership_mismatch');
+});
+it('does not let empty intake port authorize activity', () => {
+  const c = fixture();
+  activity(c);
+  c.intakeReadFacts = {
+    purpose: 'retained_manual_intake_read',
+    athleteId: 'synthetic-own',
+    facts: [],
+    authority: 'none',
+    freshness: 'not_checked',
+  };
+  expect(reasons(c)).toContain('actual_permission_port_missing');
 });
