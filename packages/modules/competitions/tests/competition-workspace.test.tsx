@@ -1061,3 +1061,141 @@ it('rejects duplicate source revisions instead of silently choosing a PB winner'
   expect(screen.getByText(/기록을 불러오지 못해 PB 결과/)).toBeInTheDocument();
   expect(screen.queryByRole('list', { name: '거리별 PB 결과' })).not.toBeInTheDocument();
 });
+
+const v2Values = {
+  kind: 'race-result',
+  raceEventId: null,
+  localDate: '2026-10-10',
+  timezone: 'Asia/Seoul',
+  source: { kind: 'manual' },
+  chipSeconds: 0,
+  gunSeconds: null,
+  officialDistanceMeters: 10000,
+  deviceDistanceMeters: null,
+  linkedActivityId: null,
+  weatherNote: null,
+  proofs: { link: 'https://example.test/result', attachments: [] },
+};
+const v2Record = { schemaVersion: 2, id, revision: 2, ...v2Values };
+it('V2 explicitly negotiates mixed list/read without rewriting legacy or proof DTOs', async () => {
+  const requests: TransportRequest[] = [];
+  const api = createRaceApi(
+    transport((request) => {
+      requests.push(request);
+      return {
+        status: 200,
+        body: request.path.includes('/v2?')
+          ? { ...page('race-result', [result]), schemaVersion: 2 }
+          : v2Record,
+      };
+    }),
+  );
+  expect((await api.resultsV2.list({ schemaVersion: 2 })).items).toEqual([result]);
+  expect(await api.resultsV2.read({ schemaVersion: 2, id })).toEqual(v2Record);
+  expect(requests.map((request) => request.path)).toEqual([
+    '/bff/v1/race-results/v2?schemaVersion=2&limit=50',
+    `/bff/v1/race-results/v2/${id}?schemaVersion=2`,
+  ]);
+});
+it('V2 retries keep caller keys and exact schema2 bodies, and update verifies response identity', async () => {
+  const requests: TransportRequest[] = [];
+  const api = createRaceApi(
+    transport((request) => {
+      requests.push(request);
+      return { status: 201, body: { id, revision: 2 } };
+    }),
+  );
+  const command = {
+    schemaVersion: 2 as const,
+    idempotencyKey: 'stable_proof_key',
+    values: v2Values,
+  };
+  await api.resultsV2.create(command);
+  await api.resultsV2.create(command);
+  await api.resultsV2.update(id, { ...command, expectedRevision: 1 });
+  expect(requests[0]).toEqual(requests[1]);
+  expect(requests[0]).toMatchObject({
+    path: '/bff/v1/race-results/v2',
+    method: 'POST',
+    idempotencyKey: command.idempotencyKey,
+    body: { schemaVersion: 2, values: v2Values },
+  });
+  expect(requests[2]).toMatchObject({
+    method: 'PATCH',
+    body: { schemaVersion: 2, expectedRevision: 1, values: v2Values },
+  });
+  const wrong = createRaceApi(
+    transport(() => ({
+      status: 200,
+      body: { id: '20000000-0000-4000-8000-000000000001', revision: 2 },
+    })),
+  );
+  await expect(wrong.resultsV2.update(id, { ...command, expectedRevision: 1 })).rejects.toThrow();
+});
+it('V2 rejects injected truth, unavailable writes and oversized original inputs before transport', () => {
+  const call = vi.fn();
+  const api = createRaceApi({ request: call });
+  const command = {
+    schemaVersion: 2 as const,
+    idempotencyKey: 'stable_proof_key',
+    values: v2Values,
+  };
+  expect(() =>
+    api.resultsV2.create({
+      ...command,
+      values: { ...v2Values, proofs: { ...v2Values.proofs, verified: true } },
+    }),
+  ).toThrow();
+  expect(() =>
+    api.resultsV2.create({
+      ...command,
+      values: {
+        ...v2Values,
+        proofs: {
+          link: null,
+          attachments: [{ kind: 'gallery-image', mediaItemId: id, status: 'unavailable' }],
+        },
+      },
+    }),
+  ).toThrow();
+  expect(() =>
+    api.resultsV2.create({ ...command, values: { ...v2Values, weatherNote: '가'.repeat(17000) } }),
+  ).toThrow();
+  expect(call).not.toHaveBeenCalled();
+});
+it('V2 ignores late aborted replies and sanitizes HTTP errors', async () => {
+  const controller = new AbortController();
+  const api = createRaceApi(
+    transport(() => {
+      controller.abort();
+      return { status: 200, body: v2Record };
+    }),
+  );
+  await expect(
+    api.resultsV2.read({ schemaVersion: 2, id }, controller.signal),
+  ).rejects.toMatchObject({ name: 'AbortError' });
+  const call = vi.fn();
+  await expect(
+    createRaceApi({ request: call }).resultsV2.read({ schemaVersion: 2, id }, controller.signal),
+  ).rejects.toMatchObject({ name: 'AbortError' });
+  expect(call).not.toHaveBeenCalled();
+  await expect(
+    createRaceApi(
+      transport(() => ({ status: 409, body: { error: { code: 'raw private details' } } })),
+    ).resultsV2.read({ schemaVersion: 2, id }),
+  ).rejects.toEqual(new RaceRequestError(409, 'REQUEST_FAILED'));
+});
+it('V2 read rejects wrong identities, unknown DTO fields and raw oversized replies', async () => {
+  for (const body of [
+    { ...v2Record, id: '20000000-0000-4000-8000-000000000001' },
+    { ...v2Record, authenticatedProof: true },
+    { ...result, weatherNote: '가'.repeat(17000) },
+  ]) {
+    await expect(
+      createRaceApi(transport(() => ({ status: 200, body }))).resultsV2.read({
+        schemaVersion: 2,
+        id,
+      }),
+    ).rejects.toThrow();
+  }
+});

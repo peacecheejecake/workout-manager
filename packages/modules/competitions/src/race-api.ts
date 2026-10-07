@@ -21,6 +21,17 @@ import {
   type RaceListQueryInput,
 } from '@workout/contracts/race-queries';
 
+import {
+  RACE_RESULT_V2_MAX_BYTES,
+  raceResultCompatibleReadSchema,
+  raceResultMixedListV2PageSchema,
+  raceResultReadV2CommandSchema,
+  raceResultListV2QuerySchema,
+  raceResultCreateV2CommandSchema,
+  raceResultUpdateV2CommandSchema,
+  raceResultV2CommandResultSchema,
+} from '@workout/contracts/race-result-v2';
+
 const errorSchema = z.object({
   error: z.object({
     code: z
@@ -48,7 +59,10 @@ export function createRaceApi(transport: AuthenticatedTransport) {
     body: unknown = null,
     idempotencyKey: string | null = null,
     signal?: AbortSignal,
+    maximumReplyBytes?: number,
+    enforceCancellation = false,
   ) {
+    if (enforceCancellation) signal?.throwIfAborted();
     const reply = transportReplySchema.parse(
       await transport.request({
         path,
@@ -58,12 +72,31 @@ export function createRaceApi(transport: AuthenticatedTransport) {
         ...(signal ? { signal } : {}),
       }),
     );
+    if (enforceCancellation) signal?.throwIfAborted();
     if (reply.status < 200 || reply.status >= 300) {
       const error = errorSchema.safeParse(reply.body);
       throw new RaceRequestError(
         reply.status,
         error.success ? error.data.error.code : 'REQUEST_FAILED',
       );
+    }
+    if (maximumReplyBytes !== undefined) {
+      // Bound the original reply before normalization. A V1 read may include its
+      // finite relational identity overhead in addition to the stored 16KiB body.
+      z.unknown()
+        .superRefine((value, context) => {
+          try {
+            const json = JSON.stringify(value);
+            if (json === undefined || new TextEncoder().encode(json).byteLength > maximumReplyBytes)
+              context.addIssue({
+                code: 'custom',
+                message: 'Race result response exceeds its bound',
+              });
+          } catch {
+            context.addIssue({ code: 'custom', message: 'Race result response must be JSON' });
+          }
+        })
+        .parse(reply.body);
     }
     return schema.parse(reply.body);
   }
@@ -122,7 +155,76 @@ export function createRaceApi(transport: AuthenticatedTransport) {
       },
     };
   }
+  const resultV2Path = '/bff/v1/race-results/v2';
+  const resultsV2 = {
+    list(input: z.input<typeof raceResultListV2QuerySchema>, signal?: AbortSignal) {
+      const query = raceResultListV2QuerySchema.parse(input);
+      const search = new URLSearchParams({ schemaVersion: '2', limit: String(query.limit) });
+      if (query.cursor !== null) search.set('cursor', JSON.stringify(query.cursor));
+      return request(
+        `${resultV2Path}?${search}`,
+        'GET',
+        raceResultMixedListV2PageSchema,
+        null,
+        null,
+        signal,
+        undefined,
+        true,
+      );
+    },
+    read(input: z.input<typeof raceResultReadV2CommandSchema>, signal?: AbortSignal) {
+      const command = raceResultReadV2CommandSchema.parse(input);
+      return request(
+        `${resultV2Path}/${encodeURIComponent(command.id)}?schemaVersion=2`,
+        'GET',
+        raceResultCompatibleReadSchema,
+        null,
+        null,
+        signal,
+        RACE_RESULT_V2_MAX_BYTES + 256,
+        true,
+      ).then((record) => {
+        z.literal(command.id).parse(record.id);
+        return record;
+      });
+    },
+    create(input: z.input<typeof raceResultCreateV2CommandSchema>, signal?: AbortSignal) {
+      const { idempotencyKey, ...body } = raceResultCreateV2CommandSchema.parse(input);
+      return request(
+        resultV2Path,
+        'POST',
+        raceResultV2CommandResultSchema,
+        body,
+        idempotencyKey,
+        signal,
+        undefined,
+        true,
+      );
+    },
+    update(
+      id: string,
+      input: z.input<typeof raceResultUpdateV2CommandSchema>,
+      signal?: AbortSignal,
+    ) {
+      const command = raceResultReadV2CommandSchema.parse({ schemaVersion: 2, id });
+      const { idempotencyKey, ...body } = raceResultUpdateV2CommandSchema.parse(input);
+      return request(
+        `${resultV2Path}/${encodeURIComponent(command.id)}`,
+        'PATCH',
+        raceResultV2CommandResultSchema,
+        body,
+        idempotencyKey,
+        signal,
+        undefined,
+        true,
+      ).then((result) => {
+        z.literal(command.id).parse(result.id);
+        return result;
+      });
+    },
+  };
   return {
+    resultsV2,
     events: family(
       '/bff/v1/races',
       raceEventSchema,
