@@ -1,0 +1,620 @@
+import { describe, expect, it } from 'vitest';
+import { raceManualPublicImpactSchema } from '../src/race-manual-public-impact.js';
+function first<T>(rows: readonly T[]): T {
+  const value = rows[0];
+  if (value === undefined) throw Error('fixture');
+  return value;
+}
+const id = (n: number) => `abcdefab-abcd-4abc-8abc-${String(n).padStart(12, '0')}`;
+function fixture() {
+  const race = {
+    title: 'Race',
+    localDate: '2026-10-09',
+    localStartTime: null,
+    timezone: 'UTC',
+    distance: { kind: 'standard', class: '5k' },
+    priority: null,
+    participation: 'registered',
+    targetSeconds: 0,
+  };
+  const item = {
+    id: 'meal-식-' + 'x'.repeat(201),
+    category: 'before',
+    title: 'Meal',
+    anchor: { kind: 'absolute', date: '2026-10-09', localTime: null, timezone: 'UTC' },
+    foods: [
+      {
+        foodVersionId: null,
+        description: 'Zero',
+        quantity: 0,
+        unit: 'g',
+        sourceBasis: 'manual_total',
+      },
+      {
+        foodVersionId: null,
+        description: 'Unknown',
+        quantity: null,
+        unit: 'unspecified',
+        sourceBasis: 'manual_total',
+      },
+    ],
+    targets: [],
+    instructions: 'Eat',
+  };
+  const plan = {
+    period: { from: '2026-10-08', toInclusive: '2026-10-11' },
+    purpose: 'Fuel',
+    timezone: 'UTC',
+    items: [item],
+  };
+  const unresolved = { state: 'unresolved', reason: 'missing_session_time' };
+  return {
+    schemaVersion: 1,
+    status: 'projected',
+    approvalAllowed: false,
+    persistence: 'not_stored',
+    freshness: 'not_checked',
+    expectedEvent: { id: id(1), revision: 2 },
+    intent: {
+      expectedEvent: { id: id(1), revision: 2 },
+      newLocalDate: '2026-10-10',
+      selection: { kind: 'keep_plan' },
+      resolutions: { nutrition: [], routines: [] },
+    },
+    beforeBasis: 'captured_snapshot',
+    afterBasis: 'hypothetical',
+    race: {
+      eventId: id(1),
+      expectedRevision: 2,
+      before: race,
+      after: { ...race, localDate: '2026-10-10' },
+    },
+    training: { state: 'absent' },
+    recovery: { state: 'absent' },
+    routines: { state: 'absent' },
+    nutrition: {
+      state: 'present',
+      members: [
+        {
+          aggregateId: id(2),
+          before: {
+            ref: { versionId: id(3), version: 1 },
+            plan,
+            linkedTraining: { kind: 'absent' },
+          },
+          after: { plan: structuredClone(plan), linkedTraining: { kind: 'absent' } },
+          timings: [
+            {
+              itemId: item.id,
+              state: 'unchanged',
+              before: unresolved,
+              after: unresolved,
+              resolution: 'absent',
+              requirement: 'none',
+            },
+          ],
+        },
+      ],
+    },
+    retainedUnplanned: [],
+    affected: [],
+    resolutionRequirements: [],
+    notices: [
+      { domain: 'nutrition', aggregateId: id(2), itemId: item.id, code: 'UNCHANGED_UNRESOLVED' },
+    ],
+  };
+}
+function member(p: ReturnType<typeof fixture>) {
+  const m = p.nutrition.members[0];
+  if (!m) throw Error('fixture');
+  return m;
+}
+function timing(p: ReturnType<typeof fixture>) {
+  const t = member(p).timings[0];
+  if (!t) throw Error('fixture');
+  return t;
+}
+function routineFixture() {
+  const blueprint = {
+    schemaVersion: 4,
+    routineId: 'bp',
+    versionId: 'bp-v1',
+    title: 'Routine',
+    intent: 'Check',
+    status: 'published',
+    tags: [],
+    steps: [
+      {
+        id: 'step',
+        title: 'Check',
+        content: { kind: 'checklist', prompt: 'Ready?' },
+        timing: { kind: 'user_scheduled' },
+        required: true,
+        choiceGroupId: null,
+      },
+    ],
+    choiceGroups: [],
+    estimatedDurationSeconds: 0,
+    createdAt: '2026-10-08T00:00:00.123456Z',
+  };
+  const schedule = {
+    schemaVersion: 4,
+    id: id(4),
+    versionId: 'schedule-old',
+    blueprint: { id: 'bp', versionId: 'bp-v1' },
+    window: {
+      startDate: '2026-10-08',
+      endDateExclusive: '2026-10-12',
+      timezone: 'UTC',
+      maxOccurrences: 10,
+    },
+    rule: { kind: 'period_days', periodId: 'p', offsetsDays: [0, 1], localTime: null },
+    state: 'ended',
+  };
+  const side = {
+    schedule,
+    sourcePlanVersionId: null,
+    expansion: { state: 'unresolved', reason: 'SOURCE_PLAN_REQUIRED' },
+  };
+  return {
+    ...fixture(),
+    routines: {
+      state: 'present',
+      members: [
+        {
+          aggregateId: id(4),
+          state: 'retained_ended',
+          blueprint,
+          before: side,
+          after: structuredClone(side),
+          retainedStarted: [],
+          storedOccurrences: [
+            {
+              occurrenceId: 'occ',
+              schedule: { id: id(4), versionId: 'schedule-old' },
+              blueprint: { id: 'bp', versionId: 'bp-v1' },
+              sourcePlanVersionId: null,
+              anchorKey: 'period:p:0',
+              scheduledAt: null,
+              timingStatus: 'unresolved',
+              unresolvedReason: null,
+            },
+          ],
+          resolution: 'absent',
+          requirement: 'retained_ended_unresolved',
+        },
+      ],
+    },
+    resolutionRequirements: [
+      {
+        domain: 'routine_schedule',
+        aggregateId: id(4),
+        scheduleVersionId: 'schedule-old',
+        reason: 'retained_ended_unresolved',
+        editor: 'unavailable_frozen_ended',
+      },
+    ],
+    notices: [
+      ...fixture().notices,
+      {
+        domain: 'routine_schedule',
+        aggregateId: id(4),
+        itemId: null,
+        code: 'ENDED_SCHEDULE_RETAINED',
+      },
+    ],
+  };
+}
+describe('transient public impact', () => {
+  it('preserves long opaque item, zero/null and unchanged unresolved', () => {
+    const p = fixture();
+    expect(raceManualPublicImpactSchema.parse(p)).toMatchObject(p);
+  });
+  it('requires exact unresolved affected tuple without pretending ready', () => {
+    const p = raceManualPublicImpactSchema.parse(fixture());
+    if (p.status !== 'projected' || p.nutrition.state !== 'present') throw Error('fixture');
+    const m = p.nutrition.members[0];
+    if (!m) throw Error('fixture');
+    const t = m.timings[0];
+    if (!t) throw Error('fixture');
+    t.state = 'affected';
+    t.requirement = 'resolve_before_review';
+    p.notices = [];
+    p.affected = [{ domain: 'nutrition', aggregateId: m.aggregateId }];
+    p.resolutionRequirements = [
+      {
+        domain: 'nutrition',
+        aggregateId: m.aggregateId,
+        planVersionId: m.before.ref.versionId,
+        itemId: t.itemId,
+        reason: 'affected_timing_unresolved',
+        editor: 'replace_anchor',
+      },
+    ];
+    expect(raceManualPublicImpactSchema.safeParse(p).success).toBe(true);
+    p.resolutionRequirements = [];
+    expect(raceManualPublicImpactSchema.safeParse(p).success).toBe(false);
+  });
+  it('rejects changed food on a date-only diagnostic', () => {
+    const p = fixture();
+    const food = member(p).after.plan.items[0]?.foods[0];
+    if (!food) throw Error('fixture');
+    food.quantity = 1;
+    expect(raceManualPublicImpactSchema.safeParse(p).success).toBe(false);
+  });
+  it('rejects dirty version/identity and extra authority', () => {
+    const p = fixture();
+    p.expectedEvent.revision = 3;
+    expect(raceManualPublicImpactSchema.safeParse(p).success).toBe(false);
+    expect(
+      raceManualPublicImpactSchema.safeParse({ ...fixture(), candidateId: id(8) }).success,
+    ).toBe(false);
+    expect(
+      raceManualPublicImpactSchema.safeParse({ ...fixture(), approvalAllowed: true }).success,
+    ).toBe(false);
+  });
+  it('rejects duplicate and foreign requirements', () => {
+    const p = fixture();
+    p.notices.push({ ...first(p.notices), aggregateId: id(9) });
+    expect(raceManualPublicImpactSchema.safeParse(p).success).toBe(false);
+    member(p).timings.push({ ...timing(p) });
+    expect(raceManualPublicImpactSchema.safeParse(p).success).toBe(false);
+  });
+  it('preserves disconnected suspension and refuses auto resume', () => {
+    const p = raceManualPublicImpactSchema.parse(fixture());
+    if (p.status !== 'projected' || p.nutrition.state !== 'present') throw Error('fixture');
+    const m = p.nutrition.members[0];
+    if (!m) throw Error('fixture');
+    const a = m.before.plan.items[0],
+      b = m.after.plan.items[0],
+      t = m.timings[0];
+    if (!a || !b || !t) throw Error('fixture');
+    a.anchor = { kind: 'disconnected', entity: 'race' };
+    b.anchor = { kind: 'disconnected', entity: 'race' };
+    t.before = {
+      state: 'suspended',
+      reason: 'race_disconnected',
+      resume: 'explicit_reconnect_and_reapproval_required',
+    };
+    t.after = t.before;
+    first(p.notices).code = 'DISCONNECTED_RETAINED';
+    expect(raceManualPublicImpactSchema.safeParse(p).success).toBe(true);
+    t.after = { state: 'resolved', date: '2026-10-10', localTime: null, timezone: 'UTC' };
+    expect(raceManualPublicImpactSchema.safeParse(p).success).toBe(false);
+  });
+  it('rejects unknown fields inside planned item', () => {
+    const p = fixture();
+    const item = member(p).before.plan.items[0];
+    expect(
+      raceManualPublicImpactSchema.safeParse({
+        ...p,
+        nutrition: {
+          state: 'present',
+          members: [
+            {
+              ...member(p),
+              before: {
+                ...member(p).before,
+                plan: {
+                  ...member(p).before.plan,
+                  items: [{ ...item, source: { kind: 'official' } }],
+                },
+              },
+            },
+          ],
+        },
+      }).success,
+    ).toBe(false);
+  });
+  it('rejects aggregate bytes, deep, getter, sparse and excessive nodes before parse', () => {
+    const p = fixture();
+    first(member(p).before.plan.items).instructions = '식'.repeat(1500000);
+    expect(raceManualPublicImpactSchema.safeParse(p).success).toBe(false);
+    const deep: Record<string, unknown> = {};
+    let at = deep;
+    for (let i = 0; i < 70; i++) {
+      const next = {};
+      at.next = next;
+      at = next;
+    }
+    expect(raceManualPublicImpactSchema.safeParse(deep).success).toBe(false);
+    let calls = 0;
+    const getter = {
+      get status() {
+        calls++;
+        return 'projected';
+      },
+    };
+    expect(raceManualPublicImpactSchema.safeParse(getter).success).toBe(false);
+    expect(calls).toBe(0);
+    expect(raceManualPublicImpactSchema.safeParse(new Array(2)).success).toBe(false);
+    expect(
+      raceManualPublicImpactSchema.safeParse(Array.from({ length: 5000 }, () => null)).success,
+    ).toBe(false);
+  });
+  it('keeps blocked contentless and rejects domain duplication', () => {
+    const b = {
+      schemaVersion: 1,
+      status: 'blocked',
+      approvalAllowed: false,
+      persistence: 'not_stored',
+      freshness: 'not_checked',
+      reason: 'source_unavailable',
+      domains: ['nutrition'],
+    };
+    expect(raceManualPublicImpactSchema.safeParse(b).success).toBe(true);
+    expect(raceManualPublicImpactSchema.safeParse({ ...b, context: {} }).success).toBe(false);
+    expect(
+      raceManualPublicImpactSchema.safeParse({ ...b, domains: ['nutrition', 'nutrition'] }).success,
+    ).toBe(false);
+  });
+  it('keeps ended unresolved noneditable without silently declaring ready', () => {
+    const p = routineFixture();
+    expect(raceManualPublicImpactSchema.safeParse(p).success).toBe(true);
+    const m = p.routines.members[0];
+    if (!m) throw Error('fixture');
+    m.requirement = 'none';
+    expect(raceManualPublicImpactSchema.safeParse(p).success).toBe(false);
+  });
+  it('rejects dirty routine parent and preserved run aliases', () => {
+    const p = routineFixture();
+    const m = p.routines.members[0];
+    if (!m) throw Error('fixture');
+    m.after.schedule.blueprint.versionId = 'different';
+    expect(raceManualPublicImpactSchema.safeParse(p).success).toBe(false);
+    const q = fixture();
+    expect(
+      raceManualPublicImpactSchema.safeParse({
+        ...q,
+        retainedUnplanned: [
+          { runId: 'same', blueprintVersionId: 'a', preservation: 'unplanned_run_unchanged' },
+          { runId: 'same', blueprintVersionId: 'b', preservation: 'unplanned_run_unchanged' },
+        ],
+      }).success,
+    ).toBe(false);
+  });
+  it('requires actual current training for move and refuses private resolution inputs', () => {
+    const p = fixture();
+    expect(
+      raceManualPublicImpactSchema.safeParse({
+        ...p,
+        intent: {
+          ...p.intent,
+          selection: {
+            kind: 'move_period',
+            expectedCurrentPlanVersionId: id(5),
+            periodId: 'p',
+            newStartDate: '2026-10-10',
+            scope: 'period_only',
+          },
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      raceManualPublicImpactSchema.safeParse({
+        ...p,
+        intent: {
+          ...p.intent,
+          resolutions: {
+            nutrition: [
+              {
+                planVersionId: id(3),
+                itemId: 'other',
+                action: 'replace_anchor',
+                anchor: { kind: 'absolute', date: '2026-10-10', localTime: null, timezone: 'UTC' },
+              },
+            ],
+            routines: [],
+          },
+        },
+      }).success,
+    ).toBe(false);
+  });
+  it('preserves exact started tuple and detects collision with unplanned runs', () => {
+    const p = routineFixture();
+    const m = first(p.routines.members);
+    const started = {
+      runId: 'run',
+      occurrenceId: 'occ',
+      scheduleVersionId: 'schedule-old',
+      blueprintVersionId: 'bp-v1',
+      anchorKey: 'period:p:0',
+      preservation: 'started_run_frozen',
+    };
+    const q = {
+      ...p,
+      routines: { state: 'present', members: [{ ...m, retainedStarted: [started] }] },
+      notices: [
+        ...p.notices,
+        {
+          domain: 'routine_schedule',
+          aggregateId: id(4),
+          itemId: null,
+          code: 'STARTED_RUN_PRESERVED',
+        },
+      ],
+    };
+    expect(raceManualPublicImpactSchema.safeParse(q).success).toBe(true);
+    expect(
+      raceManualPublicImpactSchema.safeParse({
+        ...q,
+        retainedUnplanned: [
+          { runId: 'run', blueprintVersionId: 'bp-v1', preservation: 'unplanned_run_unchanged' },
+        ],
+      }).success,
+    ).toBe(false);
+    expect(
+      raceManualPublicImpactSchema.safeParse({
+        ...q,
+        routines: {
+          state: 'present',
+          members: [{ ...m, retainedStarted: [{ ...started, scheduleVersionId: '' }] }],
+        },
+      }).success,
+    ).toBe(false);
+  });
+  it('preserves historical started version instead of requiring the current head', () => {
+    const p = routineFixture();
+    const m = first(p.routines.members);
+    expect(
+      raceManualPublicImpactSchema.safeParse({
+        ...p,
+        routines: {
+          state: 'present',
+          members: [
+            {
+              ...m,
+              storedOccurrences: [
+                ...m.storedOccurrences,
+                {
+                  occurrenceId: 'old-occ',
+                  schedule: { id: id(4), versionId: 'historical' },
+                  blueprint: { id: 'bp', versionId: 'old-blueprint' },
+                  sourcePlanVersionId: null,
+                  anchorKey: 'old-anchor',
+                  scheduledAt: null,
+                  timingStatus: 'unresolved',
+                  unresolvedReason: null,
+                },
+              ],
+              retainedStarted: [
+                {
+                  runId: 'old-run',
+                  occurrenceId: 'old-occ',
+                  scheduleVersionId: 'historical',
+                  blueprintVersionId: 'old-blueprint',
+                  anchorKey: 'old-anchor',
+                  preservation: 'started_run_frozen',
+                },
+              ],
+            },
+          ],
+        },
+        notices: [
+          ...p.notices,
+          {
+            domain: 'routine_schedule',
+            aggregateId: id(4),
+            itemId: null,
+            code: 'STARTED_RUN_PRESERVED',
+          },
+        ],
+      }).success,
+    ).toBe(true);
+  });
+  it('shows affected unconfirmed recovery without fabricating confirmation', () => {
+    const plan = {
+      title: 'Rest',
+      goal: 'Recover',
+      startDate: '2026-10-08',
+      endDateExclusive: '2026-10-12',
+      timezone: 'UTC',
+      priority: 'normal',
+      options: [
+        { id: id(8), title: 'Rest', kind: 'full_rest', methodVersionId: null, explanation: 'Rest' },
+      ],
+      reassessment: [
+        {
+          id: id(11),
+          trigger: 'plan_changed',
+          plannedAt: null,
+          description: 'Reassess',
+          policyVersion: null,
+        },
+      ],
+    };
+    const before = {
+      ref: { versionId: id(10), version: 1 },
+      plan,
+      status: 'draft',
+      selectedOptionId: null,
+      planLinks: [],
+    };
+    const member = {
+      aggregateId: id(9),
+      state: 'affected',
+      before,
+      after: { plan, status: 'draft', selectedOptionId: null, planLinks: [] },
+      requirement: 'resolve_before_review',
+    };
+    const p = {
+      ...fixture(),
+      recovery: { state: 'present', members: [member] },
+      affected: [{ domain: 'recovery', aggregateId: id(9) }],
+      resolutionRequirements: [
+        {
+          domain: 'recovery',
+          aggregateId: id(9),
+          strategyVersionId: id(10),
+          reason: 'recovery_confirmation_required',
+          editor: 'confirm_recovery_and_review',
+        },
+      ],
+    };
+    expect(raceManualPublicImpactSchema.safeParse(p).success).toBe(true);
+    expect(
+      raceManualPublicImpactSchema.safeParse({
+        ...p,
+        recovery: {
+          state: 'present',
+          members: [
+            {
+              ...member,
+              after: { ...member.after, status: 'user_confirmed', selectedOptionId: id(8) },
+            },
+          ],
+        },
+      }).success,
+    ).toBe(false);
+  });
+  it('accepts diagnostic goal definition without evidence IDs and rejects provenance injection', () => {
+    const p = fixture();
+    const m = member(p);
+    const goal = {
+      metric: 'energy',
+      amount: { min: 0, max: 100, unit: 'kcal', basis: 'user_confirmed' },
+    };
+    const before = {
+      ...m.before,
+      plan: {
+        ...m.before.plan,
+        items: m.before.plan.items.map((i) => ({ ...i, targets: [goal] })),
+      },
+    };
+    const after = {
+      ...m.after,
+      plan: { ...m.after.plan, items: m.after.plan.items.map((i) => ({ ...i, targets: [goal] })) },
+    };
+    const q = { ...p, nutrition: { state: 'present', members: [{ ...m, before, after }] } };
+    expect(raceManualPublicImpactSchema.safeParse(q).success).toBe(true);
+    expect(
+      raceManualPublicImpactSchema.safeParse({
+        ...q,
+        nutrition: {
+          state: 'present',
+          members: [
+            {
+              ...m,
+              before: {
+                ...before,
+                plan: {
+                  ...before.plan,
+                  items: before.plan.items.map((i) => ({
+                    ...i,
+                    targets: [
+                      {
+                        metric: 'energy',
+                        amount: { ...goal.amount, evidenceIds: ['PRIVATE_EVIDENCE_SENTINEL'] },
+                      },
+                    ],
+                  })),
+                },
+              },
+              after,
+            },
+          ],
+        },
+      }).success,
+    ).toBe(false);
+  });
+});

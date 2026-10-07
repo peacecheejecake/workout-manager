@@ -700,3 +700,16 @@ export const raceManualPublicPreviewBlockedSchema = plain.pipe(
   }),
 );
 export type RaceManualPublicPreviewBlocked = z.infer<typeof raceManualPublicPreviewBlockedSchema>;
+
+/** Safe planned presentation codecs shared by transient diagnostics. These are
+ * structural codecs, not stored-source or approval authority. */
+export {
+  trainingMember as raceManualPublicTrainingMemberSchema,
+  nutritionItem as raceManualPublicNutritionItemSchema,
+  nutritionPlan as raceManualPublicNutritionPlanSchema,
+  link as raceManualPublicTrainingLinkSchema,
+  recoveryMember as raceManualPublicRecoveryMemberSchema,
+  expansion as raceManualPublicRoutineExpansionSchema,
+  started as raceManualPublicStartedRunSchema,
+  race as raceManualPublicRaceChangeSchema,
+};
