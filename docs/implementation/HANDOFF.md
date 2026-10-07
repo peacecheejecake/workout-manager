@@ -150,7 +150,7 @@ APPROVE를 받았다. 당시 기록 갱신의 검토 refresh 후 main에 반영�
 
 ## 다음 작업 순서
 
-현재 실행 기준(2026-10-07): main `1d557358`, `phase/m2-02` 최신 검증 커밋 `2e56edd8`. 뒤에 이어지는 2026-09-27 기록은 역사적 스냅샷이며 최신 수용으로 승격하지 않는다.
+현재 실행 기준(2026-10-08): main `1d557358`, `phase/m2-02` 최신 검증 커밋 `35b4f2fc`. 이전 실행 기준 `2e56edd8`과 뒤에 이어지는 2026-09-27 기록은 역사적 스냅샷이며 최신 수용으로 승격하지 않는다. 이후 검증 커밋은 재개 시 `git log -1`로 확인한다.
 
 1. **M2-02i/j ready 구현**: I의 실제 목적별 source adapter·trusted Evidence→Decision→Proposal 저장·삭제/복원 closure·전체 도메인 원자 승인, J의 configured V2 증빙 경로·첨부/PB 화면을 완료한다. 비중복 scope를 native agent에 배정하고 Root가 shared schema/registry·실DB·graph/Git를 직렬 통합한다. PB chip/gun·거리 분류는 답변 대기를 유지한다.
 2. **M2-02 phase 검증·독립 검토**: runnable 노드 완료 후 전체 install/generated/lint/TS/build/unit/integration/identity 두 회차/format 및 해당 drill을 실제 실행하고, base/head를 고정한 context-less `gpt-6-sol` high 읽기 전용 phase review를 받는다. 승인과 기록 후 main fast-forward만 수행하며 push는 사용자 작업이다.
@@ -529,3 +529,9 @@ Garmin 저장 canonical Activity 수동 목적은 사용자 승인된 S22 app co
 작업 checkout은 `.claude/worktrees/phase-m2-02`, branch `phase/m2-02`다. main은1d557358(clean)이며 이전m0-06/ext-oidc/m0-06c heads가 모두 main ancestor인 것을 다시 확인했다. 증빙 공개 Host 화면30657573(실제 Chrome 두Host R6 PASS), Garmin helper897535cc(unit30/actualPG6), 영양 동일transaction ca3aaa9e(unit30/newPG5/legacyPG11), V7 암호 consumer1f02c9dc(new25/legacy38/actualoldexporterPG3)를 검증 커밋했다. 추가 Garmin metadata 소비자337/actualPG4도 확인해 phase에 기록한다. [I](progress/M2-02i.md)·[J](progress/M2-02j.md)의 실패/skip/동결SHA와 실제 수용 범위를 따른다.
 
 다음 native 병렬은 Garmin core 목적의 consumed/semantic/store 연결, 실제 V7 extended publisher 시험 준비, authenticated current-family/original-event 설치 successor 폐쇄 범위다. 실제 공개 source delete는 원본1..6 event를 재사용하므로 새7 producer를 가짜event INSERT로 만들지 않는다. V7 profile byte검증/oldevent PG는 새7원본 적용·완전복원을 대신하지 않는다. 전체 source freshness/affected-domain 승인·정상 registry/공개configured activation·phase fullgates/독립검토가 남아 있으며 I/J/phase는 in_progress다. 대회 삭제 후 영양 연결 해제·재연결/재승인 전 시각 사용 중단 및 food/quantity/actual intake 보존 결정을 유지한다. 기존 PB Chip/Gun·거리 분류/AWS로그인 여부·FUT09원문 답변은 대기, 외부not_executed·main/push0다.
+
+## Garmin core 소비·실제 V7 publisher 후속 · 2026-10-08
+
+검증 커밋35b4f2fc는 실제 appAdmission을 쓰는 Garmin core 목적 소비·semantic을 연결했고 Root unit51/actualPG9/scopedTS 및6 SHA변경0이다. SQL116 저장 직전 목적 재검증은 다음 작업이다. 새 V7 실제 publisher 시험은 두회차6/6이며 R2의12입력변경0과 DB/roles/slot0를 확인했다([I 기록](progress/M2-02i.md)). 실제 old4/5 원본 reuse이며 새7 공개 producer·원본 stage·complete source/tail/archive 인증을 통과시킨 것이 아니다.
+
+현재 native 병렬은 Garmin 최종 저장 재검증, current-family signed artifact+strict roster/parent closure prerequisite, V7 실제 전달 수용의 통합/원본 stage 준비다. Root는 SQL/공통registry 소유를 직렬 배정하고 actualDB/graph/Git 통합을 소유한다. 전체영향 도메인 원자 승인·normalconfigured 활성화·phasefullgates/독립검토·운영/실기기 gate와 기존 사용자 답변대기를 유지한다.
