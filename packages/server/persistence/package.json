@@ -41,6 +41,8 @@
     "./repositories": "./src/repositories.ts",
     "./outbox": "./src/outbox.ts",
     "./migrate": "./src/migrate.ts",
+    "./current-runtime-installation": "./src/current-runtime-installation.ts",
+    "./current-runtime-grants": "./src/current-runtime-grants.ts",
     "./identity": "./src/identity.ts",
     "./planning": "./src/planning.ts",
     "./period-summary": "./src/period-summary.ts",
