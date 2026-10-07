@@ -354,6 +354,57 @@ function parse<T>(schema: z.ZodType<T>, raw: unknown): T {
 function equal(a: unknown, b: unknown): boolean {
   return impactDependencyDigest(a) === impactDependencyDigest(b);
 }
+export type RaceManualReviewFullSqlObservationV2 = z.infer<typeof observerSchema>;
+const structuralLimitations = {
+  validationScope: 'structure_and_reference_membership_only' as const,
+  sqlDigestVerification: 'not_checked' as const,
+  sourceAuthentication: 'unverified' as const,
+  authority: 'none' as const,
+  freshness: 'not_checked' as const,
+  storage: 'not_persisted' as const,
+  admissionAllowed: false as const,
+  approvalAllowed: false as const,
+};
+/** Validates an untrusted observation's structure and finite reference membership.
+ * It does not verify PostgreSQL JSONB hashes, transaction identity, source rows,
+ * authentication, purpose or permission. Hash-shaped fields remain untrusted. */
+export function parseRaceManualReviewFullSqlObservationV2(raw: unknown, expectedRefs: unknown) {
+  let reason: 'invalid_expected_refs' | 'invalid_observation' = 'invalid_expected_refs';
+  try {
+    const refs = parse(z.array(identitySchema).min(1).max(5000), expectedRefs);
+    if (
+      refs.filter((r) => r.kind === 'race-event').length !== 1 ||
+      new Set(refs.map(impactDependencyDigest)).size !== refs.length
+    )
+      invalid();
+    reason = 'invalid_observation';
+    const observation = parse(observerSchema, raw);
+    if (
+      observation.rows.length !== refs.length ||
+      observation.rows.reduce((n, r) => n + r.relations.length, 0) > 5000
+    )
+      invalid();
+    for (const [index, row] of observation.rows.entries()) {
+      const expected = refs[index];
+      if (!expected || row.ordinal !== index + 1 || !equal(row.identity, expected)) invalid();
+      validateRelations(row, refs);
+    }
+    return { status: 'validated_structure' as const, observation, ...structuralLimitations };
+  } catch (error) {
+    return {
+      status: 'blocked' as const,
+      reason:
+        error instanceof RaceImpactDependencyError && error.code === 'CONTEXT_UNAVAILABLE'
+          ? ('decoded_bound' as const)
+          : reason,
+      ...structuralLimitations,
+    };
+  }
+}
+export type RaceManualReviewFullSqlObservationV2ParseResult = ReturnType<
+  typeof parseRaceManualReviewFullSqlObservationV2
+>;
+
 const limitations = {
   budgetCoverage: 'request_source_response_reservations' as const,
   aggregatePhysicalTransfer: 'not_verified' as const,
@@ -484,7 +535,13 @@ export async function prepareRaceManualReviewFullOwnedBindingV2In(
     isolation: gated.isolation,
   };
   if (BigInt(boundedPlain(wire)) > responseBytes) invalid();
-  const observation = wire.observation;
+  const structural = parseRaceManualReviewFullSqlObservationV2(wire.observation, refs);
+  if (structural.status === 'blocked') {
+    if (structural.reason === 'decoded_bound')
+      throw new RaceImpactDependencyError('CONTEXT_UNAVAILABLE', 'decoded_bytes');
+    invalid();
+  }
+  const observation = structural.observation;
   if (!gated.groupsOrdered) invalid();
   if (
     !equal(anchor, {
@@ -514,7 +571,6 @@ export async function prepareRaceManualReviewFullOwnedBindingV2In(
       row.relationGroupDigest !== gated.groupDigests[index]
     )
       invalid();
-    validateRelations(row, refs);
   }
 
   const result = {

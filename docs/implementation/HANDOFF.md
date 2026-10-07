@@ -452,3 +452,10 @@ SQL115는 R2의 실제 식별자 타입 오류와 두 공개 producer fixture �
 Unplanned 원 실행 보존 후 Root unit213·scoped persistence/API TS·lint/format과 실제 fullowned7/unplanned4/broad채널5를 검증했다. 초기 foreign consent/error-code 기대와 unrelated schedule assertion 실패는 [I 기록](progress/M2-02i.md)에 보존했다. 새 full27 consumer는 실제 R1 3PASS/7FAIL의 strict adapter envelope 전달 오류를 교정해 재시험 중이다. 이 결과는 저장/승인/lifecycle/restore/phase 수용 완료가 아니며 main/push0·registry107·I/J/phase in_progress를 유지한다.
 
 새 full27 same-snapshot consumer는 strict C/S/B 입력과 exact nutrition expected fact를 교정한 R3에서 실제 PG **10/10 PASS·exit0**다. Root persistence TS/lint/format·source/test SHA·실제 DB/역할 잔존0을 확인했다. 다음 native 병렬은 retained payload codec, purpose/fullpermission/freshness seal 조사, successor storage/lifecycle27 exact hook 조사다. JSON/행 hash만으로 저장·승인 권한을 만들지 않으며 registry107/main/push0·phase in_progress 및 전체 phase 검토·출시 gate 미완료는 유지한다.
+
+## 재개 · 구조 parser/retained codec 실제 확인 · 2026-10-07
+
+- 지난 goal 턴은 phase 커밋 `c93827fd`·`7d8fdef7`·`6994889c` 및 실제 unit213/sourcePG16/SQL18/consumer10 증거로 progress다. 이번 턴 Root는 공유 구조 parser/retained codec unit44와 refactor consumer 실제PG10·cleanup0을 확인했다. [I 기록](progress/M2-02i.md)에 범위와 입력 SHA를 기록했다.
+- 현재 native 병렬은 실제 retention preparation 연결, current app/manual-policy binding 소비 연결, exact27 lifecycle parent edge binder다. 이 준비를 저장/삭제/복원·fullpermission/freshness/원자 승인 완료로 바꾸지 않는다. registry107/main/push0·I/J/phase in_progress를 유지한다.
+- iPhone 읽기 전용 조회의 첫 sandbox 실행은 CoreDeviceService 초기화 timeout으로 실패했다. sandbox 밖 재조회는 paired/OS27.0/tunnel unavailable이었다. 최초 실패의 빈 devices를 기기 부재로 해석하지 않는다. 앱 실행·설치·HealthKit 읽기·성능 측정0이며 별도 실기기 gate는 미완료다.
+- PB chip/gun·거리 비교, FUT-09 실제 원문, AWS 관리자 로그인 가능 시점을 다시 질문했다. 답변 전 기존 결정 대기를 유지한다.
