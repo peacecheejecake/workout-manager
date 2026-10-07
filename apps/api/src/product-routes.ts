@@ -58,6 +58,14 @@ import type { HealthKitReviewRepository } from '@workout/server-persistence/heal
 import { registerHealthKitReviewRoutes } from './healthkit-review-routes.js';
 import type { CheckInRepository } from '@workout/server-persistence/check-ins';
 import { registerCheckInRoutes } from './check-in-routes.js';
+import {
+  registerRaceManualPublicRoutes,
+  type RaceManualPublicRoutesRepository,
+} from './race-manual-public-routes.js';
+import {
+  registerCheckInTemplateRoutes,
+  type CheckInTemplateRoutesRepository,
+} from './check-in-template-routes.js';
 import type { DashboardRepository } from '@workout/server-persistence/dashboard';
 import { registerDashboardRoutes } from './dashboard-routes.js';
 import type { Principal } from './ports.js';
@@ -122,6 +130,7 @@ export interface ProductRepositories {
   activities?: ActivityRepository;
   races?: RaceRepository;
   raceResultsV2?: RaceResultV2Repository;
+  raceManualPublic?: RaceManualPublicRoutesRepository;
   healthKitRegistration?: Pick<
     HealthKitRegistrationRepository,
     'registerWorkouts' | 'listWorkouts'
@@ -136,6 +145,7 @@ export interface ProductRepositories {
   healthKitReview?: HealthKitReviewRepository;
   activityContext?: ActivityContextRepository;
   checkIns?: CheckInRepository;
+  checkInTemplates?: CheckInTemplateRoutesRepository;
   dashboard?: DashboardRepository;
   operations?: OperationsRepository;
   resources?: PrivateTextResourceRepository;
@@ -249,6 +259,10 @@ export function registerProductRoutes(
   if (repositories.healthKitReview)
     registerHealthKitReviewRoutes(routes, repositories.healthKitReview, principal);
   if (repositories.checkIns) registerCheckInRoutes(routes, repositories.checkIns, principal);
+  if (repositories.raceManualPublic)
+    registerRaceManualPublicRoutes(routes, repositories.raceManualPublic, principal);
+  if (repositories.checkInTemplates)
+    registerCheckInTemplateRoutes(routes, repositories.checkInTemplates, principal);
   if (repositories.dashboard) registerDashboardRoutes(routes, repositories.dashboard, principal);
   if (repositories.operations) registerOperationsRoutes(routes, repositories.operations, principal);
   if (repositories.resources) registerResourceRoutes(routes, repositories.resources, principal);

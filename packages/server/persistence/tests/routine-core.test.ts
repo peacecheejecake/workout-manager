@@ -205,3 +205,127 @@ describe('routine current-version read/start boundaries', () => {
     expect(query.mock.calls[1]?.[0]).toContain('routine_command_receipt');
   });
 });
+
+describe('routine CheckIn template exact source validation', () => {
+  function setup(
+    mode: 'current' | 'historical' | 'missing' | 'no_reader' | 'malformed' | 'sql_error',
+  ) {
+    const f = fixture();
+    const templateId = randomUUID(),
+      versionId = randomUUID();
+    const record = {
+      templateId,
+      versionId,
+      version: 1,
+      previousVersionId: null,
+      previousVersion: null,
+      createdAt: f.blueprint.createdAt,
+      content: {
+        definitionVersion: 'checkin-v1',
+        source: 'user',
+        method: 'self_report',
+        title: 'Own report',
+        instructions: null,
+        fields: ['fatigue', 'note'],
+      },
+    };
+    const head =
+      mode === 'historical'
+        ? {
+            ...record,
+            versionId: randomUUID(),
+            version: 2,
+            previousVersionId: versionId,
+            previousVersion: 1,
+          }
+        : record;
+    const blueprint = routineBlueprintVersionSchema.parse({
+      ...f.blueprint,
+      steps: f.blueprint.steps.map((step) => ({
+        ...step,
+        content: { kind: 'checkin_template', ref: { id: templateId, versionId } },
+      })),
+    });
+    let inserted = false;
+    const query = vi.fn<Transaction['query']>().mockImplementation(async (sql, values) => {
+      if (sql.includes('has_function_privilege'))
+        return { rows: [{ available: mode !== 'no_reader' }], rowCount: 1 };
+      if (sql.includes('WITH observed AS MATERIALIZED')) {
+        if (mode === 'sql_error') throw new Error('REAL_SQL_FAILURE');
+        const version_text =
+          mode === 'missing'
+            ? null
+            : JSON.stringify(
+                mode === 'malformed' ? { ...record, versionId: randomUUID() } : record,
+              );
+        const head_text = JSON.stringify(head);
+        return {
+          rows: [
+            {
+              response_bytes: String(
+                Buffer.byteLength(version_text ?? '') + Buffer.byteLength(head_text),
+              ),
+              body_valid: true,
+              within_budget: true,
+              version_text,
+              head_text,
+            },
+          ],
+          rowCount: 1,
+        };
+      }
+      if (sql.includes('INSERT INTO routine_blueprint_version')) inserted = true;
+      if (sql.includes('FROM routine_blueprint_head') && inserted)
+        return {
+          rows: [{ record_json: blueprint, version: 1, favorite: false, visibility: 'active' }],
+          rowCount: 1,
+        };
+      if (sql.includes('INSERT INTO outbox')) return { rows: [{ id: values?.[1] }], rowCount: 1 };
+      return { rows: [], rowCount: 0 };
+    });
+    const save = () =>
+      createRoutineRepository(database(query)).saveBlueprint('tenant', {
+        blueprint,
+        expectedVersionId: null,
+        idempotencyKey: randomUUID(),
+        confirmed: true,
+      });
+    return { save, blueprint, query };
+  }
+  it.each(['current', 'historical'] as const)(
+    'accepts %s exact immutable template without repinning',
+    async (mode) => {
+      const f = setup(mode);
+      expect((await f.save()).blueprint).toEqual(f.blueprint);
+      expect(
+        f.query.mock.calls.filter(([sql]) => sql.includes('WITH observed AS MATERIALIZED')),
+      ).toHaveLength(1);
+    },
+  );
+  it.each(['missing', 'no_reader', 'malformed'] as const)(
+    'rejects %s before blueprint writes with the existing finite reference error',
+    async (mode) => {
+      const f = setup(mode);
+      await expect(f.save()).rejects.toThrow('CONTENT_REFERENCE_UNAVAILABLE');
+      expect(
+        f.query.mock.calls.some(([sql]) => sql.includes('INSERT INTO routine_blueprint')),
+      ).toBe(false);
+    },
+  );
+  it('rejects a non-UUID catalog reference before source transport or blueprint writes', async () => {
+    const f = setup('current');
+    const content = f.blueprint.steps[0]?.content;
+    if (!content || content.kind !== 'checkin_template') throw Error('FIXTURE_CONTENT');
+    content.ref.id = 'opaque-not-a-template-uuid';
+    await expect(f.save()).rejects.toThrow('CONTENT_REFERENCE_UNAVAILABLE');
+    expect(
+      f.query.mock.calls.some(
+        ([sql]) =>
+          sql.includes('has_function_privilege') || sql.includes('INSERT INTO routine_blueprint'),
+      ),
+    ).toBe(false);
+  });
+  it('propagates actual SQL failure without treating it as unavailable capability', async () => {
+    await expect(setup('sql_error').save()).rejects.toThrow('REAL_SQL_FAILURE');
+  });
+});

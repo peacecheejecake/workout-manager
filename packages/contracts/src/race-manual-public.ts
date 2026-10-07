@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { localDateSchema } from './primitives.js';
 import { nutritionPlanItemCoreSchema } from './nutrition-core.js';
 import { routineScheduleVersionSchema } from './routines.js';
+import { raceManualPublicPreviewReferenceSchema } from './race-manual-public-preview.js';
 
 const id = z.string().min(1).max(200);
 /** User intent only; this DTO never grants source or approval authority. */
@@ -60,3 +61,17 @@ export const raceManualPublicApproveSchema = z.strictObject({
 export type RaceManualProjectionIntent = z.infer<typeof raceManualProjectionIntentSchema>;
 export type RaceManualPublicPrepare = z.infer<typeof raceManualPublicPrepareSchema>;
 export type RaceManualPublicApprove = z.infer<typeof raceManualPublicApproveSchema>;
+
+/** Durable review identity; a stored reviewed body is not current approval permission. */
+export const raceManualPublicReviewResultSchema = z.discriminatedUnion('status', [
+  z.strictObject({
+    status: z.literal('reviewed'),
+    reference: raceManualPublicPreviewReferenceSchema,
+    bodyState: z.enum(['present', 'purged']),
+  }),
+  z.strictObject({
+    status: z.literal('blocked'),
+    stage: z.enum(['semantic', 'chain', 'application']),
+  }),
+]);
+export type RaceManualPublicReviewResult = z.infer<typeof raceManualPublicReviewResultSchema>;

@@ -132,6 +132,12 @@ beforeAll(async () => {
         'utf8',
       ),
     );
+    await migrationOwner.query(
+      await readFile(
+        new URL('../migrations/124_race_manual_public_preview_source.sql', import.meta.url),
+        'utf8',
+      ),
+    );
     const after = (
       await migrationOwner.query(
         "SELECT proowner::text,proacl::text,proconfig,prosecdef FROM pg_proc WHERE oid='public.commit_nutrition_plan_v4(uuid,uuid,jsonb,jsonb)'::regprocedure",
@@ -144,6 +150,7 @@ beforeAll(async () => {
       'public.read_race_manual_public_approval_v1(text,jsonb)',
       'public.finish_race_manual_public_approval_v1(text,jsonb)',
       'public.read_race_manual_public_candidate_v1(uuid)',
+      'public.read_race_manual_public_preview_source_v1(uuid)',
       'public.observe_manual_review_full_owned_source_bindings_v2(jsonb)',
       'public.observe_manual_review_multi_owned_source_bindings_v3(jsonb)',
       'public.store_manual_race_multi_owned_chain_v3(uuid,uuid,uuid,text,jsonb,jsonb,jsonb,jsonb)',
@@ -870,4 +877,72 @@ it('withdrawal fenced first is visible to waiting review and creates no chain or
   await withdrawn;
   await denial;
   expect(await privateCounts(f.athlete)).toEqual(before);
+});
+
+it('presents complete frozen before and hypothetical after without actual context; newer committed heads and withdrawal cannot rewrite the retained preview', async () => {
+  const f = await setup(),
+    repo = createRaceManualPublicRepository(db),
+    before = await domainCounts(f.athlete);
+  const reviewed = await repo.review(f.athlete, reviewCommand(f));
+  if (reviewed.status !== 'reviewed') throw Error('PUBLIC_REVIEW_NOT_READY');
+  const originalRace = await f.races.getRaceEvent(f.athlete, f.event.id);
+  if (!originalRace) throw Error('SYNTHETIC_RACE_MISSING');
+  const preview = await repo.readPreview(f.athlete, reviewed.reference.candidateId);
+  expect(preview).toMatchObject({
+    schemaVersion: 1,
+    status: 'present',
+    reference: reviewed.reference,
+    beforeBasis: 'frozen_review',
+    afterBasis: 'hypothetical_on_approval',
+    freshness: 'not_checked_on_read',
+    race: {
+      before: { localDate: originalRace.localDate },
+      after: { localDate: f.intent.newLocalDate },
+    },
+    training: { state: 'present' },
+    nutrition: { state: 'present' },
+    recovery: { state: 'present' },
+    routines: { state: 'present' },
+    retainedUnplanned: [],
+  });
+  expect(JSON.stringify(preview)).not.toContain(f.intake.intakeId);
+  expect(await domainCounts(f.athlete)).toEqual(before);
+  const approval = await repo.approve(f.athlete, {
+    schemaVersion: 1,
+    idempotencyKey: randomUUID(),
+    candidateId: reviewed.reference.candidateId,
+    applicationDigest: reviewed.reference.applicationDigest,
+    confirmed: true,
+  });
+  expect(approval.status).toBe('committed');
+  expect(await repo.readPreview(f.athlete, reviewed.reference.candidateId)).toEqual(preview);
+  await f.consent.setConsent(f.athlete, {
+    kind: 'app',
+    granted: false,
+    expectedRevision: 1,
+    idempotencyKey: randomUUID(),
+  });
+  expect(await repo.readPreview(f.athlete, reviewed.reference.candidateId)).toEqual(preview);
+});
+it('selected preview is tenant scoped and genuine source purge exposes only the original minimal reference', async () => {
+  const f = await setup(),
+    foreign = await setup(),
+    repo = createRaceManualPublicRepository(db);
+  const reviewed = await repo.review(f.athlete, reviewCommand(f));
+  if (reviewed.status !== 'reviewed') throw Error('PUBLIC_REVIEW_NOT_READY');
+  expect((await repo.readPreview(f.athlete, reviewed.reference.candidateId))?.status).toBe(
+    'present',
+  );
+  expect(await repo.readPreview(foreign.athlete, reviewed.reference.candidateId)).toBeNull();
+  await f.races.deleteRaceEvent(f.athlete, f.event.id, {
+    idempotencyKey: randomUUID(),
+    expectedRevision: f.event.revision,
+  });
+  expect(await repo.readPreview(f.athlete, reviewed.reference.candidateId)).toEqual({
+    schemaVersion: 1,
+    status: 'unavailable',
+    reference: reviewed.reference,
+    reason: 'review_body_purged',
+    preview: null,
+  });
 });

@@ -1,4 +1,7 @@
 import { requireAppAdmission } from './app-admission.js';
+import { captureCheckInTemplateSourceIn } from './check-in-template-source.js';
+import { RaceImpactDependencyError } from './race-plan-impact-dependencies.js';
+import type { SourceBudget } from './race-plan-impact-nested-sources.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import {
@@ -190,6 +193,8 @@ async function blueprintHead(tx: Transaction, routineId: string, forUpdate = fal
     : null;
 }
 async function validateContentRefs(tx: Transaction, blueprint: RoutineBlueprintVersion) {
+  // One bounded response budget across all template visits, including repeats.
+  const budget: SourceBudget = { bytes: 0n, sources: 0 };
   for (const step of blueprint.steps) {
     const { content } = step;
     if (content.kind === 'checklist') continue;
@@ -207,6 +212,16 @@ async function validateContentRefs(tx: Transaction, blueprint: RoutineBlueprintV
         [tx.athleteId, uuid.parse(content.ref.id), uuid.parse(content.ref.versionId)],
       );
       if (!result.rowCount) throw new RoutineReferenceError('NUTRITION_PLAN_NOT_FOUND');
+    } else if (content.kind === 'checkin_template') {
+      try {
+        const source = await captureCheckInTemplateSourceIn(tx, content.ref, budget);
+        if (source.state === 'unavailable' || source.record === null)
+          throw new RoutineReferenceError('CONTENT_REFERENCE_UNAVAILABLE');
+      } catch (error) {
+        if (error instanceof RaceImpactDependencyError)
+          throw new RoutineReferenceError('CONTENT_REFERENCE_UNAVAILABLE');
+        throw error;
+      }
     } else {
       // A reference without an owned, versioned catalog is never accepted.
       throw new RoutineReferenceError('CONTENT_REFERENCE_UNAVAILABLE');

@@ -29,6 +29,8 @@ import { createHealthKitBindingRepository } from '@workout/server-persistence/he
 import { createHealthKitActivityRepository } from '@workout/server-persistence/healthkit-activity';
 import { createHealthKitProjectionRepository } from '@workout/server-persistence/healthkit-projection';
 import { createCheckInRepository } from '@workout/server-persistence/check-ins';
+import { createRaceManualPublicRepository } from '@workout/server-persistence/race-manual-public';
+import { createCheckInTemplateRepository } from '@workout/server-persistence/check-in-templates';
 import { createDashboardRepository } from '@workout/server-persistence/dashboard';
 import { createOperationsRepository } from '@workout/server-persistence/operations';
 import { createGalleryMediaRepository } from '@workout/server-persistence/gallery-media';
@@ -424,6 +426,8 @@ export async function createConfiguredApi(
       garminCollectionProvenance: garminUnofficialStore,
       activityContext: createActivityContextRepository(database),
       checkIns: createCheckInRepository(database),
+      checkInTemplates: createCheckInTemplateRepository(database),
+      raceManualPublic: createRaceManualPublicRepository(database),
       dashboard: createDashboardRepository(database),
       operations: createOperationsRepository(database),
       resources: createPrivateTextResourceRepository(database),

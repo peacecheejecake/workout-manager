@@ -569,3 +569,7 @@ Root actual child PG4/4를 확인했고 초기2pass/2fixturefail은 보존했다
 ## V7 원본 경계 및 공개 응답 재확인 · 2026-10-08
 
 Root가 verified V7 원본 callback unit31/actualPG6/scopedTS와 DB/roles/slot0를 확인했다. 원본6µs/WeakMap factory 소유/fresh clone을 보존하며 stale witness 재검증·SQL stage·복원 admission 완료로 세지 않는다. SQL117 원본 loader의 실제 암호 검증 handle 소비를 준비한다. 공개 workout.red-10-proto.xyz를 새로 읽었고 HTTP503/TLS verify0이었다(`/private/tmp/wm-public-workout-probe-20261008.json`). 공개 로그인·503 해제·제품 경로는 여전히 미완료이며 AWS 인증 재개 질문의 답변을 기다린다.
+
+## CheckIn routine·공개 미리보기 통합 후속 · 2026-10-08
+
+Root routine unit36/actualPG6, public frozen whole preview unit37/actualPG R3 11 및 API/client/루틴 RTL 합동136을 확인했다. 초기 PG/단위시험/format/PATH 실패와 교정은 [I 기록](progress/M2-02i.md)에 별도 보존했다. 입력5/12 SHA 불변·DB/roles/slots0이며 normalregistry107/source116222/main/push0를 유지한다. 실제 UI browser/build·HTTP→DB 수용은 미실행이다. 기존 identity harness의 template port 누락을 발견해 명시 opt-in raw123와 두Host시험을 agent에 배정했고, 대회 public review/explicit approve UI 및 authenticated identity target 변환 준비를 병렬 진행한다. 대회 삭제 nutrition 연결 해제·재연결/재승인 전 시각 중단·음식/수량/실제 섭취 보존 결정을 재확인했다. I/J/phase 전체·최신 restore·공개/native/외부 gate는 미완료다.

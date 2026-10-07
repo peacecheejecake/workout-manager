@@ -21,6 +21,10 @@ import {
   approveRaceManualApplicationIn,
 } from './race-manual-approval.js';
 import { raceManualReviewLifecycleInventoryV2Schema } from './race-manual-review-lifecycle-inventory-v2.js';
+import {
+  projectRaceManualPublicPreview,
+  raceManualPublicPreviewSourceSchema,
+} from './race-manual-public-preview.js';
 import { reserveSourceBudget, type SourceBudget } from './race-plan-impact-nested-sources.js';
 import { validateRaceSourceResponseBudget } from './race-plan-impact-context.js';
 
@@ -284,6 +288,30 @@ export async function readRaceManualPublicCandidateIn(
     ? { status: 'retained' as const, reference: read.reference, bodyState: read.bodyState }
     : null;
 }
+/** Select only frozen linked bodies. Mutable heads cannot stand in for before.
+ * Snapshot isolation is supplied by the repository. This retained view does
+ * not establish fresh approval eligibility or perform new source processing. */
+export async function readRaceManualPublicPreviewIn(
+  tx: Transaction,
+  rawId: unknown,
+  budget: SourceBudget = { bytes: 0n, sources: 0 },
+) {
+  const id = uuid.parse(rawId);
+  const raw = await sql(
+    tx,
+    'public.read_race_manual_public_preview_source_v1($1::uuid)',
+    [id],
+    budget,
+  );
+  if (raw === null) return null;
+  const source = raceManualPublicPreviewSourceSchema.parse(raw);
+  if (
+    source.reference.candidateId !== id ||
+    (source.bodyState === 'present' && source.preparation.context.athleteId !== tx.athleteId)
+  )
+    throw new RaceManualPublicError('PUBLIC_INVALID_RESPONSE');
+  return projectRaceManualPublicPreview(raw);
+}
 export function createRaceManualPublicRepository(database: Database, options: Options = {}) {
   function snapshot<T>(athleteId: string, apply: (tx: Transaction) => Promise<T>) {
     if (!database.snapshotTenant) throw new RaceManualPublicError('PUBLIC_PORT_UNAVAILABLE');
@@ -309,6 +337,10 @@ export function createRaceManualPublicRepository(database: Database, options: Op
       return snapshot(athleteId, (tx) =>
         approveRaceManualPublicIn(tx, command, { bytes: 0n, sources: 0 }, options),
       );
+    },
+    async readPreview(athleteId: string, rawId: unknown) {
+      const id = uuid.parse(rawId);
+      return snapshot(athleteId, (tx) => readRaceManualPublicPreviewIn(tx, id));
     },
     read(athleteId: string, rawId: unknown) {
       const id = uuid.parse(rawId);

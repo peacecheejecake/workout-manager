@@ -290,3 +290,64 @@ describe('public manual service boundary plumbing (mocked sources are not owners
     expect(ports.semantic).not.toHaveBeenCalled();
   });
 });
+
+describe('retained public preview plumbing', () => {
+  it('returns only the minimal purged reference using the selected read port', async () => {
+    const ref = reference(),
+      query = vi
+        .fn<Transaction['query']>()
+        .mockResolvedValue(
+          response({ reference: ref, bodyState: 'purged', candidate: null, preparation: null }),
+        );
+    const a = adapter(query);
+    expect(
+      await createRaceManualPublicRepository(a.db).readPreview('synthetic', ref.candidateId),
+    ).toEqual({
+      schemaVersion: 1,
+      status: 'unavailable',
+      reference: ref,
+      reason: 'review_body_purged',
+      preview: null,
+    });
+    expect(query.mock.calls[0]?.[0]).toContain('read_race_manual_public_preview_source_v1');
+    expect(ports.semantic).not.toHaveBeenCalled();
+  });
+  it('returns null for an unavailable candidate without projecting another source', async () => {
+    const a = adapter(vi.fn<Transaction['query']>().mockResolvedValue(response(null)));
+    expect(
+      await createRaceManualPublicRepository(a.db).readPreview('synthetic', randomUUID()),
+    ).toBeNull();
+    expect(ports.semantic).not.toHaveBeenCalled();
+  });
+  it('rejects a mismatched minimal reference even when the review body is purged', async () => {
+    const ref = reference(),
+      a = adapter(
+        vi
+          .fn<Transaction['query']>()
+          .mockResolvedValue(
+            response({ reference: ref, bodyState: 'purged', candidate: null, preparation: null }),
+          ),
+      );
+    await expect(
+      createRaceManualPublicRepository(a.db).readPreview('synthetic', randomUUID()),
+    ).rejects.toThrow('PUBLIC_INVALID_RESPONSE');
+  });
+  it('rejects oversized selected bodies before projecting them', async () => {
+    const a = adapter(
+      vi
+        .fn<Transaction['query']>()
+        .mockResolvedValue({ rows: [{ bytes: '4194305', value: null }], rowCount: 1 }),
+    );
+    await expect(
+      createRaceManualPublicRepository(a.db).readPreview('synthetic', randomUUID()),
+    ).rejects.toThrow('PUBLIC_RESPONSE_LIMIT');
+  });
+  it('requires the snapshot port instead of silently substituting a mutable read', async () => {
+    const a = adapter(vi.fn<Transaction['query']>()),
+      { snapshotTenant, ...db } = a.db;
+    expect(snapshotTenant).toBeDefined();
+    await expect(
+      createRaceManualPublicRepository(db).readPreview('synthetic', randomUUID()),
+    ).rejects.toThrow('PUBLIC_PORT_UNAVAILABLE');
+  });
+});
