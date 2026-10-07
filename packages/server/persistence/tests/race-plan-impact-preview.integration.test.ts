@@ -244,6 +244,8 @@ it('explicit snapshot preview uses real owned sources without writes or approval
     intent(event.id),
   );
   expect(result.context.event.id).toBe(event.id);
+  expect(result.context.calendarIntent).toMatchObject(intent(event.id));
+  expect(result.context.collectorSelection).toEqual({ kind: 'keep_plan' });
   expect(result.context.coverage.complete).toBe(false);
   expect(result.projection).toMatchObject({ approvalAllowed: false, coverageComplete: false });
   expect(await counts(athlete)).toEqual(before);
@@ -415,6 +417,11 @@ it('derives move-period IDs on the server and recaptures sources in the same act
     coverageComplete: false,
   });
   expect(result.context.currentTraining?.snapshot.id).toBe(plan);
+  expect(result.context.calendarIntent?.selection.kind).toBe('move_period');
+  expect(result.context.collectorSelection).toMatchObject({
+    changedSessionIds: ['session'],
+    movedPeriodIds: ['block'],
+  });
   expect(await counts(athlete)).toEqual(before);
 });
 it('withdrawal committed while preview waits on tenant0 rejects new processing', async () => {
@@ -727,5 +734,51 @@ it('previews exact historical Plan and other-race timing from server consumed so
     approvalAllowed: false,
     readSetDigest: result.context.readSetDigest,
   });
+  expect(await counts(athlete)).toEqual(before);
+});
+
+it('binds original intent into the readonly digest and rejects a forged derived selector', async () => {
+  const athlete = await account(),
+    plan = await training(athlete),
+    event = await create(athlete, { planVersionId: plan }),
+    before = await counts(athlete);
+  const firstIntent = intent(event.id);
+  const first = await createRacePlanImpactPreviewService(database).preview(athlete, firstIntent);
+  const second = await createRacePlanImpactPreviewService(database).preview(athlete, {
+    ...firstIntent,
+    newLocalDate: '2026-10-09',
+  });
+  expect(first.context.currentTraining).toEqual(second.context.currentTraining);
+  expect(first.context.readSetDigest).not.toBe(second.context.readSetDigest);
+  const moved = {
+    ...firstIntent,
+    selection: {
+      kind: 'move_period',
+      expectedCurrentPlanVersionId: plan,
+      periodId: 'block',
+      newStartDate: '2026-10-03',
+      scope: 'descendants_and_sessions',
+    },
+  };
+  await expect(
+    database.tenant(athlete, (tx) =>
+      captureRacePlanImpactContext(tx, {
+        eventId: event.id,
+        expectedRevision: 1,
+        calendarIntent: moved,
+        selection: { kind: 'keep_plan' },
+      }),
+    ),
+  ).rejects.toMatchObject({ code: 'INVALID_CONTEXT' });
+  await expect(
+    database.tenant(athlete, (tx) =>
+      captureRacePlanImpactContext(tx, {
+        eventId: event.id,
+        expectedRevision: 1,
+        calendarIntent: { ...firstIntent, expectedEvent: { id: event.id, revision: 2 } },
+        selection: { kind: 'keep_plan' },
+      }),
+    ),
+  ).rejects.toMatchObject({ code: 'REVISION_CONFLICT' });
   expect(await counts(athlete)).toEqual(before);
 });

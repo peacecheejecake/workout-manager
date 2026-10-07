@@ -84,6 +84,19 @@ export const raceProjectionIntentSchema = z.strictObject({
     })
     .default({ nutrition: [], routines: [] }),
 });
+const collectorIds = z
+  .array(id)
+  .max(1000)
+  .refine((values) => new Set(values).size === values.length);
+export const racePlanImpactCollectorSelectionSchema = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('keep_plan') }),
+  z.strictObject({
+    kind: z.literal('move_period'),
+    expectedCurrentPlanVersionId: z.uuid().transform((value) => value.toLowerCase()),
+    changedSessionIds: collectorIds,
+    movedPeriodIds: collectorIds.max(100),
+  }),
+]);
 export type RaceProjectionIntent = z.infer<typeof raceProjectionIntentSchema>;
 export type RaceProjectionMissingFact = {
   kind:
@@ -117,6 +130,31 @@ function blocked(
 }
 function unique<T>(values: T[], key: (value: T) => string) {
   if (new Set(values.map(key)).size !== values.length) throw new Error('duplicate_capture');
+}
+
+/** Finite collector membership derived from the actual calendar projector. */
+export function deriveRacePlanImpactCollectorSelection(
+  calendar: Extract<ReturnType<typeof projectRacePlanImpact>, { status: 'projected' }>,
+  selection: RaceProjectionIntent['selection'],
+) {
+  return selection.kind === 'keep_plan'
+    ? { kind: 'keep_plan' as const }
+    : {
+        kind: 'move_period' as const,
+        expectedCurrentPlanVersionId: selection.expectedCurrentPlanVersionId,
+        changedSessionIds: calendar.sessionDiffs
+          .filter((diff) => diff.beforeDate !== diff.afterDate)
+          .map((diff) => diff.id)
+          .sort(compare),
+        movedPeriodIds: calendar.periodDiffs
+          .filter(
+            (diff) =>
+              diff.before.startDate !== diff.after.startDate ||
+              diff.before.endDateExclusive !== diff.after.endDateExclusive,
+          )
+          .map((diff) => diff.id)
+          .sort(compare),
+      };
 }
 
 /** Builds only from server-captured facts. No reads, receipts, writes, fresh permission
@@ -195,25 +233,7 @@ export function buildRacePlanImpactProjectionInput(
       selection: intent.selection,
     });
     if (calendar.status === 'rejected') return blocked(calendar.reason);
-    const collectorSelection =
-      intent.selection.kind === 'keep_plan'
-        ? { kind: 'keep_plan' as const }
-        : {
-            kind: 'move_period' as const,
-            expectedCurrentPlanVersionId: intent.selection.expectedCurrentPlanVersionId,
-            changedSessionIds: calendar.sessionDiffs
-              .filter((diff) => diff.beforeDate !== diff.afterDate)
-              .map((diff) => diff.id)
-              .sort(compare),
-            movedPeriodIds: calendar.periodDiffs
-              .filter(
-                (diff) =>
-                  diff.before.startDate !== diff.after.startDate ||
-                  diff.before.endDateExclusive !== diff.after.endDateExclusive,
-              )
-              .map((diff) => diff.id)
-              .sort(compare),
-          };
+    const collectorSelection = deriveRacePlanImpactCollectorSelection(calendar, intent.selection);
     const missingFacts: RaceProjectionMissingFact[] = [];
     const fatal: RaceProjectionMissingFact[] = [];
     function sourcePlan(versionId: string | null) {

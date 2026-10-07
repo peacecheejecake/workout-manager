@@ -1,3 +1,5 @@
+import { createPlanningRepository } from '../src/planning.js';
+import { createRacePlanImpactSnapshotPreviewService } from '../src/race-plan-impact-preview.js';
 import { createSupplementaryRepository } from '../src/supplementary-core.js';
 import { createActivityRepository } from '../src/activities.js';
 import { captureCourseReadSources } from '../src/race-plan-impact-course-sources.js';
@@ -53,6 +55,7 @@ import { createDatabase, type Database } from '../src/database.js';
 import { createRaceRepository, type RaceRepository } from '../src/races.js';
 import {
   migrate,
+  grantCorePlanning,
   migrationFileNames,
   grantOperations,
   grantSessionCompletions,
@@ -259,6 +262,7 @@ beforeAll(async () => {
   await admin.query(`CREATE DATABASE "${dbName}" OWNER "${ownerRole}"`);
   await migrate(url(ownerRole));
   owner = new Pool({ connectionString: url(ownerRole) });
+  await grantCorePlanning(url(ownerRole), runtimeRole);
   await grantOperations(url(ownerRole), runtimeRole);
   await grantRaces(url(ownerRole), runtimeRole);
   await grantSessionCompletions(url(ownerRole), runtimeRole);
@@ -3856,4 +3860,101 @@ it('F an exclusive owner rotation wins before a new capture and does not fabrica
     if (pending) await pending;
     client.release();
   }
+});
+
+it('validates public source-linked routine schedules with exact calendar intent through whole capture without applying the proposed dates', async () => {
+  const athlete = await account(),
+    planning = createPlanningRepository(database),
+    routine = createRoutineRepository(database);
+  const body = draft();
+  const plan = await planning.save(athlete, {
+    source: 'manual',
+    confirmed: true,
+    expectedVersionId: null,
+    idempotencyKey: randomUUID(),
+    draft: {
+      ...body,
+      periods: body.periods.map((period) =>
+        period.id === 'block'
+          ? { ...period, startDate: '2026-10-05', endDateExclusive: '2026-10-10' }
+          : period,
+      ),
+      sessions: body.sessions.map((session) => ({
+        ...session,
+        localStartTime: '09:00',
+        durationSeconds: 1800,
+      })),
+    },
+  });
+  const event = await create(athlete, { planVersionId: plan.id });
+  const blueprint = await routine.saveBlueprint(athlete, {
+    blueprint: bBlueprint(),
+    expectedVersionId: null,
+    confirmed: true,
+    idempotencyKey: randomUUID(),
+  });
+  const input = {
+    schedule: {
+      schemaVersion: 4 as const,
+      id: randomUUID(),
+      versionId: randomUUID(),
+      blueprint: { id: blueprint.blueprint.routineId, versionId: blueprint.blueprint.versionId },
+      window: {
+        startDate: '2026-10-01',
+        endDateExclusive: '2026-11-01',
+        timezone: 'Asia/Seoul',
+        maxOccurrences: 10,
+      },
+      rule: {
+        kind: 'session_links' as const,
+        sessionIds: ['session'],
+        point: 'start' as const,
+        offsetMinutes: 0,
+      },
+      state: 'draft' as const,
+    },
+    sourcePlanVersionId: plan.id,
+  };
+  const preview = await routine.previewSchedule(athlete, input);
+  const approved = await routine.approveSchedule(athlete, {
+    ...input,
+    previewDigest: preview.previewDigest,
+    confirmed: true,
+    idempotencyKey: randomUUID(),
+  });
+  const before = await routine.readSchedule(athlete, approved.schedule.id);
+  const intent = {
+    expectedEvent: { id: event.id, revision: 1 },
+    newLocalDate: '2026-10-09',
+    selection: {
+      kind: 'move_period' as const,
+      expectedCurrentPlanVersionId: plan.id,
+      periodId: 'block',
+      newStartDate: '2026-10-08',
+      scope: 'descendants_and_sessions' as const,
+    },
+  };
+  const result = await createRacePlanImpactSnapshotPreviewService(database).preview(
+    athlete,
+    intent,
+  );
+  expect(result.context.calendarIntent).toMatchObject(intent);
+  expect(result.context.affected.routine).toEqual([approved.schedule.id]);
+  if (!database.snapshotTenant) throw new Error('SNAPSHOT_PORT_MISSING');
+  const read = await database.snapshotTenant(athlete, (tx) =>
+    captureRacePlanImpactConsumedScope(tx, {
+      eventId: event.id,
+      expectedRevision: 1,
+      calendarIntent: intent,
+      selection: result.context.collectorSelection,
+    }),
+  );
+  expect(read.consumedScope).toMatchObject({
+    status: 'validated_read_scope',
+    approvalAuthority: 'none',
+    freshness: 'not_checked',
+  });
+  expect(read.capture.coverage.missing).toHaveLength(5);
+  expect(await routine.readSchedule(athlete, approved.schedule.id)).toEqual(before);
+  expect((await planning.read(athlete)).head?.id).toBe(plan.id);
 });

@@ -1,4 +1,14 @@
 import {
+  validateRoutineScheduleReadManifest,
+  type RoutineScheduleReadBlocker,
+} from './race-plan-impact-routine-schedule-read-manifest.js';
+import { projectRacePlanImpact } from '@workout/server-coaching/race-plan-impact';
+import {
+  raceProjectionIntentSchema,
+  racePlanImpactCollectorSelectionSchema,
+  deriveRacePlanImpactCollectorSelection,
+} from './race-plan-impact-projection-input.js';
+import {
   validateWorkoutTemplateReadSources,
   type WorkoutTemplateReadBlocker,
 } from './race-plan-impact-workout-template-manifest.js';
@@ -527,6 +537,8 @@ const captureSchema = z.strictObject({
   }),
   restoreGeneration: uuid,
   athleteId: id,
+  calendarIntent: raceProjectionIntentSchema.nullable().optional(),
+  collectorSelection: racePlanImpactCollectorSelectionSchema.optional(),
   manualBasis: manual,
   event: raceEventSchema,
   collections: z
@@ -594,7 +606,8 @@ export type RaceImpactManifestBlocker = {
     | RoutineReadBlocker['reason']
     | CourseReadBlocker
     | WorkoutTemplateReadBlocker['reason']
-    | ResourceReadManifestBlocker['reason'];
+    | ResourceReadManifestBlocker['reason']
+    | RoutineScheduleReadBlocker;
 };
 export type RaceImpactConsumedManifestResult =
   | { readonly status: 'blocked'; readonly blockers: readonly RaceImpactManifestBlocker[] }
@@ -1019,6 +1032,30 @@ export function validateRaceImpactConsumedManifest(
     c.manualActivityReadFacts.athleteId !== c.athleteId
   )
     block('manualActivityReadFacts', 'scope_mismatch');
+  if (c.calendarIntent !== undefined && c.calendarIntent !== null) {
+    const intent = c.calendarIntent;
+    if (
+      !sameId(intent.expectedEvent.id, c.event.id) ||
+      intent.expectedEvent.revision !== c.event.revision
+    )
+      block('calendarIntent', 'source_identity_mismatch');
+    const calendar = projectRacePlanImpact({
+      event: { localDate: c.event.localDate, planVersionId: c.event.planVersionId },
+      newLocalDate: intent.newLocalDate,
+      currentPlan: c.currentTraining?.snapshot ?? null,
+      completionReports: c.completions,
+      selection: intent.selection,
+    });
+    if (
+      calendar.status !== 'projected' ||
+      c.collectorSelection === undefined ||
+      !equal(
+        c.collectorSelection,
+        deriveRacePlanImpactCollectorSelection(calendar, intent.selection),
+      )
+    )
+      block('collectorSelection', 'source_identity_mismatch');
+  }
   const routineResult = validateRoutineReadSources({
     manifest: c.routineActualManifest,
     ...(c.manualActivityReadFacts === undefined
@@ -1386,6 +1423,50 @@ export function validateRaceImpactConsumedManifest(
   for (const row of catalogRows.values())
     if (!catalogRequests.has(impactDependencyDigest(row.requested)))
       block('sourcePermissionManifest.catalog', 'unsupported_consumed_channel');
+  const routineSourceIds = new Set([
+    ...(c.currentTraining ? [c.currentTraining.snapshot.id.toLowerCase()] : []),
+    ...c.routineActualManifest.schedules.flatMap((row) =>
+      row.sourcePlanVersionId === null ? [] : [row.sourcePlanVersionId.toLowerCase()],
+    ),
+  ]);
+  const routineBlueprintKeys = new Set(
+    c.routineActualManifest.schedules.map((row) =>
+      JSON.stringify([
+        row.record.blueprint.id.toLowerCase(),
+        row.record.blueprint.versionId.toLowerCase(),
+      ]),
+    ),
+  );
+  const routineScheduleResult = validateRoutineScheduleReadManifest({
+    athleteId: c.athleteId,
+    currentTraining: c.currentTraining,
+    sourcePlans: c.consumedSources.plans.filter((plan) =>
+      routineSourceIds.has(plan.id.toLowerCase()),
+    ),
+    blueprints: c.routineActualManifest.blueprints
+      .map((row) => row.record)
+      .filter((record) =>
+        routineBlueprintKeys.has(
+          JSON.stringify([record.routineId.toLowerCase(), record.versionId.toLowerCase()]),
+        ),
+      ),
+    schedules: c.routineActualManifest.schedules,
+    routines: c.routines,
+    affectedRoutineIds: c.affected.routine,
+    ...(c.calendarIntent === undefined || c.calendarIntent === null
+      ? {}
+      : {
+          calendarIntent: {
+            athleteId: c.athleteId,
+            event: c.event,
+            newLocalDate: c.calendarIntent.newLocalDate,
+            selection: c.calendarIntent.selection,
+            completionReports: c.completions,
+          },
+        }),
+  });
+  for (const finding of routineScheduleResult.blockers)
+    block(`routineScheduleSources.${finding.path}`, finding.reason);
   const schedules = new Map(
     c.routineActualManifest.schedules.map((row) => [row.versionId.toLowerCase(), row]),
   );
@@ -1419,12 +1500,6 @@ export function validateRaceImpactConsumedManifest(
       )
     )
       block('routineActualManifest.schedules', 'source_membership_mismatch');
-    if (
-      row.sourcePlanVersionId !== null ||
-      row.record.rule.kind === 'period_days' ||
-      row.record.rule.kind === 'session_links'
-    )
-      block('routineActualManifest.schedules.source', 'unsupported_consumed_channel');
   }
   for (const row of c.routines) {
     const exact = schedules.get(row.versionId.toLowerCase());
@@ -1436,8 +1511,6 @@ export function validateRaceImpactConsumedManifest(
       !sameId(exact.currentHead.versionId, row.versionId)
     )
       block('routines', 'source_membership_mismatch');
-    if (row.sourceVersionId !== null || row.sourceRelation !== 'absent' || row.affected)
-      block('routines.source', 'unsupported_consumed_channel');
   }
   if (
     new Set(c.routineActualManifest.occurrences.map((o) => o.record.id)).size !==
@@ -1577,7 +1650,6 @@ export function validateRaceImpactConsumedManifest(
     )
   )
     block('affected.nutrition', 'source_identity_mismatch');
-  if (c.affected.routine.length) block('affected.routine', 'unsupported_consumed_channel');
   const visits =
     refs.length +
     c.completions.length +

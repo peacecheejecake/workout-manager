@@ -1,3 +1,9 @@
+import {
+  raceProjectionIntentSchema,
+  racePlanImpactCollectorSelectionSchema,
+  deriveRacePlanImpactCollectorSelection,
+} from './race-plan-impact-projection-input.js';
+import { projectRacePlanImpact } from '@workout/server-coaching/race-plan-impact';
 import { captureWorkoutTemplateSources } from './race-plan-impact-workout-template-sources.js';
 import { captureResourceRetainedReadFacts } from './race-plan-impact-resource-read-facts.js';
 import {
@@ -46,22 +52,11 @@ const decimal = z
   .string()
   .regex(/^(0|[1-9][0-9]*)$/)
   .max(100);
-const ids = z
-  .array(z.string().min(1).max(200))
-  .max(cap)
-  .refine((value) => new Set(value).size === value.length);
 const inputSchema = z.strictObject({
   eventId: uuid,
   expectedRevision: revision,
-  selection: z.discriminatedUnion('kind', [
-    z.strictObject({ kind: z.literal('keep_plan') }),
-    z.strictObject({
-      kind: z.literal('move_period'),
-      expectedCurrentPlanVersionId: uuid,
-      changedSessionIds: ids,
-      movedPeriodIds: ids.max(100),
-    }),
-  ]),
+  calendarIntent: raceProjectionIntentSchema.nullable().optional(),
+  selection: racePlanImpactCollectorSelectionSchema,
 });
 export type RacePlanImpactContextInput = z.infer<typeof inputSchema>;
 export class RacePlanImpactContextError extends Error {
@@ -360,7 +355,19 @@ const missingDependencies = [
 export async function captureRacePlanImpactContext(tx: Transaction, input: unknown) {
   const command = parse(inputSchema, input);
   await tx.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [tx.athleteId]);
-  const baseBytes = await preflight(tx, command.eventId);
+  const baseBytes =
+    (await preflight(tx, command.eventId)) +
+    BigInt(
+      Buffer.byteLength(
+        JSON.stringify({
+          calendarIntent: command.calendarIntent ?? null,
+          collectorSelection: command.selection,
+        }),
+        'utf8',
+      ),
+    );
+  if (baseBytes > BigInt(decodedBytesCap))
+    throw new RacePlanImpactContextError('CONTEXT_UNAVAILABLE', 'decoded_bytes');
   const restoreGeneration = await currentRestoreGeneration(tx);
   const sources = sourceCache(tx);
   const core = await captureCoreEvidenceDependencies(tx);
@@ -467,6 +474,27 @@ export async function captureRacePlanImpactContext(tx: Transaction, input: unkno
   );
   if (current && !preservesSessionCompletions(current.snapshot.draft, completions))
     fail('INVALID_CONTEXT');
+  const calendarIntent = command.calendarIntent ?? null;
+  if (calendarIntent !== null) {
+    if (
+      calendarIntent.expectedEvent.id.toLowerCase() !== event.id.toLowerCase() ||
+      calendarIntent.expectedEvent.revision !== event.revision
+    )
+      fail('REVISION_CONFLICT');
+    const calendar = projectRacePlanImpact({
+      event: { localDate: event.localDate, planVersionId: event.planVersionId },
+      newLocalDate: calendarIntent.newLocalDate,
+      currentPlan: current?.snapshot ?? null,
+      completionReports: completions,
+      selection: calendarIntent.selection,
+    });
+    if (
+      calendar.status !== 'projected' ||
+      digest(deriveRacePlanImpactCollectorSelection(calendar, calendarIntent.selection)) !==
+        digest(command.selection)
+    )
+      fail('INVALID_CONTEXT');
+  }
   const nutrients = await roster(tx, 'nutrition'),
     recoveries = await roster(tx, 'recovery'),
     schedules = await roster(tx, 'routine');
@@ -744,6 +772,8 @@ export async function captureRacePlanImpactContext(tx: Transaction, input: unkno
     restoreGeneration,
     athleteId: tx.athleteId,
     manualBasis,
+    calendarIntent,
+    collectorSelection: command.selection,
     event,
     collections,
     linkedPlan: linked,

@@ -3263,3 +3263,47 @@ it('deleted manual Activity body cannot be resurrected in copied routine facts',
   blocked(c, 'actual_membership_mismatch');
   expect(c.manualActivityReadFacts?.facts[0]?.content).toBeNull();
 });
+
+function withCalendarIntent() {
+  return {
+    ...fixture(),
+    calendarIntent: {
+      expectedEvent: { id: race, revision: 1 },
+      newLocalDate: '2026-10-08',
+      selection: { kind: 'keep_plan' as const },
+      resolutions: { nutrition: [], routines: [] },
+    },
+    collectorSelection: { kind: 'keep_plan' as const },
+  };
+}
+it('validates rich original calendar intent without granting freshness or approval', () => {
+  const c = withCalendarIntent();
+  expect(inspect(c)).toMatchObject({
+    status: 'validated_read_scope',
+    approvalAuthority: 'none',
+    freshness: 'not_checked',
+  });
+});
+it('rejects original intent event revision mismatch even after re-signing', () => {
+  const c = withCalendarIntent();
+  c.calendarIntent.expectedEvent.revision = 2;
+  blocked(c, 'source_identity_mismatch', 'calendarIntent');
+});
+it('rejects forged derived calendar selection even with a matching read digest', () => {
+  const c = {
+    ...withCalendarIntent(),
+    collectorSelection: {
+      kind: 'move_period',
+      expectedCurrentPlanVersionId: race,
+      changedSessionIds: [],
+      movedPeriodIds: [],
+    },
+  };
+  blocked(c, 'source_identity_mismatch', 'collectorSelection');
+});
+it('binds original calendar intent to the captured read digest', () => {
+  const c = withCalendarIntent(),
+    scope = sign(c);
+  c.calendarIntent.newLocalDate = '2026-10-09';
+  expect(validateRaceImpactConsumedManifest(c, scope).status).toBe('blocked');
+});
