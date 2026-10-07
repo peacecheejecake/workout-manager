@@ -1607,6 +1607,26 @@ const rowSchema = z.discriminatedUnion('relation', [
   }),
 ]);
 export type CurrentParentTypedRow = z.infer<typeof rowSchema>;
+// Successor structural codec for complete physical capture; historical signed
+// parent artifacts continue to use the unchanged finite-float V1 row schema.
+const coursePhysicalRowV2 = z.strictObject({
+  ordinal: integer.min(1),
+  relation: z.literal('course_revision'),
+  row: schemas.course_revision.extend({
+    distance_meters: z.union([
+      z
+        .number()
+        .finite()
+        .refine((value) => !Object.is(value, -0)),
+      z.enum(['-0', 'NaN', 'Infinity', '-Infinity']),
+    ]),
+  }),
+});
+const physicalRowSchemaV2 = z.union([
+  coursePhysicalRowV2,
+  rowSchema.refine((entry) => entry.relation !== 'course_revision'),
+]);
+export type CurrentParentPhysicalRowV2 = z.infer<typeof physicalRowSchemaV2>;
 const primaryKeys: Record<CurrentParentTypedRow['relation'], readonly string[]> = {
   'identity_private.account': ['athlete_id'],
   consent: ['athlete_id', 'kind'],
@@ -1853,11 +1873,18 @@ function preflightRows(raw: unknown): void {
 function validateRows(raw: unknown): CurrentParentTypedRow[] {
   preflightRows(raw);
   const parsed = z.array(rowSchema).max(CURRENT_PARENT_MAX_ROWS).safeParse(raw);
-  if (!parsed.success || canonical(parsed.data) !== canonical(raw)) reject();
+  if (!parsed.success) reject();
+  return validatePhysicalRowOrder(parsed.data, raw);
+}
+function validatePhysicalRowOrder<T extends CurrentParentPhysicalRowV2>(
+  rows: T[],
+  raw: unknown,
+): T[] {
+  if (canonical(rows) !== canonical(raw)) reject();
   let previousRelation = -1,
     previousKey = '';
   const seen = new Set<string>();
-  for (const [i, entry] of parsed.data.entries()) {
+  for (const [i, entry] of rows.entries()) {
     plain(entry.row, CURRENT_PARENT_MAX_ROW_BYTES);
     if (entry.ordinal !== i + 1) reject();
     const values = z.record(z.string(), z.unknown()).parse(entry.row);
@@ -1870,11 +1897,18 @@ function validateRows(raw: unknown): CurrentParentTypedRow[] {
     previousRelation = index;
     previousKey = key;
   }
-  return parsed.data;
+  return rows;
 }
 /** Structural physical parsing only; no source, census, or admission authority. */
 export function parseCurrentParentPhysicalRows(raw: unknown): CurrentParentTypedRow[] {
   return validateRows(raw);
+}
+/** Complete physical successor; parsing grants no source or restore authority. */
+export function parseCurrentParentPhysicalRowsV2(raw: unknown): CurrentParentPhysicalRowV2[] {
+  preflightRows(raw);
+  const parsed = z.array(physicalRowSchemaV2).max(CURRENT_PARENT_MAX_ROWS).safeParse(raw);
+  if (!parsed.success) reject();
+  return validatePhysicalRowOrder(parsed.data, raw);
 }
 export function currentParentRowsSha256(raw: unknown): string {
   return checksum(validateRows(raw));
