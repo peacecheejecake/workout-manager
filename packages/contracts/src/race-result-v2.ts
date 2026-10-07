@@ -201,50 +201,65 @@ export const raceResultListV2QuerySchema = z.strictObject({
 /** Each item is byte bounded; a 100-item page is not artificially limited to one
  * record's 16KiB. Persistence still requires bounded source preflight/pagination.
  */
-const listPage = z
-  .strictObject({
-    schemaVersion: z.literal(2),
-    kind: z.literal('race-result'),
-    sort: z.literal('id-asc'),
-    collection: raceCollectionStampSchema.nullable(),
-    items: z.array(raceResultReadV2Schema).max(100),
-    nextCursor: raceListCursorSchema.nullable(),
-  })
-  .superRefine((page, context) => {
-    if (page.collection === null && (page.items.length > 0 || page.nextCursor !== null))
+type RaceResultPageIdentity = Pick<
+  z.infer<typeof raceResultListPageSchema>,
+  'kind' | 'collection' | 'nextCursor'
+> & { items: readonly { id: string }[] };
+function validateRaceResultPage(page: RaceResultPageIdentity, context: z.RefinementCtx) {
+  if (page.collection === null && (page.items.length > 0 || page.nextCursor !== null))
+    context.addIssue({
+      code: 'custom',
+      path: ['collection'],
+      message: 'Absent collection is empty',
+    });
+  for (let index = 1; index < page.items.length; index++) {
+    const prior = page.items[index - 1],
+      current = page.items[index];
+    if (prior && current && prior.id >= current.id)
       context.addIssue({
         code: 'custom',
-        path: ['collection'],
-        message: 'Absent collection is empty',
+        path: ['items', index],
+        message: 'IDs must strictly ascend',
       });
-    for (let index = 1; index < page.items.length; index++) {
-      const prior = page.items[index - 1],
-        current = page.items[index];
-      if (prior && current && prior.id >= current.id)
-        context.addIssue({
-          code: 'custom',
-          path: ['items', index],
-          message: 'IDs must strictly ascend',
-        });
-    }
-    if (
-      page.nextCursor !== null &&
-      (page.nextCursor.kind !== page.kind ||
-        page.nextCursor.afterId !== page.items.at(-1)?.id ||
-        page.nextCursor.collection.revision !== page.collection?.revision ||
-        page.nextCursor.collection.privacyGeneration !== page.collection?.privacyGeneration)
-    )
-      context.addIssue({
-        code: 'custom',
-        path: ['nextCursor'],
-        message: 'Cursor must bind this page',
-      });
-  });
-export const raceResultListV2PageSchema = bounded(listPage, 100 * RACE_RESULT_V2_MAX_BYTES + 4096);
+  }
+  if (
+    page.nextCursor !== null &&
+    (page.nextCursor.kind !== page.kind ||
+      page.nextCursor.afterId !== page.items.at(-1)?.id ||
+      page.nextCursor.collection.revision !== page.collection?.revision ||
+      page.nextCursor.collection.privacyGeneration !== page.collection?.privacyGeneration)
+  )
+    context.addIssue({
+      code: 'custom',
+      path: ['nextCursor'],
+      message: 'Cursor must bind this page',
+    });
+}
+const listPage = z.strictObject({
+  schemaVersion: z.literal(2),
+  kind: z.literal('race-result'),
+  sort: z.literal('id-asc'),
+  collection: raceCollectionStampSchema.nullable(),
+  items: z.array(raceResultReadV2Schema).max(100),
+  nextCursor: raceListCursorSchema.nullable(),
+});
+export const raceResultListV2PageSchema = bounded(
+  listPage.superRefine(validateRaceResultPage),
+  100 * RACE_RESULT_V2_MAX_BYTES + 4096,
+);
+/** Explicit compatible page preserves each original V1 record rather than inventing
+ * V2 proof or source facts. The existing V2-only page decoder stays strict. */
+export const raceResultMixedListV2PageSchema = bounded(
+  z
+    .strictObject({ ...listPage.shape, items: z.array(raceResultCompatibleReadSchema).max(100) })
+    .superRefine(validateRaceResultPage),
+  100 * RACE_RESULT_V2_MAX_BYTES + 4096,
+);
 export const raceResultCompatibleListPageSchema = z.union([
   raceResultListPageSchema,
-  raceResultListV2PageSchema,
+  raceResultMixedListV2PageSchema,
 ]);
+export type RaceResultMixedListV2Page = z.infer<typeof raceResultMixedListV2PageSchema>;
 export type RaceResultV2 = z.infer<typeof raceResultV2Schema>;
 export type RaceResultReadV2 = z.infer<typeof raceResultReadV2Schema>;
 export type RaceResultValuesV2 = z.infer<typeof raceResultValuesV2Schema>;

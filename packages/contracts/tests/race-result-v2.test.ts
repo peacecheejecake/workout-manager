@@ -6,6 +6,8 @@ import {
   raceResultCreateV2CommandSchema,
   raceResultUpdateV2CommandSchema,
   raceResultListV2PageSchema,
+  raceResultMixedListV2PageSchema,
+  raceResultCompatibleListPageSchema,
   raceResultAttachmentInputSchema,
   raceResultAttachmentUnavailableSchema,
   raceResultStorageLifecycleV2Schema,
@@ -375,5 +377,46 @@ describe('V2 explicit physical storage lifecycle', () => {
     expect(result.success).toBe(false);
     if (!result.success)
       expect(result.error.issues.some((issue) => issue.message.includes('UTF-8'))).toBe(true);
+  });
+});
+
+describe('explicit mixed race-result page', () => {
+  const legacy = { id, revision: 1, ...values };
+  const modern = { ...record, id: second };
+  const collection = { revision: 2, privacyGeneration: '0' };
+  const page = {
+    schemaVersion: 2,
+    kind: 'race-result',
+    sort: 'id-asc',
+    collection,
+    items: [legacy, modern],
+    nextCursor: null,
+  };
+  it('preserves original V1 facts alongside V2 proofs without record promotion', () => {
+    expect(raceResultMixedListV2PageSchema.parse(page)).toEqual(page);
+    expect(raceResultCompatibleListPageSchema.parse(page)).toEqual(page);
+    expect(raceResultListV2PageSchema.safeParse(page).success).toBe(false);
+  });
+  it('preserves official V1 verification timestamp as historical source facts', () => {
+    const old = {
+      ...legacy,
+      source: {
+        kind: 'official',
+        authority: 'Recorded authority',
+        resultUrl: 'https://example.org/old',
+        verifiedAt: '2026-10-01T00:00:00.000Z',
+      },
+    };
+    const mixed = { ...page, items: [old, modern] };
+    expect(raceResultCompatibleListPageSchema.parse(mixed)).toEqual(mixed);
+  });
+  it.each([
+    { ...page, items: [modern, legacy] },
+    { ...page, items: [legacy, legacy] },
+    { ...page, collection: null },
+    { ...page, nextCursor: { kind: 'race-result', collection, afterId: id } },
+    { ...page, items: [{ ...legacy, proofs }, modern] },
+  ])('rejects mixed identity, cursor, and implicit legacy proof widening %#', (invalid) => {
+    expect(raceResultMixedListV2PageSchema.safeParse(invalid).success).toBe(false);
   });
 });
