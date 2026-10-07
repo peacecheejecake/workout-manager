@@ -1210,3 +1210,119 @@ describe('race capabilities exact transport route', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
+
+const ownedRouteId = '00000000-0000-4000-8000-000000000001';
+const templateRoute = '/bff/v1/check-in-templates';
+const reviewRoute = `/bff/v1/race-date-change-reviews/${ownedRouteId}`;
+describe('exact template and manual race review transport routes', () => {
+  it.each([
+    ['GET', templateRoute],
+    ['GET', `${templateRoute}?limit=100&offset=10000`],
+    ['GET', `${templateRoute}?offset=0&limit=1`],
+    ['GET', `${templateRoute}?limit=20`],
+    ['GET', `${templateRoute}?offset=0`],
+    ['GET', `${templateRoute}/${ownedRouteId}`],
+    ['GET', `${templateRoute}/${ownedRouteId}/versions/${ownedRouteId}`],
+    ['POST', templateRoute],
+    ['GET', '/bff/v1/race-date-change-reviews/capabilities'],
+    ['POST', `/bff/v1/races/${ownedRouteId}/date-change-reviews`],
+    ['GET', reviewRoute],
+    ['POST', `${reviewRoute}/approve`],
+  ] as const)(
+    'permits only supported %s %s with session/write credentials',
+    async (method, path) => {
+      fetchMock.mockResolvedValue(json({ accepted: true }));
+      const write = method === 'POST';
+      const signal = new AbortController().signal;
+      await createSessionTransport(session, vi.fn()).request({
+        method,
+        path,
+        body: write ? { confirmed: true } : null,
+        idempotencyKey: write ? 'explicit-command-key' : null,
+        signal,
+      });
+      expect(fetchMock).toHaveBeenCalledExactlyOnceWith(path, {
+        method,
+        credentials: 'same-origin',
+        cache: 'no-store',
+        redirect: 'error',
+        signal,
+        headers: {
+          'x-workout-session-id': session.sessionId,
+          ...(write
+            ? {
+                'x-csrf-token': session.csrfToken,
+                'idempotency-key': 'explicit-command-key',
+                'content-type': 'application/json',
+              }
+            : {}),
+        },
+        ...(write ? { body: '{"confirmed":true}' } : {}),
+      });
+    },
+  );
+
+  it.each([
+    ['DELETE', templateRoute],
+    ['PUT', templateRoute],
+    ['PATCH', `${templateRoute}/${ownedRouteId}`],
+    ['POST', `${templateRoute}/${ownedRouteId}`],
+    ['POST', `${templateRoute}?limit=1`],
+    ['GET', `${templateRoute}?`],
+    ['GET', `${templateRoute}?limit=0`],
+    ['GET', `${templateRoute}?limit=101`],
+    ['GET', `${templateRoute}?offset=10001`],
+    ['GET', `${templateRoute}?offset=-1`],
+    ['GET', `${templateRoute}?limit=01`],
+    ['GET', `${templateRoute}?limit=%32`],
+    ['GET', `${templateRoute}?limit=2&limit=3`],
+    ['GET', `${templateRoute}?offset=0&offset=1`],
+    ['GET', `${templateRoute}?limit=1&admin=true`],
+    ['GET', `${templateRoute}?offset=0&`],
+    ['GET', `${templateRoute}/admin`],
+    ['GET', `${templateRoute}/${ownedRouteId}/`],
+    ['GET', `${templateRoute}/${ownedRouteId}/versions/${ownedRouteId}?offset=0`],
+    ['GET', `${templateRoute}/${ownedRouteId}/versions/${ownedRouteId}/admin`],
+    ['GET', `${templateRoute}/%30${ownedRouteId.slice(1)}`],
+    ['GET', `${templateRoute}-admin`],
+    ['POST', '/bff/v1/race-date-change-reviews/capabilities'],
+    ['GET', '/bff/v1/race-date-change-reviews/capabilities?'],
+    ['GET', '/bff/v1/race-date-change-reviews/capabilities?admin=true'],
+    ['GET', `/bff/v1/races/${ownedRouteId}/date-change-reviews`],
+    ['POST', `/bff/v1/races/${ownedRouteId}/date-change-reviews?admin=true`],
+    ['POST', `/bff/v1/races/${ownedRouteId}/date-change-reviews/admin`],
+    ['DELETE', reviewRoute],
+    ['POST', reviewRoute],
+    ['GET', `${reviewRoute}?maxSchemaVersion=1`],
+    ['GET', `${reviewRoute}/approve`],
+    ['POST', `${reviewRoute}/approve?confirmed=true`],
+    ['POST', `${reviewRoute}/approve/admin`],
+    ['GET', '/bff/v1/race-date-change-reviews/admin'],
+  ] as const)('rejects unsupported %s %s before HTTP', async (method, path) => {
+    await expect(
+      createSessionTransport(session, vi.fn()).request({
+        method,
+        path,
+        body: null,
+        idempotencyKey: null,
+      }),
+    ).rejects.toThrow('ROUTE_NOT_ALLOWED');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    `${templateRoute}/%2e%2e/admin`,
+    `${reviewRoute}/%2fapprove`,
+    `${templateRoute}/${ownedRouteId}#admin`,
+  ])('preserves primary API syntax rejection for %s before HTTP', async (path) => {
+    await expect(
+      createSessionTransport(session, vi.fn()).request({
+        method: 'GET',
+        path,
+        body: null,
+        idempotencyKey: null,
+      }),
+    ).rejects.toThrow();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});

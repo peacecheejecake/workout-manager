@@ -10,6 +10,7 @@ import {
   type RoutineRunRead,
   type RoutineScheduleRead,
 } from '@workout/contracts/routine-commands';
+import type { CheckInTemplateVersion } from '@workout/contracts/check-in-templates';
 import { RoutineWorkspace } from '../src/routine-workspace';
 import { parseRoutineRoute } from '../src/routine-route';
 
@@ -454,4 +455,374 @@ it.each([
   expect(writes).toBe(1);
   expect(screen.queryByText(/루틴 버전 1을 저장했습니다/)).toBeNull();
   expect(screen.queryByText(/다른 기기에서 변경됐습니다/)).toBeNull();
+});
+
+const checkTemplate = {
+  templateId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  versionId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+  version: 1,
+  previousVersionId: null,
+  previousVersion: null,
+  createdAt: '2026-10-08T00:00:00Z',
+  content: {
+    definitionVersion: 'checkin-v1' as const,
+    source: 'user' as const,
+    method: 'self_report' as const,
+    title: '직접 보고 질문',
+    instructions: null,
+    fields: ['fatigue', 'discomfort'] as ('fatigue' | 'discomfort')[],
+  },
+};
+const actualCheckIn = {
+  id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+  revision: 1,
+  values: {
+    observedAt: '2026-10-06T00:00:00Z',
+    timezone: 'UTC',
+    fatigue: 0,
+    discomfort: null,
+    bodyLocation: null,
+    note: null,
+  },
+  localDate: '2026-10-06',
+  recordedAt: '2026-10-06T00:00:01Z',
+  updatedAt: '2026-10-06T00:00:01Z',
+  source: 'user',
+  method: 'self_report',
+  definitionVersion: 'checkin-v1',
+};
+const checkBlueprint: RoutineBlueprintRead = {
+  ...blueprint,
+  blueprint: {
+    ...blueprint.blueprint,
+    steps: blueprint.blueprint.steps.map((step) => ({
+      ...step,
+      title: '피로 직접 보고',
+      content: {
+        kind: 'checkin_template',
+        ref: { id: checkTemplate.templateId, versionId: checkTemplate.versionId },
+      },
+    })),
+  },
+};
+it('explicitly selects an owned exact template version before saving a blueprint', async () => {
+  let saved: RoutineBlueprintSaveCommandSchemaOutput | undefined;
+  const transport: AuthenticatedTransport = {
+    async request(input) {
+      if (input.path.startsWith('/bff/v1/check-in-templates?'))
+        return { status: 200, body: { items: [checkTemplate] }, traceId: null };
+      if (input.path.includes('/versions/'))
+        return { status: 200, body: checkTemplate, traceId: null };
+      if (input.method === 'POST') {
+        saved = routineBlueprintSaveCommandSchema.parse({
+          ...z.record(z.string(), z.unknown()).parse(input.body),
+          idempotencyKey: input.idempotencyKey,
+        });
+        return { status: 200, body: { ...blueprint, blueprint: saved.blueprint }, traceId: null };
+      }
+      return { status: 200, body: { items: [], hasMore: false }, traceId: null };
+    },
+  };
+  const user = userEvent.setup();
+  renderWorkspace(transport, { kind: 'library' });
+  await user.click(await screen.findByRole('button', { name: '새 루틴' }));
+  await user.type(screen.getByRole('textbox', { name: '제목' }), '체크인 루틴');
+  await user.click(screen.getByRole('button', { name: '단계 추가' }));
+  await user.type(screen.getByRole('textbox', { name: '단계 제목' }), '보고');
+  await user.selectOptions(screen.getByRole('combobox', { name: '종류' }), 'checkin_template');
+  await user.selectOptions(
+    await screen.findByRole('combobox', { name: '내 체크인 템플릿' }),
+    checkTemplate.versionId,
+  );
+  expect(await screen.findByText(/사용자 직접 보고 \(self_report\)/)).toBeTruthy();
+  expect(saved).toBeUndefined();
+  await user.click(screen.getByRole('button', { name: '이 고정 버전 선택' }));
+  await user.click(screen.getByRole('button', { name: '루틴 버전 저장' }));
+  await waitFor(() =>
+    expect(saved?.blueprint.steps[0]?.content).toEqual({
+      kind: 'checkin_template',
+      ref: { id: checkTemplate.templateId, versionId: checkTemplate.versionId },
+    }),
+  );
+});
+type RoutineBlueprintSaveCommandSchemaOutput = z.infer<typeof routineBlueprintSaveCommandSchema>;
+it('keeps historical template pinned while the list offers a newer head', async () => {
+  const newer = {
+    ...checkTemplate,
+    versionId: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+    version: 2,
+    previousVersionId: checkTemplate.versionId,
+    previousVersion: 1,
+  };
+  let saved: RoutineBlueprintSaveCommandSchemaOutput | undefined;
+  const transport: AuthenticatedTransport = {
+    async request(input) {
+      if (input.path.startsWith('/bff/v1/check-in-templates?'))
+        return { status: 200, body: { items: [newer] }, traceId: null };
+      if (input.path.includes('/versions/'))
+        return { status: 200, body: checkTemplate, traceId: null };
+      if (input.method === 'POST') {
+        saved = routineBlueprintSaveCommandSchema.parse({
+          ...z.record(z.string(), z.unknown()).parse(input.body),
+          idempotencyKey: input.idempotencyKey,
+        });
+        return {
+          status: 200,
+          body: { ...checkBlueprint, blueprint: saved.blueprint },
+          traceId: null,
+        };
+      }
+      if (input.path === `/bff/v1/routines/${routineId}`)
+        return { status: 200, body: checkBlueprint, traceId: null };
+      return { status: 200, body: { items: [checkBlueprint], hasMore: false }, traceId: null };
+    },
+  };
+  const user = userEvent.setup();
+  renderWorkspace(transport, { kind: 'detail', routineId, edit: true });
+  expect(await screen.findByText(/고정 버전 1 · 사용자/)).toBeTruthy();
+  await user.click(screen.getByRole('button', { name: '루틴 버전 저장' }));
+  await waitFor(() =>
+    expect(saved?.blueprint.steps[0]?.content).toEqual(checkBlueprint.blueprint.steps[0]?.content),
+  );
+});
+it('keeps a failed template save frozen and retries the identical key/body', async () => {
+  const writes: TransportRequest[] = [];
+  const transport: AuthenticatedTransport = {
+    async request(input) {
+      if (input.path.startsWith('/bff/v1/check-in-templates?'))
+        return { status: 200, body: { items: [] }, traceId: null };
+      if (input.path.includes('/versions/'))
+        return { status: 200, body: checkTemplate, traceId: null };
+      if (input.path === '/bff/v1/check-in-templates' && input.method === 'POST') {
+        writes.push(input);
+        return { status: 500, body: { error: { code: 'INTERNAL_ERROR' } }, traceId: null };
+      }
+      return { status: 200, body: { items: [], hasMore: false }, traceId: null };
+    },
+  };
+  const user = userEvent.setup();
+  renderWorkspace(transport, { kind: 'library' });
+  await user.click(await screen.findByRole('button', { name: '새 루틴' }));
+  await user.click(screen.getByRole('button', { name: '단계 추가' }));
+  await user.selectOptions(screen.getByRole('combobox', { name: '종류' }), 'checkin_template');
+  await user.type(
+    await screen.findByRole('textbox', { name: '체크인 템플릿 제목' }),
+    '보존할 질문',
+  );
+  await user.click(screen.getByRole('button', { name: '체크인 입력 항목 저장' }));
+  expect(await screen.findByText(/저장 결과가 불확실합니다. 같은 입력과 요청/)).toBeTruthy();
+  expect(
+    screen.getByRole('textbox', { name: '체크인 템플릿 제목' }).closest('fieldset'),
+  ).toHaveProperty('disabled', true);
+  await user.click(screen.getByRole('button', { name: '같은 템플릿 저장 재시도' }));
+  await waitFor(() => expect(writes).toHaveLength(2));
+  expect(writes[1]?.body).toEqual(writes[0]?.body);
+  expect(writes[1]?.idempotencyKey).toBe(writes[0]?.idempotencyKey);
+  expect(screen.queryByText(/입력 항목을 저장했습니다/)).toBeNull();
+});
+it('validates the actual CheckIn before linking numeric revision, with zero distinct from unknown', async () => {
+  let body: unknown;
+  let current = runRead;
+  const transport: AuthenticatedTransport = {
+    async request(input) {
+      if (input.path === `/bff/v1/check-ins/${actualCheckIn.id}`)
+        return { status: 200, body: actualCheckIn, traceId: null };
+      if (input.path === `/bff/v1/routine-runs/${runId}/steps`) {
+        body = input.body;
+        current = { ...runRead, run: { ...runRead.run, revision: 1 } };
+        return { status: 200, body: current, traceId: null };
+      }
+      if (input.path === `/bff/v1/routine-runs/${runId}`)
+        return { status: 200, body: current, traceId: null };
+      return { status: 200, body: checkBlueprint.blueprint, traceId: null };
+    },
+  };
+  const user = userEvent.setup();
+  renderWorkspace(transport, { kind: 'run', runId });
+  const id = await screen.findByRole('textbox', { name: '실제 체크인 ID (UUID)' });
+  expect(screen.getByRole('button', { name: '수행 확인' })).toHaveProperty('disabled', true);
+  await user.type(id, actualCheckIn.id);
+  await user.click(screen.getByRole('button', { name: '실제 체크인 확인' }));
+  expect(await screen.findByText('피로: 0 / 불편감: 미상')).toBeTruthy();
+  expect(screen.getByRole('button', { name: '수행 확인' })).toHaveProperty('disabled', true);
+  await user.click(screen.getByRole('button', { name: '이 실제 체크인 연결' }));
+  await user.click(screen.getByRole('button', { name: '수행 확인' }));
+  await waitFor(() =>
+    expect(body).toMatchObject({
+      actualRefs: [{ kind: 'checkin', id: actualCheckIn.id, revisionId: '1' }],
+      occurredAt: null,
+      confirmed: true,
+    }),
+  );
+});
+it('rejects foreign/mismatched actual response before a run write', async () => {
+  let writes = 0;
+  const transport: AuthenticatedTransport = {
+    async request(input) {
+      if (input.method === 'POST') writes += 1;
+      if (input.path.startsWith('/bff/v1/check-ins/'))
+        return {
+          status: 200,
+          body: { ...actualCheckIn, id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee' },
+          traceId: null,
+        };
+      if (input.path === `/bff/v1/routine-runs/${runId}`)
+        return { status: 200, body: runRead, traceId: null };
+      return { status: 200, body: checkBlueprint.blueprint, traceId: null };
+    },
+  };
+  const user = userEvent.setup();
+  renderWorkspace(transport, { kind: 'run', runId });
+  await user.type(
+    await screen.findByRole('textbox', { name: '실제 체크인 ID (UUID)' }),
+    actualCheckIn.id,
+  );
+  await user.click(screen.getByRole('button', { name: '실제 체크인 확인' }));
+  expect(await screen.findByText(/실제 체크인을 확인하지 못했습니다/)).toBeTruthy();
+  expect(screen.getByRole('button', { name: '수행 확인' })).toHaveProperty('disabled', true);
+  expect(writes).toBe(0);
+});
+it('does not fall back from unavailable recovery to an intake actual', async () => {
+  const recoveryBlueprint = {
+    ...blueprint.blueprint,
+    steps: blueprint.blueprint.steps.map((step) => ({
+      ...step,
+      content: {
+        kind: 'recovery_method' as const,
+        ref: { id: checkTemplate.templateId, versionId: checkTemplate.versionId },
+      },
+    })),
+  };
+  const request: AuthenticatedTransport['request'] = async (input) => ({
+    status: 200,
+    body: input.path === `/bff/v1/routine-runs/${runId}` ? runRead : recoveryBlueprint,
+    traceId: null,
+  });
+  renderWorkspace({ request }, { kind: 'run', runId });
+  expect(
+    await screen.findByText(/회복 단계의 실제 기록 연결은 아직 지원하지 않습니다/),
+  ).toBeTruthy();
+  expect(screen.getByRole('button', { name: '수행 확인' })).toHaveProperty('disabled', true);
+  expect(screen.queryByRole('textbox', { name: '기존 실제 기록 ID' })).toBeNull();
+});
+it('shows template save success only after a committed response and still requires explicit selection', async () => {
+  let release:
+    ((value: Awaited<ReturnType<AuthenticatedTransport['request']>>) => void) | undefined;
+  const pending = new Promise<Awaited<ReturnType<AuthenticatedTransport['request']>>>((resolve) => {
+    release = resolve;
+  });
+  let created: CheckInTemplateVersion = checkTemplate;
+  const transport: AuthenticatedTransport = {
+    async request(input) {
+      if (input.path.startsWith('/bff/v1/check-in-templates?'))
+        return { status: 200, body: { items: [] }, traceId: null };
+      if (input.path.includes('/versions/')) return { status: 200, body: created, traceId: null };
+      if (input.path === '/bff/v1/check-in-templates' && input.method === 'POST') {
+        const body = z
+          .strictObject({
+            templateId: z.uuid(),
+            expectedVersion: z.literal(0),
+            content: z.strictObject({
+              definitionVersion: z.literal('checkin-v1'),
+              source: z.literal('user'),
+              method: z.literal('self_report'),
+              title: z.string(),
+              instructions: z.string().nullable(),
+              fields: z.array(z.enum(['fatigue', 'discomfort'])),
+            }),
+          })
+          .parse(input.body);
+        created = { ...checkTemplate, templateId: body.templateId, content: body.content };
+        return pending;
+      }
+      return { status: 200, body: { items: [], hasMore: false }, traceId: null };
+    },
+  };
+  const user = userEvent.setup();
+  renderWorkspace(transport, { kind: 'library' });
+  await user.click(await screen.findByRole('button', { name: '새 루틴' }));
+  await user.click(screen.getByRole('button', { name: '단계 추가' }));
+  await user.selectOptions(screen.getByRole('combobox', { name: '종류' }), 'checkin_template');
+  await user.type(
+    await screen.findByRole('textbox', { name: '체크인 템플릿 제목' }),
+    '새 직접 보고',
+  );
+  await user.click(screen.getByRole('button', { name: '체크인 입력 항목 저장' }));
+  expect(screen.queryByText(/입력 항목을 저장했습니다/)).toBeNull();
+  expect(
+    screen.getByRole('textbox', { name: '체크인 템플릿 제목' }).closest('fieldset'),
+  ).toHaveProperty('disabled', true);
+  release?.({ status: 200, body: created, traceId: null });
+  expect(await screen.findByText(/입력 항목을 저장했습니다/)).toBeTruthy();
+  expect(await screen.findByRole('button', { name: '이 고정 버전 선택' })).toHaveProperty(
+    'disabled',
+    false,
+  );
+});
+it('keeps template input on app withdrawal without showing saved success', async () => {
+  const transport: AuthenticatedTransport = {
+    async request(input) {
+      if (input.path.startsWith('/bff/v1/check-in-templates?'))
+        return { status: 200, body: { items: [] }, traceId: null };
+      if (input.method === 'POST')
+        return { status: 409, body: { error: { code: 'APP_CONSENT_REQUIRED' } }, traceId: null };
+      return { status: 200, body: { items: [], hasMore: false }, traceId: null };
+    },
+  };
+  const user = userEvent.setup();
+  renderWorkspace(transport, { kind: 'library' });
+  await user.click(await screen.findByRole('button', { name: '새 루틴' }));
+  await user.click(screen.getByRole('button', { name: '단계 추가' }));
+  await user.selectOptions(screen.getByRole('combobox', { name: '종류' }), 'checkin_template');
+  const input = await screen.findByRole('textbox', { name: '체크인 템플릿 제목' });
+  await user.type(input, '유지할 질문');
+  await user.click(screen.getByRole('button', { name: '체크인 입력 항목 저장' }));
+  expect(
+    await screen.findByText(/앱 데이터 처리 동의가 필요합니다. 입력은 유지됩니다/),
+  ).toBeTruthy();
+  expect(input).toHaveProperty('value', '유지할 질문');
+  expect(input.closest('fieldset')).toHaveProperty('disabled', false);
+  expect(screen.queryByText(/입력 항목을 저장했습니다/)).toBeNull();
+});
+it('aborts private actual read and discards its selector on account/session change', async () => {
+  let signal: AbortSignal | undefined;
+  const request: AuthenticatedTransport['request'] = async (input) => {
+    if (input.path.startsWith('/bff/v1/check-ins/')) {
+      signal = input.signal;
+      return new Promise(() => undefined);
+    }
+    return {
+      status: 200,
+      body: input.path === `/bff/v1/routine-runs/${runId}` ? runRead : checkBlueprint.blueprint,
+      traceId: null,
+    };
+  };
+  const user = userEvent.setup();
+  const view = render(
+    <RoutineWorkspace
+      athleteId="alice"
+      sessionId="a"
+      transport={{ request }}
+      route={{ kind: 'run', runId }}
+    />,
+  );
+  await user.type(
+    await screen.findByRole('textbox', { name: '실제 체크인 ID (UUID)' }),
+    actualCheckIn.id,
+  );
+  await user.click(screen.getByRole('button', { name: '실제 체크인 확인' }));
+  await waitFor(() => expect(signal).toBeDefined());
+  view.rerender(
+    <RoutineWorkspace
+      athleteId="bob"
+      sessionId="b"
+      transport={{
+        request: async () => ({ status: 200, body: { items: [], hasMore: false }, traceId: null }),
+      }}
+      route={{ kind: 'library' }}
+    />,
+  );
+  await waitFor(() => expect(signal?.aborted).toBe(true));
+  expect(screen.queryByRole('textbox', { name: '실제 체크인 ID (UUID)' })).toBeNull();
+  expect(screen.queryByText(/피로: 0/)).toBeNull();
 });

@@ -573,3 +573,7 @@ Root가 verified V7 원본 callback unit31/actualPG6/scopedTS와 DB/roles/slot0�
 ## CheckIn routine·공개 미리보기 통합 후속 · 2026-10-08
 
 Root routine unit36/actualPG6, public frozen whole preview unit37/actualPG R3 11 및 API/client/루틴 RTL 합동136을 확인했다. 초기 PG/단위시험/format/PATH 실패와 교정은 [I 기록](progress/M2-02i.md)에 별도 보존했다. 입력5/12 SHA 불변·DB/roles/slots0이며 normalregistry107/source116222/main/push0를 유지한다. 실제 UI browser/build·HTTP→DB 수용은 미실행이다. 기존 identity harness의 template port 누락을 발견해 명시 opt-in raw123와 두Host시험을 agent에 배정했고, 대회 public review/explicit approve UI 및 authenticated identity target 변환 준비를 병렬 진행한다. 대회 삭제 nutrition 연결 해제·재연결/재승인 전 시각 중단·음식/수량/실제 섭취 보존 결정을 재확인했다. I/J/phase 전체·최신 restore·공개/native/외부 gate는 미완료다.
+
+## 체크인 두 Host 실제 수용 완료 · 2026-10-08
+
+Aside 실제 확인으로 빠진 Host template 경로를 발견·교정했고 Root platform212/212, Next/Vite rebuildR2 및 actual Chromium focused R3 **2/2**를 확인했다. 실제 template→frozen blueprint→run→actual CheckIn0/null·stale revision 거절·명시연결/수행·count1·철회/retained read·계정삭제 경로다. R1두실패/R2실행전오류·수동 harness 실패를 [I 기록](progress/M2-02i.md)에 별도 보존했다. 입력SHA·cleanup0는 wm-checkin-identity-root-verified-r3-20261008.json에 있다. native IME/iPhone/공개HTTPS·copied lifecycle/최신restore·I/J전체/phase/main 완료로 세지 않는다. 날짜 상세검토 wiring과 실제 미해결 영향 diagnostics·unlinked date PATCH 차단을 native 병렬 진행한다. normalregistry107/main/push0·기존결정/외부 not_executed를 유지한다.

@@ -213,6 +213,38 @@ export function createSessionFileTransfer(
   };
 }
 
+const routeUuid = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
+const templateVersionPath = new RegExp(
+  `^/bff/v1/check-in-templates/${routeUuid}(?:/versions/${routeUuid})?$`,
+  'i',
+);
+const raceReviewPreparePath = new RegExp(`^/bff/v1/races/${routeUuid}/date-change-reviews$`, 'i');
+const raceReviewReadPath = new RegExp(`^/bff/v1/race-date-change-reviews/${routeUuid}$`, 'i');
+const raceReviewApprovePath = new RegExp(
+  `^/bff/v1/race-date-change-reviews/${routeUuid}/approve$`,
+  'i',
+);
+
+function templateListPathAllowed(path: string): boolean {
+  const base = '/bff/v1/check-in-templates';
+  if (path === base) return true;
+  if (!path.startsWith(`${base}?`)) return false;
+  const parts = path.slice(base.length + 1).split('&');
+  const seen = new Set<string>();
+  return (
+    parts.length <= 2 &&
+    parts.every((part) => {
+      const match = /^(limit|offset)=(0|[1-9][0-9]*)$/.exec(part);
+      if (!match) return false;
+      const key = match[1];
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      const value = Number(match[2]);
+      return key === 'limit' ? value >= 1 && value <= 100 : value <= 10000;
+    })
+  );
+}
+
 /** The browser Host is bound to the session that created it, including across tabs. */
 export function createSessionTransport(
   session: Session,
@@ -225,6 +257,17 @@ export function createSessionTransport(
       assertLiveSession(session, expired, available);
       const path = apiPathSchema.parse(input.path);
       const retrievalQueryAllowed = input.method === 'POST' && path === '/bff/v1/retrieval/queries';
+      const checkInTemplatePathAllowed =
+        (input.method === 'GET' &&
+          (templateListPathAllowed(path) || templateVersionPath.test(path))) ||
+        (input.method === 'POST' && path === '/bff/v1/check-in-templates');
+      const raceManualPublicPathAllowed =
+        (input.method === 'GET' &&
+          (path === '/bff/v1/race-date-change-reviews/capabilities' ||
+            raceReviewReadPath.test(path))) ||
+        (input.method === 'POST' &&
+          (raceReviewPreparePath.test(path) || raceReviewApprovePath.test(path)));
+
       const raceCapabilitiesAllowed =
         input.method === 'GET' && path === '/bff/v1/race-results/capabilities';
       const racePathAllowed =
@@ -247,6 +290,8 @@ export function createSessionTransport(
         (input.method === 'PUT' && path === '/bff/v1/ai-settings');
       if (
         !retrievalQueryAllowed &&
+        !checkInTemplatePathAllowed &&
+        !raceManualPublicPathAllowed &&
         !racePathAllowed &&
         !raceCapabilitiesAllowed &&
         !raceResultV2PathAllowed &&

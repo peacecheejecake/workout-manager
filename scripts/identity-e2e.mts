@@ -21,6 +21,7 @@ import { createJointFixtureRepository } from '../packages/server/persistence/src
 import { createActivityContextRepository } from '../packages/server/persistence/src/activity-context.ts';
 import { createDashboardRepository } from '../packages/server/persistence/src/dashboard.ts';
 import { createCheckInRepository } from '../packages/server/persistence/src/check-ins.ts';
+import { createCheckInTemplateRepository } from '../packages/server/persistence/src/check-in-templates.ts';
 import { identityApiPort } from './fixtures/identity-api-port.ts';
 import { coachingWorkerContextPath } from './fixtures/coaching-worker-context.ts';
 import { createOperationsRepository } from '../packages/server/persistence/src/operations.ts';
@@ -193,6 +194,11 @@ const resultStage = process.env['IDENTITY_E2E_RACE_RESULTS_V2'];
 if (resultStage !== undefined && resultStage !== 'staged-108-111')
   throw new Error('IDENTITY_RACE_RESULT_STAGE_INVALID');
 const stageRaceResults = resultStage === 'staged-108-111';
+const checkInTemplateStage = process.env['IDENTITY_E2E_CHECK_IN_TEMPLATES'];
+if (checkInTemplateStage !== undefined && checkInTemplateStage !== 'staged-123')
+  throw new Error('IDENTITY_CHECKIN_TEMPLATE_STAGE_INVALID');
+const stageCheckInTemplates = checkInTemplateStage === 'staged-123';
+const checkInTemplateStageSha = '6d3ad2f18cb7b1c99d63ccff582214b6ba8f0318a72c1238092140a5ffc9444c';
 // Explicit disposable acceptance profile; this does not register migrations or
 // activate configured production repositories. Pin every raw predecessor.
 const raceResultStageFiles = [
@@ -533,6 +539,82 @@ try {
             )
           )
             throw new Error('IDENTITY_RACE_RESULT_STAGE_FUNCTION_INVALID');
+          await owner.query('COMMIT');
+        } catch (error) {
+          await owner.query('ROLLBACK');
+          throw error;
+        }
+      } finally {
+        await owner.end();
+      }
+    }
+    if (stageCheckInTemplates) {
+      const owner = new Pool({ connectionString: ownerUrl, max: 1 });
+      try {
+        const role = await owner.query(
+          'SELECT rolsuper,rolbypassrls FROM pg_roles WHERE rolname=current_user',
+        );
+        if (
+          role.rows.length !== 1 ||
+          role.rows[0]?.rolsuper !== false ||
+          role.rows[0]?.rolbypassrls !== false
+        )
+          throw new Error('IDENTITY_CHECKIN_TEMPLATE_STAGE_OWNER_INVALID');
+        const before = await owner.query(
+          'SELECT version,checksum FROM schema_migrations ORDER BY version',
+        );
+        if (before.rows.length !== 107 || before.rows.at(-1)?.version !== 107)
+          throw new Error('IDENTITY_CHECKIN_TEMPLATE_NORMAL_PROFILE_INVALID');
+        const sql = await readFile(
+          new URL(
+            '../packages/server/persistence/migrations/123_check_in_template_versions.sql',
+            import.meta.url,
+          ),
+        );
+        if (createHash('sha256').update(sql).digest('hex') !== checkInTemplateStageSha)
+          throw new Error('IDENTITY_CHECKIN_TEMPLATE_STAGE_SHA_MISMATCH');
+        await owner.query('BEGIN');
+        try {
+          await owner.query(sql.toString('utf8'));
+          const after = await owner.query(
+            'SELECT version,checksum FROM schema_migrations ORDER BY version',
+          );
+          if (JSON.stringify(before.rows) !== JSON.stringify(after.rows))
+            throw new Error('IDENTITY_CHECKIN_TEMPLATE_NORMAL_PROFILE_CHANGED');
+          const tables =
+            await owner.query(`SELECT relrowsecurity,relforcerowsecurity,pg_get_userbyid(relowner)=current_user AS owned
+            FROM pg_class WHERE oid=ANY(ARRAY['public.check_in_template_version'::regclass,'public.check_in_template_head'::regclass,'public.check_in_template_receipt'::regclass]::oid[])`);
+          if (
+            tables.rows.length !== 3 ||
+            tables.rows.some(
+              (row) =>
+                row.relrowsecurity !== true ||
+                row.relforcerowsecurity !== true ||
+                row.owned !== true,
+            )
+          )
+            throw new Error('IDENTITY_CHECKIN_TEMPLATE_STAGE_OWNER_INVALID');
+          for (const signature of [
+            'public.save_check_in_template_v1(jsonb)',
+            'public.read_check_in_template_version_v1(uuid,uuid)',
+            'public.read_check_in_template_head_v1(uuid)',
+            'public.list_check_in_template_heads_v1(integer,integer)',
+          ])
+            await owner.query(`GRANT EXECUTE ON FUNCTION ${signature} TO workout_runtime`);
+          const acl = await owner.query(`SELECT
+            has_function_privilege('workout_runtime','public.save_check_in_template_v1(jsonb)','EXECUTE') AND
+            has_function_privilege('workout_runtime','public.read_check_in_template_version_v1(uuid,uuid)','EXECUTE') AND
+            has_function_privilege('workout_runtime','public.read_check_in_template_head_v1(uuid)','EXECUTE') AND
+            has_function_privilege('workout_runtime','public.list_check_in_template_heads_v1(integer,integer)','EXECUTE') AS narrow_execute,
+            has_table_privilege('workout_runtime','public.check_in_template_version','SELECT,INSERT,UPDATE,DELETE') OR
+            has_table_privilege('workout_runtime','public.check_in_template_head','SELECT,INSERT,UPDATE,DELETE') OR
+            has_table_privilege('workout_runtime','public.check_in_template_receipt','SELECT,INSERT,UPDATE,DELETE') AS private_table`);
+          if (
+            acl.rows.length !== 1 ||
+            acl.rows[0]?.narrow_execute !== true ||
+            acl.rows[0]?.private_table !== false
+          )
+            throw new Error('IDENTITY_CHECKIN_TEMPLATE_STAGE_ACL_INVALID');
           await owner.query('COMMIT');
         } catch (error) {
           await owner.query('ROLLBACK');
@@ -969,6 +1051,9 @@ try {
     courseSharing,
     ...(sharedCourseReader === undefined ? {} : { sharedCourseReader }),
     checkIns: createCheckInRepository(database),
+    ...(stageCheckInTemplates
+      ? { checkInTemplates: createCheckInTemplateRepository(database) }
+      : {}),
     dashboard: createDashboardRepository(database),
     allowedOrigins: [identityWebOrigin, identityMobileOrigin],
   });

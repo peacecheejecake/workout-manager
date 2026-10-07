@@ -23,6 +23,8 @@ import type {
 import { Button } from '@workout/ui-foundation/button';
 import { createRoutineApi, RoutineRequestError, type RoutineApi } from './routine-api';
 import type { RoutineRoute } from './routine-route';
+import { createCheckInTemplateApi, type CheckInTemplateApi } from './check-in-template-api';
+import { CheckInTemplateEditor, CheckInActualSelector } from './check-in-template-editor';
 import styles from './routine.module.css';
 
 type Scope = readonly ['users', string, 'sessions', string, 'routines'];
@@ -129,6 +131,7 @@ function Workspace({
   draft: DraftStore;
 }) {
   const api = useMemo(() => createRoutineApi(transport), [transport]);
+  const templateApi = useMemo(() => createCheckInTemplateApi(transport), [transport]);
   const scope: Scope = ['users', athleteId, 'sessions', sessionId, 'routines'];
   return (
     <section className={styles.workspace} aria-label="범용 루틴 작업 공간">
@@ -147,11 +150,12 @@ function Workspace({
         </nav>
       </header>
       {route.kind === 'run' ? (
-        <RunWorkspace api={api} scope={scope} runId={route.runId} />
+        <RunWorkspace api={api} transport={transport} scope={scope} runId={route.runId} />
       ) : route.kind === 'schedule' ? (
         <ScheduleWorkspace api={api} scope={scope} routineId={route.routineId} />
       ) : (
         <BlueprintWorkspace
+          templateApi={templateApi}
           api={api}
           scope={scope}
           routineId={route.kind === 'detail' ? route.routineId : null}
@@ -164,6 +168,7 @@ function Workspace({
 }
 
 function BlueprintWorkspace({
+  templateApi,
   api,
   scope,
   routineId,
@@ -171,6 +176,7 @@ function BlueprintWorkspace({
   draft,
 }: {
   api: RoutineApi;
+  templateApi: CheckInTemplateApi;
   scope: Scope;
   routineId: string | null;
   initialEdit: boolean;
@@ -378,7 +384,13 @@ function BlueprintWorkspace({
           </div>
         ) : null}
         {editing ? (
-          <BlueprintEditor api={api} scope={scope} store={draft} onMessage={setMessage} />
+          <BlueprintEditor
+            templateApi={templateApi}
+            api={api}
+            scope={scope}
+            store={draft}
+            onMessage={setMessage}
+          />
         ) : null}
         {!routineId && !editing ? <p>새 루틴을 만들거나 왼쪽 목록에서 선택하세요.</p> : null}
         <p role="status" aria-live="polite">
@@ -400,12 +412,14 @@ function contentLabel(kind: RoutineBlueprintStep['content']['kind']) {
           : '확인';
 }
 function BlueprintEditor({
+  templateApi,
   api,
   scope,
   store,
   onMessage,
 }: {
   api: RoutineApi;
+  templateApi: CheckInTemplateApi;
   scope: Scope;
   store: DraftStore;
   onMessage: (message: string) => void;
@@ -543,7 +557,9 @@ function BlueprintEditor({
                 onChange={(event) => {
                   const kind = event.target.value;
                   const content =
-                    kind === 'workout_template' || kind === 'nutrition_template'
+                    kind === 'workout_template' ||
+                    kind === 'nutrition_template' ||
+                    kind === 'checkin_template'
                       ? ({
                           kind,
                           ref: { id: '', versionId: '' },
@@ -555,6 +571,7 @@ function BlueprintEditor({
                 <option value="checklist">확인</option>
                 <option value="workout_template">기존 운동 템플릿</option>
                 <option value="nutrition_template">기존 영양 계획</option>
+                <option value="checkin_template">체크인 입력 항목</option>
               </select>
             </label>
             {step.content.kind === 'checklist' ? (
@@ -568,6 +585,14 @@ function BlueprintEditor({
                   }
                 />
               </label>
+            ) : step.content.kind === 'checkin_template' ? (
+              <CheckInTemplateEditor
+                api={templateApi}
+                scope={scope}
+                value={step.content.ref}
+                disabled={busy || uncertain}
+                onSelect={(ref) => editStep(index, { content: { kind: 'checkin_template', ref } })}
+              />
             ) : (
               <div className={styles.columns}>
                 <label className={styles.field}>
@@ -905,7 +930,17 @@ function ScheduleWorkspace({
   );
 }
 
-function RunWorkspace({ api, scope, runId }: { api: RoutineApi; scope: Scope; runId: string }) {
+function RunWorkspace({
+  api,
+  transport,
+  scope,
+  runId,
+}: {
+  api: RoutineApi;
+  transport: AuthenticatedTransport;
+  scope: Scope;
+  runId: string;
+}) {
   const client = useQueryClient();
   const run = useQuery({
     queryKey: [...scope, 'run', runId],
@@ -1091,6 +1126,7 @@ function RunWorkspace({ api, scope, runId }: { api: RoutineApi; scope: Scope; ru
               </p>
               {selected && current.state === 'in_progress' ? (
                 <StepControls
+                  transport={transport}
                   api={api}
                   scope={scope}
                   run={run.data}
@@ -1111,6 +1147,7 @@ function RunWorkspace({ api, scope, runId }: { api: RoutineApi; scope: Scope; ru
 }
 
 function StepControls({
+  transport,
   api,
   scope,
   run,
@@ -1119,6 +1156,7 @@ function StepControls({
   update,
 }: {
   api: RoutineApi;
+  transport: AuthenticatedTransport;
   scope: Scope;
   run: RoutineRunRead;
   step: RoutineBlueprintStep;
@@ -1194,7 +1232,13 @@ function StepControls({
     if (pendingRecord.current) return;
     const actualRefs: ActualRef[] = [];
     if ((state === 'performed' || state === 'partial') && step.content.kind !== 'checklist') {
-      const kind = step.content.kind === 'workout_template' ? 'activity' : 'intake';
+      if (step.content.kind === 'recovery_method') return;
+      const kind =
+        step.content.kind === 'workout_template'
+          ? 'activity'
+          : step.content.kind === 'checkin_template'
+            ? 'checkin'
+            : 'intake';
       if (kind === 'activity')
         actualRefs.push({ kind, id: actualId, revisionId, detailId: null, allocationId: null });
       else actualRefs.push({ kind, id: actualId, revisionId });
@@ -1218,7 +1262,22 @@ function StepControls({
   }
   return (
     <div className={styles.stack}>
-      {step.content.kind !== 'checklist' ? (
+      {step.content.kind === 'checkin_template' ? (
+        <CheckInActualSelector
+          transport={transport}
+          scope={scope}
+          disabled={busy || recordUncertain}
+          onSelect={(ref) => {
+            clearPendingRecord();
+            setActualId(ref?.id ?? '');
+            setRevisionId(ref?.revisionId ?? '');
+          }}
+        />
+      ) : step.content.kind === 'recovery_method' ? (
+        <p role="status">
+          이 회복 단계의 실제 기록 연결은 아직 지원하지 않습니다. 영양 기록으로 대체하지 않습니다.
+        </p>
+      ) : step.content.kind !== 'checklist' ? (
         <div className={styles.columns}>
           <label className={styles.field}>
             기존 실제 기록 ID
@@ -1260,6 +1319,7 @@ function StepControls({
           disabled={
             busy ||
             recordUncertain ||
+            step.content.kind === 'recovery_method' ||
             (step.content.kind !== 'checklist' && (!actualId || !revisionId))
           }
           onClick={() => record('performed')}
@@ -1271,6 +1331,7 @@ function StepControls({
           disabled={
             busy ||
             recordUncertain ||
+            step.content.kind === 'recovery_method' ||
             (step.content.kind !== 'checklist' && (!actualId || !revisionId))
           }
           onClick={() => record('partial')}
