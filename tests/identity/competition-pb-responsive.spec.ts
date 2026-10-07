@@ -51,7 +51,7 @@ async function compare(pb: Locator) {
   await pb.getByLabel('PB 기간 시작 (선택)').fill('2080-01-01');
   await pb.getByLabel('PB 기간 끝 (선택)').fill('2080-01-31');
   await pb.getByLabel('PB 기준일').fill('2080-01-31');
-  // Submit by keyboard; no pointer-only interaction or automatic default policy.
+  // Explicit override submits by keyboard; the new default is already available.
   const apply = pb.getByRole('button', { name: 'PB 비교 적용', exact: true });
   await apply.focus();
   await apply.press('Enter');
@@ -123,8 +123,10 @@ for (const shell of shells) {
       const pb = results.getByRole('region', { name: '거리별 PB 비교', exact: true });
       await expect(results.getByText(/출처 manual/).first()).toBeVisible();
       await expect(pb.getByRole('list', { name: '거리별 PB 결과' })).toHaveCount(0);
-      await expect(pb.getByLabel('PB 거리 기준')).toHaveValue('');
-      await expect(pb.getByLabel('PB 시간 기준')).toHaveValue('');
+      await expect(pb.getByLabel('PB 거리 기준')).toHaveValue('standard');
+      await expect(pb.getByLabel('PB 시간 기준')).toHaveValue('chip-preferred');
+      await expect(pb.getByLabel('PB 기준일')).toHaveValue(/^\d{4}-\d{2}-\d{2}$/);
+      // Genuine future 2080 actuals are excluded by today's default cutoff.
       const comparisonWrites: string[] = [];
       page.on('request', (request) => {
         if (new URL(request.url()).pathname.startsWith('/bff/v1/') && request.method() !== 'GET')
@@ -170,14 +172,19 @@ for (const shell of shells) {
       await logout(page);
       await login(page, 'Bob');
       await page.goto('/records');
-      await expect(pb.getByLabel('PB 거리 기준')).toHaveValue('');
-      await expect(pb.getByLabel('PB 기준일')).toHaveValue('');
+      await expect(pb.getByLabel('PB 시간 기준')).toHaveValue('chip-preferred');
+      await expect(pb.getByLabel('PB 거리 기준')).toHaveValue('standard');
+      await expect(pb.getByLabel('PB 기준일')).toHaveValue(/^\d{4}-\d{2}-\d{2}$/);
+      await expect(pb.getByLabel('PB 기준일')).not.toHaveValue('2080-01-31');
       await expect(pb.getByRole('list', { name: '거리별 PB 결과' })).toHaveCount(0);
       await expect(page.locator('body')).not.toContainText(marker);
       await logout(page);
       headers = await login(page, 'Alice');
       await page.goto('/records');
-      await expect(pb.getByLabel('PB 시간 기준')).toHaveValue('');
+      await expect(pb.getByLabel('PB 시간 기준')).toHaveValue('chip-preferred');
+      await expect(pb.getByLabel('PB 거리 기준')).toHaveValue('standard');
+      await expect(pb.getByLabel('PB 기준일')).toHaveValue(/^\d{4}-\d{2}-\d{2}$/);
+      await expect(pb.getByLabel('PB 기준일')).not.toHaveValue('2080-01-31');
       await expect(pb.getByRole('list', { name: '거리별 PB 결과' })).toHaveCount(0);
       // Only this test's returned identities are deleted; unrelated account/source data remains.
       for (const record of created) {

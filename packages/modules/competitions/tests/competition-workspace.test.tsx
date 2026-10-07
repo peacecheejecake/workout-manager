@@ -117,6 +117,7 @@ function view(
       sessionId={sessionId}
       transport={api}
       newCommandKey={() => 'fixed_command_key'}
+      personalBestNow={() => new Date(2026, 9, 31, 12)}
     />
   );
 }
@@ -896,7 +897,7 @@ async function applyPb(distance = 'standard', time = 'both') {
   fireEvent.change(screen.getByLabelText('PB 기준일'), { target: { value: '2026-10-31' } });
   await user.click(screen.getByRole('button', { name: 'PB 비교 적용' }));
 }
-it('requires explicit comparison inputs and separates manual Chip/Gun, device, null and zero without writes', async () => {
+it('immediately applies Chip-preferred defaults and retains explicit Chip/Gun comparison without writes', async () => {
   const requests: TransportRequest[] = [];
   const records = [
     pbRecord(1, { source: result.source }),
@@ -919,9 +920,15 @@ it('requires explicit comparison inputs and separates manual Chip/Gun, device, n
     ),
   );
   await screen.findByText('출처 device · Synthetic');
-  expect(screen.queryByRole('list', { name: '거리별 PB 결과' })).not.toBeInTheDocument();
-  await userEvent.click(screen.getByRole('button', { name: 'PB 비교 적용' }));
-  expect(screen.getByRole('alert')).toHaveTextContent('직접 선택');
+  expect(screen.getByLabelText('PB 시간 기준')).toHaveValue('chip-preferred');
+  expect(screen.getByLabelText('PB 거리 기준')).toHaveValue('standard');
+  expect(screen.getByLabelText('PB 기준일')).toHaveValue('2026-10-31');
+  expect(screen.getByRole('list', { name: '거리별 PB 결과' })).toHaveTextContent(
+    '10000 m · Chip · 90 초',
+  );
+  expect(screen.getByRole('list', { name: '각 기록 PB 비교 기준' })).toHaveTextContent(
+    '선택 기준 Chip · 0 초 · 0초 기록',
+  );
   await applyPb();
   const winners = screen.getByRole('list', { name: '거리별 PB 결과' });
   expect(winners).toHaveTextContent('10000 m · Chip · 90 초');
@@ -1005,9 +1012,11 @@ it('marks loaded pages as partial, recalculates after pagination and resets poli
   expect(await screen.findByText('전체 2개 기록을 비교했습니다.')).toBeInTheDocument();
   expect(screen.getByRole('list', { name: '거리별 PB 결과' })).toHaveTextContent('90 초');
   mounted.rerender(view(api, 'other', 'new-session'));
-  expect(await screen.findByText('비교 기준을 선택하고 적용하세요.')).toBeInTheDocument();
-  expect(screen.getByLabelText('PB 시간 기준')).toHaveValue('');
-  expect(screen.queryByRole('list', { name: '거리별 PB 결과' })).not.toBeInTheDocument();
+  expect(screen.getByLabelText('PB 시간 기준')).toHaveValue('chip-preferred');
+  expect(screen.getByLabelText('PB 거리 기준')).toHaveValue('standard');
+  expect(screen.getByLabelText('PB 기준일')).toHaveValue('2026-10-31');
+  await screen.findByText(/다음 페이지가 있어 전체 PB 비교는 미완료/);
+  expect(screen.getByRole('list', { name: '거리별 PB 결과' })).toHaveTextContent('100 초');
 });
 it('recalculates after confirmed result deletion and hides stale winners after a failed refresh', async () => {
   let records = [pbRecord(1, { chipSeconds: 90 }), pbRecord(2)];
@@ -1511,4 +1520,38 @@ it('prevents detail navigation during an in-flight delete and permits it after f
       within(section).getByRole('button', { name: '대회 상세 · 날짜 변경 검토' }),
     ).toBeEnabled(),
   );
+});
+
+it('shows null-only Gun fallback as the default winner and each selected basis while keeping original times', async () => {
+  const requests: TransportRequest[] = [];
+  const records = [
+    pbRecord(1, { chipSeconds: 100, gunSeconds: 1 }),
+    pbRecord(2, { chipSeconds: null, gunSeconds: 90 }),
+    pbRecord(3, { chipSeconds: 0, gunSeconds: 1 }),
+  ];
+  render(
+    view(
+      transport((request) => {
+        requests.push(request);
+        return request.path.includes('/race-results')
+          ? { status: 200, body: page('race-result', records) }
+          : lists(request);
+      }),
+    ),
+  );
+  await screen.findByText('Chip 미상 초 · Gun 90 초');
+  const winners = screen.getByRole('list', { name: '거리별 PB 결과' });
+  expect(winners).toHaveTextContent('10000 m · Gun · 90 초');
+  expect(winners).not.toHaveTextContent('1 초');
+  const bases = screen.getByRole('list', { name: '각 기록 PB 비교 기준' });
+  expect(bases).toHaveTextContent('선택 기준 Chip · 100 초');
+  expect(bases).toHaveTextContent('선택 기준 Gun · 90 초');
+  expect(bases).toHaveTextContent('선택 기준 Chip · 0 초 · 0초 기록');
+  expect(screen.getByText('Chip 100 초 · Gun 1 초')).toBeInTheDocument();
+  expect(screen.getByText('Chip 0 초 · Gun 1 초')).toBeInTheDocument();
+  await applyPb('standard', 'gun');
+  expect(winners).toHaveTextContent('Gun · 1 초');
+  await applyPb('standard', 'chip-preferred');
+  expect(winners).toHaveTextContent('Gun · 90 초');
+  expect(requests.every((request) => request.method === 'GET')).toBe(true);
 });

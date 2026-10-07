@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   calculateRacePersonalBests,
   RacePersonalBestInputError,
+  racePersonalBestPolicySchema,
 } from '../src/race-personal-bests.js';
 const id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const secondId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
@@ -213,5 +214,104 @@ describe('explicit-policy race PB candidates; pure, not verification or ownershi
     expect(() => calculateRacePersonalBests({ records: [], policy, ignored: 'x' })).toThrow(
       RacePersonalBestInputError,
     );
+  });
+});
+
+describe('chip-preferred default policy', () => {
+  const preferred = {
+    distance: { kind: 'standard' },
+    time: { kind: 'chip-preferred' },
+    period: policy.period,
+  };
+  it('compares Chip and null-only Gun fallback in one distance group with original values preserved', () => {
+    const records = [base, { ...base, id: secondId, chipSeconds: null, gunSeconds: 900 }];
+    const before = JSON.stringify(records);
+    const result = calculate(records, preferred);
+    expect(result.groups).toHaveLength(1);
+    expect(result.groups[0]?.timeKind).toBe('chip-preferred');
+    expect(result.groups[0]?.best.timeKind).toBe('gun');
+    expect(result.groups[0]?.best.seconds).toBe(900);
+    expect(result.groups[0]?.candidates.map((x) => x.timeKind)).toEqual(['gun', 'chip']);
+    expect(result.evaluations.map((x) => [x.timeKind, x.seconds])).toEqual([
+      ['chip', 1000],
+      ['gun', 900],
+    ]);
+    expect(JSON.stringify(records)).toBe(before);
+    expect(result.groups[0]?.best.record.chipSeconds).toBeNull();
+  });
+  it('does not substitute faster Gun or rescue Chip zero, and preserves unknown fallback', () => {
+    expect(calculate([{ ...base, gunSeconds: 1 }], preferred).groups[0]?.best.seconds).toBe(1000);
+    expect(
+      calculate([{ ...base, chipSeconds: 0, gunSeconds: 1 }], preferred).evaluations[0],
+    ).toMatchObject({ timeKind: 'chip', seconds: 0, exclusion: 'time_zero' });
+    expect(
+      calculate([{ ...base, chipSeconds: null, gunSeconds: null }], preferred).evaluations[0],
+    ).toMatchObject({ timeKind: 'gun', seconds: null, exclusion: 'time_unknown' });
+    expect(
+      calculate([{ ...base, chipSeconds: null, gunSeconds: 0 }], preferred).evaluations[0],
+    ).toMatchObject({ timeKind: 'gun', seconds: 0, exclusion: 'time_zero' });
+    for (const chipSeconds of [-1, NaN, Infinity, undefined])
+      expect(() => calculate([{ ...base, chipSeconds, gunSeconds: 1 }], preferred)).toThrow(
+        RacePersonalBestInputError,
+      );
+  });
+  it('uses stable dates and IDs across mixed time bases rather than preferring a Chip tie', () => {
+    const result = calculate(
+      [
+        { ...base, localDate: '2026-10-07' },
+        { ...base, id: secondId, localDate: '2026-10-06', chipSeconds: null, gunSeconds: 1000 },
+      ],
+      preferred,
+    );
+    expect(result.groups[0]?.best.record.id).toBe(secondId);
+    expect(
+      calculate(
+        [
+          { ...base, chipSeconds: null, gunSeconds: 1000 },
+          { ...base, id: secondId },
+        ],
+        preferred,
+      ).groups[0]?.best.record.id,
+    ).toBe(id);
+  });
+  it('keeps all four official classes, exact custom grouping and device exclusion', () => {
+    for (const [meters, category] of [
+      [5000, '5k'],
+      [10000, '10k'],
+      [21097.5, 'half-marathon'],
+      [42195, 'marathon'],
+    ] as const)
+      expect(
+        calculate([{ ...base, officialDistanceMeters: meters }], preferred).groups[0]?.distance,
+      ).toMatchObject({ kind: 'standard', class: category });
+    expect(calculate([{ ...base, officialDistanceMeters: 5000.01 }], preferred).groups).toEqual([]);
+    expect(
+      calculate([{ ...base, officialDistanceMeters: 5000.01 }], {
+        ...preferred,
+        distance: { kind: 'exact' },
+      }).groups[0]?.distance,
+    ).toEqual({ kind: 'exact', meters: 5000.01 });
+    expect(
+      calculate(
+        [
+          {
+            ...base,
+            source: { kind: 'device', providerLabel: 'Synthetic' },
+            chipSeconds: null,
+            gunSeconds: 1,
+          },
+        ],
+        preferred,
+      ).evaluations[0]?.exclusion,
+    ).toBe('device_source');
+  });
+  it('strictly distinguishes named default from explicit options without accepting mixed policies', () => {
+    expect(racePersonalBestPolicySchema.safeParse(preferred).success).toBe(true);
+    for (const selected of [
+      { ...preferred, timeKinds: ['chip'] },
+      { ...preferred, time: { kind: 'chip-or-zero-fallback' } },
+      { ...preferred, permission: true },
+    ])
+      expect(() => calculate([base], selected)).toThrow(RacePersonalBestInputError);
   });
 });

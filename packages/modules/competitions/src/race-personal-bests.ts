@@ -9,25 +9,35 @@ import {
 const MAX_RECORDS = 5000;
 const MAX_INPUT_BYTES = 4 * 1024 * 1024;
 const timeKindSchema = z.enum(['chip', 'gun']);
-const policySchema = z
-  .strictObject({
-    distance: z.discriminatedUnion('kind', [
-      z.strictObject({ kind: z.literal('standard') }),
-      z.strictObject({ kind: z.literal('exact') }),
-    ]),
-    timeKinds: z
-      .array(timeKindSchema)
-      .min(1)
-      .max(2)
-      .refine((values) => new Set(values).size === values.length),
-    // Inclusive civil dates in each record's stored timezone. No fabricated
-    // instant ordering across timezones; caller explicitly supplies its cutoff.
-    period: z.strictObject({
-      from: localDateSchema.nullable(),
-      to: localDateSchema.nullable(),
-      cutoff: localDateSchema,
+const policyFields = {
+  distance: z.discriminatedUnion('kind', [
+    z.strictObject({ kind: z.literal('standard') }),
+    z.strictObject({ kind: z.literal('exact') }),
+  ]),
+
+  // Inclusive civil dates in each record's stored timezone. No fabricated
+  // instant ordering across timezones; caller explicitly supplies its cutoff.
+  period: z.strictObject({
+    from: localDateSchema.nullable(),
+    to: localDateSchema.nullable(),
+    cutoff: localDateSchema,
+  }),
+};
+export const racePersonalBestPolicySchema = z
+  .union([
+    z.strictObject({
+      ...policyFields,
+      time: z.strictObject({ kind: z.literal('chip-preferred') }),
     }),
-  })
+    z.strictObject({
+      ...policyFields,
+      timeKinds: z
+        .array(timeKindSchema)
+        .min(1)
+        .max(2)
+        .refine((values) => new Set(values).size === values.length),
+    }),
+  ])
   .refine(
     (value) =>
       value.period.from === null ||
@@ -36,9 +46,9 @@ const policySchema = z
   );
 const inputSchema = z.strictObject({
   records: z.array(raceResultCompatibleReadSchema).max(MAX_RECORDS),
-  policy: policySchema,
+  policy: racePersonalBestPolicySchema,
 });
-export type RacePersonalBestPolicy = z.infer<typeof policySchema>;
+export type RacePersonalBestPolicy = z.infer<typeof racePersonalBestPolicySchema>;
 export type RacePersonalBestTimeKind = z.infer<typeof timeKindSchema>;
 export type RacePersonalBestExclusion =
   | 'device_source'
@@ -76,7 +86,7 @@ export type RacePersonalBestEvaluation = Readonly<{
 }>;
 export type RacePersonalBestGroup = Readonly<{
   distance: NonNullable<RacePersonalBestEvaluation['distance']>;
-  timeKind: RacePersonalBestTimeKind;
+  timeKind: RacePersonalBestTimeKind | 'chip-preferred';
   best: RacePersonalBestEvaluation;
   candidates: readonly RacePersonalBestEvaluation[];
 }>;
@@ -151,7 +161,11 @@ export function calculateRacePersonalBests(raw: unknown): Readonly<{
   const evaluations: RacePersonalBestEvaluation[] = [];
   const grouped = new Map<string, RacePersonalBestEvaluation[]>();
   for (const record of [...records].sort((a, b) => compareText(a.id, b.id))) {
-    for (const timeKind of [...policy.timeKinds].sort(compareText)) {
+    const timeKinds: RacePersonalBestTimeKind[] =
+      'time' in policy
+        ? [record.chipSeconds === null ? 'gun' : 'chip']
+        : [...policy.timeKinds].sort(compareText);
+    for (const timeKind of timeKinds) {
       const distance = distanceFor(record, policy);
       const seconds = timeKind === 'chip' ? record.chipSeconds : record.gunSeconds;
       let exclusion: RacePersonalBestExclusion | null = null;
@@ -176,7 +190,7 @@ export function calculateRacePersonalBests(raw: unknown): Readonly<{
       };
       evaluations.push(evaluated);
       if (exclusion === null && distance !== null) {
-        const key = `${distance.meters}:${timeKind}`;
+        const key = `${distance.meters}:${'time' in policy ? 'chip-preferred' : timeKind}`;
         const group = grouped.get(key) ?? [];
         group.push(evaluated);
         grouped.set(key, group);
@@ -193,7 +207,12 @@ export function calculateRacePersonalBests(raw: unknown): Readonly<{
     );
     const best = candidates[0];
     if (best?.distance)
-      groups.push({ distance: best.distance, timeKind: best.timeKind, best, candidates });
+      groups.push({
+        distance: best.distance,
+        timeKind: 'time' in policy ? 'chip-preferred' : best.timeKind,
+        best,
+        candidates,
+      });
   }
   groups.sort(
     (a, b) => a.distance.meters - b.distance.meters || compareText(a.timeKind, b.timeKind),

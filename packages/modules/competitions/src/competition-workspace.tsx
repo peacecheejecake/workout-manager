@@ -69,6 +69,8 @@ export interface CompetitionWorkspaceProps {
   transport: AuthenticatedTransport;
   /** Inject a cryptographically random command key for deterministic host tests. */
   newCommandKey?: () => string;
+  /** Civil cutoff clock for PB presentation; no saved record timestamp is changed. */
+  personalBestNow?: () => Date;
 }
 export function CompetitionWorkspace(props: CompetitionWorkspaceProps) {
   if (props.athleteId === null || props.athleteId.length === 0 || props.sessionId.length === 0)
@@ -156,8 +158,8 @@ function WorkspaceContent(props: CompetitionWorkspaceProps & { athleteId: string
           직접 입력한 대회 기록도 PB 인정 대상입니다. 링크나 인증 자료가 첨부되면 첨부 마크를
           표시하며, 첨부만으로 진위 확인 완료를 뜻하지 않습니다. 기기 추정 split은 자동으로 PB에
           포함하지 않습니다. 원기록은 유지합니다. 현재 목록은 저장 ID 순서이며 PB 순위가 아닙니다.
-          아래에서 비교 기준을 직접 선택해 PB를 계산할 수 있습니다. Chip/Gun 및 거리별 기본 비교
-          기준은 아직 확정되지 않았습니다.
+          기본 PB는 공식 5k·10k·하프·마라톤에서 Chip을 우선합니다. Chip이 미상(null)인 기록만
+          Gun으로 비교합니다. 아래에서 비교 기준을 직접 선택해 PB를 계산할 수 있습니다.
         </p>
         <p>
           기존 대회 날짜는 대회 상세에서 전체 영향을 검토한 뒤 별도로 승인합니다. 날짜 외 정보
@@ -241,6 +243,7 @@ function WorkspaceContent(props: CompetitionWorkspaceProps & { athleteId: string
           commandKey={commandKey}
           relations={relations}
           eventChoices={eventChoices}
+          personalBestNow={props.personalBestNow}
         />
       ) : (
         <FamilyPanel
@@ -302,7 +305,9 @@ function WorkspaceContent(props: CompetitionWorkspaceProps & { athleteId: string
             </>
           )}
         >
-          {({ records, state }) => <PersonalBestComparison records={records} state={state} />}
+          {({ records, state }) => (
+            <PersonalBestComparison records={records} state={state} now={props.personalBestNow} />
+          )}
         </FamilyPanel>
       )}
       <FamilyPanel
@@ -665,21 +670,30 @@ const pbExclusions: Record<RacePersonalBestExclusion, string> = {
 function PersonalBestComparison({
   records,
   state,
+  now,
 }: {
   records: readonly RaceResultCompatibleRead[];
   state: 'pending' | 'error' | 'partial' | 'complete';
+  now?: (() => Date) | undefined;
 }) {
   const uid = useId();
-  const [distance, setDistance] = useState('');
-  const [time, setTime] = useState('');
+  const [distance, setDistance] = useState('standard');
+  const [time, setTime] = useState('chip-preferred');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
-  const [cutoff, setCutoff] = useState('');
-  const [policy, setPolicy] = useState<RacePersonalBestPolicy | null>(null);
+  const [cutoff, setCutoff] = useState(() => {
+    const date = now?.() ?? new Date();
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  });
+  const [policy, setPolicy] = useState<RacePersonalBestPolicy>(() => ({
+    distance: { kind: 'standard' },
+    time: { kind: 'chip-preferred' },
+    period: { from: null, to: null, cutoff },
+  }));
   const [inputError, setInputError] = useState<string | null>(null);
   let comparison: ReturnType<typeof calculateRacePersonalBests> | null = null;
   let resultError: string | null = null;
-  if (policy !== null && state !== 'pending' && state !== 'error') {
+  if (state !== 'pending' && state !== 'error') {
     try {
       comparison = calculateRacePersonalBests({ records, policy });
     } catch {
@@ -691,7 +705,7 @@ function PersonalBestComparison({
     event.preventDefault();
     if (
       (distance !== 'standard' && distance !== 'exact') ||
-      !['chip', 'gun', 'both'].includes(time) ||
+      !['chip-preferred', 'chip', 'gun', 'both'].includes(time) ||
       cutoff === ''
     ) {
       setInputError('거리, 시간 기준과 기준일을 직접 선택하세요.');
@@ -704,7 +718,7 @@ function PersonalBestComparison({
         records: [],
         policy: {
           distance: { kind: distance },
-          timeKinds,
+          ...(time === 'chip-preferred' ? { time: { kind: 'chip-preferred' } } : { timeKinds }),
           period: { from: from || null, to: to || null, cutoff },
         },
       }).policy;
@@ -717,7 +731,10 @@ function PersonalBestComparison({
   return (
     <section aria-label="거리별 PB 비교">
       <h3>거리별 PB 비교</h3>
-      <p>비교 입력은 이 화면에만 적용됩니다. 기본 정책이나 기록을 저장하지 않습니다.</p>
+      <p>
+        기본 기준은 Chip 우선 · 미상일 때 Gun입니다. 비교 입력은 이 화면에만 적용되며 원기록을
+        변경하지 않습니다.
+      </p>
       <form className={styles.form} onSubmit={compare}>
         <fieldset>
           <legend>비교 기준</legend>
@@ -728,7 +745,6 @@ function PersonalBestComparison({
               value={distance}
               onChange={(e) => setDistance(e.target.value)}
             >
-              <option value="">직접 선택</option>
               <option value="standard">표준 종목의 정확한 거리</option>
               <option value="exact">공식 거리의 정확한 m 값</option>
             </select>
@@ -736,7 +752,7 @@ function PersonalBestComparison({
           <div className={styles.field}>
             <label htmlFor={`${uid}-time`}>PB 시간 기준</label>
             <select id={`${uid}-time`} value={time} onChange={(e) => setTime(e.target.value)}>
-              <option value="">직접 선택</option>
+              <option value="chip-preferred">Chip 우선 · 미상일 때 Gun</option>
               <option value="chip">Chip</option>
               <option value="gun">Gun</option>
               <option value="both">Chip · Gun 각각 비교</option>
@@ -780,16 +796,14 @@ function PersonalBestComparison({
           기록을 불러오지 못해 PB 결과를 표시할 수 없습니다. 목록 새로고침으로 다시 확인하세요.
         </p>
       ) : null}
-      {policy === null ? (
-        <p>비교 기준을 선택하고 적용하세요.</p>
-      ) : (
-        <p>
-          적용 기준: {policy.distance.kind === 'standard' ? '표준 종목' : '정확한 m 값'} ·{' '}
-          {policy.timeKinds.map((k) => (k === 'chip' ? 'Chip' : 'Gun')).join(' · ')} ·{' '}
-          {policy.period.from ?? '시작 제한 없음'} ~ {policy.period.to ?? '끝 제한 없음'} · 기준일{' '}
-          {policy.period.cutoff}
-        </p>
-      )}
+      <p>
+        적용 기준: {policy.distance.kind === 'standard' ? '표준 종목' : '정확한 m 값'} ·{' '}
+        {'time' in policy
+          ? 'Chip 우선 · 미상일 때 Gun'
+          : policy.timeKinds.map((k) => (k === 'chip' ? 'Chip' : 'Gun')).join(' · ')}{' '}
+        · {policy.period.from ?? '시작 제한 없음'} ~ {policy.period.to ?? '끝 제한 없음'} · 기준일{' '}
+        {policy.period.cutoff}
+      </p>
       {resultError ? <p role="alert">{resultError}</p> : null}
       {comparison ? (
         <>
@@ -809,7 +823,7 @@ function PersonalBestComparison({
               {comparison.groups.map((group) => (
                 <li key={`${group.distance.meters}:${group.timeKind}`}>
                   <strong>
-                    {group.distance.meters} m · {group.timeKind === 'chip' ? 'Chip' : 'Gun'} ·{' '}
+                    {group.distance.meters} m · {group.best.timeKind === 'chip' ? 'Chip' : 'Gun'} ·{' '}
                     {group.best.seconds} 초
                   </strong>
                   {' · '}
@@ -827,6 +841,15 @@ function PersonalBestComparison({
               ))}
             </ul>
           )}
+          <ul aria-label="각 기록 PB 비교 기준">
+            {comparison.evaluations.map((evaluation, index) => (
+              <li key={`${evaluation.record.id}:${evaluation.timeKind}`}>
+                기록 {index + 1} · {evaluation.record.localDate} · 선택 기준{' '}
+                {evaluation.timeKind === 'chip' ? 'Chip' : 'Gun'} · {evaluation.seconds ?? '미상'}{' '}
+                초{evaluation.exclusion ? ` · ${pbExclusions[evaluation.exclusion]}` : ''}
+              </li>
+            ))}
+          </ul>
           <ul aria-label="PB 제외 사유">
             {Object.entries(pbExclusions).map(([reason, label]) => {
               const count = comparison.evaluations.filter((e) => e.exclusion === reason).length;
@@ -1018,6 +1041,7 @@ function ResultPanel({
   commandKey,
   relations,
   eventChoices,
+  personalBestNow,
 }: {
   display: 'active' | 'inactive';
   capability: NonNullable<CompetitionWorkspaceProps['resultEditing']>;
@@ -1026,6 +1050,7 @@ function ResultPanel({
   commandKey: () => string;
   relations: CompetitionRelations | undefined;
   eventChoices: readonly { id: string; label: string }[] | undefined;
+  personalBestNow?: (() => Date) | undefined;
 }) {
   const api: PanelApi<RaceResultCompatibleRead, ResultSubmission> = {
     read: (id, signal) => capability.results.read({ schemaVersion: 2, id }, signal),
@@ -1135,7 +1160,9 @@ function ResultPanel({
           </>
         )}
       >
-        {({ records, state }) => <PersonalBestComparison records={records} state={state} />}
+        {({ records, state }) => (
+          <PersonalBestComparison records={records} state={state} now={personalBestNow} />
+        )}
       </FamilyPanel>
     </ResultEditorContext>
   );
