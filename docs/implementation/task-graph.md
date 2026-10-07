@@ -776,7 +776,7 @@ Native shell·collector는 M1c 통합과 native feasibility 이후 M2 Web 확장
 | M2-02g 재사용 대회·기록 화면 | M2-02e, M2-02f | [로컬 수용 완료](progress/M2-02g.md); 실제 Host·PB·Plan 영향 승인은 후속 |
 | M2-02h 실제 대회·기록 Host | M2-02g | [완료](progress/M2-02h.md); canonical 경로·상세·인증 transport·실제 OIDC/DB 수용 |
 | M2-02i 날짜·Plan 영향 승인 | M2-02e | [진행 중](progress/M2-02i.md); 설계 준비, 전체 affected manifest·별도 원자적 승인 미구현 |
-| M2-02j 거리별 PB | M2-02g | [진행 중](progress/M2-02j.md); 직접 입력 대회 기록도 PB; 링크·인증 첨부 근거 마크와 진위 검토 구분; chip/gun·거리 분류 미확정, 기기 추정 split 자동 승격 금지 |
+| M2-02j 거리별 PB | M2-02g | [진행 중](progress/M2-02j.md); 직접 입력 대회 기록도 PB; 링크·인증 첨부 근거 마크와 진위 검토 구분; Chip 우선·Chip null이면 Gun/공식 5km·10km·하프·풀 분류 확정·실제 두 Host 4/4; 정상 runtime·최신 closure/phase 검증 별도, 기기 추정 split 자동 승격 금지 |
 | M2-02k app 처리 동의 연결 | M2-02e, S22 v-a root 통합 | [완료](progress/M2-02k.md); 새 처리만 gate, 조회/삭제/성공 replay 유지 |
 | M2-02 대회·기록 | M2-01, M2-02a, M2-02b, M2-02c | competitions; 코스 참조·결과. M2-01의 외부 gate는 그대로 선행 조건 |
 | M2-03 갤러리·media | M1c-04 | gallery/media; 객체 권한·upload·video·삭제 |
