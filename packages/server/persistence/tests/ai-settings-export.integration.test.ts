@@ -140,7 +140,7 @@ async function saveTwo(id: string) {
 }
 async function exported(id: string) {
   const artifact = await operations.exportAccount(id);
-  if (artifact.schemaVersion !== 33) throw new Error('Expected current export33');
+  if (artifact.schemaVersion !== 34) throw new Error('Expected current export34');
   return artifact;
 }
 beforeAll(async () => {

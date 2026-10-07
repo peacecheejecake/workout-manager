@@ -133,7 +133,7 @@ async function exportCurrentDrillAccount(database: Database, athleteId: string) 
   const value = accountExportSchema.parse(
     await createOperationsRepository(database).exportAccount(athleteId),
   );
-  if (value.schemaVersion !== 33) throw new Error('EXPECTED_CURRENT_ACCOUNT_EXPORT_V33');
+  if (value.schemaVersion !== 34) throw new Error('EXPECTED_CURRENT_ACCOUNT_EXPORT_V34');
   // This drill seeds neither preferences nor races. Missing collections are not empty data.
   assert.deepEqual(value.data.aiSettingsHeads, []);
   assert.deepEqual(value.data.aiSettingsRevisions, []);
@@ -2285,7 +2285,7 @@ async function execute() {
       assert.equal(initialManual.userReport?.sessionRpe, 0);
       assert.equal(initialManual.userReport?.note, 'Synthetic manual self-report');
       const before = await exportCurrentDrillAccount(sourceDb, athleteId);
-      assert.equal(before.schemaVersion, 33);
+      assert.equal(before.schemaVersion, 34);
       const originalHistory = before.data.overlayRevisions.filter(
         (row) => row.activity_id === manual.activityId,
       );
@@ -2347,7 +2347,7 @@ async function execute() {
         await seedCoachingCandidateRecords(sourceOwner, athleteId, seededRun.run.id),
       );
       const coachingExport = await exportCurrentDrillAccount(sourceDb, athleteId);
-      if (coachingExport.schemaVersion !== 33) throw new Error('Expected coaching export v33');
+      if (coachingExport.schemaVersion !== 34) throw new Error('Expected coaching export v34');
       assert.deepEqual(
         coachingExport.data.evidenceAppBindings.map((row) => ({
           id: row.evidence_snapshot_id,
@@ -2493,7 +2493,7 @@ async function execute() {
       4,
     );
     checks.push('two_synthetic_tenants_seeded');
-    checks.push('synthetic_candidate_bodies_in_current_export_v33_historical_v8_artifact_readable');
+    checks.push('synthetic_candidate_bodies_in_current_export_v34_historical_v8_artifact_readable');
     // M1-06b-tmp: the retained tenant also holds an unofficial Garmin session (sealed under a
     // throwaway key), a pinned profile and one ledger entry. The export carries none of the
     // session; the restore below must not bring the session back.
@@ -2612,7 +2612,7 @@ async function execute() {
       [absentConsentAthlete, absentConsentCandidate],
     ] as const) {
       const candidateExport = await exportCurrentDrillAccount(sourceDb, athleteId);
-      if (candidateExport.schemaVersion !== 33) throw new Error('Expected candidate export v33');
+      if (candidateExport.schemaVersion !== 34) throw new Error('Expected candidate export v34');
       assert.deepEqual(candidateExport.data.coachingDecisions[0]?.body, records.decision.body);
       assert.deepEqual(candidateExport.data.coachingProposals[0]?.body, records.proposal.body);
       assert.deepEqual(candidateExport.data.coachingCandidates[0]?.body, records.candidate.body);
@@ -5987,7 +5987,7 @@ async function execute() {
       purgedConstraintEvidence,
     );
     const constraintExport = await exportCurrentDrillAccount(restoreDb, removedConstraintAthlete);
-    assert.ok(constraintExport.schemaVersion === 33);
+    assert.ok(constraintExport.schemaVersion === 34);
     assert.equal(constraintExport.data.evidenceSnapshots[0]?.body, null);
     assert.equal(constraintExport.data.coachingDecisions[0]?.body, null);
     assert.equal(constraintExport.data.coachingDecisions[0]?.purged_reason, 'source_deleted');
@@ -6021,7 +6021,7 @@ async function execute() {
       revokedConsent,
     );
     const withdrawnExport = await exportCurrentDrillAccount(restoreDb, withdrawnAthlete);
-    if (withdrawnExport.schemaVersion !== 33) throw new Error('Expected evidence export v33');
+    if (withdrawnExport.schemaVersion !== 34) throw new Error('Expected evidence export v34');
     assert.equal(withdrawnExport.data.evidenceSnapshots.length, 1);
     assert.equal(withdrawnExport.data.evidenceSnapshots[0]?.id, beforeWithdrawal.id);
     assert.equal(withdrawnExport.data.evidenceSnapshots[0]?.body, null);
@@ -6072,7 +6072,7 @@ async function execute() {
       { kind: 'ai', granted: false, revision: 0 },
     );
     const absentExport = await exportCurrentDrillAccount(restoreDb, absentConsentAthlete);
-    if (absentExport.schemaVersion !== 33) throw new Error('Expected evidence export v33');
+    if (absentExport.schemaVersion !== 34) throw new Error('Expected evidence export v34');
     assert.deepEqual(absentExport.data.consents, [absentAiTenantAppConsent]);
     assert.equal(absentExport.data.evidenceSnapshots.length, 1);
     assert.equal(absentExport.data.evidenceSnapshots[0]?.id, beforeConsentDeletion.snapshot.id);
@@ -6768,7 +6768,7 @@ async function execute() {
     assert.equal(retainedManual.userReport?.rpeReportedAt, null);
     assert.equal(retainedManual.userReport?.note, null);
     const retainedExport = await exportCurrentDrillAccount(restoreDb, retainedAthlete);
-    if (retainedExport.schemaVersion !== 33) throw new Error('Expected resource export v33');
+    if (retainedExport.schemaVersion !== 34) throw new Error('Expected resource export v34');
     // Text, file, URL and the reviewed coach source; the source deleted before
     // the backup stays out of the export exactly as it did before restoration.
     assert.equal(retainedExport.data.resources.length, 4);
@@ -7189,7 +7189,7 @@ async function execute() {
       (await createPlanningRepository(restoreDb).read(retainedAthlete)).head,
       completion.plan,
     );
-    if (retainedExport.schemaVersion !== 33) throw new Error('Expected coaching export v33');
+    if (retainedExport.schemaVersion !== 34) throw new Error('Expected coaching export v34');
     assert.equal(retainedExport.data.planScenarios.length, 1);
     assert.equal(retainedExport.data.planScenarioRevisions.length, 2);
     assert.equal(retainedExport.data.planScenarioApplications.length, 1);
@@ -7320,7 +7320,7 @@ async function execute() {
       2,
     );
     const coachingAfterReplay = await exportCurrentDrillAccount(restoreDb, retainedAthlete);
-    if (coachingAfterReplay.schemaVersion !== 33) throw new Error('Expected coaching export v33');
+    if (coachingAfterReplay.schemaVersion !== 34) throw new Error('Expected coaching export v34');
     assert.deepEqual(coachingAfterReplay.data.coachingThreads, originalCoachingExport.threads);
     assert.deepEqual(coachingAfterReplay.data.coachingMessages, originalCoachingExport.messages);
     checks.push(
@@ -7495,7 +7495,7 @@ async function execute() {
       purgedEvidence,
     );
     const scrubbedExport = await exportCurrentDrillAccount(restoreDb, retainedAthlete);
-    if (scrubbedExport.schemaVersion !== 33) throw new Error('Expected evidence export v33');
+    if (scrubbedExport.schemaVersion !== 34) throw new Error('Expected evidence export v34');
     assert.equal(scrubbedExport.data.evidenceSnapshots[0]?.body, null);
     assert.deepEqual(scrubbedExport.data.coachingRuns[0]?.status, {
       kind: 'cancelled',

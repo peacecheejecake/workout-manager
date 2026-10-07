@@ -444,6 +444,26 @@ export async function grantOperations(
     await pool.query(
       `GRANT SELECT ON supplementary_exercise_version,supplementary_exercise_head,supplementary_routine_version,supplementary_routine_head,supplementary_routine_target_ref,supplementary_session_link,supplementary_session_target_ref,supplementary_execution,supplementary_set_log,supplementary_set_log_revision,supplementary_rest_timer TO "${runtimeRole}"`,
     );
+    // Read-only retained personal facts. Do not import the producer's DML grants.
+    const genericRoutines = await pool.query('SELECT 1 FROM schema_migrations WHERE version=23');
+    if (genericRoutines.rowCount)
+      await pool.query(`GRANT SELECT ON public.routine_blueprint_version,public.routine_blueprint_head,
+        public.routine_schedule_version,public.routine_schedule_head,public.routine_occurrence,
+        public.routine_run,public.routine_run_revision,public.routine_checklist_confirmation,
+        public.routine_step_timer TO "${runtimeRole}"`);
+    const recoveryRecords = await pool.query('SELECT 1 FROM schema_migrations WHERE version=25');
+    if (recoveryRecords.rowCount)
+      await pool.query(`GRANT SELECT ON public.recovery_method_version,public.recovery_method_head,
+        public.recovery_strategy_version,public.recovery_strategy_head,public.recovery_action_log,
+        public.recovery_action_revision TO "${runtimeRole}"`);
+    const integratedHistory = await pool.query('SELECT 1 FROM schema_migrations WHERE version=26');
+    if (integratedHistory.rowCount) {
+      await pool.query(`GRANT SELECT ON public.recovery_strategy_history,public.routine_schedule_history
+        TO "${runtimeRole}"`);
+      // Only committed facts referenced by those histories are projected. No candidate body.
+      await pool.query(`GRANT SELECT(athlete_id,approval_id,candidate_id,proposal_id,proposal_digest,
+        write_domains,result_json,approved_at) ON public.integrated_approval_v4 TO "${runtimeRole}"`);
+    }
     await pool.query(`GRANT SELECT ON integrated_dependency_head TO "${runtimeRole}"`);
     await pool.query(
       `GRANT SELECT ON resource,resource_version,resource_object,resource_share,

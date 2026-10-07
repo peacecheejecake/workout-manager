@@ -1174,7 +1174,7 @@ it('historical app audit saved output remains readable after app-only withdrawal
       { body_retained: true, purged_reason: null, ai_true: true, pinned_revision: 1 },
     ]);
     const exported = await createOperationsRepository(database).exportAccount(athleteId);
-    if (exported.schemaVersion !== 33) throw new Error('Expected current export schema');
+    if (exported.schemaVersion !== 34) throw new Error('Expected current export schema');
     expect(exported.data.coachingAnalysisOutputs[0]?.['body']).not.toBeNull();
   }
   await consent.setConsent(athleteId, {

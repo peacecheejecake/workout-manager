@@ -245,7 +245,7 @@ async function exported(fixture: Awaited<ReturnType<typeof seed>>) {
   const { database, operations } = await exporter();
   try {
     const artifact = await operations.exportAccount(fixture.athlete);
-    if (artifact.schemaVersion !== 33) throw new Error('Expected actual current v33 producer');
+    if (artifact.schemaVersion !== 34) throw new Error('Expected actual current v34 producer');
     return artifact;
   } finally {
     await database.close();

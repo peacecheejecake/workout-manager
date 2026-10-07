@@ -1,8 +1,9 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import { Pool, type PoolClient } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { migrate } from '../src/migrate.js';
+import { migrate, migrationFileNames } from '../src/migrate.js';
 import { dropIsolatedDatabase } from './drop-isolated-database.js';
 import {
   makeLocalReplayRecordEnvelope,
@@ -124,7 +125,20 @@ describe.skipIf(!enabled)(
       expect(
         (await source.query('SELECT count(*)::int AS n,max(version) AS v FROM schema_migrations'))
           .rows[0],
-      ).toEqual({ n: 106, v: 106 });
+      ).toEqual({ n: 107, v: 107 });
+      expect(migrationFileNames).toHaveLength(107);
+      for (const [version, file] of [
+        [106, '106_race_manual_review.sql'],
+        [107, '107_guard_race_review_stamp_authority.sql'],
+      ] as const) {
+        expect(migrationFileNames[version - 1]).toBe(file);
+        expect(
+          (await source.query('SELECT checksum FROM schema_migrations WHERE version=$1', [version]))
+            .rows,
+        ).toEqual([
+          { checksum: hash(await readFile(new URL(`../migrations/${file}`, import.meta.url))) },
+        ]);
+      }
       const created = await inspector.query<{ lsn: string }>(
         'SELECT lsn::text FROM pg_create_logical_replication_slot($1,$2)',
         [slot, 'pgoutput'],

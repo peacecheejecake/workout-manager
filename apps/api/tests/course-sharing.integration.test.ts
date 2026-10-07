@@ -686,7 +686,7 @@ describe('A. the owner GPX export is gated by a server-side confirmation', () =>
     });
     expect(exported.statusCode).toBe(200);
     const artifact = accountExportSchema.parse(exported.json());
-    if (artifact.schemaVersion !== 33) throw new Error('expected v33');
+    if (artifact.schemaVersion !== 34) throw new Error('expected v34');
     expect(artifact.data.courseShares).toHaveLength(1);
     expect(Object.keys(artifact.data.courseShares[0] ?? {}).sort()).toEqual(
       [
@@ -736,7 +736,7 @@ describe('A. the owner GPX export is gated by a server-side confirmation', () =>
     const after = accountExportSchema.parse(
       (await instance.inject({ method: 'POST', url: '/bff/v1/operations/export', headers })).json(),
     );
-    if (after.schemaVersion !== 33) throw new Error('expected v33');
+    if (after.schemaVersion !== 34) throw new Error('expected v34');
     expect(after.data.courseDeletions).toEqual([
       { course_id: gone, deleted_at: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/) },
     ]);
@@ -1230,7 +1230,7 @@ describe('B. the view-only link', () => {
       'course_privacy_zone',
     ])
       expect(await countRows(table, erased.athleteId), table).toBe(0);
-    // Latest104 preferences wrap103 accounting,100 app attribution and98 races.
+    // Latest106 review cleanup wraps104 preferences,103 accounting,100 app attribution and98 races.
     // The original059..048 course erasure suffix still locks77206→0 before rows.
     const suffix = [
       'erase_account_before_races',
@@ -1273,8 +1273,9 @@ describe('B. the view-only link', () => {
       if (!next || chain.length > 60) break;
       name = next;
     }
-    expect(chain.slice(0, 10)).toEqual([
+    expect(chain.slice(0, 11)).toEqual([
       'erase_account',
+      'erase_account_before_manual_review',
       'erase_account_before_ai_settings',
       'erase_account_before_global_budget',
       'erase_account_before_app_binding',
@@ -2062,7 +2063,7 @@ describe('M2-01as: a place gives out at most 10 links, ever', () => {
     });
     expect(exported.statusCode).toBe(200);
     const artifact = accountExportSchema.parse(exported.json());
-    if (artifact.schemaVersion !== 33) throw new Error('expected v33');
+    if (artifact.schemaVersion !== 34) throw new Error('expected v34');
     const [row] = await budgetOf(athleteId);
     expect(artifact.data.courseShareAreaBudgets).toEqual([
       {

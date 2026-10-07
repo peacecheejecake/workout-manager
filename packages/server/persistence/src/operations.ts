@@ -43,6 +43,109 @@ const candidateEvidenceAvailable = `EXISTS(SELECT 1 FROM coaching_decision d
 const candidateAvailable = `(${candidateEvidenceAvailable} AND EXISTS(SELECT 1 FROM consent c
   WHERE c.athlete_id=coaching_candidate.athlete_id AND c.kind='ai' AND c.granted))`;
 const collections = [
+  // Generic routine/recovery facts are separate from supplementary workouts.
+  // Retain own correction history and minimal deletion tombstones, as IntakeEntry does.
+  [
+    'genericRoutineBlueprintVersions',
+    'routine_blueprint_version',
+    'routine_id,version_id,version,previous_version_id,record_json,created_at',
+    'routine_id,version,version_id',
+  ],
+  [
+    'genericRoutineBlueprintHeads',
+    'routine_blueprint_head',
+    'routine_id,version_id,version,favorite,visibility',
+    'routine_id',
+  ],
+  [
+    'genericRoutineScheduleVersions',
+    'routine_schedule_version',
+    'schedule_id,version_id,prior_version_id,blueprint_routine_id,blueprint_version_id,source_plan_version_id,record_json,created_at',
+    'schedule_id,created_at,version_id',
+  ],
+  [
+    'genericRoutineScheduleHeads',
+    'routine_schedule_head',
+    'schedule_id,version_id,notification_muted',
+    'schedule_id',
+  ],
+  [
+    'genericRoutineOccurrences',
+    'routine_occurrence',
+    'id,schedule_id,schedule_version_id,blueprint_routine_id,blueprint_version_id,anchor_key,scheduled_at,record_json',
+    'schedule_id,anchor_key,id',
+  ],
+  [
+    'genericRoutineRuns',
+    'routine_run',
+    'id,blueprint_routine_id,blueprint_version_id,occurrence_id,revision,state,record_json',
+    'id',
+  ],
+  [
+    'genericRoutineRunRevisions',
+    'routine_run_revision',
+    'run_id,revision,record_json,recorded_at',
+    'run_id,revision',
+  ],
+  [
+    'genericRoutineChecklistConfirmations',
+    'routine_checklist_confirmation',
+    'id,run_id,step_id,revision_id,occurred_at,state',
+    'run_id,occurred_at,id',
+  ],
+  [
+    'genericRoutineStepTimers',
+    'routine_step_timer',
+    'run_id,step_id,revision,state,duration_seconds,started_at,paused_at,paused_milliseconds::text AS paused_milliseconds',
+    'run_id,step_id',
+  ],
+  [
+    'recoveryMethodVersions',
+    'recovery_method_version',
+    'method_id,version_id,version,record_json',
+    'method_id,version,version_id',
+  ],
+  ['recoveryMethodHeads', 'recovery_method_head', 'method_id,version,version_id', 'method_id'],
+  [
+    'recoveryStrategyVersions',
+    'recovery_strategy_version',
+    'strategy_id,version_id,version,previous_version_id,previous_version,record_json',
+    'strategy_id,version,version_id',
+  ],
+  [
+    'recoveryStrategyHeads',
+    'recovery_strategy_head',
+    'strategy_id,version,version_id',
+    'strategy_id',
+  ],
+  ['recoveryActions', 'recovery_action_log', 'action_id,revision,revision_id,status', 'action_id'],
+  [
+    'recoveryActionRevisions',
+    'recovery_action_revision',
+    'action_id,revision,revision_id,status,record_json',
+    'action_id,revision',
+  ],
+  [
+    'recoveryStrategyHistory',
+    'recovery_strategy_history',
+    'version_id,approval_id,action',
+    'version_id',
+  ],
+  [
+    'genericRoutineScheduleHistory',
+    'routine_schedule_history',
+    'version_id,approval_id,action',
+    'version_id',
+  ],
+  // EXISTS avoids UNION/JOIN fan-out if both histories reference one approval.
+  [
+    'referencedIntegratedApprovalFacts',
+    `(SELECT a.athlete_id,a.approval_id,a.candidate_id,a.proposal_id,a.proposal_digest,a.write_domains,a.result_json,a.approved_at FROM integrated_approval_v4 a WHERE
+    EXISTS(SELECT 1 FROM recovery_strategy_history h WHERE h.athlete_id=a.athlete_id AND h.approval_id=a.approval_id)
+    OR EXISTS(SELECT 1 FROM routine_schedule_history h WHERE h.athlete_id=a.athlete_id AND h.approval_id=a.approval_id)) AS retained_approval`,
+    'approval_id,candidate_id,proposal_id,proposal_digest,write_domains,result_json,approved_at',
+    'approved_at,approval_id',
+  ],
   ['aiSettingsHeads', 'ai_settings_head', 'revision', 'revision'],
   [
     'aiSettingsRevisions',
@@ -672,7 +775,7 @@ export function createOperationsRepository(database: Database): OperationsReposi
         if (!row.ok) throw new OperationsError('EXPORT_TOO_LARGE');
         const data = Object.fromEntries(collections.map(([name]) => [name, row.data[name] ?? []]));
         const artifact = accountExportSchema.parse({
-          schemaVersion: 33,
+          schemaVersion: 34,
           athleteId,
           exportedAt: new Date().toISOString(),
           data,

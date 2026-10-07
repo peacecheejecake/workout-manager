@@ -923,8 +923,8 @@ it('authenticates original source100 families, upgrades102→105 normally, and r
     const withdrawnExport = accountExportSchema.parse(
       await createOperationsRepository(targetDatabase).exportAccount(owner),
     );
-    expect(withdrawnExport.schemaVersion).toBe(33);
-    if (withdrawnExport.schemaVersion !== 33) throw new Error('Expected latest export33');
+    expect(withdrawnExport.schemaVersion).toBe(34);
+    if (withdrawnExport.schemaVersion !== 34) throw new Error('Expected latest export34');
     expect(withdrawnExport.data.evidenceAppBindings.every((row) => row.app_revision === 1)).toBe(
       true,
     );
@@ -989,8 +989,8 @@ it('authenticates original source100 families, upgrades102→105 normally, and r
   const exported = accountExportSchema.parse(
     await createOperationsRepository(targetDatabase).exportAccount(id),
   );
-  expect(exported.schemaVersion).toBe(33);
-  if (exported.schemaVersion !== 33) throw new Error('Expected latest export33');
+  expect(exported.schemaVersion).toBe(34);
+  if (exported.schemaVersion !== 34) throw new Error('Expected latest export34');
   expect(exported.data.evidenceAppBindings.every((row) => row.app_revision === 1)).toBe(true);
   expect(exported.data.runAppBindings).toHaveLength(
     trainingRows.filter((row) => row.relation === 'coaching_run').length,
@@ -998,8 +998,8 @@ it('authenticates original source100 families, upgrades102→105 normally, and r
   const integratedExport = accountExportSchema.parse(
     await createOperationsRepository(targetDatabase).exportAccount(integrated.s.athleteId),
   );
-  expect(integratedExport.schemaVersion).toBe(33);
-  if (integratedExport.schemaVersion !== 33) throw new Error('Expected latest export33');
+  expect(integratedExport.schemaVersion).toBe(34);
+  if (integratedExport.schemaVersion !== 34) throw new Error('Expected latest export34');
   expect(integratedExport.data.integratedCandidateAppBindings).toHaveLength(1);
   expect(integratedExport.data.approvalAppBindings).toHaveLength(1);
   expect(

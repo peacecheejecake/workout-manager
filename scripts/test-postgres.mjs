@@ -64,6 +64,7 @@ function runIntegrationTests(env) {
         'packages/server/persistence/tests/restore-app-consent-chain.integration.test.ts',
         'packages/server/persistence/tests/restore-suppression-exporter.integration.test.ts',
         'packages/server/persistence/tests/restore-suppression-coordinator.integration.test.ts',
+        'packages/server/persistence/tests/race-deletion-restore.integration.test.ts',
       ],
       { env: { ...env, TEST_PGOUTPUT_CONTRACT: '1' } },
     );
@@ -85,6 +86,8 @@ function runIntegrationTests(env) {
       'packages/server/persistence/tests/restore-suppression-pgoutput.integration.test.ts',
       '--exclude',
       'packages/server/persistence/tests/restore-suppression-coordinator.integration.test.ts',
+      '--exclude',
+      'packages/server/persistence/tests/race-deletion-restore.integration.test.ts',
     ],
     { env },
   );

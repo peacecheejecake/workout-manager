@@ -1552,8 +1552,8 @@ describe('M2-01c private track storage', () => {
       expectedRevision: removed.revision,
     });
     const artifact = await createOperationsRepository(database).exportAccount(athlete);
-    expect(artifact.schemaVersion).toBe(33);
-    if (artifact.schemaVersion !== 33) throw new Error('expected v33');
+    expect(artifact.schemaVersion).toBe(34);
+    if (artifact.schemaVersion !== 34) throw new Error('expected v34');
     expect(artifact.data.activityTracks).toHaveLength(1);
     expect(artifact.data.activityTracks[0]?.['activity_id']).toBe(kept.activityId);
     expect(artifact.data.activityTrackRevisions).toHaveLength(1);
@@ -1593,7 +1593,7 @@ describe('M2-01c private track storage', () => {
     } finally {
       client.release();
     }
-    if (exported.schemaVersion !== 33) throw new Error('expected v33');
+    if (exported.schemaVersion !== 34) throw new Error('expected v34');
     // The export waited for the deletion and reports the deleted activity's track nowhere.
     expect(exported.data.activityTracks).toHaveLength(0);
     expect(exported.data.activityTrackRevisions).toHaveLength(0);

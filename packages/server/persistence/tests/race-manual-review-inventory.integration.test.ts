@@ -1,4 +1,5 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import { Pool, type PoolClient } from 'pg';
 import { z } from 'zod';
 import { beforeAll, afterAll, expect, it } from 'vitest';
@@ -11,6 +12,7 @@ import { prepareRaceManualReview } from '../src/race-manual-review-preparation.j
 import { mapRaceManualReviewSourceInventory } from '../src/race-manual-review-source-inventory.js';
 import {
   migrate,
+  migrationFileNames,
   grantCorePlanning,
   grantOperations,
   grantRaces,
@@ -208,7 +210,24 @@ it('maps exact owned prepared event lineage but never changes storage, admission
         'SELECT count(*)::int AS n,max(version)::int AS last FROM schema_migrations',
       )
     ).rows[0],
-  ).toEqual({ n: 105, last: 105 });
+  ).toEqual({ n: 107, last: 107 });
+  expect(migrationFileNames).toHaveLength(107);
+  for (const [version, file] of [
+    [106, '106_race_manual_review.sql'],
+    [107, '107_guard_race_review_stamp_authority.sql'],
+  ] as const) {
+    expect(migrationFileNames[version - 1]).toBe(file);
+    expect(
+      (await owner.query('SELECT checksum FROM schema_migrations WHERE version=$1', [version]))
+        .rows,
+    ).toEqual([
+      {
+        checksum: createHash('sha256')
+          .update(await readFile(new URL(`../migrations/${file}`, import.meta.url)))
+          .digest('hex'),
+      },
+    ]);
+  }
   const athlete = await account(),
     event = await create(athlete),
     before = await counts(athlete);

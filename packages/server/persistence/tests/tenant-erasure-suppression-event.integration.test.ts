@@ -490,13 +490,15 @@ describe('tenant erasure suppression event foundation on a plain PostgreSQL owne
       code: '0A000',
     });
     expect(await events(first)).toHaveLength(1);
-    // Migration099 adds a second FK child. Including only096's receipt still
-    // fails at PostgreSQL's FK preflight; covering both children must hit the guard.
+    // Migration106 adds source-suppression and replay children to096/099's receipts.
+    // An incomplete roster hits FK preflight; covering all four must hit the guard.
     const children = await owner.query<{ relation: string }>(
       "SELECT conrelid::regclass::text AS relation FROM pg_constraint WHERE contype='f' AND confrelid='public.restore_suppression_event'::regclass ORDER BY 1",
     );
     expect(children.rows).toEqual([
+      { relation: 'race_manual_review_source_suppression' },
       { relation: 'restore_healthkit_deregistration_replay_receipt' },
+      { relation: 'restore_manual_review_source_replay_receipt' },
       { relation: 'restore_race_deletion_replay_receipt' },
     ]);
     await expect(
@@ -508,7 +510,7 @@ describe('tenant erasure suppression event foundation on a plain PostgreSQL owne
     // Including the complete FK roster, or cascading, still hits the immutable guard.
     for (const statement of [
       'TRUNCATE restore_suppression_event CASCADE',
-      'TRUNCATE restore_suppression_event,restore_healthkit_deregistration_replay_receipt,restore_race_deletion_replay_receipt',
+      'TRUNCATE restore_suppression_event,race_manual_review_source_suppression,restore_healthkit_deregistration_replay_receipt,restore_manual_review_source_replay_receipt,restore_race_deletion_replay_receipt',
       'TRUNCATE restore_healthkit_deregistration_replay_receipt',
     ]) {
       await expect(owner.query(statement)).rejects.toThrow('IMMUTABLE_RESTORE_SUPPRESSION_EVENT');

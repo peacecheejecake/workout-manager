@@ -147,12 +147,14 @@ async function insert(c: PoolClient, fields: Readonly<Record<string, unknown>>) 
   );
 }
 
-it('registered106 checksum and plain owner / FORCE RLS roster', async () => {
-  assert.equal(migrationFileNames.length, 106);
+it('registered107 preserves exact106 checksum and plain owner / FORCE RLS roster', async () => {
+  assert.equal(migrationFileNames.length, 107);
+  assert.equal(migrationFileNames[105], '106_race_manual_review.sql');
+  assert.equal(migrationFileNames[106], '107_guard_race_review_stamp_authority.sql');
   assert.deepEqual(
     (await owner.query('SELECT count(*)::int AS n,max(version) AS v FROM schema_migrations'))
       .rows[0],
-    { n: 106, v: 106 },
+    { n: 107, v: 107 },
   );
   const sql = await readFile(
     new URL('../migrations/106_race_manual_review.sql', import.meta.url),
@@ -162,6 +164,16 @@ it('registered106 checksum and plain owner / FORCE RLS roster', async () => {
     (await owner.query('SELECT checksum FROM schema_migrations WHERE version=106')).rows[0]
       .checksum,
     hash(sql),
+  );
+  assert.equal(
+    (await owner.query('SELECT checksum FROM schema_migrations WHERE version=107')).rows[0]
+      .checksum,
+    hash(
+      await readFile(
+        new URL('../migrations/107_guard_race_review_stamp_authority.sql', import.meta.url),
+        'utf8',
+      ),
+    ),
   );
   assert.deepEqual(
     (await admin.query('SELECT rolsuper,rolbypassrls FROM pg_roles WHERE rolname=$1', [ownerRole]))

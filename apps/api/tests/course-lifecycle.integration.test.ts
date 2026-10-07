@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Pool } from 'pg';
+import { z } from 'zod';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import type { ActivityImport } from '@workout/contracts/activity';
@@ -36,12 +37,35 @@ import { createApi } from '../src/app.js';
 import { confirmedExport } from './course-disclosure-support.js';
 import { auditRouteLogs, testRelease } from './log-audit-support.js';
 
-const adminUrl = process.env['TEST_DATABASE_ADMIN_URL'];
-const runtimeUrl = process.env['TEST_DATABASE_URL'];
-if (!adminUrl || !runtimeUrl)
-  throw new Error('Isolated real PostgreSQL required: run pnpm test:integration');
-
+function postgresEnvironment(name: string): string {
+  const parsed = z.url().safeParse(process.env[name]);
+  if (!parsed.success) throw new Error('ISOLATED_POSTGRES_ENVIRONMENT_REQUIRED');
+  const url = new URL(parsed.data);
+  if (!['postgres:', 'postgresql:'].includes(url.protocol) || !url.hostname || !url.username)
+    throw new Error('INVALID_ISOLATED_POSTGRES_ENVIRONMENT');
+  return parsed.data;
+}
+const adminUrl = postgresEnvironment('TEST_DATABASE_ADMIN_URL');
+const originalRuntimeUrl = postgresEnvironment('TEST_DATABASE_URL');
+const identifier = z.string().regex(/^[a-z_][a-z0-9_]{0,62}$/);
+const suffix = z.uuid().parse(randomUUID()).replaceAll('-', '').slice(0, 12);
+const databaseName = identifier.parse(`course_lifecycle_${suffix}`);
+const roles = {
+  owner: identifier.parse(`course_owner_${suffix}`),
+  runtime: identifier.parse(`course_runtime_${suffix}`),
+};
+function isolatedUrl(role: string): string {
+  identifier.parse(role);
+  const url = new URL(adminUrl);
+  url.pathname = `/${databaseName}`;
+  url.username = role;
+  url.password = 'isolated';
+  return url.toString();
+}
+const ownerUrl = isolatedUrl(roles.owner);
+const runtimeUrl = isolatedUrl(roles.runtime);
 const admin = new Pool({ connectionString: adminUrl });
+let owner: Pool;
 let database: Database;
 let objectRoot: string;
 let storage: ObjectStorage;
@@ -103,7 +127,8 @@ async function runThumbnailWorker(): Promise<{
   stdout: string;
   stderr: string;
 }> {
-  const workerUrl = new URL(runtimeUrl as string);
+  const workerUrl = new URL(originalRuntimeUrl);
+  workerUrl.pathname = `/${databaseName}`;
   workerUrl.username = thumbnailWorkerRole;
   const child = spawn(process.execPath, ['--import', 'tsx', thumbnailWorkerEntry], {
     env: {
@@ -132,15 +157,21 @@ async function runThumbnailWorker(): Promise<{
 }
 
 beforeAll(async () => {
-  await migrate(adminUrl);
-  await admin.query('GRANT USAGE ON SCHEMA public TO workout_runtime');
-  await grantOperations(adminUrl, 'workout_runtime');
-  await grantActivityTracks(adminUrl, 'workout_runtime');
-  await grantCourses(adminUrl, 'workout_runtime');
-  await admin.query(
+  for (const role of Object.values(roles))
+    await admin.query(
+      `CREATE ROLE "${role}" LOGIN PASSWORD 'isolated' NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE`,
+    );
+  await admin.query(`CREATE DATABASE "${databaseName}" OWNER "${roles.owner}"`);
+  await migrate(ownerUrl);
+  owner = new Pool({ connectionString: ownerUrl });
+  await owner.query(`GRANT USAGE ON SCHEMA public TO "${roles.runtime}"`);
+  await grantOperations(ownerUrl, roles.runtime);
+  await grantActivityTracks(ownerUrl, roles.runtime);
+  await grantCourses(ownerUrl, roles.runtime);
+  await owner.query(
     `GRANT SELECT,INSERT,UPDATE,DELETE ON activity_canonical,activity_source_head,
      activity_source_revision,activity_overlay,activity_overlay_revision,activity_suppression,
-     activity_import_receipt TO workout_runtime`,
+     activity_import_receipt TO "${roles.runtime}"`,
   );
   await admin.query(
     `DO $$ BEGIN
@@ -149,8 +180,8 @@ beforeAll(async () => {
        END IF;
      END $$`,
   );
-  await admin.query(`GRANT USAGE ON SCHEMA public TO ${thumbnailWorkerRole}`);
-  await grantCourseThumbnailWorker(adminUrl, thumbnailWorkerRole);
+  await owner.query(`GRANT USAGE ON SCHEMA public TO ${thumbnailWorkerRole}`);
+  await grantCourseThumbnailWorker(ownerUrl, thumbnailWorkerRole);
   database = createDatabase({ connectionString: runtimeUrl, max: 8 });
   objectRoot = await mkdtemp(join(tmpdir(), 'course-lifecycle-'));
   storage = await createLocalFilesystemObjectStorage(objectRoot);
@@ -159,6 +190,20 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await database?.close();
+  await owner?.end();
+  // Same bounded connection-drain cleanup as the API's isolated DB fixtures.
+  const deadline = Date.now() + 5000;
+  while (Date.now() < deadline) {
+    const open = await admin.query<{ n: number }>(
+      'SELECT count(*)::int AS n FROM pg_stat_activity WHERE datname=$1',
+      [databaseName],
+    );
+    if (open.rows[0]?.n === 0) break;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  await admin.query(`DROP DATABASE IF EXISTS "${databaseName}" WITH (FORCE)`);
+  for (const role of Object.values(roles)) await admin.query(`DROP ROLE IF EXISTS "${role}"`);
+  // The CLI's fixed role may belong to another fixture; never drop it here.
   await admin.end();
   if (objectRoot) await rm(objectRoot, { recursive: true, force: true });
 });
@@ -292,8 +337,8 @@ describe('turning a stored recording into a course, end to end', () => {
         ]);
 
         // The save enqueued a thumbnail render. The real worker CLI draws it, one job per
-        // process; renders other test files left queued are older and are leased first, so
-        // it runs until this course's picture is ready. What each process prints is its log.
+        // process against this suite's database and object root. It runs until this
+        // course's picture is ready. What each process prints is its log.
         const thumbnailOf = async () =>
           (
             await app.inject({
@@ -302,10 +347,15 @@ describe('turning a stored recording into a course, end to end', () => {
               headers,
             })
           ).json().thumbnail as { status: string };
-        const backlog = await admin.query<{ queued: number }>(
-          `SELECT count(*)::int AS queued FROM course_thumbnail WHERE state IN ('queued','rendering')`,
+        const backlog = await database.tenant(athleteId, (tx) =>
+          tx.query(
+            `SELECT count(*)::int AS queued FROM course_thumbnail WHERE state IN ('queued','rendering')`,
+          ),
         );
-        const bound = (backlog.rows[0]?.queued ?? 0) + 1;
+        const queued = z
+          .strictObject({ queued: z.number().int().nonnegative() })
+          .parse(backlog.rows[0]);
+        const bound = queued.queued + 1;
         const worker = createLogCapture();
         const results: string[] = [];
         while (results.length < bound && (await thumbnailOf()).status !== 'ready') {
@@ -441,7 +491,7 @@ describe('turning a stored recording into a course, end to end', () => {
 // Explicit permission for this synthetic positive core-storage fixture only.
 // Preserve any existing withdrawal/revision and never recreate an erased tenant.
 async function grantAppPurpose(athleteId: string): Promise<void> {
-  const client = await admin.connect();
+  const client = await owner.connect();
   try {
     await client.query('BEGIN');
     await client.query('SELECT pg_advisory_xact_lock_shared(77210,1)');

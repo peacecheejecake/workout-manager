@@ -25,7 +25,8 @@ import {
   integratedDependencyKinds,
   decodeIntegratedDependencyInventory,
 } from '../src/race-plan-impact-dependencies.js';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import { Pool, type PoolClient } from 'pg';
 import { z } from 'zod';
 import { beforeAll, afterAll, expect, it } from 'vitest';
@@ -46,6 +47,7 @@ import { createDatabase, type Database } from '../src/database.js';
 import { createRaceRepository, type RaceRepository } from '../src/races.js';
 import {
   migrate,
+  migrationFileNames,
   grantOperations,
   grantRaces,
   grantRoutineCore,
@@ -270,11 +272,28 @@ afterAll(async () => {
   for (const role of [runtimeRole, ownerRole]) await admin.query(`DROP ROLE IF EXISTS "${role}"`);
   await admin.end();
 });
-it('installs all105 migrations with plain roles and returns explicit empty rosters/absence, blocked coverage and stable digest', async () => {
+it('installs all107 migrations with plain roles and returns explicit empty rosters/absence, blocked coverage and stable digest', async () => {
   const versions = await owner.query(
     'SELECT count(*)::int AS n,max(version)::int AS last FROM schema_migrations',
   );
-  expect(versions.rows[0]).toEqual({ n: 105, last: 105 });
+  expect(versions.rows[0]).toEqual({ n: 107, last: 107 });
+  expect(migrationFileNames).toHaveLength(107);
+  for (const [version, file] of [
+    [106, '106_race_manual_review.sql'],
+    [107, '107_guard_race_review_stamp_authority.sql'],
+  ] as const) {
+    expect(migrationFileNames[version - 1]).toBe(file);
+    expect(
+      (await owner.query('SELECT checksum FROM schema_migrations WHERE version=$1', [version]))
+        .rows,
+    ).toEqual([
+      {
+        checksum: createHash('sha256')
+          .update(await readFile(new URL(`../migrations/${file}`, import.meta.url)))
+          .digest('hex'),
+      },
+    ]);
+  }
   const roles = await admin.query(
     'SELECT rolsuper,rolbypassrls FROM pg_roles WHERE rolname=ANY($1)',
     [[ownerRole, runtimeRole]],

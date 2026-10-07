@@ -68,7 +68,7 @@ it('exports only own attribution facts, excludes receipt/fencing internals, and 
   });
   const operations = createOperationsRepository(database);
   const artifact = await operations.exportAccount(a);
-  if (artifact.schemaVersion !== 33) throw new Error('Expected v33');
+  if (artifact.schemaVersion !== 34) throw new Error('Expected v34');
   expect(artifact.data.healthKitWorkoutClaims.map((claim) => claim.sample_id)).toEqual(samples);
   expect(artifact.data.healthKitWorkoutClaims.every((claim) => claim.consent_revision === 1)).toBe(
     true,
@@ -100,12 +100,12 @@ it('exports only own attribution facts, excludes receipt/fencing internals, and 
     ),
   );
   const withdrawn = await operations.exportAccount(a);
-  if (withdrawn.schemaVersion !== 33) throw new Error('Expected v33');
+  if (withdrawn.schemaVersion !== 34) throw new Error('Expected v34');
   expect(withdrawn.data.healthKitWorkoutClaims).toEqual([]);
   expect(withdrawn.data.healthKitWorkoutRegistryHeads).toEqual([]);
   expect(withdrawn.data.healthKitWorkoutRegistrations).toEqual([]);
   const foreign = await operations.exportAccount(b);
-  if (foreign.schemaVersion !== 33) throw new Error('Expected v33');
+  if (foreign.schemaVersion !== 34) throw new Error('Expected v34');
   expect(foreign.data.healthKitWorkoutClaims.map((claim) => claim.sample_id)).toEqual([
     foreignSample,
   ]);
@@ -145,7 +145,7 @@ it('exports owner-only pending and released cleanup facts without executable own
   });
   const operations = createOperationsRepository(database);
   const artifact = await operations.exportAccount(a);
-  if (artifact.schemaVersion !== 33) throw new Error('Expected v33');
+  if (artifact.schemaVersion !== 34) throw new Error('Expected v34');
   expect(artifact.data.healthKitWorkoutClaims).toMatchObject([
     { sample_id: sample, state: 'pending_cleanup' },
   ]);
@@ -159,7 +159,7 @@ it('exports owner-only pending and released cleanup facts without executable own
     },
   ]);
   const foreign = await operations.exportAccount(b);
-  if (foreign.schemaVersion !== 33) throw new Error('Expected v33');
+  if (foreign.schemaVersion !== 34) throw new Error('Expected v34');
   expect(foreign.data.healthKitWorkoutClaims).toEqual([]);
   expect(foreign.data.healthKitWorkoutDeregistrations).toEqual([]);
   const serialized = JSON.stringify(artifact);
@@ -180,7 +180,7 @@ it('exports owner-only pending and released cleanup facts without executable own
   );
   expect(final.status).toBe('released');
   const released = await operations.exportAccount(a);
-  if (released.schemaVersion !== 33) throw new Error('Expected v33');
+  if (released.schemaVersion !== 34) throw new Error('Expected v34');
   expect(released.data.healthKitWorkoutClaims).toEqual([]);
   expect(released.data.healthKitWorkoutDeregistrations).toMatchObject([
     { operation_id: pending.operationId, state: 'released' },
@@ -193,6 +193,6 @@ it('exports owner-only pending and released cleanup facts without executable own
     ),
   );
   const withdrawn = await operations.exportAccount(a);
-  if (withdrawn.schemaVersion !== 33) throw new Error('Expected v33');
+  if (withdrawn.schemaVersion !== 34) throw new Error('Expected v34');
   expect(withdrawn.data.healthKitWorkoutDeregistrations).toEqual([]);
 });

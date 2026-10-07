@@ -1872,10 +1872,11 @@
         "M2-02h",
         "M2-02i",
         "M2-02j",
-        "M2-02k"
+        "M2-02k",
+        "M2-02l"
       ],
       "kind": "task",
-      "status": "not_started",
+      "status": "in_progress",
       "scope": "competitions; 코스 참조·결과"
     },
     {
@@ -2265,7 +2266,7 @@
       "dependsOn": ["M2-02g"],
       "kind": "task",
       "status": "in_progress",
-      "scope": "2026-10-07 사용자 결정: 공식 확인된 대회 기록만 PB. 거리·단위별 최고 기록/결정론 동률·미상 처리, 서버 검증 근거 유지·수동 및 기기 추정 split 제외, 실제 Host·삭제 갱신 수용",
+      "scope": "2026-10-07 갱신 사용자 결정: 직접 입력 대회 기록도 PB 인정, 링크·인증 첨부 근거 마크와 실제 진위 검토를 분리. 거리·단위별 비교/결정론 동률·미상 처리와 실제 Host·삭제 갱신 수용. 기기 추정 split 자동 승격 금지. chip/gun·거리 종목 분류는 미확정.",
       "evidence": "docs/implementation/progress/M2-02j.md"
     },
     {
@@ -2377,99 +2378,9 @@
       "evidence": "docs/implementation/progress/M2-05-execution.md"
     },
     {
-      "id": "M2-02b",
-      "title": "대회·결과 저장 명령 계약",
-      "dependsOn": ["M2-02a"],
-      "kind": "task",
-      "status": "completed",
-      "scope": "지도 외부 수용과 독립적으로 기존 RaceEvent/RaceResult/TrainingBest 계약을 소비하는 명시 저장·수정·조회 서버 명령 경계를 준비한다. revision·idempotency·소유권·검증시각 서버 소유와 불변 course 참조를 보존하고 계획 날짜 영향·별도 승인 및 PB 정책을 임의 확정하지 않는다. DTO와 invalid boundary 검증만으로 DB/API/UI/부모 완료를 선언하지 않는다. 후속 persistence/API/화면 및 운영 gate는 부모 M2-02에 남긴다.",
-      "evidence": "docs/implementation/progress/M2-02-branch-state.md"
-    },
-    {
-      "id": "M2-02c",
-      "title": "대회·결과 원장 저장 거래",
-      "dependsOn": ["M2-02b"],
-      "kind": "task",
-      "status": "completed",
-      "scope": "RaceEvent/RaceResult/TrainingBest create/update/get의 실제 PostgreSQL 원장·불변 revision·tenant RLS·CAS·멱등 receipt/outbox·소유권 참조 검증을 구현한다. 서버 official 검증 사실은 사용자 입력으로 승격하지 않으며 연결 Plan 날짜 변경은 영향 preview/별도승인 없이 일반 update로 적용하지 않는다. 새 table의 export/계정 erasure/restore 대응을 root가 함께 통합한다. list/개별삭제·API·S15/S16·PB·날짜 영향 승인 전체 및 지도/운영 수용은 후속에 남기며 부모 완료를 주장하지 않는다.",
-      "evidence": "docs/implementation/progress/M2-02-branch-state.md"
-    },
-    {
-      "id": "M2-02d",
-      "title": "대회·기록의 삭제 freshness를 보존하는 목록 조회",
-      "dependsOn": ["M2-02c"],
-      "kind": "task",
-      "status": "completed",
-      "scope": "tenant별 bounded id-asc 페이지·(revision,privacyGeneration) cursor; stale/foreign/nonexistent cursor 거절·원자 read",
-      "evidence": "docs/implementation/progress/M2-02-branch-state.md"
-    },
-    {
-      "id": "M2-02e",
-      "title": "대회·기록 owner-scoped API 연결",
-      "dependsOn": ["M2-02d"],
-      "kind": "task",
-      "status": "completed",
-      "scope": "Fastify GET/list/create/update runtime boundaries·auth/CSRF·bounded cursor·stable errors; 실제 configured repository/role grants 연결",
-      "evidence": "docs/implementation/progress/M2-02-branch-state.md"
-    },
-    {
-      "id": "M2-02f",
-      "title": "대회·기록 개별 삭제와 복원 suppression",
-      "dependsOn": ["M2-02e"],
-      "kind": "task",
-      "status": "completed",
-      "scope": "개별 삭제 CAS·최소 receipt·history/private purge·tenant별 collection privacyGeneration·독립 restore suppression ledger/exact replay. RaceEvent 삭제는 independent actual result를 조용히 삭제하지 않고 nullable link만 정리; linked Plan 자동 변경 금지. 설계/계약 root 직렬화 후 실제 PG·복원 수용, API 연결.",
-      "evidence": "docs/implementation/progress/M2-02-branch-state.md"
-    },
-    {
-      "id": "M2-02g",
-      "title": "S15·S16 대회·실제 기록의 재사용 화면",
-      "dependsOn": ["M2-02f"],
-      "kind": "task",
-      "status": "completed",
-      "scope": "인증된 세 원장 목록·명시 생성/수정/삭제·null/zero/출처/시간대·CAS/멱등성·Plan 영향 오류·private cache/draft reset. 코스 불변 참조와 실제 활동 연결, 공식 결과/기기 추정 구분. 재사용 module/DTO HTTP adapter/RTL 수용; shell/실제 브라우저 통합은 h로 구분.",
-      "evidence": "docs/implementation/progress/M2-02-branch-state.md"
-    },
-    {
-      "id": "M2-02h",
-      "title": "대회·기록 web/mobile host와 실제 인증 연결",
-      "dependsOn": ["M2-02g"],
-      "kind": "task",
-      "status": "completed",
-      "scope": "실제 Course/Plan/Activity named relation loader, S15/S16 thin web/mobile routes와 URL section, identity fixture races repository wiring, 실제 인증/API/DB E2E. PB 포함 정책 결정과 Plan 영향 preview/승인은 별도 미완료 추적; 합성 module 화면을 제품 통합으로 취급하지 않는다.",
-      "evidence": "docs/implementation/progress/M2-02-branch-state.md"
-    },
-    {
-      "id": "M2-02i",
-      "title": "대회 날짜 변경 Plan 영향 preview·명시 승인",
-      "dependsOn": ["M2-02e"],
-      "kind": "task",
-      "status": "in_progress",
-      "scope": "S15 날짜 변경의 영향 preview와 별도 사용자 승인; RaceEvent/PlanVersion 현재근거·revision·consent·관련모든root freshness 및 원자적 명령/receipt/outbox. 실제PG concurrency/rollback과 UI/E2E 수용 필요.",
-      "evidence": "docs/implementation/progress/M2-02-branch-state.md"
-    },
-    {
-      "id": "M2-02j",
-      "title": "S16 PB 기준·거리별 최고 기록 수용",
-      "dependsOn": ["M2-02g"],
-      "kind": "task",
-      "status": "in_progress",
-      "scope": "2026-10-07 사용자 결정: 공식 확인된 대회 기록만 PB. 거리·단위별 최고 기록/결정론 동률·미상 처리, 서버 검증 근거 유지·수동 및 기기 추정 split 제외, 실제 Host·삭제 갱신 수용",
-      "evidence": "docs/implementation/progress/M2-02-branch-state.md"
-    },
-    {
-      "id": "M2-02k",
-      "title": "대회·결과·훈련 기록의 app 처리 동의 연결",
-      "dependsOn": ["M2-02e"],
-      "kind": "task",
-      "status": "completed",
-      "scope": "S22 app admission의 race6 create/update receipt-first 신규처리 gate, 기존 조회·삭제·export·성공 replay 유지 및 실제PG/HTTP/OIDC Next·Vite 계정동의·철회초안·재동의 수용 완료. 날짜 영향 고정 basis/승인은 M2-02i, 공식 PB는 M2-02j, 실기기·운영·phase review는 별도.",
-      "evidence": "docs/implementation/progress/M2-02-branch-state.md"
-    },
-    {
       "id": "EXT-RESTOREa",
       "title": "현재 schema의 완전한 인증 복원 protocol 구현·로컬 수용",
-      "dependsOn": ["M2-01k-v-c", "M2-02i", "M2-02j", "M2-02k"],
+      "dependsOn": ["M2-01k-v-c", "M2-02i", "M2-02j", "M2-02k", "M2-02l"],
       "kind": "task",
       "status": "not_started",
       "scope": "기존 M2-01k의 broader 복원 수용 공백을 명시 추적. 승인된 phase 통합 schema의 independently pinned 전체 table/object inventory, 새로운 versioned authenticated full-family loader·완전한 suppression/budget tail·target-bound postconditions와 원자적 admission. 역사 source100→target102→upgrade105는 보존하며 literal widening/임의 guard 해제 금지. M2-02 schema 확정 후 Root가 신규 DDL을 직렬 배정하며 번호를 선예약하지 않는다. 실제 plain-owner PG 전체 family·privacy·mixed rollback·foreign/collision/partial denial·원 receipt replay 수용 필요.",
@@ -2492,6 +2403,15 @@
       "status": "not_started",
       "scope": "기존 map/운영 backup acceptance와 제품 출시 요구를 완전한 현재-schema 복원으로 연결한다. ordinary107/fault2 및 historical family 지원은 부분 증거이며 전체 gate를 완료하지 않는다. 운영의 정확한 최종 schema·privacy·전체 budget ledger·독립 최신 tail/witness·target-bound admission 증거를 모두 요구한다.",
       "evidence": "docs/implementation/progress/EXT-RESTORE.md"
+    },
+    {
+      "id": "M2-02l",
+      "title": "기존 루틴·회복 기록의 개인 export 보완",
+      "dependsOn": ["M1c-01", "M1c-03", "M1c-04", "M2-02e"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "S22/V2-F31·S35/V023-F18/A35의 기존 personal export 누락을 보완. Additive export34로 generic routine9·recovery6·approval history2 및 참조된 committed approval facts를 strict 현재 body/SQL tuple로 보존한다. bigint 문자열·bounded rows/bytes·SELECT-only grant·tenant/RLS·철회 후 retained export·역사와 tombstone·account erase를 실제 producer/PG로 수용한다. old2..33과 historical restore protocol은 불변. raw candidate/evidence/command receipt/credential을 무조건 추가하지 않으며 전체 personal-data inventory나 full restore 완료와 혼동하지 않는다.",
+      "evidence": "docs/implementation/progress/M2-02l.md"
     }
   ]
 }

@@ -1,5 +1,9 @@
 import { z } from 'zod';
 import { garminConnectionStateSchema } from './garmin.js';
+import {
+  genericRecoveryExportFields34,
+  validateGenericRecoveryExportTuples34,
+} from './generic-recovery-export.js';
 
 const count = z.number().int().nonnegative();
 const rows = z.array(z.record(z.string(), z.json())).max(1000);
@@ -524,6 +528,17 @@ const accountExportV33Schema = z.strictObject({
     aiSettingsRevisions: z.array(aiSettingsExportRevision).max(1000),
   }),
 });
+// v34 adds retained routine/recovery facts without executable command metadata.
+const accountExportV34Schema = z.strictObject({
+  ...accountExportV33Schema.shape,
+  schemaVersion: z.literal(34),
+  data: z
+    .strictObject({
+      ...accountExportV33Schema.shape.data.shape,
+      ...genericRecoveryExportFields34,
+    })
+    .superRefine(validateGenericRecoveryExportTuples34),
+});
 // Read historical artifacts unchanged; never manufacture absent collections.
 export const accountExportSchema = z.discriminatedUnion('schemaVersion', [
   accountExportV2Schema,
@@ -558,6 +573,7 @@ export const accountExportSchema = z.discriminatedUnion('schemaVersion', [
   accountExportV31Schema,
   accountExportV32Schema,
   accountExportV33Schema,
+  accountExportV34Schema,
 ]);
 export const operationsStatusSchema = z.strictObject({
   checkedAt: z.iso.datetime({ offset: true }),

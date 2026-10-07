@@ -776,7 +776,7 @@ Native shell·collector는 M1c 통합과 native feasibility 이후 M2 Web 확장
 | M2-02g 재사용 대회·기록 화면 | M2-02e, M2-02f | [로컬 수용 완료](progress/M2-02g.md); 실제 Host·PB·Plan 영향 승인은 후속 |
 | M2-02h 실제 대회·기록 Host | M2-02g | [완료](progress/M2-02h.md); canonical 경로·상세·인증 transport·실제 OIDC/DB 수용 |
 | M2-02i 날짜·Plan 영향 승인 | M2-02e | [진행 중](progress/M2-02i.md); 설계 준비, 전체 affected manifest·별도 원자적 승인 미구현 |
-| M2-02j 거리별 PB | M2-02g | [진행 중](progress/M2-02j.md); 공식 확인된 대회 기록만 PB; 확인 방식·chip/gun·거리 분류 결정 대기, 기기 추정 split 공식 PB 승격 금지 |
+| M2-02j 거리별 PB | M2-02g | [진행 중](progress/M2-02j.md); 직접 입력 대회 기록도 PB; 링크·인증 첨부 근거 마크와 진위 검토 구분; chip/gun·거리 분류 미확정, 기기 추정 split 자동 승격 금지 |
 | M2-02k app 처리 동의 연결 | M2-02e, S22 v-a root 통합 | [완료](progress/M2-02k.md); 새 처리만 gate, 조회/삭제/성공 replay 유지 |
 | M2-02 대회·기록 | M2-01, M2-02a, M2-02b, M2-02c | competitions; 코스 참조·결과. M2-01의 외부 gate는 그대로 선행 조건 |
 | M2-03 갤러리·media | M1c-04 | gallery/media; 객체 권한·upload·video·삭제 |
@@ -866,3 +866,10 @@ M2-01k-v-a~f는 app 처리 의미 확정 뒤 새 admission·직접 저장·basis
 현재 제품의 전체 인증 복원은 [EXT-RESTORE](progress/EXT-RESTORE.md)로 별도 추적한다. `EXT-RESTOREa`는 M2-02i/j/k와 M2-01k-v-c 뒤의 최종 schema에 대해 typed full-family/완전 tail/postconditions/admission을 구현·실DB 검증한다. `EXT-RESTOREb`는 독립 최신 witness·운영 전체 백업/격리 복원을 실제 검증한다. M2-01k·EXT-HOSTING·G2-PUBLIC은 전체 gate를, M2-05b/c는 로컬 capability를 기다린다. 기존 historical100→102→upgrade105 지원과 ordinary107/fault2를 현재 schema의 complete restore로 확대하지 않는다. 기존 미완료 요구와 상태를 보존하며 DDL 번호는 phase 통합 후 Root가 직렬 배정한다.
 
 설정 선택의 로컬 수용과 실제 코칭 실행을 구분한다. M2-01k-w-a의 같은 거래 준비만 검증 완료다. 기존 미시작 w-b~e는 요구를 보존해 M2-05a~d로 일대일 이관했다: M2-02 통합 → immutable job → complete freshness → 글로벌 월 예산 dispatch → 실제 OpenAI 수용. 내부 M2-06은 M2-05c, 공개 G2-PUBLIC은 실제 외부 M2-05d도 요구한다. [준비 기록](progress/M2-01k-w.md)과 [실행 기록](progress/M2-05-execution.md)을 따른다. 별도 대회 phase의 현황은 [고정 branch 기록](progress/M2-02-branch-state.md)이며, 이 그래프에 상태를 기록한 것이 해당 코드를 C나 main에 병합했다는 뜻은 아니다.
+
+
+## 루틴·회복 personal export 보완 · 2026-10-07
+
+[M2-02l](progress/M2-02l.md)은 기존 S22/S35 export 누락을 additive34로 보완한다. completed M1c-01/03/04와 M2-02e에 의존하며 아래 최종 검증으로 해당 범위를 완료했다. M2-02 부모와 EXT-RESTOREa의 나머지 미완료 요구는 유지한다. Supplementary routine과 generic routine을 구분하고 현재 body/불변 history/실제 링크·최소 삭제 tombstone을 보존하며 command/restore 권한을 export하지 않는다. 전체 개인자료 export 또는 전체 인증 복원이 완료된 것은 아니다. main의 별도 상태 기록과 phase의 동일 entry가 자동 병합되어 생긴 b~k 중복10개는 원래 직접 evidence entry로 통합하고 역사 branch-state 기록을 보존했다.
+
+2026-10-07 M2-02l은 strict export34·실제 publicproducer와 PG 집중230/230·logical pgoutput24/24의 범위 수용을 완료했다. 기존 fullnormal failed 회차는 보존하며 전체 phase 재검증/독립 review·최신 full authenticated restore·운영/실기기는 별도다. 자세한 입력과 실패·수정·검증은 [L 기록](progress/M2-02l.md)을 따른다.

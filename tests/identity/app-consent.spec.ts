@@ -148,7 +148,7 @@ for (const [shell, origin, account, other] of [
     });
     expect(exported.status()).toBe(200);
     const download = accountExportSchema.parse(await exported.json());
-    expect(download.schemaVersion).toBe(33);
+    expect(download.schemaVersion).toBe(34);
     expect(download.athleteId).toBe(session.athleteId);
     expect(download.data.activities.filter((row) => row['id'] === receipt.activityId)).toHaveLength(
       1,
