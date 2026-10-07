@@ -507,3 +507,7 @@ SQL116 local FIT/fixture와 manual recorded course 저장·삭제 R2는 Root act
 ## Media actual purpose 검증 · 2026-10-07
 
 Root own media named adapter→실제 preparation/semantic 연결의 unit71/actualPG5·frozen7 SHA·DB/roles0를 확인했다([I 기록](progress/M2-02i.md)). normal107에 capability 없으면 blocked이며 raw113+115 공개 gallery metadata finalize로 검증한 로컬 범위다. 객체 bytes/provider 인증/SQL116 media store/withdrawal lifecycle/full authenticated restore는 미완료다. Native3 agent는 HealthKit current purpose+metadata companion, media 최종 SQL predicate/store/purge, 증빙 선택 editor를 비중복 범위로 진행한다. Root는 shared integration/실DB/Git/graph를 직렬 소유한다. registry107·main/push0·I/J/phase in_progress 및 외부not_executed를 유지한다.
+
+## HealthKit 실제 준비 후속 · 2026-10-07
+
+Root HK unit426·실제 PG4 및 persistence TS를 확인했다. R1/R2의 actual 실패와 원인을 별도 보존하고 기존 공개 grant 누락·typed neutral tombstone fixture를 교정했다. [I 기록](progress/M2-02i.md)을 따른다. 미디어 SQL116+chain 실제 R2는39PASS였으나 HK를 포함한 회차는42PASS/1FAIL이며 마지막HK R3만4PASS다. 이 결과를 단일43PASS 회차로 합치지 않는다. registry107/main/push0·I/J/phase in_progress·외부 not_executed와 기존 사용자 결정은 유지한다.

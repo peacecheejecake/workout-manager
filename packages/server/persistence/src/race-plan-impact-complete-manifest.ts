@@ -1,3 +1,4 @@
+import { healthKitActivityReadFactsSchema } from './race-plan-impact-healthkit-activity-read-facts.js';
 import { localImportedActivityReadFactsSchema } from './race-plan-impact-local-imported-activity-read-facts.js';
 import { mediaRetainedReadFactsSchema } from './race-plan-impact-media-read-facts.js';
 import {
@@ -576,6 +577,7 @@ export const raceImpactConsumedCaptureSchema = z.strictObject({
   manualIntakeReadFacts: manualIntakeReadFactsSchema.optional(),
   manualActivityReadFacts: manualActivityReadFactsSchema.optional(),
   localImportedActivityReadFacts: localImportedActivityReadFactsSchema.optional(),
+  healthKitActivityReadFacts: healthKitActivityReadFactsSchema.optional(),
   workoutTemplateSources: workoutTemplateSourceFactsSchema.optional(),
   resourceReadFacts: resourceRetainedReadFactsSchema.optional(),
   mediaReadFacts: mediaRetainedReadFactsSchema.optional(),
@@ -1039,6 +1041,11 @@ export function validateRaceImpactConsumedManifest(
   if (c.manualIntakeReadFacts !== undefined && c.manualIntakeReadFacts.athleteId !== c.athleteId)
     block('manualIntakeReadFacts', 'scope_mismatch');
   if (
+    c.healthKitActivityReadFacts !== undefined &&
+    c.healthKitActivityReadFacts.athleteId !== c.athleteId
+  )
+    block('healthKitActivityReadFacts', 'scope_mismatch');
+  if (
     c.manualActivityReadFacts !== undefined &&
     c.manualActivityReadFacts.athleteId !== c.athleteId
   )
@@ -1075,6 +1082,9 @@ export function validateRaceImpactConsumedManifest(
   const routineResult = validateRoutineReadSources({
     manifest: c.routineActualManifest,
     activityMetadata: c.sourcePermissionManifest.activityMediaPermissions.activities,
+    ...(c.healthKitActivityReadFacts === undefined
+      ? {}
+      : { healthKitActivityReadFacts: c.healthKitActivityReadFacts }),
     ...(c.localImportedActivityReadFacts === undefined
       ? {}
       : { localImportedActivityReadFacts: c.localImportedActivityReadFacts }),
@@ -1655,6 +1665,30 @@ export function validateRaceImpactConsumedManifest(
     new Set(am.healthkit.map((row) => row.id.toLowerCase())).size !== am.healthkit.length
   )
     block('activityMediaPermissions.metadata', 'source_identity_mismatch');
+  const hkMetadata = new Map(am.healthkit.map((row) => [row.id.toLowerCase(), row]));
+  const hkConsent = am.consents.find((row) => row.kind === 'healthkit');
+  for (const f of c.healthKitActivityReadFacts?.facts ?? []) {
+    const source = f.source;
+    if (source === null) continue;
+    const metadata = hkMetadata.get(source.sample.id.toLowerCase());
+    if (
+      !metadata ||
+      metadata.sample.state !== 'present' ||
+      metadata.sample.status !== 'active' ||
+      metadata.sample.payloadDigest !== source.sample.payloadDigest ||
+      metadata.lineage.state !== 'present' ||
+      metadata.lineage.status !== source.lineage ||
+      metadata.claim.state !== 'present' ||
+      metadata.claim.epoch.toLowerCase() !== source.claim.epoch ||
+      metadata.claim.consentRevision !== source.claim.consentRevision ||
+      !hkConsent ||
+      hkConsent.state !== 'present' ||
+      !hkConsent.granted ||
+      hkConsent.revision !== source.healthkitConsent.revision
+    )
+      block('healthKitActivityReadFacts.source', 'source_identity_mismatch');
+    // An unrelated supplementary binding is retained metadata, not primary authority.
+  }
   const mediaResult = validateMediaReadManifest({
     requestedIds: [
       ...supp.exercises.flatMap((e) => e.mediaAssetIds),
@@ -1683,6 +1717,7 @@ export function validateRaceImpactConsumedManifest(
     (c.manualIntakeReadFacts?.facts.length ?? 0) +
     (c.manualActivityReadFacts?.facts.length ?? 0) +
     (c.localImportedActivityReadFacts?.facts.length ?? 0) +
+    (c.healthKitActivityReadFacts?.facts.length ?? 0) +
     (c.workoutTemplateSources?.templates.length ?? 0) +
     (c.workoutTemplateSources?.exercises.length ?? 0) +
     (c.workoutTemplateSources?.targets.length ?? 0) +

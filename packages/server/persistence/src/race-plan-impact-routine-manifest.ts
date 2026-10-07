@@ -1,4 +1,8 @@
 import {
+  healthKitActivityReadFactsSchema,
+  validateHealthKitActivityReadFacts,
+} from './race-plan-impact-healthkit-activity-read-facts.js';
+import {
   localImportedActivityReadFactsSchema,
   validateLocalImportedActivityReadFacts,
 } from './race-plan-impact-local-imported-activity-read-facts.js';
@@ -196,6 +200,7 @@ export const routineReadSourcesProjectionSchema = z.strictObject({
   intakeReadFacts: manualIntakeReadFactsSchema.optional(),
   activityReadFacts: manualActivityReadFactsSchema.optional(),
   localImportedActivityReadFacts: localImportedActivityReadFactsSchema.optional(),
+  healthKitActivityReadFacts: healthKitActivityReadFactsSchema.optional(),
   activityMetadata: manualActivityReadProjectionInputSchema.shape.activityMetadata.optional(),
 });
 export type RoutineReadSourcesProjection = z.infer<typeof routineReadSourcesProjectionSchema>;
@@ -268,6 +273,7 @@ export function validateRoutineReadSources(input: unknown): {
     (c.intakeReadFacts?.facts.length ?? 0) +
     (c.activityReadFacts?.facts.length ?? 0) +
     (c.localImportedActivityReadFacts?.facts.length ?? 0) +
+    (c.healthKitActivityReadFacts?.facts.length ?? 0) +
     (c.activityMetadata?.length ?? 0);
   if (
     visits +
@@ -357,9 +363,19 @@ export function validateRoutineReadSources(input: unknown): {
       .map((row) => row.id.toLowerCase()),
   );
   const allActivityFacts = [...consumedActivities.values()];
-  const inputFor = (local: boolean, athleteId: string) => {
+  const hkIds = new Set(
+    m.actualRosters.activities
+      .filter((r) => r.source.state === 'present' && r.source.kind === 'healthkit')
+      .map((r) => r.id.toLowerCase()),
+  );
+  const inputFor = (kind: 'manual' | 'local' | 'hk', athleteId: string) => {
     const actualFacts = allActivityFacts.filter(
-      (f) => localIds.has(f.requested.id.toLowerCase()) === local,
+      (f) =>
+        (localIds.has(f.requested.id.toLowerCase())
+          ? 'local'
+          : hkIds.has(f.requested.id.toLowerCase())
+            ? 'hk'
+            : 'manual') === kind,
     );
     const ids = new Set(actualFacts.map((f) => f.requested.id.toLowerCase()));
     return {
@@ -375,15 +391,28 @@ export function validateRoutineReadSources(input: unknown): {
     c.activityMetadata !== undefined &&
     validateManualActivityReadFacts(
       c.activityReadFacts,
-      inputFor(false, c.activityReadFacts.athleteId),
+      inputFor('manual', c.activityReadFacts.athleteId),
     ).status === 'validated_retained_read_facts';
   const localPortValid =
     c.localImportedActivityReadFacts !== undefined &&
     c.activityMetadata !== undefined &&
     validateLocalImportedActivityReadFacts(
       c.localImportedActivityReadFacts,
-      inputFor(true, c.localImportedActivityReadFacts.athleteId),
+      inputFor('local', c.localImportedActivityReadFacts.athleteId),
     ).status === 'validated_retained_local_import_read_facts';
+  const hkPortValid =
+    c.healthKitActivityReadFacts !== undefined &&
+    c.activityMetadata !== undefined &&
+    validateHealthKitActivityReadFacts(c.healthKitActivityReadFacts, {
+      ...inputFor('hk', c.healthKitActivityReadFacts.athleteId),
+      healthkitSources: c.healthKitActivityReadFacts.facts.map((f) => ({
+        activityId: f.requested.id,
+        observation: f.source,
+        reason: f.state === 'current' ? null : f.reason,
+      })),
+    }).status === 'validated_retained_healthkit_read_facts';
+  if (c.healthKitActivityReadFacts && !hkPortValid)
+    block('healthKitActivityReadFacts', 'actual_membership_mismatch');
   if (c.activityReadFacts && !activityPortValid)
     block('activityReadFacts', 'actual_membership_mismatch');
   if (c.localImportedActivityReadFacts && !localPortValid)
@@ -575,7 +604,11 @@ export function validateRoutineReadSources(input: unknown): {
           !matchesRetained &&
           !(
             ref.kind === 'activity' &&
-            (localIds.has(ref.id.toLowerCase()) ? localPortValid : activityPortValid)
+            (localIds.has(ref.id.toLowerCase())
+              ? localPortValid
+              : hkIds.has(ref.id.toLowerCase())
+                ? hkPortValid
+                : activityPortValid)
           )
         )
           block(`${path}.${a.stepId}`, 'actual_permission_port_missing');

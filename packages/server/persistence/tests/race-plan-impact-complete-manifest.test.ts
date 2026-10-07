@@ -1,3 +1,7 @@
+import {
+  projectHealthKitActivityReadFacts,
+  type HealthKitActivityReadFacts,
+} from '../src/race-plan-impact-healthkit-activity-read-facts.js';
 import { routineReadManifestSchema } from '../src/race-plan-impact-routine-manifest.js';
 import { manualActivityReadProjectionInputSchema } from '../src/race-plan-impact-manual-activity-read-facts.js';
 import {
@@ -42,6 +46,7 @@ import {
   impactDependencyDigest,
 } from '../src/race-plan-impact-dependencies.js';
 import {
+  raceImpactConsumedCaptureSchema,
   validateRaceImpactConsumedManifest,
   type RaceImpactConsumedScope,
 } from '../src/race-plan-impact-complete-manifest.js';
@@ -3370,4 +3375,126 @@ it('full consumer blocks missing local read port without manual fallback', () =>
   expect(
     fullManualActivityReasons(c).some((r) => r.reason === 'actual_permission_port_missing'),
   ).toBe(true);
+});
+
+function withHealthKitActivityRead() {
+  const c: ReturnType<typeof withManualActivityRead> & {
+    healthKitActivityReadFacts?: HealthKitActivityReadFacts;
+  } = withManualActivityRead();
+  const m = routineReadManifestSchema.parse(c.routineActualManifest);
+  const metadata = manualActivityReadProjectionInputSchema.shape.activityMetadata.parse(
+    c.sourcePermissionManifest.activityMediaPermissions.activities,
+  );
+  const roster = m.actualRosters.activities[0],
+    head = metadata[0];
+  if (!roster || roster.source.state !== 'present' || !head || head.source.state !== 'present')
+    throw Error('fixture');
+  const sample = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+  roster.source.kind = 'healthkit';
+  roster.source.sourceId = sample;
+  head.source.kind = 'healthkit';
+  head.source.sourceId = sample;
+  c.routineActualManifest.actualRosters.activities = z
+    .array(z.json())
+    .parse(m.actualRosters.activities);
+  c.sourcePermissionManifest.activityMediaPermissions.activities = metadata;
+  const facts = m.runs.flatMap((r) => r.actuals.map((a) => a.fact));
+  const observation = {
+    adapterVersion: 2,
+    kind: 'own_healthkit_activity',
+    activityId: roster.id,
+    canonicalRevision: roster.revision,
+    source: {
+      kind: 'healthkit',
+      sourceId: sample,
+      revision: roster.source.sourceRevision,
+      contentHash: roster.source.contentHash,
+    },
+    originalDigest: roster.originalDigest,
+    overlayDigest: head.overlay.state === 'absent' ? null : roster.overlayDigest,
+    overlayRevision: head.overlay.revision,
+    healthkitConsent: { kind: 'healthkit', granted: true, revision: 1 },
+    sample: { id: sample, state: 'active', payloadDigest: roster.source.contentHash },
+    claim: { epoch: sample, consentRevision: 1 },
+    lineage: 'created_activity',
+    deregistration: { state: 'absent' },
+  };
+  c.sourcePermissionManifest.activityMediaPermissions.healthkit = [
+    {
+      id: sample,
+      sample: { state: 'present', status: 'active', payloadDigest: roster.source.contentHash },
+      lineage: { state: 'present', status: 'created_activity' },
+      claim: { state: 'present', epoch: sample, consentRevision: 1 },
+      binding: { state: 'absent' },
+    },
+  ];
+  c.sourcePermissionManifest.activityMediaPermissions.consents =
+    raceImpactConsumedCaptureSchema.shape.sourcePermissionManifest.shape.activityMediaPermissions.shape.consents
+      .parse(c.sourcePermissionManifest.activityMediaPermissions.consents)
+      .map((row) =>
+        row.kind === 'healthkit'
+          ? { kind: 'healthkit', state: 'present', granted: true, revision: 1 }
+          : row,
+      );
+  const port = projectHealthKitActivityReadFacts({
+    athleteId: athlete,
+    refs: facts.map((f) => f.requested),
+    actualFacts: facts,
+    activityRosters: [roster],
+    activityMetadata: metadata,
+    healthkitSources: [{ activityId: roster.id, observation, reason: null }],
+  });
+  if (port.status === 'blocked') throw Error(port.reason);
+  delete c.manualActivityReadFacts;
+  c.healthKitActivityReadFacts = port.facts;
+  return c;
+}
+it('HK exact metadata companion removes only its read blocker, without authority or manual fallback', () => {
+  const c = withHealthKitActivityRead();
+  expect(
+    fullManualActivityReasons(c).some((r) => r.reason === 'actual_permission_port_missing'),
+  ).toBe(false);
+  const before = structuredClone(c);
+  validateRaceImpactConsumedManifest(c, sign(c));
+  expect(c).toEqual(before);
+});
+it('HK missing/foreign/wrong source tuple companion is blocked', () => {
+  const c = withHealthKitActivityRead();
+  delete c.healthKitActivityReadFacts;
+  expect(
+    fullManualActivityReasons(c).some((r) => r.reason === 'actual_permission_port_missing'),
+  ).toBe(true);
+  const f = withHealthKitActivityRead();
+  if (!f.healthKitActivityReadFacts) throw Error('fixture');
+  f.healthKitActivityReadFacts.athleteId = 'foreign';
+  blocked(f, 'scope_mismatch', 'healthKitActivityReadFacts');
+  const g = withHealthKitActivityRead();
+  const source = g.healthKitActivityReadFacts?.facts[0]?.source;
+  if (!source) throw Error('fixture');
+  source.originalDigest = 'f'.repeat(64);
+  expect(fullManualActivityReasons(g).some((r) => r.reason === 'actual_membership_mismatch')).toBe(
+    true,
+  );
+});
+
+it('HK primary witness must match captured claim/consent/sample, unrelated binding does not deny primary', () => {
+  const c = withHealthKitActivityRead();
+  const am =
+    raceImpactConsumedCaptureSchema.shape.sourcePermissionManifest.shape.activityMediaPermissions.parse(
+      c.sourcePermissionManifest.activityMediaPermissions,
+    );
+  const hk = am.healthkit[0];
+  if (!hk) throw Error('fixture');
+  hk.binding = {
+    state: 'present',
+    activityId: race,
+    targetRevision: 1,
+    sampleDigest: 'f'.repeat(64),
+  };
+  c.sourcePermissionManifest.activityMediaPermissions = am;
+  expect(
+    fullManualActivityReasons(c).some((r) => r.path === 'healthKitActivityReadFacts.source'),
+  ).toBe(false);
+  hk.claim = { state: 'present', epoch: race, consentRevision: 2 };
+  blocked(c, 'source_identity_mismatch', 'healthKitActivityReadFacts.source');
 });

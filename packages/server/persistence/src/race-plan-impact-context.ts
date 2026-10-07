@@ -1,3 +1,9 @@
+import { activityValuesSchema, activityOverlaySchema } from '@workout/contracts/activity';
+import { captureRaceManualHealthKitPurposeV2In } from './race-manual-review-healthkit-purpose-v2.js';
+import {
+  projectHealthKitActivityReadFacts,
+  type HealthKitActivityReadFacts,
+} from './race-plan-impact-healthkit-activity-read-facts.js';
 import {
   projectLocalImportedActivityReadFacts,
   type LocalImportedActivityReadFacts,
@@ -44,6 +50,7 @@ import type { Transaction } from './database.js';
 import { captureRoutineActualManifest } from './race-plan-impact-routine-actuals.js';
 import { captureCoreEvidenceDependencies } from './evidence-dependencies.js';
 import {
+  impactDependencyDigest,
   captureIntegratedDependencyInventory,
   captureSupplementaryReferenceManifest,
   RaceImpactDependencyError,
@@ -689,6 +696,7 @@ export async function captureRacePlanImpactContext(
   let manualIntakeReadFacts: Awaited<ReturnType<typeof captureManualIntakeReadFacts>>;
   let manualActivityReadFacts: ManualActivityReadFacts;
   let localImportedActivityReadFacts: LocalImportedActivityReadFacts;
+  let healthKitActivityReadFacts: HealthKitActivityReadFacts;
   let workoutTemplateSources: Awaited<ReturnType<typeof captureWorkoutTemplateSources>>;
   let resourceReadFacts: Awaited<ReturnType<typeof captureResourceRetainedReadFacts>>;
   let mediaReadFacts: Awaited<ReturnType<typeof captureMediaRetainedReadFacts>>;
@@ -790,8 +798,15 @@ export async function captureRacePlanImpactContext(
     const localFacts = activityFacts.filter((fact) =>
       localIds.has(fact.requested.id.toLowerCase()),
     );
+    const hkIds = new Set(
+      routineActualManifest.actualRosters.activities
+        .filter((r) => r.source.state === 'present' && r.source.kind === 'healthkit')
+        .map((r) => r.id.toLowerCase()),
+    );
+    const hkFacts = activityFacts.filter((f) => hkIds.has(f.requested.id.toLowerCase()));
     const manualFacts = activityFacts.filter(
-      (fact) => !localIds.has(fact.requested.id.toLowerCase()),
+      (f) =>
+        !localIds.has(f.requested.id.toLowerCase()) && !hkIds.has(f.requested.id.toLowerCase()),
     );
     const projectInput = (facts: typeof activityFacts) => {
       const ids = new Set(facts.map((fact) => fact.requested.id.toLowerCase()));
@@ -814,6 +829,60 @@ export async function captureRacePlanImpactContext(
     if (projectedLocalFacts.status !== 'projected_retained_local_import_read_facts')
       fail('INVALID_CONTEXT');
     localImportedActivityReadFacts = projectedLocalFacts.facts;
+    const hkInput = projectInput(hkFacts);
+    const healthkitSources = [];
+    for (const activityId of new Set(hkFacts.map((f) => f.requested.id.toLowerCase()))) {
+      const fact = hkFacts.find((f) => f.requested.id.toLowerCase() === activityId);
+      const metadata = hkInput.activityMetadata.find((m) => m.id.toLowerCase() === activityId);
+      const roster = hkInput.activityRosters.find((r) => r.id.toLowerCase() === activityId);
+      if (
+        !fact?.content ||
+        !metadata ||
+        !roster ||
+        metadata.source.state !== 'present' ||
+        metadata.source.kind !== 'healthkit'
+      ) {
+        healthkitSources.push({
+          activityId,
+          observation: null,
+          reason: 'healthkit_source_unavailable' as const,
+        });
+        continue;
+      }
+      const body = z
+        .strictObject({
+          original: activityValuesSchema,
+          overlay: activityOverlaySchema.nullable(),
+          detail: z.unknown().nullable(),
+        })
+        .parse(fact.content);
+      const observed = await captureRaceManualHealthKitPurposeV2In(
+        tx,
+        {
+          activityId,
+          canonicalRevision: roster.revision,
+          source: {
+            kind: 'healthkit',
+            sourceId: metadata.source.sourceId,
+            revision: metadata.source.revision,
+            contentHash: metadata.source.contentHash,
+          },
+          expectedOriginalDigest: impactDependencyDigest(body.original),
+          expectedOverlayDigest:
+            body.overlay === null ? null : impactDependencyDigest(body.overlay),
+          expectedOverlayRevision: metadata.overlay.revision,
+        },
+        sourceBudget,
+      );
+      healthkitSources.push({
+        activityId,
+        observation: observed.observation,
+        reason: observed.reason,
+      });
+    }
+    const projectedHk = projectHealthKitActivityReadFacts({ ...hkInput, healthkitSources });
+    if (projectedHk.status !== 'projected_retained_healthkit_read_facts') fail('INVALID_CONTEXT');
+    healthKitActivityReadFacts = projectedHk.facts;
   } catch (error) {
     if (error instanceof RaceImpactDependencyError)
       throw new RacePlanImpactContextError(
@@ -856,6 +925,7 @@ export async function captureRacePlanImpactContext(
     manualIntakeReadFacts,
     manualActivityReadFacts,
     localImportedActivityReadFacts,
+    healthKitActivityReadFacts,
     workoutTemplateSources,
     resourceReadFacts,
     mediaReadFacts,

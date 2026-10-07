@@ -1,4 +1,9 @@
 import {
+  captureRaceManualHealthKitPurposeV2In,
+  raceManualHealthKitPurposeObservationV2Schema,
+  raceManualHealthKitPurposeReasonV2Schema,
+} from './race-manual-review-healthkit-purpose-v2.js';
+import {
   captureRaceManualMediaPurposeV2In,
   raceManualMediaPurposeObservationV2Schema,
   raceManualMediaPurposeReasonV2Schema,
@@ -27,6 +32,7 @@ export function assertRaceManualPlainV2(value: unknown): void {
 const identity = raceManualReviewFullCopiedInventoryV2Schema.out.shape.refs.element.shape.identity;
 export const raceManualConsumedUseReasonV2Schema = z.enum([
   ...raceManualMediaPurposeReasonV2Schema.options,
+  ...raceManualHealthKitPurposeReasonV2Schema.options,
   'preparation_blocked',
   'source_unavailable',
   'source_tuple_mismatch',
@@ -58,6 +64,7 @@ export const raceManualConsumedUseFactsV2Schema = z.strictObject({
           .union([
             raceManualSourcePurposeObservationV2Schema,
             raceManualMediaPurposeObservationV2Schema,
+            raceManualHealthKitPurposeObservationV2Schema,
           ])
           .nullable(),
         resourceAccess: z
@@ -227,7 +234,9 @@ export async function prepareRaceManualConsumedUseV2In(
     if (
       (i.kind === 'activity-canonical-values' || i.kind === 'activity-overlay') &&
       activity?.source.state === 'present' &&
-      (activity.source.kind === 'fit' || activity.source.kind === 'fixture')
+      (activity.source.kind === 'fit' ||
+        activity.source.kind === 'fixture' ||
+        activity.source.kind === 'healthkit')
     ) {
       const copied = binding.inventory.refs.find(
         (r) => r.identity.kind === i.kind && r.identity.sourceId === i.sourceId,
@@ -249,7 +258,11 @@ export async function prepareRaceManualConsumedUseV2In(
             detail: z.unknown().nullable(),
           })
           .parse(canonical.content);
-        const observed = await captureRaceManualLocalActivityPurposeV2In(
+        const observed = await (
+          activity.source.kind === 'healthkit'
+            ? captureRaceManualHealthKitPurposeV2In
+            : captureRaceManualLocalActivityPurposeV2In
+        )(
           tx,
           {
             activityId: i.sourceId,

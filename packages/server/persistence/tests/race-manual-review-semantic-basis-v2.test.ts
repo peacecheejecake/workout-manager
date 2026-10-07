@@ -318,3 +318,50 @@ it('media purpose never accepts AI/include-for-coach flags as equivalent authori
     }).success,
   ).toBe(false);
 });
+function healthKitPurposeBasis() {
+  const c = basis();
+  c.consumedUses.facts.push({
+    identity: { kind: 'activity-canonical-values', sourceId: eventId, revision: 1 },
+    use: 'core_manual',
+    reason: null,
+    resourceSource: null,
+    sourceAuthentication: 'unverified',
+    sourcePurpose: {
+      adapterVersion: 2,
+      kind: 'own_healthkit_activity',
+      activityId: eventId,
+      canonicalRevision: 1,
+      source: { kind: 'healthkit', sourceId: eventId, revision: 1, contentHash: 'a'.repeat(64) },
+      originalDigest: 'b'.repeat(64),
+      overlayDigest: null,
+      overlayRevision: null,
+      healthkitConsent: { kind: 'healthkit', granted: true, revision: 1 },
+      sample: { id: eventId, state: 'active', payloadDigest: 'a'.repeat(64) },
+      claim: { epoch: eventId, consentRevision: 1 },
+      lineage: 'created_activity',
+      deregistration: { state: 'absent' },
+    },
+  });
+  return c;
+}
+it.each(['consent', 'claim', 'source', 'canonical'] as const)(
+  'consumed HK %s drift is relevant while original fields stay unverified',
+  (field) => {
+    const before = healthKitPurposeBasis(),
+      after = structuredClone(before),
+      p = after.consumedUses.facts[0]?.sourcePurpose;
+    if (!p || p.kind !== 'own_healthkit_activity') throw Error('fixture');
+    if (field === 'consent') {
+      p.healthkitConsent.revision++;
+      p.claim.consentRevision++;
+    } else if (field === 'claim') p.claim.epoch = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+    else if (field === 'source') p.source.revision++;
+    else p.canonicalRevision++;
+    expect(compareRaceManualSemanticBasisV2(before, after)).toMatchObject({
+      status: 'blocked',
+      reason: 'semantic_basis_changed',
+      authority: 'none',
+      approvalAllowed: false,
+    });
+  },
+);
