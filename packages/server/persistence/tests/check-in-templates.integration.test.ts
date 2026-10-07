@@ -1,3 +1,4 @@
+import { captureCheckInTemplateSourceIn } from '../src/check-in-template-source.js';
 import { createCheckInRepository } from '../src/check-ins.js';
 import { createRoutineRepository } from '../src/routine-core.js';
 import { randomUUID } from 'node:crypto';
@@ -422,5 +423,57 @@ describe.each(['normal107', 'raw122'] as const)('%s + explicit123', (profile) =>
     });
     await expect(repo.save(f.athlete, input)).rejects.toThrow('ACCOUNT_ERASED');
     await expect(repo.readHead(f.athlete, input.templateId)).rejects.toThrow('ACCOUNT_ERASED');
+  });
+  it('narrow source helper retains the exact frozen version under a newer head and app withdrawal without foreign access', async () => {
+    const f = await tenant(),
+      foreign = await tenant();
+    const repo = createCheckInTemplateRepository(db),
+      input = command();
+    const original = await repo.save(f.athlete, input);
+    const read = (athlete: string) =>
+      db.snapshotTenant
+        ? db.snapshotTenant(athlete, (tx) =>
+            captureCheckInTemplateSourceIn(
+              tx,
+              { id: input.templateId, versionId: original.versionId },
+              { bytes: 0n, sources: 0 },
+            ),
+          )
+        : Promise.reject(new Error('SNAPSHOT_PORT_REQUIRED'));
+    expect(await read(f.athlete)).toMatchObject({
+      state: 'current',
+      record: original,
+      authority: 'none',
+      freshness: 'not_checked',
+    });
+    const newer = await repo.save(f.athlete, {
+      ...input,
+      idempotencyKey: randomUUID(),
+      expectedVersion: 1,
+      content: { ...input.content, title: 'Newer prompts' },
+    });
+    expect(await read(f.athlete)).toMatchObject({
+      state: 'historical',
+      record: original,
+      currentHead: { templateId: input.templateId, versionId: newer.versionId, version: 2 },
+    });
+    expect(await read(foreign.athlete)).toMatchObject({
+      state: 'unavailable',
+      reason: 'owned_version_unavailable',
+      record: null,
+      currentHead: null,
+    });
+    await f.consent.setConsent(f.athlete, {
+      kind: 'app',
+      granted: false,
+      expectedRevision: 1,
+      idempotencyKey: randomUUID(),
+    });
+    expect(await read(f.athlete)).toMatchObject({
+      state: 'historical',
+      record: original,
+      authority: 'none',
+      freshness: 'not_checked',
+    });
   });
 });
