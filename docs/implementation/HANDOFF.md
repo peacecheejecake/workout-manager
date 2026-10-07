@@ -428,3 +428,15 @@ Native 병렬 작업은 SQL108의 exact copied-channel 처리, immutable V2 pin�
 - `phase/m2-02`에서 fullcopied typed mapper 27identity와 기존 exact food reader 추출을 연결했다. immutable/observation/fragment·실제 copiedLocation payload digest를 구분하며 authority none/not_checked/not_persisted 및 missing5를 유지한다. 공개 subpath만 추가하고 HTTP/product writer 활성화0이다.
 - Root unit98/98, 실제 PG food7/7 + fullcopied public4/4 R2 + 기존 nested 회귀2/2(66 filtered skip), scoped persistence/API TS·lint/format/diff 및 actual DB/roles잔존0이다. 최초 fullcopied PG3PASS/1FAIL과 actor static/unit 실패는 별도 보존한다. 자세한 입력 SHA와 로그·scope는 [I](progress/M2-02i.md)의 최신 수용 절을 따른다. 전체channel DBpositive/whole phase gates나 lifecycle/storage/approval 완료로 확대하지 않는다.
 - Native 병렬은 NEW full-owned DTO adapter pair, 미등록 SQL115 relation-group observer/PGfixture pair, 남은 public channel PGfixture에 각각 비중복 소유를 배정했다. Root가 manifest/graph/Git·실제 DB 실행을 직렬 통합한다. registry107/I/J/phase in_progress·main `1d557358`/push0, 대회 삭제 영양 연결 해제·재연결/재승인 전 시각 사용 중단 및 기존 PB/FUT-09/AWS/iPhone 대기는 유지한다.
+
+## 외부 상태 재확인 및 병렬 구현 범위 · 2026-10-07
+
+- Root 실제 `aws sts get-caller-identity --profile workout-admin --region ap-northeast-2`는 exit255, SSO token expired/refresh failed였다. 새 로그인 가능 여부를 질문했다. 인증 재개가 정확 recovery-v1 실행 승인을 대체하지 않는다. 서버 상태·운영 백업/복원·503 해제는 실행하지 않았다.
+- `xcrun devicectl list devices` 실제 exit0 JSON(`/private/tmp/wm-device-status-root-20261007.json`)에서 iPhone15ProMax/OS27.0은 paired, tunnelState unavailable이었다. 연결·앱 실행·측정 성공으로 표시하지 않는다. 기기 변경/건강 자료 읽기0이다.
+- PB chip/gun·공식 종목별 비교와 FUT-09 실제 공유 계획 원문 파일·링크를 다시 질문했다. 답변 전 정책/원문 이식 완료로 표시하지 않는다.
+- 실제 producer `race-plan-impact-source-permissions.ts:396`는 checklist catalog 요청을 skip한다. inline checklist는 blueprint fullbody에 포함되므로 catalog fake-checklist의 unindexable 거절이 맞다. 새 채널 fixture의 초안 우려는 실제 emitted capture 증거가 없던 추정으로 철회했으며 새 identity를 발명하지 않았다.
+- full-owned DTO adapter는 기존 core8 query/guard 복제를 피하기 위해 기존 owned source helper에서 strict ref1개 reader를 공통 추출 중이다. 별도 SQL115/group 관측 및 추가 channel fixture와 비중복 소유로 계속 구현하며, 현재 WIP는 phase 검증/commit 완료가 아니다.
+
+## FUT-09 원문 링크 접근 재확인 · 2026-10-07
+
+기준 공유 링크 `https://chatgpt.com/share/6aa89754-1ea4-83ee-b91a-5ed2a1955bd9`의 웹 조회는 제목만 반환하고 본문0이었다. Aside CLI1.26.916.1741/skill3의 guide와 guide repl을 읽었으며 skills list는 daemon auth challenge 실패/Aside not running으로 exit1이었다. 사용자 선호 in-app Browser로 해당 정확URL을 열어 실제 DOM의 `Could not load this ChatGPT conversation`을 확인했다. 원문 확보/날짜 추출/이식·활성화는 완료하지 않았다. 사용자의 앞선 sample 요청을 위한 [원문 전달 예시](shared-plan-original-example.md)를 추가했으며 합성 양식을 실제 원문으로 대체하지 않는다. 원문 파일·텍스트·접근 가능한 링크 수신을 기다린다.
