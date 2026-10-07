@@ -33,6 +33,19 @@ import {
   type SaveFoodDefinitionVersionRequest,
   type SaveNutritionPlanVersionRequest,
 } from '@workout/contracts/nutrition-core';
+import {
+  nutritionPlanReadV2Schema,
+  type NutritionPlanReadV2,
+} from '@workout/contracts/nutrition-race-plan-v2';
+import {
+  nutritionPlanVersionCompatibleV3Schema,
+  nutritionPlanVersionV3Schema,
+  type NutritionPlanVersionCompatibleV3,
+  nutritionPlanReadV3Schema,
+  nutritionPlansResponseV3Schema,
+  type NutritionPlanReadV3,
+  type NutritionPlansResponseV3,
+} from '@workout/contracts/nutrition-race-plan-v3';
 import { planSnapshotSchema } from '@workout/contracts/planning';
 import type { Database, Transaction } from './database.js';
 import { enqueue, PersistenceConflict } from './outbox.js';
@@ -68,12 +81,32 @@ export class NutritionValidationError extends Error {
   }
 }
 
+export class NutritionReadLimitError extends Error {
+  readonly code = 'NUTRITION_READ_LIMIT';
+  constructor() {
+    super('NUTRITION_READ_LIMIT');
+  }
+}
+export class NutritionReadVersionError extends Error {
+  readonly code = 'NUTRITION_READ_VERSION_UNSUPPORTED';
+  constructor() {
+    super('NUTRITION_READ_VERSION_UNSUPPORTED');
+  }
+}
 export interface NutritionRepository {
   savePlan(
     athleteId: string,
     input: SaveNutritionPlanVersionRequest,
   ): Promise<NutritionPlanVersion>;
+  /** Receipt replay only; absent receipt returns null and never creates an approval. */
+  replayPlanV3(
+    athleteId: string,
+    input: SaveNutritionPlanVersionRequest,
+  ): Promise<NutritionPlanVersionCompatibleV3 | null>;
   readPlan(athleteId: string, planId: string): Promise<NutritionPlanRead | null>;
+  readPlanV2(athleteId: string, planId: string): Promise<NutritionPlanReadV2 | null>;
+  readPlanV3(athleteId: string, planId: string): Promise<NutritionPlanReadV3 | null>;
+  listPlansV3(athleteId: string, query: NutritionPlansQuery): Promise<NutritionPlansResponseV3>;
   listPlans(athleteId: string, query: NutritionPlansQuery): Promise<NutritionPlansResponse>;
   saveFood(
     athleteId: string,
@@ -121,6 +154,65 @@ async function replay<T>(
   if (!prior.rows[0]) return null;
   if (prior.rows[0]['matches'] !== true) throw new PersistenceConflict('IDEMPOTENCY_CONFLICT');
   return schema.parse(prior.rows[0]['result']);
+}
+const scrubbedNutritionReceiptRequestSchema = z.strictObject({
+  receiptVersion: z.literal(2),
+  digestVersion: z.literal('postgres-jsonb-sha256-v1'),
+  requestDigest: z.string().regex(/^[a-f0-9]{64}$/),
+});
+const committedNutritionReceiptSchema = z.strictObject({
+  receiptVersion: z.literal(2),
+  outcome: z.literal('committed'),
+  kind: z.literal('nutrition_plan'),
+  planId: z.uuid().transform((id) => id.toLowerCase()),
+  versionId: z.uuid().transform((id) => id.toLowerCase()),
+  version: z.number().int().positive(),
+  approvalId: z.uuid().transform((id) => id.toLowerCase()),
+});
+/** Original receipt tuple only: never select the latest head or create another approval. */
+async function replayNutritionPlan(
+  tx: Transaction,
+  key: string,
+  request: unknown,
+): Promise<NutritionPlanVersionCompatibleV3 | null> {
+  const prior = await tx.query(
+    `SELECT request,result,CASE WHEN request->>'receiptVersion'='2'
+       THEN request->>'requestDigest'=encode(sha256(convert_to(($3::jsonb)::text,'UTF8')),'hex')
+       ELSE request=$3::jsonb END AS matches
+     FROM command_receipt WHERE athlete_id=$1 AND idempotency_key=$2`,
+    [tx.athleteId, key, JSON.stringify(request)],
+  );
+  const row = prior.rows[0];
+  if (!row) return null;
+  const stored = z.record(z.string(), z.unknown()).parse(row['request']);
+  if (stored['receiptVersion'] !== 2) {
+    if (row['matches'] !== true) throw new PersistenceConflict('IDEMPOTENCY_CONFLICT');
+    return nutritionPlanVersionCompatibleV3Schema.parse(row['result']);
+  }
+  scrubbedNutritionReceiptRequestSchema.parse(stored);
+  const committed = committedNutritionReceiptSchema.parse(row['result']);
+  if (row['matches'] !== true) throw new PersistenceConflict('IDEMPOTENCY_CONFLICT');
+  const versions = await tx.query(
+    `SELECT octet_length(record_json::text)::text AS bytes,
+       CASE WHEN octet_length(record_json::text)<=524288 THEN record_json ELSE NULL END AS record_json
+     FROM nutrition_plan_version
+     WHERE athlete_id=$1 AND plan_id=$2 AND version_id=$3 AND version=$4 AND approval_id=$5`,
+    [tx.athleteId, committed.planId, committed.versionId, committed.version, committed.approvalId],
+  );
+  if (versions.rows.length !== 1) throw new Error('INVALID_NUTRITION_SAVE_RECEIPT');
+  const versionRow = versions.rows[0];
+  if (!versionRow) throw new Error('INVALID_NUTRITION_SAVE_RECEIPT');
+  if (BigInt(z.string().regex(/^\d+$/).parse(versionRow['bytes'])) > 524288n)
+    throw new NutritionReadLimitError();
+  const record = nutritionPlanVersionV3Schema.parse(versionRow['record_json']);
+  if (
+    record.planId !== committed.planId ||
+    record.versionId !== committed.versionId ||
+    record.version !== committed.version ||
+    record.approvalId !== committed.approvalId
+  )
+    throw new Error('INVALID_NUTRITION_SAVE_RECEIPT');
+  return record;
 }
 async function finish<T>(
   tx: Transaction,
@@ -268,6 +360,91 @@ const intakeCursorSchema = z.strictObject({
   intakeId: boundedId,
 });
 
+/** Retained structural read only: no live re-pin, admission or marker authority. */
+async function readNutritionPlanIn(tx: Transaction, planId: string) {
+  const rows = await tx.query(
+    `SELECT v.version_id,v.version,v.approved_at,h.version_id AS head_id,
+       CASE WHEN v.version_id=h.version_id THEN octet_length(v.record_json::text)::text ELSE '0' END AS bytes,
+       CASE WHEN v.version_id=h.version_id AND octet_length(v.record_json::text)<=524288
+         THEN v.record_json ELSE NULL END AS record_json
+     FROM nutrition_plan_version v JOIN nutrition_plan_head h
+     ON h.athlete_id=v.athlete_id AND h.plan_id=v.plan_id
+     WHERE v.athlete_id=$1 AND v.plan_id=$2 ORDER BY v.version DESC LIMIT 100`,
+    [tx.athleteId, planId],
+  );
+  if (!rows.rows[0]) return null;
+  const row = rows.rows.find((row) => row['version_id'] === row['head_id']);
+  if (row && BigInt(z.string().regex(/^\d+$/).parse(row['bytes'])) > 524288n)
+    throw new NutritionReadLimitError();
+  const head = row ? nutritionPlanVersionCompatibleV3Schema.parse(row['record_json']) : null;
+  if (
+    head &&
+    row &&
+    (head.planId.toLowerCase() !== planId ||
+      head.versionId.toLowerCase() !== row['version_id'] ||
+      head.version !== row['version'])
+  )
+    throw new Error('INVALID_NUTRITION_PLAN_RECORD');
+  return {
+    planId,
+    head,
+    history: rows.rows.map((row) => ({
+      versionId: row['version_id'],
+      version: row['version'],
+      approvedAt:
+        row['approved_at'] instanceof Date ? row['approved_at'].toISOString() : row['approved_at'],
+    })),
+  };
+}
+async function listNutritionPlansIn(tx: Transaction, input: NutritionPlansQuery) {
+  const after = decodeCursor(input.cursor, planCursorSchema);
+  // One statement/MVCC snapshot: bounded scalar inventory gates body materialization.
+  const result = await tx.query(
+    `WITH bounded AS MATERIALIZED (
+       SELECT v.version_id,h.plan_id,octet_length(v.record_json::text)::bigint AS bytes
+       FROM nutrition_plan_head h JOIN nutrition_plan_version v
+       ON v.athlete_id=h.athlete_id AND v.version_id=h.version_id
+       WHERE h.athlete_id=$1 AND v.period_from<=$3 AND v.period_to>=$2
+       AND ($4::uuid IS NULL OR h.plan_id>$4::uuid)
+       ORDER BY h.plan_id LIMIT $5
+     ), bounds AS (
+       SELECT count(*)::text AS count,coalesce(sum(bytes+1024),0)::text AS bytes,coalesce(max(bytes),0)::text AS largest FROM bounded
+     )
+     SELECT count,bytes,largest,CASE WHEN bytes::bigint<=4194304 AND largest::bigint<=524288 THEN
+       coalesce((SELECT jsonb_agg(jsonb_build_object('plan_id',b.plan_id,'record_json',v.record_json) ORDER BY b.plan_id)
+       FROM bounded b JOIN nutrition_plan_version v ON v.athlete_id=$1 AND v.version_id=b.version_id),'[]'::jsonb)
+       ELSE '[]'::jsonb END AS records FROM bounds`,
+    [tx.athleteId, input.from, input.toInclusive, after?.planId ?? null, input.limit + 1],
+  );
+  const row = z
+    .strictObject({
+      count: z.string().regex(/^\d+$/),
+      bytes: z.string().regex(/^\d+$/),
+      largest: z.string().regex(/^\d+$/),
+      records: z.array(z.strictObject({ plan_id: z.uuid(), record_json: z.unknown() })).max(101),
+    })
+    .parse(result.rows[0]);
+  if (BigInt(row.bytes) > 4194304n || BigInt(row.largest) > 524288n)
+    throw new NutritionReadLimitError();
+  if (
+    BigInt(row.count) > BigInt(input.limit + 1) ||
+    BigInt(row.count) !== BigInt(row.records.length)
+  )
+    throw new Error('INVALID_NUTRITION_PLAN_RECORD');
+  const rows = { rows: row.records };
+  const page = rows.rows.slice(0, input.limit);
+  return {
+    plans: page.map((row) => {
+      const plan = nutritionPlanVersionCompatibleV3Schema.parse(row['record_json']);
+      if (plan.planId.toLowerCase() !== row['plan_id'])
+        throw new Error('INVALID_NUTRITION_PLAN_RECORD');
+      return plan;
+    }),
+    nextCursor:
+      rows.rows.length > input.limit ? cursor({ planId: page.at(-1)?.['plan_id'] }) : null,
+  };
+}
+
 export function createNutritionRepository(
   database: Database,
   { now = () => new Date() }: { now?: () => Date } = {},
@@ -279,8 +456,11 @@ export function createNutritionRepository(
       const request = { operation: 'nutrition_plan_save', ...command };
       return database.tenant(athleteId, async (tx) => {
         await commandLock(tx);
-        const prior = await replay(tx, key, request, nutritionPlanVersionSchema);
-        if (prior) return prior;
+        const prior = await replayNutritionPlan(tx, key, request);
+        if (prior) {
+          if ('schemaVersion' in prior) throw new NutritionReadVersionError();
+          return nutritionPlanVersionSchema.parse(prior);
+        }
         await requireAppAdmission(tx);
         let planId: string;
         let version: number;
@@ -359,31 +539,54 @@ export function createNutritionRepository(
         });
       });
     },
+    replayPlanV3(athleteId, input) {
+      const command = saveNutritionPlanVersionRequestSchema.parse(input);
+      const key = `nutrition-plan:${command.idempotencyKey}`;
+      const request = { operation: 'nutrition_plan_save', ...command };
+      return database.tenant(athleteId, async (tx) => {
+        await commandLock(tx);
+        return replayNutritionPlan(tx, key, request);
+      });
+    },
     readPlan(athleteId, planId) {
       const id = requireUuid(planId);
       return database.tenant(athleteId, async (tx) => {
-        const rows = await tx.query(
-          `SELECT v.version_id,v.version,v.approved_at,v.record_json,h.version_id AS head_id
-           FROM nutrition_plan_version v JOIN nutrition_plan_head h
-           ON h.athlete_id=v.athlete_id AND h.plan_id=v.plan_id
-           WHERE v.athlete_id=$1 AND v.plan_id=$2 ORDER BY v.version DESC LIMIT 100`,
-          [athleteId, id],
-        );
-        if (!rows.rows[0]) return null;
-        const head = rows.rows.find((row) => row['version_id'] === row['head_id']);
-        return nutritionPlanReadSchema.parse({
-          planId: id,
-          head: head ? head['record_json'] : null,
-          history: rows.rows.map((row) => ({
-            versionId: row['version_id'],
-            version: row['version'],
-            approvedAt:
-              row['approved_at'] instanceof Date
-                ? row['approved_at'].toISOString()
-                : row['approved_at'],
-          })),
-        });
+        const read = await readNutritionPlanIn(tx, id);
+        if (read === null) return null;
+        if (read.head !== null && 'schemaVersion' in read.head)
+          throw new NutritionReadVersionError();
+        return nutritionPlanReadSchema.parse(read);
       });
+    },
+    readPlanV2(athleteId, planId) {
+      const id = requireUuid(planId);
+      return database.tenant(athleteId, async (tx) => {
+        const read = await readNutritionPlanIn(tx, id);
+        if (read === null) return null;
+        if (read.head !== null && 'schemaVersion' in read.head && read.head.schemaVersion === 3)
+          throw new NutritionReadVersionError();
+        return nutritionPlanReadV2Schema.parse({ schemaVersion: 2, ...read });
+      });
+    },
+    readPlanV3(athleteId, planId) {
+      const id = requireUuid(planId);
+      return database.tenant(athleteId, async (tx) => {
+        const read = await readNutritionPlanIn(tx, id);
+        if (read === null) return null;
+        const response = { schemaVersion: 3, ...read };
+        if (Buffer.byteLength(JSON.stringify(response), 'utf8') > 524288)
+          throw new NutritionReadLimitError();
+        return nutritionPlanReadV3Schema.parse(response);
+      });
+    },
+    listPlansV3(athleteId, query) {
+      const input = nutritionPlansQuerySchema.parse(query);
+      return database.tenant(athleteId, async (tx) =>
+        nutritionPlansResponseV3Schema.parse({
+          schemaVersion: 3,
+          ...(await listNutritionPlansIn(tx, input)),
+        }),
+      );
     },
     listPlans(athleteId, query) {
       const input = nutritionPlansQuerySchema.parse(query);
@@ -398,6 +601,11 @@ export function createNutritionRepository(
           [athleteId, input.from, input.toInclusive, after?.planId ?? null, input.limit + 1],
         );
         const page = rows.rows.slice(0, input.limit);
+        for (const row of page) {
+          const body = z.record(z.string(), z.unknown()).parse(row['record_json']);
+          if (body['schemaVersion'] === 2 || body['schemaVersion'] === 3)
+            throw new NutritionReadVersionError();
+        }
         return nutritionPlansResponseSchema.parse({
           plans: page.map((row) => row['record_json']),
           nextCursor:
@@ -719,3 +927,6 @@ export function createNutritionRepository(
     },
   };
 }
+
+// Shared internal command seams; callers retain their own receipt/admission order.
+export { replayNutritionPlan, validateFoodPortions, ownedTrainingPlan, finish };

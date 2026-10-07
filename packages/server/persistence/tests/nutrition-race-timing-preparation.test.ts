@@ -272,7 +272,10 @@ it('existing captured timing is retained and newer basis never silently repins',
       update,
       [],
     ),
-  ).toMatchObject({ status: 'blocked', blocks: [{ code: 'PRIOR_TIMING_STALE' }] });
+  ).toMatchObject({
+    status: 'prepared',
+    timingRoster: original.status === 'prepared' ? original.timingRoster : {},
+  });
 });
 
 it('aggregate decoded byte preflight fails before race body fetch', async () => {
@@ -349,4 +352,75 @@ it('changed plan timing context cannot claim unchanged legacy preservation', asy
   expect(result).toMatchObject({ status: 'prepared', notices: [] });
   if (result.status === 'prepared')
     expect(result.timingRoster.itemRaceTimingBindings[0]?.binding.state).toBe('captured');
+});
+
+it.each(['x'.repeat(201), '영양"\\'.repeat(101)])(
+  'accepts actual draft item ID %s within complete metadata bounds',
+  async (itemId) => {
+    const f = fixture();
+    const result = await prepareNutritionRaceTimingIn(
+      f.tx,
+      {
+        ...intent,
+        command: { ...intent.command, draft: { ...draft, items: [{ ...item, id: itemId }] } },
+      },
+      [itemId],
+    );
+    expect(result).toMatchObject({
+      status: 'prepared',
+      storage: 'not_persisted',
+      approvalAllowed: false,
+    });
+    if (result.status !== 'prepared') throw Error('expected preparation');
+    expect(result.timingRoster.itemRaceTimingBindings[0]?.itemId).toBe(itemId);
+  },
+);
+it.each([[item.id, item.id], [123], [''], [item.id, 'a']])(
+  'rejects malformed, duplicate or unsorted affected metadata before query %#',
+  async (...ids) => {
+    const f = fixture();
+    await expect(prepareNutritionRaceTimingIn(f.tx, intent, ids)).rejects.toMatchObject({
+      code: 'NUTRITION_TIMING_INVALID_INPUT',
+    });
+    expect(f.calls).toEqual([]);
+  },
+);
+it('rejects oversized complete UTF8 metadata before schema decoding or query', async () => {
+  const f = fixture();
+  await expect(
+    prepareNutritionRaceTimingIn(f.tx, intent, ['영'.repeat(1400000)]),
+  ).rejects.toMatchObject({ code: 'NUTRITION_TIMING_LIMIT' });
+  expect(f.calls).toEqual([]);
+  const circular: { self?: unknown } = {};
+  circular.self = circular;
+  await expect(prepareNutritionRaceTimingIn(f.tx, circular, [])).rejects.toMatchObject({
+    code: 'NUTRITION_TIMING_INVALID_INPUT',
+  });
+  expect(f.calls).toEqual([]);
+});
+it('retains 5000 affected-ID count cap and includes metadata in aggregate source budget', async () => {
+  const many = fixture();
+  await expect(
+    prepareNutritionRaceTimingIn(
+      many.tx,
+      intent,
+      Array.from({ length: 5001 }, (_, i) => `item-${String(i).padStart(5, '0')}`),
+    ),
+  ).rejects.toMatchObject({ code: 'NUTRITION_TIMING_INVALID_INPUT' });
+  expect(many.calls).toEqual([]);
+  const bounded = fixture({ raceBytes: String(4 * 1024 * 1024) });
+  await expect(prepareNutritionRaceTimingIn(bounded.tx, intent, [])).rejects.toMatchObject({
+    code: 'NUTRITION_TIMING_LIMIT',
+  });
+  expect(bounded.calls.some((sql) => sql.includes('WITH requested'))).toBe(false);
+});
+it('includes caller-decoded own source bytes in the same 4MiB preparation budget', async () => {
+  const f = fixture();
+  await expect(prepareNutritionRaceTimingIn(f.tx, intent, [], 4194304)).rejects.toMatchObject({
+    code: 'NUTRITION_TIMING_LIMIT',
+  });
+  expect(f.calls).toEqual([]);
+  await expect(prepareNutritionRaceTimingIn(f.tx, intent, [], -1)).rejects.toMatchObject({
+    code: 'NUTRITION_TIMING_LIMIT',
+  });
 });

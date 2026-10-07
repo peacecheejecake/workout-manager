@@ -11,6 +11,7 @@ import {
   type ItemRaceTimingBinding,
   type RaceTimingPinV1,
 } from '@workout/contracts/nutrition-race-timing';
+import { nutritionPlanItemCoreSchema } from '@workout/contracts/nutrition-core';
 import { planDraftSchema } from '@workout/contracts/planning';
 import { localInstant } from './integrated-planner.js';
 import {
@@ -55,13 +56,26 @@ const boundary: Boundary = {
 };
 const uuid = z.uuid().refine((id) => id === id.toLowerCase());
 const affectedSchema = z
-  .array(z.string().min(1).max(128))
+  .array(nutritionPlanItemCoreSchema.shape.id)
   .max(5000)
   .superRefine((ids, context) => {
     for (let index = 1; index < ids.length; index++)
       if ((ids[index - 1] ?? '') >= (ids[index] ?? ''))
         context.addIssue({ code: 'custom', message: 'Expected sorted unique affected IDs' });
   });
+// Bound only command/analysis JSON, never the transaction or its query function.
+// The V2 intent retains its separate complete 512 KiB contract cap.
+function metadataBytes(intent: unknown, affectedItemIds: unknown): number {
+  let encoded: string;
+  try {
+    encoded = JSON.stringify({ intent, affectedItemIds });
+  } catch {
+    throw new NutritionTimingPreparationError('NUTRITION_TIMING_INVALID_INPUT');
+  }
+  const bytes = Buffer.byteLength(encoded, 'utf8');
+  if (bytes > 4 * 1024 * 1024) throw new NutritionTimingPreparationError('NUTRITION_TIMING_LIMIT');
+  return bytes;
+}
 function canonical(value: unknown): string {
   if (value === null || typeof value !== 'object') {
     const encoded = JSON.stringify(value);
@@ -111,7 +125,17 @@ export async function prepareNutritionRaceTimingIn(
   tx: RaceTimingQueryPort,
   unknownIntent: unknown,
   serverAffectedItemIds: unknown,
+  additionalDecodedBytes = 0,
 ): Promise<NutritionTimingPreparation> {
+  if (
+    !Number.isSafeInteger(additionalDecodedBytes) ||
+    additionalDecodedBytes < 0 ||
+    additionalDecodedBytes > 4 * 1024 * 1024
+  )
+    throw new NutritionTimingPreparationError('NUTRITION_TIMING_LIMIT');
+  const inputBytes = metadataBytes(unknownIntent, serverAffectedItemIds) + additionalDecodedBytes;
+  if (inputBytes > 4 * 1024 * 1024)
+    throw new NutritionTimingPreparationError('NUTRITION_TIMING_LIMIT');
   const input = saveNutritionPlanV2IntentSchema.safeParse(unknownIntent);
   const influence = affectedSchema.safeParse(serverAffectedItemIds);
   if (!input.success || !influence.success)
@@ -129,7 +153,7 @@ export async function prepareNutritionRaceTimingIn(
   if (scope.rows.length !== 1 || scope.rows[0]?.['athlete_id'] !== tx.athleteId)
     throw new NutritionTimingPreparationError('NUTRITION_TIMING_TENANT_MISMATCH');
   let prior: NutritionPlanVersionCompatible | null = null;
-  let bodyBytes = 0;
+  let bodyBytes = inputBytes;
   if (intent.command.kind === 'update') {
     const headResult = await query(
       tx,
@@ -156,8 +180,12 @@ export async function prepareNutritionRaceTimingIn(
       return blocked([{ itemId: null, code: 'PRIOR_HEAD_STALE' }]);
     if (head.exact_version_id === null)
       return blocked([{ itemId: null, code: 'PRIOR_UNAVAILABLE' }]);
-    bodyBytes = Number(head.bytes);
-    if (bodyBytes > 512 * 1024) throw new NutritionTimingPreparationError('NUTRITION_TIMING_LIMIT');
+    const priorBytes = Number(head.bytes);
+    if (priorBytes > 512 * 1024)
+      throw new NutritionTimingPreparationError('NUTRITION_TIMING_LIMIT');
+    bodyBytes += priorBytes;
+    if (bodyBytes > 4 * 1024 * 1024)
+      throw new NutritionTimingPreparationError('NUTRITION_TIMING_LIMIT');
     const found = await query(
       tx,
       'SELECT record_json FROM nutrition_plan_version WHERE athlete_id=$1 AND plan_id=$2 AND version_id=$3',
@@ -293,8 +321,8 @@ export async function prepareNutritionRaceTimingIn(
       );
       if (!original) throw new NutritionTimingPreparationError('NUTRITION_TIMING_INVALID_SOURCE');
       selected = original;
-      if (canonical(original) !== canonical(fresh))
-        blocks.push({ itemId: item.id, code: 'PRIOR_TIMING_STALE' });
+      // Unaffected immutable timing remains the original pin. A changed live
+      // head is freshness evidence, not permission to retime this item.
     }
     const existing = outputPins.get(selected.eventId);
     if (existing && canonical(existing) !== canonical(selected)) {
