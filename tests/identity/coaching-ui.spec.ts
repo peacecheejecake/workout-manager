@@ -1,3 +1,4 @@
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
@@ -56,11 +57,7 @@ const selected = (page: Page) =>
 const messageInput = (page: Page) =>
   selected(page).getByRole('textbox', { name: '사용자 메시지', exact: true });
 
-async function setup(page: Page) {
-  page.setDefaultTimeout(5000);
-  page.setDefaultNavigationTimeout(5000);
-  const headers = await login(page);
-  cleanupHeaders.set(page, headers);
+async function setup(page: Page, headers: Awaited<ReturnType<typeof login>>) {
   const readPlan = async () => {
     const response = await page.request.get('/bff/v1/plans/current', { headers });
     expect(response.status()).toBe(200);
@@ -146,7 +143,12 @@ async function setup(page: Page) {
 test('creates a scoped conversation pinned to its saved plan and preserves its draft across responsive layouts', async ({
   page,
 }) => {
-  const f = await setup(page);
+  page.setDefaultTimeout(5000);
+  page.setDefaultNavigationTimeout(5000);
+  const headers = await login(page);
+  cleanupHeaders.set(page, headers);
+  await grantAppProcessingForScenario(page);
+  const f = await setup(page, headers);
   await page.goto('/coach');
   const form = page.getByRole('region', { name: '새 상담 기록', exact: true });
   await form
@@ -256,7 +258,12 @@ test('creates a scoped conversation pinned to its saved plan and preserves its d
 test('keeps a conflicted draft locked until messages beyond the first page are displayed and reviewed', async ({
   page,
 }) => {
-  const f = await setup(page);
+  page.setDefaultTimeout(5000);
+  page.setDefaultNavigationTimeout(5000);
+  const headers = await login(page);
+  cleanupHeaders.set(page, headers);
+  await grantAppProcessingForScenario(page);
+  const f = await setup(page, headers);
   const response = await f.post(base, {
     planVersionId: f.saved.id,
     scope: { kind: 'block', targetId: 'coach-block' },
@@ -311,7 +318,12 @@ test('keeps a conflicted draft locked until messages beyond the first page are d
 test('preserves a conflicted message for explicit review and retries a committed lost response without duplication', async ({
   page,
 }) => {
-  const f = await setup(page);
+  page.setDefaultTimeout(5000);
+  page.setDefaultNavigationTimeout(5000);
+  const headers = await login(page);
+  cleanupHeaders.set(page, headers);
+  await grantAppProcessingForScenario(page);
+  const f = await setup(page, headers);
   const response = await f.post(base, {
     planVersionId: f.saved.id,
     scope: { kind: 'block', targetId: 'coach-block' },

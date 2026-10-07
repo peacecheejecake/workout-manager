@@ -369,3 +369,30 @@ describe('candidate review workspace', () => {
     ).toHaveLength(1);
   });
 });
+
+it.each([
+  ['APP_CONSENT_REQUIRED', '앱 데이터 처리 동의가 필요합니다.'],
+  ['STALE_APP_ADMISSION', '앱 데이터 처리 동의가 변경되어'],
+  ['APP_BINDING_UNAVAILABLE', '앱 데이터 처리 동의 기준을 확인할 수 없어'],
+] as const)(
+  'preserves the training candidate on %s without plan application',
+  async (code, message) => {
+    const app = setup();
+    const original = app.request.getMockImplementation();
+    if (!original) throw new Error('fixture implementation missing');
+    app.request.mockImplementation(async (input) =>
+      input.method === 'POST'
+        ? reply({ error: { code, detail: 'private source' } }, 409)
+        : original(input),
+    );
+    await screen.findByRole('table', { name: '영향받는 날짜별 원안과 제안' });
+    await userEvent.click(screen.getByRole('checkbox', { name: /원안과 제안/ }));
+    await userEvent.click(screen.getByRole('button', { name: '확인하고 계획에 적용' }));
+    expect(await screen.findByText(new RegExp(message))).toBeTruthy();
+    expect(screen.getByRole('region', { name: '후보 요약' })).toBeInTheDocument();
+    expect(app.request.mock.calls.filter(([input]) => input.method === 'POST')).toHaveLength(1);
+    expect(screen.queryByText(/서버에서 적용한 계획 버전/)).toBeNull();
+    expect(screen.queryByText(/후보 또는 기준 계획이 변경되었습니다/)).toBeNull();
+    expect(screen.queryByText(/private source/)).toBeNull();
+  },
+);

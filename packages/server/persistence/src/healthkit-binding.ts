@@ -1,3 +1,4 @@
+import { requireAppAdmission } from './app-admission.js';
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import {
@@ -85,6 +86,8 @@ export function createHealthKitBindingRepository(database: Database): HealthKitB
             throw new HealthKitBindingError('IDEMPOTENCY_CONFLICT');
           return healthKitBindExistingResultSchema.parse(prior.rows[0]['result']);
         }
+
+        await requireAppAdmission(tx);
 
         const sampleResult = await tx.query(
           `SELECT s.state,s.payload_digest,l.state AS lineage_state

@@ -47,11 +47,16 @@ test.afterEach(async ({ page }) => {
   expect((await page.request.get('/bff/v1/session', { timeout: 5000 })).status()).toBe(401);
 });
 
-async function setupIntensity(page: Page, locked: boolean) {
+async function setupIntensity(
+  page: Page,
+  beforeProtectedWrite: (page: Page) => Promise<void>,
+  locked: boolean,
+) {
   page.setDefaultTimeout(5000);
   page.setDefaultNavigationTimeout(5000);
   const headers = await login(page);
   cleanupHeaders.set(page, headers);
+  await beforeProtectedWrite(page);
   const readPlan = async () => {
     const response = await page.request.get('/bff/v1/plans/current', { headers, timeout: 5000 });
     expect(response.status()).toBe(200);
@@ -148,7 +153,7 @@ async function savePreview(page: Page) {
 test('a legacy session adds a reviewed intensity label without changing RPE or missing metrics and copies it independently', async ({
   page,
 }) => {
-  const fixture = await setupIntensity(page, false);
+  const fixture = await setupIntensity(page, grantAppProcessingForScenario, false);
   expect(fixture.saved.draft.sessions[0]).not.toHaveProperty('intensityLabel');
   await expect(detail(page)).toContainText('강도 라벨: 미지정');
   await expect(detail(page)).toContainText('목표 RPE: 0');
@@ -249,7 +254,7 @@ test('a legacy session adds a reviewed intensity label without changing RPE or m
 test('a saved intensity lock requires its own committed unlock and old receipts cannot change newer history', async ({
   page,
 }) => {
-  const fixture = await setupIntensity(page, true);
+  const fixture = await setupIntensity(page, grantAppProcessingForScenario, true);
   const original = await fixture.readPlan();
   const badLabel = await page.request.put('/bff/v1/plans/current', {
     headers: { ...fixture.headers, 'idempotency-key': randomUUID() },
@@ -323,3 +328,4 @@ test('a saved intensity lock requires its own committed unlock and old receipts 
   await expect(detail(page)).toContainText('목표 RPE: 0');
   await fixture.actualsUnchanged();
 });
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';

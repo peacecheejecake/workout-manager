@@ -1,3 +1,4 @@
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';
 import { identityMobileOrigin } from '../../scripts/fixtures/identity-ports';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
@@ -71,8 +72,8 @@ test.afterEach(async ({ page }) => {
   expect(erased.status()).toBe(200);
 });
 
-async function createQueuedRun(page: Page) {
-  const { athleteId, headers } = await login(page, 'Alice');
+async function createQueuedRun(page: Page, session: Awaited<ReturnType<typeof login>>) {
+  const { athleteId, headers } = session;
   const get = async (path: string) => {
     const response = await page.request.get(path, { headers });
     expect(response.status()).toBe(200);
@@ -191,7 +192,9 @@ test('runs synthetic analysis through OIDC, API, tenant worker and PostgreSQL wi
   browser,
 }) => {
   test.setTimeout(60_000);
-  const fixture = await createQueuedRun(page);
+  const authenticated = await login(page, 'Alice');
+  await grantAppProcessingForScenario(page);
+  const fixture = await createQueuedRun(page, authenticated);
   const detail = `/bff/v1/coaching-runs/${fixture.run.id}`;
   expect((await page.request.get(`${detail}/output`, { headers: fixture.headers })).status()).toBe(
     404,
@@ -249,7 +252,9 @@ test('seals a server-validated fixture candidate without accepting a client plan
   browser,
 }) => {
   test.setTimeout(60_000);
-  const fixture = await createQueuedRun(page);
+  const authenticated = await login(page, 'Alice');
+  await grantAppProcessingForScenario(page);
+  const fixture = await createQueuedRun(page, authenticated);
   const collection = `/bff/v1/coaching-runs/${fixture.run.id}/candidates`;
   const key = randomUUID();
   expect(
@@ -303,6 +308,7 @@ test('seals a server-validated fixture candidate without accepting a client plan
   try {
     const otherPage = await otherContext.newPage();
     const other = await login(otherPage, 'Bob');
+    await grantAppProcessingForScenario(otherPage);
     expect((await otherPage.request.get(detail, { headers: other.headers })).status()).toBe(404);
     expect(
       (
@@ -333,7 +339,9 @@ test('revalidates a selected change as a new candidate and shows stale or withdr
   browser,
 }) => {
   test.setTimeout(60_000);
-  const fixture = await createQueuedRun(page);
+  const authenticated = await login(page, 'Alice');
+  await grantAppProcessingForScenario(page);
+  const fixture = await createQueuedRun(page, authenticated);
   await dispatchOne(fixture.athleteId);
   const collection = `/bff/v1/coaching-runs/${fixture.run.id}/candidates`;
   const originalResponse = await page.request.post(collection, {
@@ -388,6 +396,7 @@ test('revalidates a selected change as a new candidate and shows stale or withdr
   try {
     const otherPage = await otherContext.newPage();
     const other = await login(otherPage, 'Bob');
+    await grantAppProcessingForScenario(otherPage);
     expect((await otherPage.request.get(statusPath, { headers: other.headers })).status()).toBe(
       404,
     );
@@ -462,7 +471,9 @@ test('applies a candidate only after explicit confirmation and returns one new p
   browser,
 }) => {
   test.setTimeout(60_000);
-  const fixture = await createQueuedRun(page);
+  const authenticated = await login(page, 'Alice');
+  await grantAppProcessingForScenario(page);
+  const fixture = await createQueuedRun(page, authenticated);
   await dispatchOne(fixture.athleteId);
   const created = await page.request.post(`/bff/v1/coaching-runs/${fixture.run.id}/candidates`, {
     headers: { ...fixture.headers, 'idempotency-key': randomUUID() },
@@ -496,6 +507,7 @@ test('applies a candidate only after explicit confirmation and returns one new p
   try {
     const otherPage = await otherContext.newPage();
     const other = await login(otherPage, 'Bob');
+    await grantAppProcessingForScenario(otherPage);
     expect(
       (
         await otherPage.request.post(approvalPath, {
@@ -548,7 +560,9 @@ test('reviews a fixture run and approves a selected change through the product U
   page,
 }) => {
   test.setTimeout(90_000);
-  const fixture = await createQueuedRun(page);
+  const authenticated = await login(page, 'Alice');
+  await grantAppProcessingForScenario(page);
+  const fixture = await createQueuedRun(page, authenticated);
   await dispatchOne(fixture.athleteId);
 
   await page.goto(
@@ -617,7 +631,9 @@ test('keeps a user-cancelled queued attempt cancelled when the worker later sees
   page,
 }) => {
   test.setTimeout(60_000);
-  const fixture = await createQueuedRun(page);
+  const authenticated = await login(page, 'Alice');
+  await grantAppProcessingForScenario(page);
+  const fixture = await createQueuedRun(page, authenticated);
   const detail = `/bff/v1/coaching-runs/${fixture.run.id}`;
   const cancelled = await page.request.post(`${detail}/cancel`, { headers: fixture.headers });
   expect(cancelled.status()).toBe(200);

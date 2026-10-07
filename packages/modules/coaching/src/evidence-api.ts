@@ -22,6 +22,9 @@ export class EvidenceRequestError extends Error {
 }
 const uuid = z.uuid().transform((value) => value.toLowerCase());
 const known = new Set([
+  'APP_CONSENT_REQUIRED',
+  'STALE_APP_ADMISSION',
+  'APP_BINDING_UNAVAILABLE',
   'THREAD_NOT_FOUND',
   'EVIDENCE_SNAPSHOT_NOT_FOUND',
   'EVIDENCE_TOO_LARGE',

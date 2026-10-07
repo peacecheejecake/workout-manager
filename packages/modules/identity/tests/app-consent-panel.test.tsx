@@ -55,7 +55,9 @@ it('loads app-only scoped head and explains purpose before an explicit grant wit
   const { client } = mount();
   const grant = await screen.findByRole('button', { name: '앱 저장·처리에 동의' });
   const notice = screen.getByText(/계획·실제 기록·대화를 새로 저장하거나 처리하기 위한/);
-  expect(notice).toHaveTextContent('AI에 정보를 전달하는 동의 및 HealthKit 접근 허용과는 별개');
+  expect(notice).toHaveTextContent(
+    'AI에 정보를 전달하는 동의 및 HealthKit·Garmin의 개별 접근 허용과는 별개',
+  );
   expect(screen.getByText(/허용을 철회하면/)).toHaveTextContent('조회·내보내기·삭제는 계속');
   expect(notice.compareDocumentPosition(grant) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect(fetcher).toHaveBeenCalledOnce();
@@ -387,3 +389,27 @@ it.each([401, 409])(
     ).not.toBeInTheDocument();
   },
 );
+
+it('records explicit initial refusal without granting processing, then refetches false1', async () => {
+  let current = head(false, 0);
+  const writes: RequestInit[] = [];
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (_path: string, init?: RequestInit) => {
+      if (init?.method === 'PUT') {
+        writes.push(init);
+        current = head(false, 1);
+      }
+      return response(current);
+    }),
+  );
+  mount();
+  await userEvent.click(await screen.findByRole('button', { name: '동의하지 않음' }));
+  await waitFor(() =>
+    expect(screen.queryByRole('button', { name: '동의하지 않음' })).not.toBeInTheDocument(),
+  );
+  expect(writes).toHaveLength(1);
+  expect(writes[0]?.body).toBe(JSON.stringify({ granted: false, expectedRevision: 0 }));
+  expect(await screen.findByRole('button', { name: '앱 저장·처리에 동의' })).toBeEnabled();
+  expect(screen.getByText('현재 앱 저장·처리: 허용하지 않음')).toBeVisible();
+});

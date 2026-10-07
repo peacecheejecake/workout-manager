@@ -1,3 +1,4 @@
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
@@ -41,6 +42,7 @@ test('explicit v1 and v2 file imports keep one activity while source details ret
   test.setTimeout(60000);
   page.setDefaultTimeout(5000);
   const headers = await login(page, 'Alice');
+  await grantAppProcessingForScenario(page);
   const command = importActivitySchema.parse({
     idempotencyKey: randomUUID(),
     source: { kind: 'fixture', sourceId: randomUUID(), revision: 1, contentHash: 'a'.repeat(64) },

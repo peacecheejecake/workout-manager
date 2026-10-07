@@ -144,6 +144,75 @@ describe('session-bound authenticated transport', () => {
   });
 
   it.each([
+    ['GET', '/bff/v1/ai-settings'],
+    ['GET', '/bff/v1/ai-settings/catalog'],
+    ['PUT', '/bff/v1/ai-settings'],
+  ] as const)(
+    'carries scoped AI settings %s %s without logging private values',
+    async (method, path) => {
+      const logs = [
+        vi.spyOn(console, 'log'),
+        vi.spyOn(console, 'info'),
+        vi.spyOn(console, 'debug'),
+      ];
+      try {
+        fetchMock.mockResolvedValue(json({ accepted: true }));
+        const signal = new AbortController().signal;
+        const write = method === 'PUT';
+        const body = write ? { expectedRevision: 0, comparisonEnabled: false } : null;
+        await expect(
+          createSessionTransport(session, vi.fn()).request({
+            path,
+            method,
+            body,
+            idempotencyKey: write ? 'synthetic-settings-command' : null,
+            signal,
+          }),
+        ).resolves.toEqual({ status: 200, body: { accepted: true }, traceId: null });
+        expect(fetchMock).toHaveBeenCalledWith(path, {
+          method,
+          credentials: 'same-origin',
+          cache: 'no-store',
+          redirect: 'error',
+          signal,
+          headers: {
+            'x-workout-session-id': session.sessionId,
+            ...(write
+              ? {
+                  'x-csrf-token': session.csrfToken,
+                  'idempotency-key': 'synthetic-settings-command',
+                  'content-type': 'application/json',
+                }
+              : {}),
+          },
+          ...(write ? { body: JSON.stringify(body) } : {}),
+        });
+        for (const log of logs) expect(log).not.toHaveBeenCalled();
+      } finally {
+        for (const log of logs) log.mockRestore();
+      }
+    },
+  );
+  it.each([
+    ['GET', '/bff/v1/ai-settings-admin'],
+    ['GET', '/bff/v1/ai-settings/admin'],
+    ['GET', '/bff/v1/ai-settings/catalog-admin'],
+    ['GET', '/bff/v1/admin/ai-settings'],
+    ['PUT', '/bff/v1/ai-settings/catalog'],
+    ['POST', '/bff/v1/ai-settings'],
+  ] as const)('refuses unsafe AI settings %s %s before fetch', async (method, path) => {
+    await expect(
+      createSessionTransport(session, vi.fn()).request({
+        path,
+        method,
+        body: null,
+        idempotencyKey: null,
+      }),
+    ).rejects.toThrow('ROUTE_NOT_ALLOWED');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
     ['GET', '/bff/v1/plan-scenarios?limit=3'],
     ['GET', '/bff/v1/plan-scenarios/scenario/revisions/1'],
     ['POST', '/bff/v1/plan-scenarios'],

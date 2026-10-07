@@ -229,9 +229,14 @@ export function createSessionTransport(
         /^\/bff\/v1\/(?:races|race-results|training-bests)(?:\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?(?:\?[^#]*)?$/i.test(
           path,
         );
+      const aiSettingsPathAllowed =
+        (input.method === 'GET' &&
+          (path === '/bff/v1/ai-settings' || path === '/bff/v1/ai-settings/catalog')) ||
+        (input.method === 'PUT' && path === '/bff/v1/ai-settings');
       if (
         !retrievalQueryAllowed &&
         !racePathAllowed &&
+        !aiSettingsPathAllowed &&
         !/^\/bff\/v1\/(?:plans|plan-scenarios|planner|nutrition|supplementary|stretching|recovery|restore-generation|resources|routines|routine-versions|routine-schedule-previews|routine-schedules|routine-runs|coaching-threads|coaching-runs|coaching-candidates|joint-decisions|joint-candidates|integrated-candidates|coaching-constraints|evidence-snapshots|activities|activity-imports|check-ins|dashboard|gallery|courses|healthkit\/(?:workout-review|workout-activities|workout-bindings))(?:\/|\?|$)/.test(
           path,
         )

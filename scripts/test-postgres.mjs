@@ -61,6 +61,7 @@ function runIntegrationTests(env) {
         'vitest.integration.config.ts',
         'packages/server/persistence/tests/restore-suppression-pgoutput.integration.test.ts',
         'packages/server/persistence/tests/restore-suppression-v6-pgoutput.integration.test.ts',
+        'packages/server/persistence/tests/restore-app-consent-chain.integration.test.ts',
         'packages/server/persistence/tests/restore-suppression-exporter.integration.test.ts',
         'packages/server/persistence/tests/restore-suppression-coordinator.integration.test.ts',
       ],

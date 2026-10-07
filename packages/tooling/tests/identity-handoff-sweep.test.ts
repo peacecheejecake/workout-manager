@@ -47,19 +47,26 @@ it('removes the hand-off files of a killed harness once its pid is gone', async 
     passwords: {},
     harnessPid: deadPid,
   });
+  await file(`workout-ai-settings-e2e-4300-${runId}.json`, deadWriterGraceMs + 1, {
+    harnessPid: deadPid,
+  });
   expect((await sweep()).sort()).toEqual([
+    `workout-ai-settings-e2e-4300-${runId}.json`,
     `workout-certified-oidc-e2e-4300-${runId}.json`,
     `workout-coaching-worker-e2e-4300-${runId}.json`,
   ]);
   expect(await remaining()).toEqual([]);
 });
 
-it("keeps a running harness's file however old it is", async () => {
-  const name = `workout-coaching-worker-e2e-4300-${runId}.json`;
-  await file(name, unknownWriterMaxAgeMs * 3, { harnessPid: livePid });
-  expect(await sweep()).toEqual([]);
-  expect(await remaining()).toEqual([name]);
-});
+it.each(['coaching-worker', 'certified-oidc', 'ai-settings'])(
+  "keeps a running %s harness's file however old it is",
+  async (kind) => {
+    const name = `workout-${kind}-e2e-4300-${runId}.json`;
+    await file(name, unknownWriterMaxAgeMs * 3, { harnessPid: livePid });
+    expect(await sweep()).toEqual([]);
+    expect(await remaining()).toEqual([name]);
+  },
+);
 
 it('leaves a just-written file alone even when its writer is gone', async () => {
   const name = `workout-coaching-worker-e2e-4300-${runId}.json`;
@@ -87,6 +94,8 @@ it('touches nothing but the exact hand-off names', async () => {
   const old = unknownWriterMaxAgeMs * 2;
   const content = { harnessPid: deadPid };
   const names = [
+    'workout-ai-settings-e2e-4300.json',
+    `workout-ai-settings-e2e-4300-${runId}.json.bak`,
     'workout-coaching-worker-e2e-4300.json', // port-only name from before run ids
     `workout-coaching-worker-e2e-4300-${runId}.json.bak`,
     `workout-coaching-worker-e2e-abc-${runId}.json`,

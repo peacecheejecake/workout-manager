@@ -53,6 +53,7 @@ test('simultaneous planned views follow actual container width and preserve sele
   page.setDefaultTimeout(5000);
   page.setDefaultNavigationTimeout(5000);
   const headers = await login(page, 'Alice');
+  await grantAppProcessingForScenario(page);
   cleanupHeaders.set(page, headers);
   const marker = `Synthetic planner split ${randomUUID()}`;
   const previousResponse = await page.request.get('/bff/v1/plans/current', {
@@ -244,3 +245,4 @@ test('simultaneous planned views follow actual container width and preserve sele
     page.getByText(`계획 버전 ${saved.version + 1} 저장 완료`, { exact: true }),
   ).toBeVisible();
 });
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';

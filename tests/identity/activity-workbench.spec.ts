@@ -1,3 +1,4 @@
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
@@ -36,6 +37,7 @@ test('source chart and laps share bounded selection across responsive layouts wi
   page,
 }) => {
   const headers = await login(page);
+  await grantAppProcessingForScenario(page);
   const start = Date.parse('2023-06-15T12:00:00Z');
   const command = importActivitySchema.parse({
     idempotencyKey: randomUUID(),

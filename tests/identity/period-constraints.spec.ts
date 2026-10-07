@@ -45,11 +45,12 @@ test.afterEach(async ({ page }) => {
   expect(erased.status()).toBe(200);
   expect((await page.request.get('/bff/v1/session', { timeout: 5000 })).status()).toBe(401);
 });
-async function setupConstraints(page: Page) {
+async function setupConstraints(page: Page, beforeProtectedWrite: (page: Page) => Promise<void>) {
   page.setDefaultTimeout(5000);
   page.setDefaultNavigationTimeout(5000);
   const headers = await login(page);
   cleanupHeaders.set(page, headers);
+  await beforeProtectedWrite(page);
   const read = async () => {
     const response = await page.request.get('/bff/v1/plans/current', { headers });
     expect(response.status()).toBe(200);
@@ -152,7 +153,7 @@ async function save(page: Page) {
 test('inherited date constraints report conflict and unknown without rewriting locked sessions, and survive explicit storage and history', async ({
   page,
 }) => {
-  const f = await setupConstraints(page);
+  const f = await setupConstraints(page, grantAppProcessingForScenario);
   expect(f.saved.draft.periods.every((period) => !Object.hasOwn(period, 'constraints'))).toBe(true);
   await page.getByRole('button', { name: '계획 초안 편집', exact: true }).click();
   const parent = periodEditor(page, 'season');
@@ -337,7 +338,7 @@ test('inherited date constraints report conflict and unknown without rewriting l
 test('date bounds and shrinking periods keep invalid constraints visible and block preview without silent removal', async ({
   page,
 }) => {
-  const f = await setupConstraints(page);
+  const f = await setupConstraints(page, grantAppProcessingForScenario);
   await page.getByRole('button', { name: '계획 초안 편집', exact: true }).click();
   const child = periodEditor(page, 'block');
   await child.getByLabel('운동 불가 날짜', { exact: true }).fill('2080-01-08');
@@ -374,3 +375,4 @@ test('date bounds and shrinking periods keep invalid constraints visible and blo
   expect((await f.read()).head).toEqual(f.saved);
   expect(f.writes).toEqual([]);
 });
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';

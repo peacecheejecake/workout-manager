@@ -1,3 +1,4 @@
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { expect, test } from '@playwright/test';
@@ -16,6 +17,7 @@ test('manual activity preserves source and RPE meaning through correction, repla
   await page.getByRole('link', { name: 'OIDC로 로그인' }).click();
   await page.getByRole('link', { name: 'Sign in as Alice' }).click();
   await expect(page.getByRole('button', { name: '로그아웃', exact: true })).toBeVisible();
+  await grantAppProcessingForScenario(page);
   const sessionResponse = await page.request.get('/bff/v1/session');
   expect(sessionResponse.status()).toBe(200);
   const session: unknown = await sessionResponse.json();

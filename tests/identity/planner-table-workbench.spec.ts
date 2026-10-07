@@ -46,11 +46,12 @@ test.afterEach(async ({ page }) => {
   expect((await page.request.get('/bff/v1/session', { timeout: 5000 })).status()).toBe(401);
 });
 
-async function setupWorkbench(page: Page) {
+async function setupWorkbench(page: Page, beforeProtectedWrite: (page: Page) => Promise<void>) {
   page.setDefaultTimeout(5000);
   page.setDefaultNavigationTimeout(5000);
   const headers = await login(page, 'Alice');
   cleanupHeaders.set(page, headers);
+  await beforeProtectedWrite(page);
   const readPlan = async () => {
     const response = await page.request.get('/bff/v1/plans/current', { headers, timeout: 5000 });
     expect(response.status()).toBe(200);
@@ -121,7 +122,7 @@ async function setupWorkbench(page: Page) {
 test('virtual rows, inclusive ranges and sorting remain display-only with 120 real saved sessions', async ({
   page,
 }) => {
-  const fixture = await setupWorkbench(page);
+  const fixture = await setupWorkbench(page, grantAppProcessingForScenario);
   await page.goto(`${fixture.path}&plannedSession=${fixture.id(110)}`);
   const table = page.getByRole('table', { name: '계획 세션 표', exact: true });
   await expect(table).toHaveAttribute('aria-rowcount', '121');
@@ -184,7 +185,7 @@ test('virtual rows, inclusive ranges and sorting remain display-only with 120 re
 test('URL pins and hidden columns restore while responsive remount retains range, scroll and unsaved draft', async ({
   page,
 }) => {
-  const fixture = await setupWorkbench(page);
+  const fixture = await setupWorkbench(page, grantAppProcessingForScenario);
   await page.goto(`${fixture.path}&plannedSession=${fixture.id(90)}`);
   const table = page.getByRole('table', { name: '계획 세션 표', exact: true });
   const titlePin = page.getByRole('checkbox', { name: '제목 열 고정', exact: true });
@@ -278,3 +279,4 @@ test('URL pins and hidden columns restore while responsive remount retains range
   await expect(notePin).toBeChecked();
   await fixture.unchanged();
 });
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';

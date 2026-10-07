@@ -194,3 +194,27 @@ describe('mandatory user constraints panel', () => {
     expect(screen.getByRole('textbox')).toHaveValue('');
   });
 });
+
+it.each([
+  ['APP_CONSENT_REQUIRED', '앱 데이터 처리 동의가 필요합니다.'],
+  ['STALE_APP_ADMISSION', '앱 데이터 처리 동의가 변경되어'],
+  ['APP_BINDING_UNAVAILABLE', '앱 데이터 처리 동의 기준을 확인할 수 없어'],
+] as const)(
+  'retains reviewed constraints on %s without generic CAS or success',
+  async (code, message) => {
+    const f = setup();
+    await draft('보존할 제약');
+    f.request.mockImplementation(async (input) =>
+      input.method === 'GET'
+        ? reply({ headRevision: null, items: [] })
+        : reply({ error: { code, detail: 'private source' } }, 409),
+    );
+    await userEvent.click(screen.getByRole('button', { name: '확인하고 제약 변경' }));
+    expect(await screen.findByText(new RegExp(message))).toBeTruthy();
+    expect(screen.getByRole('textbox')).toHaveValue('보존할 제약');
+    expect(f.request.mock.calls.filter(([input]) => input.method === 'POST')).toHaveLength(1);
+    expect(screen.queryByText('사용자 제약 변경이 확인되었습니다.')).toBeNull();
+    expect(screen.queryByText(/제약이 변경되었습니다/)).toBeNull();
+    expect(screen.queryByText(/private source/)).toBeNull();
+  },
+);

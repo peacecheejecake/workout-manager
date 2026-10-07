@@ -1,3 +1,4 @@
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
@@ -52,9 +53,7 @@ test.afterEach(async ({ page }) => {
   expect((await page.request.get('/bff/v1/session')).status()).toBe(401);
 });
 const window = { from: '2024-03-10', toExclusive: '2024-03-11', timezone: 'America/New_York' };
-async function setup(page: Page) {
-  const headers = await login(page, 'Alice');
-  cleanupHeaders.set(page, headers);
+async function setup(page: Page, headers: Awaited<ReturnType<typeof login>>) {
   const get = async (path: string) => {
     const response = await page.request.get(path, { headers });
     expect(response.status()).toBe(200);
@@ -120,7 +119,10 @@ test('captures immutable core evidence with local dates, tenant isolation and de
   page,
   browser,
 }) => {
-  const f = await setup(page);
+  const headers = await login(page, 'Alice');
+  cleanupHeaders.set(page, headers);
+  await grantAppProcessingForScenario(page);
+  const f = await setup(page, headers);
   const activityResponse = await f.post('/bff/v1/activities', {
     confirmed: true,
     activity: {
@@ -195,6 +197,8 @@ test('captures immutable core evidence with local dates, tenant isolation and de
   try {
     const other = await otherContext.newPage();
     const otherHeaders = await login(other, 'Bob');
+    // Exercise foreign ownership rejection after Bob explicitly allows his own processing.
+    await grantAppProcessingForScenario(other);
     expect(
       (
         await other.request.get(`/bff/v1/evidence-snapshots/${snapshot.id}`, {
@@ -288,7 +292,10 @@ test('captures immutable core evidence with local dates, tenant isolation and de
 test('withdrawal purges existing evidence and a later consent grant never resurrects its receipt', async ({
   page,
 }) => {
-  const f = await setup(page);
+  const headers = await login(page, 'Alice');
+  cleanupHeaders.set(page, headers);
+  await grantAppProcessingForScenario(page);
+  const f = await setup(page, headers);
   const key = randomUUID();
   const snapshot = await f.capture(key);
   expect(snapshot.status).toBe('available');

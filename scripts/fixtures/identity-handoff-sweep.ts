@@ -10,7 +10,7 @@ import { join } from 'node:path';
  * removes it on SIGTERM/SIGINT. A SIGKILL skips that, so the file stays in the temp directory.
  *
  * A file is removed only when all of these hold:
- * - its name is exactly one of the two hand-off patterns (port and run id as the harness
+ * - its name is exactly one of the three hand-off patterns (port and run id as the harness
  *   writes them) — nothing else in the temp directory is touched;
  * - it is a regular file (never a symlink or directory) owned by the current user;
  * - its writer is gone: the file records the harness pid and that process no longer exists,
@@ -23,7 +23,7 @@ import { join } from 'node:path';
  * took under 10 minutes).
  */
 export const handoffFilePattern =
-  /^workout-(?:coaching-worker|certified-oidc)-e2e-\d{1,5}-[a-z0-9-]{1,64}\.json$/;
+  /^workout-(?:coaching-worker|certified-oidc|ai-settings)-e2e-\d{1,5}-[a-z0-9-]{1,64}\.json$/;
 /** A dead writer's file is left alone this long, so a file mid-write is never read. */
 export const deadWriterGraceMs = 60_000;
 /** Files without a recorded writer are removed only after this age. */

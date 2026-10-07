@@ -48,11 +48,12 @@ test.afterEach(async ({ page }) => {
   expect((await page.request.get('/bff/v1/session', { timeout: 5000 })).status()).toBe(401);
 });
 
-async function setup(page: Page) {
+async function setup(page: Page, beforeProtectedWrite: (page: Page) => Promise<void>) {
   page.setDefaultTimeout(5000);
   page.setDefaultNavigationTimeout(5000);
   const headers = await login(page, 'Alice');
   cleanupHeaders.set(page, headers);
+  await beforeProtectedWrite(page);
   const previousResponse = await page.request.get('/bff/v1/plans/current', { headers });
   expect(previousResponse.status()).toBe(200);
   const previous = planReadSchema.parse(await previousResponse.json());
@@ -124,7 +125,7 @@ test('completion column shows explicit reports and copy absence while preserving
   page,
 }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
-  const fixture = await setup(page),
+  const fixture = await setup(page, grantAppProcessingForScenario),
     before = await fixture.actualCount();
   const table = page.getByRole('table', { name: '계획 세션 표', exact: true });
   const first = table.getByRole('row').filter({
@@ -185,7 +186,7 @@ test('completion read failures and version mismatches stay explicit, recover wit
   page,
 }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
-  const fixture = await setup(page),
+  const fixture = await setup(page, grantAppProcessingForScenario),
     table = page.getByRole('table', { name: '계획 세션 표', exact: true });
   const first = table.getByRole('row').filter({
     has: page.getByRole('checkbox', {
@@ -244,3 +245,4 @@ test('completion read failures and version mismatches stay explicit, recover wit
     page.getByRole('checkbox', { name: '완료 보고 열 고정', exact: true }),
   ).toBeChecked();
 });
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';

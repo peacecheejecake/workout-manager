@@ -1,3 +1,4 @@
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
@@ -46,10 +47,9 @@ test.afterEach(async ({ page }) => {
   expect((await page.request.get('/bff/v1/session', { timeout: 5000 })).status()).toBe(401);
 });
 
-async function setup(page: Page) {
+async function setup(page: Page, headers: Awaited<ReturnType<typeof login>>) {
   page.setDefaultTimeout(5000);
   page.setDefaultNavigationTimeout(5000);
-  const headers = await login(page, 'Alice');
   cleanupHeaders.set(page, headers);
   const read = async () => {
     const response = await page.request.get('/bff/v1/plans/current', { headers, timeout: 5000 });
@@ -111,7 +111,9 @@ function expectQuery(page: Page, expected: Record<string, string>) {
 test('dashboard hierarchy keyboard navigation preserves rolling filters through reload and browser history', async ({
   page,
 }) => {
-  const fixture = await setup(page);
+  const scenarioSession = await login(page, 'Alice');
+  await grantAppProcessingForScenario(page);
+  const fixture = await setup(page, scenarioSession);
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto(fixture.path);
   const region = navigator(page);
@@ -168,7 +170,9 @@ test('dashboard hierarchy keyboard navigation preserves rolling filters through 
 test('mobile dashboard period list opens the selected calendar without saving a plan', async ({
   page,
 }) => {
-  const fixture = await setup(page);
+  const scenarioSession = await login(page, 'Alice');
+  await grantAppProcessingForScenario(page);
+  const fixture = await setup(page, scenarioSession);
   await page.setViewportSize({ width: 320, height: 850 });
   await page.goto(`${fixture.path}&planPeriod=phase&planPeriodView=timeline`);
   const region = navigator(page);
@@ -192,7 +196,9 @@ test('mobile dashboard period list opens the selected calendar without saving a 
 test('saved period navigation remains usable when the independent dashboard report fails', async ({
   page,
 }) => {
-  const fixture = await setup(page);
+  const scenarioSession = await login(page, 'Alice');
+  await grantAppProcessingForScenario(page);
+  const fixture = await setup(page, scenarioSession);
   // Fault injection affects only the report; plan navigation still reads the real API/DB.
   await page.route('**/bff/v1/dashboard?**', (route) =>
     route.fulfill({

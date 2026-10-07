@@ -47,11 +47,12 @@ test.afterEach(async ({ page }) => {
   expect((await page.request.get('/bff/v1/session', { timeout: 5000 })).status()).toBe(401);
 });
 
-async function setupOrbit(page: Page) {
+async function setupOrbit(page: Page, beforeProtectedWrite: (page: Page) => Promise<void>) {
   page.setDefaultTimeout(5000);
   page.setDefaultNavigationTimeout(5000);
   const headers = await login(page);
   cleanupHeaders.set(page, headers);
+  await beforeProtectedWrite(page);
   const readPlan = async () => {
     const response = await page.request.get('/bff/v1/plans/current', { headers, timeout: 5000 });
     expect(response.status()).toBe(200);
@@ -148,7 +149,7 @@ const selectedPeriod = (page: Page) =>
 test('period ring and list navigate the same unequal hierarchy with preview-only focus and browser history', async ({
   page,
 }) => {
-  const fixture = await setupOrbit(page);
+  const fixture = await setupOrbit(page, grantAppProcessingForScenario);
   await page.goto(fixture.path);
   const region = explorer(page);
   const breadcrumbs = region.getByRole('navigation', { name: '기간 경로', exact: true });
@@ -259,7 +260,7 @@ test('period ring and list navigate the same unequal hierarchy with preview-only
 test('calendar switching and narrow agenda retain the selected session and an unsaved draft', async ({
   page,
 }) => {
-  const fixture = await setupOrbit(page);
+  const fixture = await setupOrbit(page, grantAppProcessingForScenario);
   await page.setViewportSize({ width: 320, height: 900 });
   await page.goto(`${fixture.path}&plannedSession=orbit-session`);
   await expect(page.getByRole('list', { name: '계획 날짜 agenda', exact: true })).toBeVisible();
@@ -317,7 +318,7 @@ test('calendar switching and narrow agenda retain the selected session and an un
 test('missing selection and invalid draft recover explicitly without exposing the previous account draft', async ({
   page,
 }) => {
-  const fixture = await setupOrbit(page);
+  const fixture = await setupOrbit(page, grantAppProcessingForScenario);
   await page.goto('/planner?lens=period&period=absent-orbit-period&plannedSession=orbit-session');
   const region = explorer(page);
   await expect(region.getByRole('alert')).toContainText('URL이 가리키는 기간을 찾을 수 없습니다.');
@@ -397,7 +398,7 @@ test('missing selection and invalid draft recover explicitly without exposing th
 test('an actual orbit chunk failure leaves the period list usable and retries the failed chart', async ({
   page,
 }) => {
-  const fixture = await setupOrbit(page);
+  const fixture = await setupOrbit(page, grantAppProcessingForScenario);
   let interrupted = false;
   let allowOrbit = false;
   const chunks = '**/_next/static/chunks/*.js';
@@ -446,3 +447,4 @@ test('an actual orbit chunk failure leaves the period list usable and retries th
     await page.unroute(chunks);
   }
 });
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';

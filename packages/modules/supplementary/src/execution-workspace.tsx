@@ -192,7 +192,12 @@ export function ExecutionWorkspace({
         `/supplementary/sessions/${encodeURIComponent(saved.executionId)}/perform`,
       );
     } catch (error) {
-      if (
+      const admissionMessage = appAdmissionMessage(error);
+      if (admissionMessage) {
+        pending.current = null;
+        markStartUncertain(false);
+        setMessage(admissionMessage);
+      } else if (
         error instanceof ZodError ||
         (error instanceof SupplementaryRequestError && error.status < 500)
       ) {
@@ -708,7 +713,12 @@ function Runner({
         client.invalidateQueries({ queryKey: [...scope, 'executions'] }),
       ]);
     } catch (error) {
-      if (error instanceof SupplementaryRequestError && error.status === 409) {
+      const admissionMessage = appAdmissionMessage(error);
+      if (admissionMessage) {
+        pendingSet.current = null;
+        markSetUncertain(false);
+        setNotice(admissionMessage);
+      } else if (error instanceof SupplementaryRequestError && error.status === 409) {
         pendingSet.current = null;
         markSetUncertain(false);
         if (correcting) setCorrectionNeedsReview(true);
@@ -878,7 +888,12 @@ function Runner({
       await client.invalidateQueries({ queryKey: [...scope, 'timers', executionId] });
       setNow(new Date().toISOString());
     } catch (error) {
-      if (error instanceof SupplementaryRequestError && error.status === 409) {
+      const admissionMessage = appAdmissionMessage(error);
+      if (admissionMessage) {
+        pendingTimer.current = null;
+        markTimerUncertain(false);
+        setNotice(admissionMessage);
+      } else if (error instanceof SupplementaryRequestError && error.status === 409) {
         pendingTimer.current = null;
         markTimerUncertain(false);
         setNotice('타이머 상태가 변경됐습니다. 최신 상태를 다시 불러왔습니다.');
@@ -939,7 +954,12 @@ function Runner({
         client.invalidateQueries({ queryKey: [...scope, 'executions'] }),
       ]);
     } catch (error) {
-      if (error instanceof SupplementaryRequestError && error.status === 409) {
+      const admissionMessage = appAdmissionMessage(error);
+      if (admissionMessage) {
+        pendingCompletion.current = null;
+        setCompletionUncertainStatus(null);
+        setNotice(admissionMessage);
+      } else if (error instanceof SupplementaryRequestError && error.status === 409) {
         pendingCompletion.current = null;
         setCompletionUncertainStatus(null);
         setNotice('수행 상태가 변경됐습니다. 최신 상태를 다시 확인하세요.');
@@ -1436,4 +1456,18 @@ function Runner({
       {notice ? <p role="status">{notice}</p> : null}
     </div>
   );
+}
+
+function appAdmissionMessage(error: unknown): string | null {
+  if (!(error instanceof SupplementaryRequestError)) return null;
+  switch (error.code) {
+    case 'APP_CONSENT_REQUIRED':
+      return '앱 데이터 처리 동의가 필요합니다. 입력은 유지됐으며 저장되지 않았습니다. 동의 상태를 확인해 주세요.';
+    case 'STALE_APP_ADMISSION':
+      return '앱 데이터 처리 동의가 변경되어 이 요청은 저장되지 않았습니다. 입력을 유지했습니다. 동의 상태와 최신 자료를 확인해 주세요.';
+    case 'APP_BINDING_UNAVAILABLE':
+      return '이 요청의 앱 데이터 처리 동의 기준을 확인할 수 없어 저장하지 않았습니다. 입력을 유지했습니다. 최신 자료를 다시 확인해 주세요.';
+    default:
+      return null;
+  }
 }

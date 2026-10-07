@@ -56,11 +56,12 @@ test.afterEach(async ({ page }) => {
 
 const plannerUrl =
   '/planner?lens=calendar&from=2026-09-14&to=2026-09-28&plannedView=agenda&plannedSession=target-session&view=stack';
-async function setup(page: Page) {
+async function setup(page: Page, beforeProtectedWrite: (page: Page) => Promise<void>) {
   page.setDefaultTimeout(5000);
   page.setDefaultNavigationTimeout(5000);
   const headers = await login(page, 'Alice');
   cleanupHeaders.set(page, headers);
+  await beforeProtectedWrite(page);
   const get = async (path: string) => {
     const response = await page.request.get(path, { headers, timeout: 5000 });
     expect(response.status()).toBe(200);
@@ -129,7 +130,7 @@ async function currentCompletions(page: Page, headers: Awaited<ReturnType<typeof
 test('a separately saved scenario leaves current scheduling untouched until an explicit UI apply and lost-response replay', async ({
   page,
 }) => {
-  const f = await setup(page);
+  const f = await setup(page, grantAppProcessingForScenario);
   const panel = scenarioPanel(page);
   await panel
     .getByRole('combobox', { name: '시나리오 기준 계획 버전', exact: true })
@@ -204,7 +205,7 @@ test('scenario API allows arbitrary names per base while rejecting duplicate nam
   page,
   browser,
 }) => {
-  const f = await setup(page);
+  const f = await setup(page, grantAppProcessingForScenario);
   const post = (path: string, data: unknown, key = randomUUID()) =>
     page.request.post(path, {
       headers: { ...f.headers, 'idempotency-key': key },
@@ -251,6 +252,8 @@ test('scenario API allows arbitrary names per base while rejecting duplicate nam
   try {
     const other = await otherContext.newPage();
     const otherHeaders = await login(other, 'Bob');
+    // App purpose does not grant access to Alice's scenario: retain foreign-write rejection.
+    await grantAppProcessingForScenario(other);
     for (const path of [
       `${scenarioRoot}/${original.id}`,
       `${scenarioRoot}/${original.id}/revisions/1`,
@@ -287,7 +290,7 @@ test('scenario API allows arbitrary names per base while rejecting duplicate nam
 test('cross-branch comparison keeps A and B immutable revisions distinct without applying either plan', async ({
   page,
 }) => {
-  const f = await setup(page);
+  const f = await setup(page, grantAppProcessingForScenario);
   const alternatives = [];
   for (const [label, date] of [
     ['A', '2026-09-21'],
@@ -366,3 +369,4 @@ test('cross-branch comparison keeps A and B immutable revisions distinct without
   expect((await f.read()).head).toEqual(f.saved);
   expect(activityListSchema.parse(await f.get('/bff/v1/activities'))).toEqual(f.actuals);
 });
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';

@@ -15,6 +15,9 @@ import { planReadSchema, planSnapshotSchema } from '@workout/contracts/planning'
 
 const candidateIdSchema = z.uuid().transform((value) => value.toLowerCase());
 const knownErrors = new Set([
+  'APP_CONSENT_REQUIRED',
+  'STALE_APP_ADMISSION',
+  'APP_BINDING_UNAVAILABLE',
   'CANDIDATE_UNAVAILABLE',
   'CANDIDATE_NOT_APPROVABLE',
   'INVALID_PARTIAL_SELECTION',

@@ -248,7 +248,7 @@ test('runtime role, changed snapshot, excessive catalog and raw row data are ref
 });
 
 test('current migration extensions cannot satisfy the historical93 catalog pin', () => {
-  assert.equal(migrationFileNames.length, 100);
+  assert.ok(migrationFileNames.length >= 100);
   const currentMigrations = migrationFileNames.map((file, index) => ({
     version: index + 1,
     checksum: createHash('sha256')

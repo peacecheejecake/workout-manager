@@ -1,3 +1,4 @@
+import { createConsentRepository } from '../src/repositories.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -31,6 +32,7 @@ import {
   grantActivityTracks,
   grantHealthKitIngestion,
   grantOperations,
+  grantCorePlanning,
   grantResourceObjectCleanupWorker,
   migrate,
 } from '../src/migrate.js';
@@ -62,6 +64,7 @@ beforeAll(async () => {
   await migrate(adminUrl);
   await admin.query('GRANT USAGE ON SCHEMA public TO workout_runtime');
   await grantOperations(adminUrl, 'workout_runtime');
+  await grantCorePlanning(adminUrl, 'workout_runtime');
   await grantActivityTracks(adminUrl, 'workout_runtime');
   await grantHealthKitIngestion(adminUrl, 'workout_runtime');
   await admin.query(`CREATE ROLE "${workerRole}" LOGIN NOSUPERUSER NOBYPASSRLS`);
@@ -315,6 +318,7 @@ describe('M2-01c private track storage', () => {
   it('stores an explicit GPX recording for a HealthKit-owned Activity without changing its owner', async () => {
     const athlete = randomUUID();
     const sampleId = randomUUID();
+    await declareSyntheticAppConsent(athlete);
     const consentClient = await admin.connect();
     try {
       await consentClient.query('BEGIN');
@@ -1652,4 +1656,16 @@ async function grantAppPurpose(athleteId: string): Promise<void> {
   } finally {
     client.release();
   }
+}
+
+// Explicit synthetic user permission for named positive collection scenarios only.
+async function declareSyntheticAppConsent(athleteId: string): Promise<void> {
+  expect(
+    await createConsentRepository(database).setConsent(athleteId, {
+      kind: 'app',
+      granted: true,
+      expectedRevision: 0,
+      idempotencyKey: randomUUID(),
+    }),
+  ).toEqual({ kind: 'app', granted: true, revision: 1 });
 }

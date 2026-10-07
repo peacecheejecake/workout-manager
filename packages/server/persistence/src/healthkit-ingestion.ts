@@ -1,3 +1,4 @@
+import { requireAppAdmission } from './app-admission.js';
 import { createHash } from 'node:crypto';
 import {
   healthKitRegisteredIngestionAckSchema,
@@ -161,6 +162,9 @@ export function createHealthKitIngestionRepository(
             acceptedCount: receipt['accepted_count'],
           });
         }
+
+        // An exact successful ACK above is retained; delete-only delivery is cleanup.
+        if (batch.events.some((event) => event.kind !== 'delete')) await requireAppAdmission(tx);
 
         for (const event of batch.events) {
           if (event.kind === 'delete') {

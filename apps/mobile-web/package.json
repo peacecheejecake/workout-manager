@@ -30,6 +30,7 @@
     "@workout/modules-courses": "workspace:*",
     "@workout/modules-dashboard": "workspace:*",
     "@workout/modules-wellbeing": "workspace:*",
-    "@workout/modules-competitions": "workspace:*"
+    "@workout/modules-competitions": "workspace:*",
+    "@workout/modules-settings": "workspace:*"
   }
 }

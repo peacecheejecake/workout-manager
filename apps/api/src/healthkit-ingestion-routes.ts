@@ -9,7 +9,12 @@ import {
   type HealthKitIngestionRepository,
 } from '@workout/server-persistence/healthkit-ingestion';
 import type { Principal } from './ports.js';
-import { emptyQuery, input, ProductRequestError } from './product-boundary.js';
+import {
+  emptyQuery,
+  input,
+  command as executeCommand,
+  ProductRequestError,
+} from './product-boundary.js';
 
 export function registerHealthKitIngestionRoutes(
   routes: FastifyInstance,
@@ -37,15 +42,14 @@ export function registerHealthKitIngestionRoutes(
         .pipe(z.number().int().max(2_147_483_647)),
       revisionHeader,
     );
-    try {
-      return healthKitRegisteredIngestionAckSchema.parse(
-        await repository.ingestBatch(owner.athleteId, batch, consentRevision),
-      );
-    } catch (error) {
-      if (error instanceof HealthKitIngestionError) {
-        throw new ProductRequestError(error.code === 'CONSENT_REQUIRED' ? 403 : 409, error.code);
-      }
-      throw error;
-    }
+    return healthKitRegisteredIngestionAckSchema.parse(
+      await executeCommand(
+        () => repository.ingestBatch(owner.athleteId, batch, consentRevision),
+        (error) =>
+          error instanceof HealthKitIngestionError
+            ? new ProductRequestError(error.code === 'CONSENT_REQUIRED' ? 403 : 409, error.code)
+            : undefined,
+      ),
+    );
   });
 }

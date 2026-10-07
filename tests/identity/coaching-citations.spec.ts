@@ -1,3 +1,4 @@
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
@@ -100,6 +101,7 @@ test('cites a reviewed resource in the browser and blocks the citation once the 
 }) => {
   test.setTimeout(120_000);
   const { athleteId, headers } = await login(page);
+  await grantAppProcessingForScenario(page);
   const get = async (path: string) => {
     const response = await page.request.get(path, { headers });
     expect(response.status()).toBe(200);

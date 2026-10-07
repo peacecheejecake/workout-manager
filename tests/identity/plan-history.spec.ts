@@ -47,10 +47,11 @@ test.afterEach(async ({ page }) => {
   expect((await page.request.get('/bff/v1/session', { timeout: 5000 })).status()).toBe(401);
 });
 
-async function setupHistory(page: Page) {
+async function setupHistory(page: Page, beforeProtectedWrite: (page: Page) => Promise<void>) {
   page.setDefaultTimeout(5000);
   const headers = await login(page);
   cleanupHeaders.set(page, headers);
+  await beforeProtectedWrite(page);
   const read = async () => {
     const response = await page.request.get('/bff/v1/plans/current', { headers });
     expect(response.status()).toBe(200);
@@ -159,7 +160,7 @@ async function setupHistory(page: Page) {
 test('fixed history pairs compare moved and removed periods without changing the current plan or draft', async ({
   page,
 }) => {
-  const f = await setupHistory(page);
+  const f = await setupHistory(page, grantAppProcessingForScenario);
   await page.getByRole('button', { name: '계획 초안 편집', exact: true }).click();
   const notes = page.getByRole('textbox', { name: '세션 메모', exact: true });
   await notes.fill('저장하지 않은 메모');
@@ -227,7 +228,7 @@ test('fixed history pairs compare moved and removed periods without changing the
 test('an unavailable history response cannot become a partial comparison and can be retried', async ({
   page,
 }) => {
-  const f = await setupHistory(page);
+  const f = await setupHistory(page, grantAppProcessingForScenario);
   const target = `**/bff/v1/plans/versions/${f.before.id}`;
   await page.route(target, (route) =>
     route.fulfill({
@@ -250,3 +251,4 @@ test('an unavailable history response cannot become a partial comparison and can
   expect((await f.read()).head).toEqual(f.after);
   expect(f.browserWrites).toEqual([]);
 });
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';

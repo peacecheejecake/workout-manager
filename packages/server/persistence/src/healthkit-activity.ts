@@ -1,3 +1,4 @@
+import { requireAppAdmission } from './app-admission.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import {
@@ -74,6 +75,8 @@ export function createHealthKitActivityRepository(database: Database): HealthKit
           if (!result.success) throw new HealthKitActivityError('IDEMPOTENCY_CONFLICT');
           return result.data;
         }
+
+        await requireAppAdmission(tx);
 
         const sampleResult = await tx.query(
           `SELECT s.state,s.payload_digest,l.state AS lineage_state

@@ -14,10 +14,10 @@ import {
   clearPrivateBrowserStorage,
 } from '@workout/platform/private-browser-storage';
 import { OperationsPanel } from './operations-panel';
-import { AppConsentPanel } from './app-consent-panel';
 import { GarminPanel } from './garmin-panel';
 import { GarminUnofficialEraseNotice, GarminUnofficialPanel } from './garmin-unofficial-panel';
 import { HealthKitPanel } from './healthkit-panel';
+import { AppConsentPanel } from './app-consent-panel';
 
 const sessionSchema = z.strictObject({
   athleteId: z.string().min(1),

@@ -1,3 +1,4 @@
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
@@ -59,6 +60,7 @@ test('linked Block filtering uses immutable explicit links independently from ac
   page.setDefaultTimeout(5000);
   page.setDefaultNavigationTimeout(5000);
   const headers = await login(page, 'Alice');
+  await grantAppProcessingForScenario(page);
   cleanupHeaders.set(page, headers);
   const marker = `Linked Block ${randomUUID()}`;
   const currentResponse = await page.request.get('/bff/v1/plans/current', { headers });

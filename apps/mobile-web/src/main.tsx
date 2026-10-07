@@ -30,6 +30,9 @@ const IntegratedProposalPage = lazy(() =>
 const PlannerPage = lazy(() =>
   import('./planner-page').then((module) => ({ default: module.PlannerPage })),
 );
+const SettingsPage = lazy(() =>
+  import('./settings-page').then((module) => ({ default: module.SettingsPage })),
+);
 const AccountPage = lazy(() =>
   import('./account-page').then((module) => ({ default: module.AccountPage })),
 );
@@ -365,8 +368,20 @@ const browserTree = (
           </nav>
           <CoachingPage />
         </Suspense>
+      ) : location.pathname === '/settings' || location.pathname === '/settings/' ? (
+        <Suspense fallback={<p role="status">설정 화면 준비 중</p>}>
+          <nav aria-label="주요 화면">
+            <a href="/dashboard">대시보드</a> · <a href="/coach">코치</a> ·{' '}
+            <a href="/account">계정</a>
+          </nav>
+          <h1>환경 설정</h1>
+          <SettingsPage />
+        </Suspense>
       ) : location.pathname === '/account' ? (
         <Suspense fallback={<p role="status">계정 화면 준비 중</p>}>
+          <nav aria-label="주요 화면">
+            <a href="/settings">설정</a>
+          </nav>
           <AccountPage />
         </Suspense>
       ) : location.pathname === '/ui-spike' ? (
@@ -381,7 +396,7 @@ const browserTree = (
             <a href="/nutrition">영양 계획·섭취 기록</a> · <a href="/supplementary">보강 운동</a> ·{' '}
             <a href="/routines">루틴</a> · <a href="/stretching">스트레칭</a> ·{' '}
             <a href="/recovery">회복 전략</a> · <a href="/races">대회</a> ·{' '}
-            <a href="/records">기록</a> · <a href="/account">계정</a>
+            <a href="/records">기록</a> · <a href="/account">계정</a> · <a href="/settings">설정</a>
           </nav>
           <DemoWorkspace />
         </>

@@ -1,3 +1,4 @@
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';
 import { identityWebOrigin } from '../../scripts/fixtures/identity-ports';
 import { randomUUID } from 'node:crypto';
 import { test, expect } from '@playwright/test';
@@ -14,6 +15,7 @@ test('OIDC scoped check-in API persists null and zero, corrects revisions, expor
   await page.goto('/account');
   await page.getByRole('link', { name: 'OIDC로 로그인' }).click();
   await page.getByRole('link', { name: 'Sign in as Alice' }).click();
+  await grantAppProcessingForScenario(page);
   const session = await (await page.request.get('/bff/v1/session')).json();
   const headers = {
     origin: identityWebOrigin,

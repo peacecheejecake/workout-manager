@@ -64,7 +64,7 @@ async function dropOnDate(page: Page, target: Locator) {
 test('date menu and numeric or keyboard length changes stay drafts until explicit save', async ({
   page,
 }) => {
-  const fixture = await setupOperations(page);
+  const fixture = await setupOperations(page, grantAppProcessingForScenario);
   await fixture.open();
   const controls = operations(page);
   const duration = controls.getByRole('spinbutton', { name: '변경할 계획 시간 (초)', exact: true });
@@ -129,7 +129,7 @@ test('date menu and numeric or keyboard length changes stay drafts until explici
 test('pointer date movement and cancellation preserve a draft through responsive geometry changes', async ({
   page,
 }) => {
-  const fixture = await setupOperations(page);
+  const fixture = await setupOperations(page, grantAppProcessingForScenario);
   await fixture.open('zero');
   const handle = page.getByRole('button', {
     name: `${fixture.title('zero')} 날짜 이동 손잡이`,
@@ -186,7 +186,7 @@ test('pointer date movement and cancellation preserve a draft through responsive
 test('past sessions, saved locks and unknown duration prevent unsafe draft operations', async ({
   page,
 }) => {
-  const fixture = await setupOperations(page);
+  const fixture = await setupOperations(page, grantAppProcessingForScenario);
   await fixture.open();
   const controls = operations(page);
   await controls.getByRole('button', { name: '계획 시간 적용', exact: true }).click();
@@ -254,7 +254,7 @@ test('past sessions, saved locks and unknown duration prevent unsafe draft opera
 test('failed save retries the same command and stale approval preserves operations for explicit rebase', async ({
   page,
 }) => {
-  const fixture = await setupOperations(page);
+  const fixture = await setupOperations(page, grantAppProcessingForScenario);
   await fixture.open('zero');
   const controls = operations(page);
   await controls
@@ -336,7 +336,7 @@ test.describe('touch session operations', () => {
   test('touch swiping a session body scrolls without dragging and the date menu remains available', async ({
     page,
   }) => {
-    const fixture = await setupOperations(page);
+    const fixture = await setupOperations(page, grantAppProcessingForScenario);
     // The shared setup uses a desktop viewport; this journey exercises mobile touch input.
     await page.setViewportSize({ width: 390, height: 844 });
     await fixture.open('zero');
@@ -434,11 +434,12 @@ test.afterEach(async ({ page }) => {
   expect((await page.request.get('/bff/v1/session', { timeout: 5000 })).status()).toBe(401);
 });
 
-async function setupOperations(page: Page) {
+async function setupOperations(page: Page, beforeProtectedWrite: (page: Page) => Promise<void>) {
   page.setDefaultTimeout(5000);
   page.setDefaultNavigationTimeout(5000);
   const headers = await login(page);
   cleanupHeaders.set(page, headers);
+  await beforeProtectedWrite(page);
   const readPlan = async () => {
     const response = await page.request.get('/bff/v1/plans/current', { headers, timeout: 5000 });
     expect(response.status()).toBe(200);
@@ -527,3 +528,4 @@ async function setupOperations(page: Page) {
     },
   };
 }
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';

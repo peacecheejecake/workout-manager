@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import type { Pool } from 'pg';
+import type { PoolClient } from 'pg';
 
 // Private owner-maintenance helper for the synthetic restore drill. Contains health text;
 // never log this ledger or expose it to the runtime role.
@@ -78,7 +78,14 @@ export function parseConstraintRestoreLedger(value: unknown, backupOwners: reado
   return { schemaVersion: 1 as const, capturedAt, subjects };
 }
 export type ConstraintRestoreLedger = ReturnType<typeof parseConstraintRestoreLedger>;
-export async function captureConstraintRestoreLedger(pool: Pool, backupOwners: readonly string[]) {
+export type ConstraintRestoreQueryPort = Pick<PoolClient, 'query'>;
+export type EnterConstraintRestoreTenant = (athleteId: string) => Promise<void>;
+
+// Explicit privileged archive inspection; not an owner transaction capture.
+export async function captureConstraintRestoreLedger(
+  pool: ConstraintRestoreQueryPort,
+  backupOwners: readonly string[],
+) {
   const result = await pool.query<{ ledger: unknown }>(
     `WITH owners AS (
     SELECT unnest($1::text[]) AS athlete_id UNION SELECT athlete_id FROM coaching_constraint_head
@@ -96,18 +103,53 @@ export async function captureConstraintRestoreLedger(pool: Pool, backupOwners: r
   );
   return parseConstraintRestoreLedger(result.rows[0]?.ledger, backupOwners);
 }
+export async function captureOwnedConstraintRestoreLedger(
+  pool: ConstraintRestoreQueryPort,
+  expectedOwners: readonly string[],
+  enterTenant: EnterConstraintRestoreTenant,
+): Promise<ConstraintRestoreLedger> {
+  assert.ok(expectedOwners.length > 0 && expectedOwners.length <= 1000);
+  assert.equal(new Set(expectedOwners).size, expectedOwners.length);
+  const subjects: ConstraintRestoreLedger['subjects'] = [];
+  let capturedAt: string | undefined;
+  for (const athleteId of [...expectedOwners].sort()) {
+    identifier(athleteId);
+    await enterTenant(athleteId);
+    const result = await pool.query<{ ledger: unknown }>(
+      `WITH owners AS (SELECT $1::text AS athlete_id) SELECT jsonb_build_object('schemaVersion',1,
+    'capturedAt',to_char(statement_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+    'subjects',COALESCE((SELECT jsonb_agg(jsonb_build_object('athleteId',o.athlete_id,
+      'head',CASE WHEN h.athlete_id IS NULL THEN NULL ELSE jsonb_build_object('revision',h.revision,'updatedAt',to_char(h.updated_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')) END,
+      'rows',COALESCE((SELECT jsonb_agg(jsonb_build_object('id',c.id,'revision',c.revision,'text',c.text,
+       'confirmedAt',to_char(c.confirmed_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+       'updatedAt',to_char(c.updated_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),'deleted',c.deleted) ORDER BY c.id)
+       FROM coaching_constraint c WHERE c.athlete_id=o.athlete_id),'[]'::jsonb)) ORDER BY o.athlete_id)
+       FROM owners o LEFT JOIN coaching_constraint_head h USING(athlete_id)),'[]'::jsonb)) AS ledger`,
+      [athleteId],
+    );
+    const captured = parseConstraintRestoreLedger(result.rows[0]?.ledger, [athleteId]);
+    assert.equal(captured.subjects.length, 1);
+    subjects.push(...captured.subjects);
+    capturedAt ??= captured.capturedAt;
+  }
+  return parseConstraintRestoreLedger({ schemaVersion: 1, capturedAt, subjects }, expectedOwners);
+}
+
 // Caller owns a transaction and must replay the independent erasure ledger first.
-export async function restoreConstraintLedger(pool: Pool, ledger: ConstraintRestoreLedger) {
-  const before = await captureConstraintRestoreLedger(
-    pool,
-    ledger.subjects.map((row) => row.athleteId),
-  );
+export async function restoreConstraintLedger(
+  pool: ConstraintRestoreQueryPort,
+  ledger: ConstraintRestoreLedger,
+  expectedOwners: readonly string[],
+  enterTenant: EnterConstraintRestoreTenant,
+) {
+  const before = await captureOwnedConstraintRestoreLedger(pool, expectedOwners, enterTenant);
   parseConstraintRestoreLedger(
     ledger,
     before.subjects.map((row) => row.athleteId),
   );
+  assert.deepEqual(ledger.subjects.map((row) => row.athleteId).sort(), [...expectedOwners].sort());
   for (const subject of ledger.subjects) {
-    await pool.query("SELECT set_config('app.athlete_id',$1,true)", [subject.athleteId]);
+    await enterTenant(subject.athleteId);
     if (
       (await pool.query('SELECT 1 FROM tenant_erasure WHERE athlete_id=$1', [subject.athleteId]))
         .rowCount !== 0

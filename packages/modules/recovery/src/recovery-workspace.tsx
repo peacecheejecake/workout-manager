@@ -283,7 +283,10 @@ function MethodForm({ api, scope }: { api: RecoveryApi; scope: Scope }) {
     } catch (error) {
       if (isDefinitiveRejection(error)) {
         setPendingCommand(null);
-        setError('방법 저장 요청이 거절되었습니다. 입력을 확인하고 다시 저장해 주세요.');
+        setError(
+          appAdmissionMessage(error) ??
+            '방법 저장 요청이 거절되었습니다. 입력을 확인하고 다시 저장해 주세요.',
+        );
         return;
       }
       setError('요청 결과를 확인하지 못했습니다. 같은 방법 저장 요청으로 다시 시도해 주세요.');
@@ -438,7 +441,10 @@ function StrategyForm({
     } catch (error) {
       if (isDefinitiveRejection(error)) {
         setPendingCommand(null);
-        setError('전략 초안 요청이 거절되었습니다. 입력을 확인하고 다시 저장해 주세요.');
+        setError(
+          appAdmissionMessage(error) ??
+            '전략 초안 요청이 거절되었습니다. 입력을 확인하고 다시 저장해 주세요.',
+        );
         return;
       }
       setError('요청 결과를 확인하지 못했습니다. 같은 전략 초안 요청으로 다시 시도해 주세요.');
@@ -529,8 +535,11 @@ function StrategyCard({
       await api.confirmStrategy({ ...body, idempotencyKey: keys.forPayload(body) });
       keys.clear(body);
       await client.invalidateQueries({ queryKey: scope });
-    } catch {
-      setError('선택을 확인하지 못했습니다. 최신 전략과 관측을 다시 확인해 주세요.');
+    } catch (error) {
+      setError(
+        appAdmissionMessage(error) ??
+          '선택을 확인하지 못했습니다. 최신 전략과 관측을 다시 확인해 주세요.',
+      );
     } finally {
       setSaving(false);
     }
@@ -737,7 +746,10 @@ function ActionForm({
       if (isDefinitiveRejection(error)) {
         setPendingCommand(null);
         onPendingChange?.(false);
-        setError('행동 기록 요청이 거절되었습니다. 최신 상태와 입력을 확인해 주세요.');
+        setError(
+          appAdmissionMessage(error) ??
+            '행동 기록 요청이 거절되었습니다. 최신 상태와 입력을 확인해 주세요.',
+        );
         return;
       }
       setError(
@@ -957,4 +969,18 @@ function ActionCard({
       {error ? <p role="alert">{error}</p> : null}
     </article>
   );
+}
+
+function appAdmissionMessage(error: unknown): string | null {
+  if (!(error instanceof RecoveryRequestError)) return null;
+  switch (error.code) {
+    case 'APP_CONSENT_REQUIRED':
+      return '앱 데이터 처리 동의가 필요합니다. 입력은 유지됐으며 저장되지 않았습니다. 동의 상태를 확인해 주세요.';
+    case 'STALE_APP_ADMISSION':
+      return '앱 데이터 처리 동의가 변경되어 이 요청은 저장되지 않았습니다. 입력을 유지했습니다. 동의 상태와 최신 자료를 확인해 주세요.';
+    case 'APP_BINDING_UNAVAILABLE':
+      return '이 요청의 앱 데이터 처리 동의 기준을 확인할 수 없어 저장하지 않았습니다. 입력을 유지했습니다. 최신 자료를 다시 확인해 주세요.';
+    default:
+      return null;
+  }
 }

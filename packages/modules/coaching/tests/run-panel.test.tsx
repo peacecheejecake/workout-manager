@@ -556,3 +556,33 @@ describe('coaching run panel', () => {
     expect(screen.queryByRole('region', { name: '선택한 실행' })).not.toBeInTheDocument();
   });
 });
+
+it.each([
+  ['APP_CONSENT_REQUIRED', '앱 데이터 처리 동의가 필요합니다.'],
+  ['STALE_APP_ADMISSION', '앱 데이터 처리 동의가 변경되어'],
+  ['APP_BINDING_UNAVAILABLE', '앱 데이터 처리 동의 기준을 확인할 수 없어'],
+] as const)('keeps the run selection after %s without creating a run', async (code, message) => {
+  const f = fixture();
+  const writes: TransportRequest[] = [];
+  const transport: AuthenticatedTransport = {
+    async request(input) {
+      if (input.method === 'POST' && input.path.endsWith('/runs')) {
+        writes.push(input);
+        return transportReplySchema.parse({
+          status: 409,
+          body: { error: { code, detail: 'private source' } },
+          traceId: null,
+        });
+      }
+      return f.transport.request(input);
+    },
+  };
+  render(<Harness transport={transport} />);
+  await userEvent.click(screen.getByRole('button', { name: '선택한 근거로 실행' }));
+  expect(await screen.findByText(new RegExp(message))).toBeTruthy();
+  expect(writes).toHaveLength(1);
+  expect(screen.queryByRole('region', { name: '선택한 실행' })).toBeNull();
+  expect(screen.queryByText(/상담·근거·동의 또는 계획 상태가 변경되었습니다/)).toBeNull();
+  expect(screen.queryByText(/private source/)).toBeNull();
+  expect(screen.getByRole('button', { name: '선택한 근거로 실행' })).toBeEnabled();
+});

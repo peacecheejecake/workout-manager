@@ -1,3 +1,4 @@
+import { createConsentRepository } from '../src/repositories.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { createHealthKitActivityRepository } from '../src/healthkit-activity.js';
 import { createHealthKitBindingRepository } from '../src/healthkit-binding.js';
@@ -122,6 +123,7 @@ describe('M3-02l product HealthKit deregistration', () => {
   it('keeps an unknown historical v1 receipt fail closed and rolls back every deregistration write', async () => {
     const athlete = randomUUID(),
       sample = randomUUID();
+    await declareSyntheticAppConsent(athlete);
     await consent(athlete);
     const registration = createHealthKitRegistrationRepository(database);
     const ingestion = createHealthKitIngestionRepository(database);
@@ -233,6 +235,7 @@ describe('M3-02l product HealthKit deregistration', () => {
     const a = randomUUID(),
       b = randomUUID(),
       sample = randomUUID();
+    await declareSyntheticAppConsent(a);
     await Promise.all([consent(a), consent(b)]);
     const registration = createHealthKitRegistrationRepository(database),
       ingestion = createHealthKitIngestionRepository(database),
@@ -315,6 +318,7 @@ describe('M3-02l product HealthKit deregistration', () => {
   it('requires completed prefix cleanup database facts for a HealthKit-owned Activity', async () => {
     const a = randomUUID(),
       sample = randomUUID();
+    await declareSyntheticAppConsent(a);
     await consent(a);
     const registration = createHealthKitRegistrationRepository(database),
       ingestion = createHealthKitIngestionRepository(database),
@@ -379,6 +383,7 @@ describe('M3-02l product HealthKit deregistration', () => {
     const next = await registration.registerWorkouts(b, register([sample]));
     const nextEpoch = next.claims[0]?.claimEpoch;
     if (!nextEpoch) throw new Error('next epoch');
+    await declareSyntheticAppConsent(b);
     await createHealthKitIngestionRepository(database).ingestBatch(b, batch(sample, nextEpoch), 1);
     await expect(
       createHealthKitDeregistrationRepository(finalizerDatabase).finalize(a, pending.operationId),
@@ -392,6 +397,7 @@ describe('M3-02l product HealthKit deregistration', () => {
     const a = randomUUID(),
       sample = randomUUID(),
       activity = randomUUID();
+    await declareSyntheticAppConsent(a);
     await consent(a);
     const registration = createHealthKitRegistrationRepository(database),
       ingestion = createHealthKitIngestionRepository(database),
@@ -446,6 +452,7 @@ describe('M3-02l product HealthKit deregistration', () => {
   it('serializes in-flight ingestion with deregistration and fences direct legacy v2 raw writes', async () => {
     const a = randomUUID(),
       sample = randomUUID();
+    await declareSyntheticAppConsent(a);
     await consent(a);
     const registration = createHealthKitRegistrationRepository(database),
       ingestion = createHealthKitIngestionRepository(database),
@@ -478,6 +485,7 @@ describe('M3-02l product HealthKit deregistration', () => {
       sample = randomUUID(),
       ownCourse = randomUUID(),
       foreignCourse = randomUUID();
+    await declareSyntheticAppConsent(a);
     await consent(a);
     const registration = createHealthKitRegistrationRepository(database),
       ingestion = createHealthKitIngestionRepository(database),
@@ -558,6 +566,7 @@ describe('M3-02l product HealthKit deregistration', () => {
       other = randomUUID(),
       bound = randomUUID(),
       manual = randomUUID();
+    await declareSyntheticAppConsent(athlete);
     await consent(athlete);
     const registration = createHealthKitRegistrationRepository(database),
       ingestion = createHealthKitIngestionRepository(database),
@@ -708,6 +717,7 @@ describe('M3-02l product HealthKit deregistration', () => {
   it('blocks unknown receipt membership until an exact original v2 retry proves its UUID set', async () => {
     const athlete = randomUUID(),
       sample = randomUUID();
+    await declareSyntheticAppConsent(athlete);
     await consent(athlete);
     const registration = createHealthKitRegistrationRepository(database),
       ingestion = createHealthKitIngestionRepository(database),
@@ -776,3 +786,15 @@ describe('M3-02l product HealthKit deregistration', () => {
     ).rejects.toThrow('RECEIPT_MEMBERSHIP_REQUIRED');
   });
 });
+
+// Explicit synthetic user permission for named positive collection scenarios only.
+async function declareSyntheticAppConsent(athleteId: string): Promise<void> {
+  expect(
+    await createConsentRepository(database).setConsent(athleteId, {
+      kind: 'app',
+      granted: true,
+      expectedRevision: 0,
+      idempotencyKey: randomUUID(),
+    }),
+  ).toEqual({ kind: 'app', granted: true, revision: 1 });
+}

@@ -101,7 +101,9 @@ async function tenantLock(transaction: Transaction) {
     transaction.athleteId,
   ]);
 }
-async function catalogIn(transaction: Transaction): Promise<AiExecutionCatalogV1> {
+export async function readCurrentAiCatalogIn(
+  transaction: Transaction,
+): Promise<AiExecutionCatalogV1> {
   // Held through transaction commit, even while CAS/receipt writes happen. No network fetch.
   await transaction.query(
     "SELECT pg_advisory_xact_lock_shared(hashtextextended('ai-settings-catalog',77212))",
@@ -171,7 +173,7 @@ export function createAiSettingsRepository(database: Database): AiSettingsReposi
     catalog: (athleteId) =>
       database.tenant(athleteId, async (transaction) => {
         await tenantLock(transaction);
-        return catalogIn(transaction);
+        return readCurrentAiCatalogIn(transaction);
       }),
     read: (athleteId) =>
       database.tenant(athleteId, async (transaction) => {
@@ -206,7 +208,7 @@ export function createAiSettingsRepository(database: Database): AiSettingsReposi
         }
         // Replay above remains readable on a CLOSED restore target. New writes are fenced.
         await requireWriteTarget(transaction);
-        const catalog = await catalogIn(transaction);
+        const catalog = await readCurrentAiCatalogIn(transaction);
         const validation = validateAiSettingsChoicesV1(catalog, command);
         if (!validation.ok) throw new AiSettingsRepositoryError(validation.code);
         const current = await settingsIn(transaction);

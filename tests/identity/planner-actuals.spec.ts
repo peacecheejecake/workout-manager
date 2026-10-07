@@ -40,6 +40,7 @@ test('planner actual pages use saved local dates and preserve drafts across lens
 }) => {
   test.setTimeout(60000);
   const headers = await login(page);
+  await grantAppProcessingForScenario(page);
   const marker = `Planner actual ${randomUUID()}`;
   const currentResponse = await page.request.get('/bff/v1/plans/current', { headers });
   expect(currentResponse.status()).toBe(200);
@@ -236,3 +237,4 @@ test('planner actual pages use saved local dates and preserve drafts across lens
     expect((await page.request.get('/bff/v1/session')).status()).toBe(401);
   }
 });
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';

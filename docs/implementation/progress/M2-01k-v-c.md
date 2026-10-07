@@ -1,6 +1,6 @@
 # M2-01k-v-c · S22 app revision과 evidence·승인 basis 호환
 
-상태: in_progress — 정식 migration100·runtime grants·source/export 수용을 진행했으나 fulltail/restore·처리 재개 수용은 미완료.
+상태: completed — graph에 명시된 app binding·freshness·성공 receipt·기존 조회/export 및 지원된 historical family 복원 경로의 로컬 수용 완료. 전체 archive·처리 재개·provider dispatch는 별도 미완료다.
 
 strict v1/v2를 파괴하지 않는 versioned app admission binding, capture/worker/candidate/v3/v4 승인 freshness와 철회→재동의의 구형 basis 거절; export/restore 이전 자료 읽기 유지.
 
@@ -201,3 +201,64 @@ Root는 두 실제 로그·source diff·SHA·cleanup과 집중 TS/lint/format을
 신규 `reconcile-tenant-bounds.integration.test.ts`는 정상104→105 migration의 이전 checksum/owner/ACL/FORCE RLS, restricted worker/direct-table/PUBLIC42501, absence/foreign/null cursor/clamp, caller tenant/planner GUC 복원을 실제 확인한다. Disposable instrumentation admin이 auto_explain만 준비한 뒤 session authorization을 plain non-super/non-bypass owner/worker로 바꿔 nested 실행을 측정한다. Namespace별 private helper7회 반복의 scan 합계7·foreign filtered0, worker N1/2/10/50의 실제 scan 합계1/2/10/50를 검사한다. pg_stat0은 증거로 쓰지 않는다. 최종7/7(skip0), `/private/tmp/wm-canonical105-new-test-20261007-r2.log`; test SHA256 `1231575e0c40011e26bf9b12f2cb4cae136bad6332ea01c0025509af92266b30`. 초기 lint/TS 오류와 수정 회차는 보존한다. PG17과 운영 실행은 NOT_EXECUTED이며 auto_explain 확장이 없는 환경의 실행 제한을 숨기지 않는다.
 
 기존153파일 전체 실제PG105 회차는 URL1/1 이후 **1445pass/2fail/4skip**, exit1(`/private/tmp/wm-c-canonical105-full-20261007.log`). 두 실패는 최신105를 설치하면서 settings의104개 registry와 historical039 upgrade의 교체된 후보 함수 proconfig를 과거 값으로 기대한 것이다. Registry 전체 checksum 비교와105의 정확한 local proconfig 기대값을 반영한 별도2파일15/15(skip0), URL1/1 통과(`/private/tmp/wm-c-canonical105-consumers-20261007.log`). 전체 회차를 통과로 덮어쓰지 않으며 병렬 작성 중이던 신규7개는 전체 실행에서 제외됐다. Root는 최종 diff·source SHA·실제 로그·disposable cluster stop/remove를 확인했다. Persistence TS·변경 ESLint/format/diff 검증을 통과했다. C는 in_progress이며 full phase gates·identity/browser·운영 archive/restore·provider·독립 phase review/main 수용은 남아 있다.
+
+## 2026-10-07 AI execution selection 순수 경계 준비
+
+설정 선택의 후속 코칭 연결을 위해 `coaching-execution-selection.ts`의 strict unknown 입력·bounded adapter registry·canonical catalog digest·immutable 선택 draft를 준비했다. 현재 catalog/recipient/purpose/가격·adapter/tokenizer version 및 app/AI permission revision/digest 변화는 거절하며 기존 frozen job을 새 preference로 자동 교체하지 않는다. 추천값은 저장값이 아니며 unconfigured·revoked 모델은 실행 draft로 허용하지 않는다. 합성 비교는 synthetic_only 분류가 필요하다. **모든 ready/blocked 결과는 admissionAllowed:false**이며 실제 실행 권한을 주지 않는다.
+
+Root는 source/계약/테스트 diff와 frozen SHA를 직접 확인하고 단위12/12를 재실행했다. 함께 identity private context sweep 회귀11/11을 실행하여 총2파일23/23,skip0(`/private/tmp/wm-execution-selection-root-20261007.log`). Agent coaching TS·lint·format exit0, 초기 실패는 `/private/tmp/wm-execution-selection-report-20261007.md`에 보존한다. Source SHA256 `e102d3376980b78aaba8a33edbb86dfd7f4cb18f6732644f6e1e920707c8c65f`, test `b634fb2bce809d7a9b8a0a89172104e7a8db43c142a88528713cb064aa830dd3`.
+
+Registry 및 합성 availability/classification은 caller facts이며 실제 OpenAI API model/pricing·환율·key·건강자료 분류 증거가 아니다. DB frozen job 저장·full freshness manifest·budget reservation·실제 dispatcher는 미연결/NOT_EXECUTED다. C와 실제 제공자 코칭 작업의 완료를 선언하지 않는다.
+
+## 2026-10-07 OpenAI API 공식 문서 확인 (실호출과 별개)
+
+OpenAI Docs의 공식 검색 후 [GPT-6.1 Sol](https://developers.openai.com/api/docs/models/gpt-6.1-sol), [GPT-6 Luna](https://developers.openai.com/api/docs/models/gpt-6-luna), [요금표](https://developers.openai.com/api/docs/pricing) 원문을 실제 fetch했다. 현재 문서의 API ID는 `gpt-6.1-sol`/`gpt-6-luna`이며 Responses·text structured output을 지원한다. Short-context Standard의 100만 token당 input/cached/cache-write/output USD는 Sol 2/0.10/2.50/10, Luna 0.10/0.01/0.125/0.50이다. 272K 초과 prompt는 전체 요청의 input/cache 2배·output1.5배이며 tier·regional processing 차액은 별도다. Sol은 none/minimal reasoning을 지원하지 않고 low 이상, Luna는 none 또는 low 이상을 지원한다.
+
+이는 공식 문서 확인이며 사용자 API 계정의 모델 접근·키·실제 응답·청구 수용은 NOT_EXECUTED다. 환율·세금·tool fee·tokenizer/최대출력 정책 및 실제 budget reserve/settle 경로를 아직 확정/실행하지 않았다. 문서상 모델 존재를 production catalog available 또는 실행 허가로 승격하지 않으며 현재 합성 카탈로그의 unconfigured를 유지한다. 저장과 전송 동의·호출은 계속 구분한다.
+
+## 2026-10-07 AI 설정 UI·authenticated transport 의존성 통합 준비
+
+M2-05 phase의 pinned UI `dd974084fe008397fe2ab2963191de6bea9e0380`에서 settings module source4/tests2·두 thin shell을 현재 C104/105 API와 연결했다. Module·shell manifest/lock는 기존 고정 dependency 버전을 재사용하며 external package version 변경은 없다. Root가 source provenance·delta·native/web 경계·실제 로그를 직접 확인했다. Native transport는 이번에 변경하지 않았다. Web session transport는 정확한 GET settings/catalog·PUT settings만 허용하고 credential/session/CSRF 경계를 유지한다. Strict CSRF_REJECTED403 응답을 별도로 처리해 초안을 보존한다. Synthetic catalog는 unconfigured이며 저장만으로 전송 동의·호출·기존 계획 변경을 만들지 않는다.
+
+- Root actual 단위: settings module41 + platform116 = **157/157**,3파일,skip0(`/private/tmp/wm-settings-ui-root-unit-20261007.log`). 별도 coaching12 + context sweep11 =23/23. Consumer module/platform TS exit0; agent 두 shell TS/lint·41/116 검증 및 root Next/Vite build exit0. Vite 기존 큰 chunk 경고는 남는다.
+- Install 최초 offline NO_TTY/캐시 tarball 누락은 실패로 보존하고 CI network install ignore-scripts의 실제 exit0로 dependencies를 복구했다. Lock delta는 세 workspace importer뿐이다. Root 전체 TS exit0.
+- Aside CLI는 실행 중인 daemon/browser에 연결하지 못했다(`fetch failed; Aside isn't running`). Chrome CUA fallback에서 합성 OIDC Alice 로그인·설정 null/off·OpenAI 선택·목적 고지를 확인했다. Native keyboard/model 선택·저장까지 완료하지 못했고 검증용 tab/세 local server를 닫았다. Aside check passed나 Chrome 저장 수용으로 부르지 않는다.
+- 실제 local OIDC+BFF+PG14 normal105+plain owner/runtime의 Playwright Chrome 기능 진단 **Next/Vite2/2**,skip0(`/private/tmp/wm-ai-settings-identity-actual-r6-20261007.log`): explicit Sol/Luna 저장200·revision1 reload, 다른 탭revision2와CAS409·초안 유지·명시 새로확인, Bob null/off 격리, revoke 후 기존 Sol 유지·option 실제 disabled·fallback 없음·새PUT422, 실제 SQL consent digest/outbox/plan/run 무변경. 320px reflow·focus 확인. UI route interception/MSW·external provider0.
+- r1 locator 실패, r2 직접 GET의 session header409, r3/r4 keyboard blank, r5 native option matcher 실패를 각각 보존했다. r6는 selectOption 기능 진단이며 r3/r4 키보드 실패를 pass로 바꾸지 않는다. Native option disabled는 실제 attribute/property로 확인했다. Keyboard 수용은 추가 진단 중이다.
+- 최종 spec SHA `96b733dcb51b8105f0d514c2dedf8eac5649e2265a23b1edc627a9be52740d1b`; context `b04060254f062f8681d447385704135f9e3c2d0bf3270802cee2378249a0b985`; catalog `50a2cbb1bd316ffed4e9941914e345679fc195d172f4b978468d0c9fec9f9f18`. `/private/tmp/wm-ai-settings-identity-actual-acceptance-20261007.md`와 회차별 inputs/cleanup 참조. r6 harness dead·socket/context absent·pg_isready2·5 ports listener0 확인; r4 개별PID/socket 포착 누락 한계는 그대로다.
+
+이는 M2-05 settings의 현재 processing 경계와 두 shell 연결을 C phase에서 수용하기 위한 의존성 통합이다. M2-05 전체나 S22v-f/native 노드를 완료 처리하지 않는다. Keyboard 전체·503 target lifecycle·전체 phase gate/독립 phase review·실기기·공개 HTTPS·유료 provider 호출은 미완료/NOT_EXECUTED로 남는다. Phase main 병합·push를 하지 않는다.
+
+### 별도 실제 키보드 typeahead 경로 · 2026-10-07
+
+Frozen repo3파일 변경 없이 tmp actual Chrome/PG14 케이스에서 제공자 focus→`o`→Enter(OpenAI), 모델 focus→`s`→Enter(Sol) 경로를 확인했다. Next r9 **1/1**, Vite r10 **1/1** 통과. 두 화면 실제 GET revision1·저장 status를 확인했으며 Vite는 모델 Enter 직전 PUT waiter를 설치해 실제200도 확인했다. Next는 특정 키 이벤트/응답의 직접 시간 상관을 측정하지 않았고 GET commit 사실만 기록한다. r8은 선택 확인 후 이미 Enter가 제출한 상태에서 두번째 PUT을 기다려 timeout된 전체 실패로 보존하며 r7은 tmp ESM pretest 실패다. r3/r4 화살표/Space+화살표 실패는 고치거나 pass로 바꾸지 않았다. 실제 확인된 keyboard 경로는 typeahead이며 화살표 진단의 차이는 여전히 한계로 남는다.
+
+Root가 `/private/tmp/wm-ai-settings-keyboard-r9-saved.png`를 직접 열어 OpenAI/Sol·실행 unconfigured 고지·저장 성공 상태와 개인 자료 없음 확인. Vite 저장 screenshot은 `/private/tmp/wm-ai-settings-keyboard-r10-saved.png`. 최종 보고 `/private/tmp/wm-ai-settings-identity-actual-acceptance-20261007.md` SHA256 `02c9a53a0ca0d05e7e20406d04f87a0a22cbc999b36284c4b73499225341214c`. Vite r10은 own PID/socket/context를 포착해 종료·파일/디렉터리 부재·pg_isready2·5port listener0를 확인했다. Next r9은 runnerexit0/runidcontext0/ports0만 포착해 개별PID/socket cleanup은 NOT_CAPTURED다. Phase/실기기/외부 API·공개 배포 수용 결과로 승격하지 않는다.
+
+## 저장 당시 선택 metadata exact reader 준비 · 2026-10-07
+
+새 내부 `readCoachingExecutionSettingsIn(Transaction, unknown)`는 strict revision/catalogRevision/policyVersion/disclosureVersion을 받아 own immutable settings history와 저장 당시 catalog definition/digest를 검증한다. 현재 head는 실제 history를 참조하는지 확인하지만 requested revision을 newer preference로 대체하지 않는다. Absence/orphan/metadata mismatch/malformed DTO는 fail closed다. Caller가 authenticated tenant transaction을 소유하며 BEGIN/COMMIT·GUC 변경·receipt key 조회·provider 호출·consent grant는 없다. Read의 admissionAllowed는 항상 false이고 현재 catalog/permissions/fullmanifest/budget/dispatch는 별도 gate다.
+
+Native agent의 실제 isolated PG14 normal105/public grantAiSettings, plain NOSUPERUSER/NOBYPASSRLS owner/runtime 및 FORCE RLS **6/6·skip0·exit0**를 Root가 source/test/log와 대조했다. Exact1이 latest2 이후에도 유지되고 foreign RLS/outside42501, absence/unknown revision, strict malformed/mismatched pins, immutableUPDATE42501, current catalog revoked/appfalse/AIfalse 이후 retained basis 읽기, deferredFK 거래 안의 orphan head 거절과 rollback 후 회복을 검증했다. Runtime 제약/trigger를 해제하지 않았다. 최초 runner wrongcwd는 PG 시작 전 실패로 보존했다. 수정 r2 로그 `/private/tmp/wm-execution-settings-pg-20261007-r2.log`와 `/private/tmp/wm-execution-settings-report-20261007.md`에 기록했다. 자체 private PG 중지·directory 삭제를 완료했다. 이는 SQL별 pre/post hash 전체 pin 주장과 다르다.
+
+Root는 두 파일 source/test와 실제6/6 로그를 읽고 consumer persistence TS·scope lint/format/diff exit0을 별도 실행했다. Source SHA256 `38ec48e74a3fd63e586a17eb23a29d25e4ad4a4fd744fb74e761c61be1fff9ec`, test `07cf715eb7ebd28a64e617dd9d864ffcab86c092d3b71df1b4ee419a89b33929`. 새 reader는 아직 미export/미caller 연결이며 worker에 API 쓰기 grant를 복제하지 않는다. Frozen execution 저장·전체 lifecycle/restore·complete freshness·live API dispatch 증거가 아니다. v-c/phase는 in_progress, PG17/provider/운영은 NOT_EXECUTED를 유지한다.
+
+## AI 설정 restore-target503 실제 두 Host 수용 · 2026-10-07
+
+새 opt-in spec과 시험 전용 helper는 기존 identity harness/context를 재사용하되 전용 runId/다섯 포트/sole spec/new DB만 허용한다. Fresh CLOSED·NULL target 상태에서 Next Alice가 Sol 선택을 명시 저장하고 Vite가 같은 revision1을 읽었다. 두 shell에서 Luna 비교 초안을 만든 뒤 plain owner가 global exclusive77210,1을 먼저 잡아 target을 정확히 한 번 닫았다. Owner/table/function/normal105 checksum·initialrevision1/NULLtarget/receipt0·generation/readback/revision increment 및 exact command receipt의 tuple을 검사했다. Target reopen/reset은 없다.
+
+Root는 실제 Chrome channel의 Playwright로 **단일 combined test1/1, skip0, exit0, 9.7초**를 실행했다. Next와 Vite 양쪽 UI 저장503/UNAVAILABLE·초안 보존·거짓 성공문구 부재·관찰한 UI PUT1회를 검증했다. 이후 retained own GET/catalog200, 원래 같은key+body의 receipt200/원응답 동등성, 새key503, 같은key 다른body409, Bob revision0/새저장503 및 client athleteId spoof400을 확인했다. Alice head/history/settingsreceipt1과 consent digest/outbox/plan/run, Bob0이 불변이다. 실제 OpenAI 연결·HealthKit·운영 서버 시험이 아니라 local OIDC/API/PG14 normal105·합성 catalog의 두 shell 경로다.
+
+Command는 `/private/tmp/wm-ai-settings-lifecycle-playwright-20261007.mts`를 canonical config에서 import한 sole-spec wrapper로 실행했다. CI=true/traceoff, runId `wm-settings-lifecycle-20261007-r1`, ports5910/5920/5930/5940/5950, API_ORIGIN5930. Root는 Next를 이 API_ORIGIN으로 별도 build(exit0)하고 wrapper의 static canonical import·server cwd·Chrome channel을 보완했다. Source helper에는 connection 실패 시 pool 정리와 exact receipt tuple 확인만 추가했다. Agent 초기 직접 zod 의존이 없는 root TS 실패를 공개 schema/explicit assertion으로 수정한 기록은 `/private/tmp/wm-ai-settings-lifecycle-prepared-report-20261007.md`에 보존했다. Root 최종 전체 tsc와 두 파일 lint/format/diff exit0이다.
+
+Aside guide를 읽고 확인했지만 `aside session list`는 daemon auth challenge fetch 실패/Aside not running이었다. 앞선 잘못된 --json 옵션 실패도 별도이며 UI 검증 결과가 아니다. 실제 사용 도구는 Playwright Chrome이다. `/private/tmp/wm-ai-settings-lifecycle-actual-20261007-r1.log`, build log, `wm-ai-settings-lifecycle-r1-observed-inputs.json` 및 cleanup.json을 기록했다. Input hash 관찰은 runner 종료 후이므로 pre-run pin으로 주장하지 않는다. 정확 fixture PID/socket을 그 회차에서 수집하지 못한 한계(NOT_CAPTURED)를 보존한다. 종료코드0, 해당 run context0·private identity directory0·다섯 포트 listener0을 Root가 직접 확인했고 관찰 이후 source 변화0이다. 향후 전체 phase 수용은 새 HEAD 고정 전체 gate로 별도 실행한다.
+
+Helper SHA `22af960d7cce1968e7ee0ff58f57bef97cd094fa589dc734868947710decd8c2`, spec `c130083ca4e42728072213d5729cafb74eb81d05fd060630ba4a5f5247d5e4f5`. 이는 기존Down/SpaceDown keyboard 실패를 통과로 바꾸거나 public503 해제·live provider/budget/fullrestore·whole C 완료를 뜻하지 않는다. 해당 원래 실패와 external NOT_EXECUTED는 그대로 유지한다.
+
+## 원본 family→정상105 upgrade 로컬 수용 및 범위 종료 · 2026-10-07
+
+새 정식 integration test는 실제 source100 공개 producer/합성 worker의 원본 다섯 binding·material·승인 receipt를 authenticated historical family102 loader로 복원하고 정식 migrate로105까지 업그레이드한다. Source의 암호화된 appfalse2 prefix에서 원본 output read/export 유지, regrant3 전체 tail/duplicate에서 epoch1 보존·원래 successful receipt 동등 재생·새key stale 거절과 명시 binding absence/no-backfill을 확인한다. Family/tail 후속 SQL 실패 rollback과 재시도도 검증한다. Target material 재생성·guard 해제·ADMITTED/reopen은 없다. AI baseline은 source의 정확 consent row를 복사한 bounded owner fixture이며 full archive loader 증거로 부르지 않는다.
+
+Native agent final r6 실제PG14 1/1·skip0, TS/lint/format exit0을 Root가 source·보고·로그와 대조했다. Root도 동일 test를 자체 private Unix socket cluster에서 직접 실행해 **1/1·skip0·exit0**을 확인했다. /private/tmp/wm-family-upgrade105-root-20261007.log에 정상 shutdown·소유 directory 정리를 기록했다. Test SHA11186f993a63c6380a5b6a6e93982099efe2f57e6f4ebf551063741b0a9f446a, 상세 /private/tmp/wm-family-upgrade105-acceptance-20261007.md. 원래 r1 sandbox/r2-r3 fixture freshness 실패와 사후 hash 관찰 한계를 보존한다.
+
+현재 graph v-c 자체의 로컬 요구는 기존 registered source/export/worker/approval 검증과 이 지원된 복원 경로로 충족한다. 따라서 v-c를 completed로 전환한다. Source105 직접 family protocol·full account/private object archive·독립 witness와 authority·원자적 processing reopen·frozen job/provider dispatch는 미구현 또는 미수용이며 완료로 바꾸지 않는다. 운영 restore/PG17/실제 provider/native는 NOT_EXECUTED다. v-e가 다음 ready task이며 v-f는 v-e 완료까지 기다린다. 전체 phase gate/독립 검토/main merge는 아직 하지 않는다.

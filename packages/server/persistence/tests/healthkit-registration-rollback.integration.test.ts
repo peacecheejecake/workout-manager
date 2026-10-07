@@ -1,3 +1,4 @@
+import { createConsentRepository } from '../src/repositories.js';
 import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, expect, it } from 'vitest';
@@ -27,6 +28,7 @@ afterAll(async () => {
 it('rolls back a failed withdrawal atomically and retains the v2 fence rather than accepting a legacy rollback client', async () => {
   const athlete = randomUUID(),
     sampleId = randomUUID();
+  await declareSyntheticAppConsent(athlete);
   await database.tenant(athlete, (tx) =>
     tx.query(
       "INSERT INTO consent(athlete_id,kind,granted,revision) VALUES($1,'healthkit',true,1)",
@@ -225,3 +227,15 @@ it('rejects a legacy receipt fixture and runtime historical relabeling while cur
   );
   expect(state.rows[0]).toEqual({ receipts: 0 });
 });
+
+// Explicit synthetic user permission for named positive collection scenarios only.
+async function declareSyntheticAppConsent(athleteId: string): Promise<void> {
+  expect(
+    await createConsentRepository(database).setConsent(athleteId, {
+      kind: 'app',
+      granted: true,
+      expectedRevision: 0,
+      idempotencyKey: randomUUID(),
+    }),
+  ).toEqual({ kind: 'app', granted: true, revision: 1 });
+}

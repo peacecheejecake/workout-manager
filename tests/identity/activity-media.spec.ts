@@ -1,3 +1,4 @@
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';
 import { identityMobileOrigin, identityWebOrigin } from '../../scripts/fixtures/identity-ports';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
@@ -178,6 +179,7 @@ for (const [shell, origin] of shells) {
   }) => {
     test.setTimeout(150_000);
     const headers = await login(page, 'Alice');
+    await grantAppProcessingForScenario(page);
     const title = `S09 미디어 탭 ${randomUUID()}`;
     const caption = `결승선 ${randomUUID().slice(0, 8)}`;
     const activity = await importActivity(page, headers, title);

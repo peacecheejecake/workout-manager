@@ -1,3 +1,4 @@
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
@@ -37,6 +38,7 @@ test('activity context preserves linked historical plan and separates block obse
   browser,
 }) => {
   const headers = await login(page, 'Alice');
+  await grantAppProcessingForScenario(page);
   const currentResponse = await page.request.get('/bff/v1/plans/current', { headers });
   expect(currentResponse.status()).toBe(200);
   const current = planReadSchema.parse(await currentResponse.json());

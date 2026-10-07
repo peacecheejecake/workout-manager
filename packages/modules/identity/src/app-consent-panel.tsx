@@ -184,7 +184,7 @@ function AppConsentLifetime({ session, onSignedOut, onSessionChanged }: AppConse
       <h3 id={headingId}>앱 저장·처리 동의</h3>
       <p>
         계획·실제 기록·대화를 새로 저장하거나 처리하기 위한 허용입니다. AI에 정보를 전달하는 동의 및
-        HealthKit 접근 허용과는 별개입니다.
+        HealthKit·Garmin의 개별 접근 허용과는 별개입니다.
       </p>
       <p>
         허용을 철회하면 새로운 저장·처리를 중단합니다. 이미 저장한 데이터의 조회·내보내기·삭제는
@@ -208,6 +208,22 @@ function AppConsentLifetime({ session, onSignedOut, onSessionChanged }: AppConse
           {current ? (
             <>
               <p>현재 앱 저장·처리: {current.granted ? '허용' : '허용하지 않음'}</p>
+              {current.revision === 0 ? (
+                <button
+                  type="button"
+                  onClick={() =>
+                    void change(
+                      commandSchema.parse({
+                        granted: false,
+                        expectedRevision: 0,
+                        idempotencyKey: crypto.randomUUID(),
+                      }),
+                    )
+                  }
+                >
+                  동의하지 않음
+                </button>
+              ) : null}
               {current.revision === 2147483647 ? (
                 <p>현재 허용 상태를 변경할 수 없습니다.</p>
               ) : (

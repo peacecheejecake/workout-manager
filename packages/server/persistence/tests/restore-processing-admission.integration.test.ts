@@ -457,10 +457,10 @@ it('REASSIGN plus existing retarget preserves live owner checks and denies old o
   reassignmentUrl.password = authorityUrl.password;
   const bootstrap = new Pool({ connectionString: reassignmentUrl.toString() });
   try {
-    await bootstrap.query(`GRANT "${roles.next}" TO "${roles.owner}"`);
-    await owner.query(`REASSIGN OWNED BY "${roles.owner}" TO "${roles.next}"`);
+    // Fixture management changes database/object ownership; protected functions
+    // below still run through the plain live owner, never this administrator.
+    await bootstrap.query(`REASSIGN OWNED BY "${roles.owner}" TO "${roles.next}"`);
   } finally {
-    await bootstrap.query(`REVOKE "${roles.next}" FROM "${roles.owner}"`);
     await bootstrap.end();
   }
   const next = await connect(roles.next);
