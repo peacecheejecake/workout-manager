@@ -1,3 +1,7 @@
+import { projectNutritionItem } from './nutrition-item-projection.js';
+export { projectNutritionItem } from './nutrition-item-projection.js';
+export { localInstant } from './nutrition-calendar.js';
+
 import { z } from 'zod';
 
 import { activityOverlaySchema, activityValuesSchema } from '@workout/contracts/activity';
@@ -20,7 +24,6 @@ import {
 } from '@workout/contracts/nutrition-core';
 import { planDraftSchema, sumTargetQuantities } from '@workout/contracts/planning';
 import { timeZoneSchema } from '@workout/contracts/primitives';
-import type { RaceEvent } from '@workout/contracts/races';
 import {
   recoveryActionLogSchema,
   recoveryStrategyVersionSchema,
@@ -251,114 +254,6 @@ function summary(
       intakeCoverage: 'unknown',
     },
   };
-}
-
-const formatterCache = new Map<string, Intl.DateTimeFormat>();
-function formatter(timezone: string) {
-  let format = formatterCache.get(timezone);
-  if (!format) {
-    format = new Intl.DateTimeFormat('en-US', {
-      timeZone: timezone,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hourCycle: 'h23',
-    });
-    formatterCache.set(timezone, format);
-  }
-  return format;
-}
-function localParts(instant: number, timezone: string) {
-  const parts = Object.fromEntries(
-    formatter(timezone)
-      .formatToParts(instant)
-      .map((part) => [part.type, part.value]),
-  );
-  return {
-    date: `${parts['year']?.padStart(4, '0')}-${parts['month']}-${parts['day']}`,
-    time: `${parts['hour']}:${parts['minute']}:${parts['second']}`,
-  };
-}
-/** Reject nonexistent/ambiguous wall times instead of silently picking a DST offset. */
-export function localInstant(date: string, time: string, timezone: string): number | null {
-  const target = Date.parse(`${date}T${time.length === 5 ? `${time}:00` : time}Z`);
-  if (!Number.isFinite(target)) return null;
-  const offsets = new Set<number>();
-  for (const sample of [target - 86_400_000, target, target + 86_400_000]) {
-    const local = localParts(sample, timezone);
-    offsets.add(Date.parse(`${local.date}T${local.time}Z`) - sample);
-  }
-  const matching = [...offsets]
-    .map((offset) => target - offset)
-    .filter((candidate) => {
-      const local = localParts(candidate, timezone);
-      return local.date === date && local.time === (time.length === 5 ? `${time}:00` : time);
-    });
-  return matching.length === 1 ? (matching[0] ?? null) : null;
-}
-
-export function projectNutritionItem(
-  item: z.infer<typeof nutritionPlanVersionSchema>['items'][number],
-  plan: z.infer<typeof nutritionPlanVersionSchema>,
-  linked: Map<string, z.infer<typeof planDraftSchema>>,
-  timezone: string,
-  ownedRaces: ReadonlyMap<string, RaceEvent> = new Map(),
-): { date: string; value: IntegratedNutritionItem } | UnresolvedNutritionItem {
-  const base = {
-    id: item.id,
-    planVersionId: item.planVersionId,
-    title: item.title,
-    category: item.category,
-    source: item.source,
-  };
-  const unresolved = (reason: UnresolvedNutritionItem['reason']) => ({ ...base, reason });
-  if (item.anchor.kind === 'absolute') {
-    if (item.anchor.timezone === timezone)
-      return { date: item.anchor.date, value: { ...base, localTime: item.anchor.localTime } };
-    if (item.anchor.localTime === null) return unresolved('timezone_mismatch');
-    const instant = localInstant(item.anchor.date, item.anchor.localTime, item.anchor.timezone);
-    if (instant === null) return unresolved('ambiguous_local_time');
-    const local = localParts(instant, timezone);
-    return { date: local.date, value: { ...base, localTime: local.time } };
-  }
-  const anchor = item.anchor;
-  let start: number | null;
-  let durationSeconds: number | null = null;
-  if (anchor.entity === 'race') {
-    const race = ownedRaces.get(anchor.entityId);
-    // Explicit owned preview context only. Ordinary integrated reads pass no
-    // map: mutable current events cannot implicitly retime approved nutrition.
-    if (
-      !race ||
-      race.id !== anchor.entityId ||
-      anchor.point === 'end' ||
-      race.localStartTime === null
-    )
-      return unresolved('missing_anchor');
-    start = localInstant(race.localDate, race.localStartTime, race.timezone);
-  } else {
-    if (plan.linkedTrainingPlanVersionId === null) return unresolved('missing_anchor');
-    const training = linked.get(plan.linkedTrainingPlanVersionId);
-    const session = training?.sessions.find((candidate) => candidate.id === anchor.entityId);
-    if (!session || !training) return unresolved('missing_anchor');
-    if (session.localStartTime === null) return unresolved('missing_session_time');
-    start = localInstant(session.date, session.localStartTime, training.timezone);
-    durationSeconds = session.durationSeconds;
-  }
-  if (start === null) return unresolved('ambiguous_local_time');
-  if (anchor.point === 'end' && durationSeconds === null)
-    return unresolved('missing_session_duration');
-  const anchored =
-    start +
-    (anchor.point === 'end' ? (durationSeconds ?? 0) * 1000 : 0) +
-    anchor.offsetMinutes * 60_000;
-  if (!Number.isFinite(anchored) || Math.abs(anchored) > 8_640_000_000_000_000)
-    return unresolved('offset_out_of_range');
-  const local = localParts(anchored, timezone);
-  return { date: local.date, value: { ...base, localTime: local.time } };
 }
 
 function projectBase(

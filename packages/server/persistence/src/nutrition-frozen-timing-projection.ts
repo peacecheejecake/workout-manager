@@ -7,7 +7,8 @@ import {
   unresolvedNutritionItemSchema,
   type UnresolvedNutritionItem,
 } from '@workout/contracts/integrated-planner';
-import { projectNutritionItem, localInstant } from './integrated-planner.js';
+import { projectNutritionItem } from './nutrition-item-projection.js';
+import { localInstant } from './nutrition-calendar.js';
 
 const inputSchema = z.strictObject({
   record: nutritionPlanVersionCompatibleSchema,
