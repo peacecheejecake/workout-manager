@@ -551,3 +551,7 @@ Root가 신규11 및 기존 retained39/chain13/V7 publication6을 실제 격리 
 ## 병렬 후속 입력 동결 · 2026-10-08
 
 Root 실제 current107+raw108–116 빈 DB catalog 추출을 부모 artifact actor와 full27 freshness actor에게 전달했다. 현재 native agent 쓰기 범위는 NEW parent artifact/unit, NEW manual atomic approval contract/unit이며 세 번째 actor는 full27 comparator 및 actual child codec PG 수용을 준비한다. 공통 exports/registry/SQL stage/API/UI/graph는 Root가 직렬 통합한다. 현 main은1d557358이고 clean, AGENTS는 작업 branch와 동일하다. 계약/인증 구조만으로 실제 atomic 승인이나 restore gate를 완료하지 않는다.
+
+## 실제 child 인코딩 후속 · 2026-10-08
+
+Root actual child PG4/4를 확인했고 초기2pass/2fixturefail은 보존했다. chain7+suppression1은 실제 행, 나머지6은 빈 census-only 및 transient0 검증이다. metadata/source bytes/full restore를 확대 인증하지 않는다. parent artifact 단위24/24를 검증 중이며 SQL117 loader와 네도메인 원자 승인 계약 구현을 병렬 진행한다. 기존 child factory handle의 prepare 이후 키철회·교체도 소비 전에 거절하도록 별도 후속 보강 중이다.
