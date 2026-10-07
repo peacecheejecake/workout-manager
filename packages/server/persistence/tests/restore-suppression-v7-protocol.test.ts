@@ -581,3 +581,158 @@ it.each(['cipher_readback', 'head_cas', 'head_readback', 'source'] as const)(
     }
   },
 );
+
+it('reads verified original envelopes only through the factory callback with exact microseconds and no stage authority', async () => {
+  const f = fixture(),
+    now = Date.parse('2026-10-08T00:00:00Z');
+  const factory = createSuppressionReplayVerifierV7({
+    witness: f.witness,
+    encryptionKey: key,
+    keyId: 'synthetic-key',
+    headAuthenticationKey: auth,
+    now: () => now,
+  });
+  const handle = await factory.prepareVerifiedSuppressionChainV7(f.store);
+  const result = factory.withVerifiedSuppressionChainV7(handle, (envelopes, limits) => {
+    expect(envelopes).toEqual([f.value]);
+    expect(envelopes[0]?.transactions[0]?.records.map((record) => record.schemaVersion)).toEqual([
+      1, 7,
+    ]);
+    expect(envelopes[0]?.transactions[0]?.records[1]?.occurredAt).toBe(
+      '2026-10-01 12:34:56.123456+00',
+    );
+    expect(limits).toEqual({
+      authority: 'none',
+      admissionAllowed: false,
+      originalEventStage: 'unavailable',
+      witnessFreshness: 'not_rechecked',
+      verificationInstant: now,
+      eventCount: 2,
+      segmentCount: 1,
+    });
+    return envelopes[0]?.sha256;
+  });
+  expect(result).toBe(f.value.sha256);
+  expect(factory.replayVerifiedSuppressionChainV7In(handle)).toMatchObject({
+    status: 'blocked',
+    reason: 'original_event_stage_unavailable',
+  });
+});
+it('copied, forged and foreign factory handles cannot execute tail callbacks', async () => {
+  const f = fixture(),
+    config = {
+      witness: f.witness,
+      encryptionKey: key,
+      keyId: 'synthetic-key',
+      headAuthenticationKey: auth,
+    };
+  const factory = createSuppressionReplayVerifierV7(config),
+    other = createSuppressionReplayVerifierV7(config);
+  const handle = await factory.prepareVerifiedSuppressionChainV7(f.store);
+  let callbacks = 0;
+  for (const unknownHandle of [
+    undefined,
+    null,
+    {},
+    { ...handle },
+    { ...handle, authority: 'restore' },
+  ])
+    expect(() =>
+      Reflect.apply(factory.withVerifiedSuppressionChainV7, factory, [
+        unknownHandle,
+        () => callbacks++,
+      ]),
+    ).toThrow('RESTORE_V7_CHAIN_INVALID');
+  expect(() => other.withVerifiedSuppressionChainV7(handle, () => callbacks++)).toThrow(
+    'RESTORE_V7_CHAIN_INVALID',
+  );
+  expect(callbacks).toBe(0);
+});
+it('callback mutations and remote ciphertext buffer mutations cannot change the verified factory snapshot', async () => {
+  const f = fixture(),
+    factory = createSuppressionReplayVerifierV7({
+      witness: f.witness,
+      encryptionKey: key,
+      keyId: 'synthetic-key',
+      headAuthenticationKey: auth,
+    });
+  const handle = await factory.prepareVerifiedSuppressionChainV7(f.store);
+  factory.withVerifiedSuppressionChainV7(handle, (envelopes) => {
+    const record = envelopes[0]?.transactions[0]?.records[0];
+    if (!record) throw new Error('fixture record missing');
+    Object.defineProperty(record, 'occurredAt', { value: 'tampered', writable: true });
+    Object.defineProperty(envelopes, '0', { value: null, writable: true });
+  });
+  f.encrypted.bytes.fill(0);
+  f.bytes.fill(0);
+  expect(factory.withVerifiedSuppressionChainV7(handle, (envelopes) => envelopes)).toEqual([
+    f.value,
+  ]);
+  expect(factory.withVerifiedSuppressionChainV7(handle, (envelopes) => envelopes)).toEqual([
+    f.value,
+  ]);
+});
+it('callback revalidation uses the prepared instant and does not invent monotonic witness freshness', async () => {
+  const f = fixture();
+  let clockCalls = 0;
+  const factory = createSuppressionReplayVerifierV7({
+    witness: f.witness,
+    encryptionKey: key,
+    keyId: 'synthetic-key',
+    headAuthenticationKey: auth,
+    now: () => {
+      if (++clockCalls > 1) throw new Error('freshness policy not provided');
+      return Date.parse('2026-10-08T00:00:00Z');
+    },
+  });
+  const handle = await factory.prepareVerifiedSuppressionChainV7(f.store);
+  expect(
+    factory.withVerifiedSuppressionChainV7(handle, (_, limits) => limits.witnessFreshness),
+  ).toBe('not_rechecked');
+  expect(clockCalls).toBe(1);
+});
+it('supports awaited callback results and preserves callback errors without partial replay or remote re-read', async () => {
+  const f = fixture(),
+    readHead = vi.fn(f.store.readHead),
+    readSegment = vi.fn(f.store.readSegment);
+  const factory = createSuppressionReplayVerifierV7({
+    witness: f.witness,
+    encryptionKey: key,
+    keyId: 'synthetic-key',
+    headAuthenticationKey: auth,
+  });
+  const handle = await factory.prepareVerifiedSuppressionChainV7({ readHead, readSegment });
+  const result = await factory.withVerifiedSuppressionChainV7(handle, async (envelopes) => {
+    await Promise.resolve();
+    return envelopes[0]?.transactions[0]?.records.length;
+  });
+  expect(result).toBe(2);
+  const domainError = new Error('bounded caller operation failed');
+  expect(() =>
+    factory.withVerifiedSuppressionChainV7(handle, () => {
+      throw domainError;
+    }),
+  ).toThrow(domainError);
+  await expect(
+    factory.withVerifiedSuppressionChainV7(handle, async () => {
+      throw domainError;
+    }),
+  ).rejects.toBe(domainError);
+  expect(readHead).toHaveBeenCalledTimes(1);
+  expect(readSegment).toHaveBeenCalledTimes(1);
+});
+
+it('rejects invalid callback boundary before exposing any verified original records', async () => {
+  const f = fixture(),
+    factory = createSuppressionReplayVerifierV7({
+      witness: f.witness,
+      encryptionKey: key,
+      keyId: 'synthetic-key',
+      headAuthenticationKey: auth,
+    });
+  const handle = await factory.prepareVerifiedSuppressionChainV7(f.store);
+  for (const callback of [null, undefined, {}, 'caller JSON'])
+    expect(() =>
+      Reflect.apply(factory.withVerifiedSuppressionChainV7, factory, [handle, callback]),
+    ).toThrow('RESTORE_V7_CHAIN_INVALID');
+});

@@ -132,6 +132,23 @@ export type VerifiedSuppressionChainV7 = {
   readonly admissionAllowed: false;
   readonly originalEventStage: 'unavailable';
 };
+/** Immutable callback view of validated protocol records, not SQL stage authority. */
+type ReadonlyProtocolValue<T> = T extends readonly (infer Item)[]
+  ? readonly ReadonlyProtocolValue<Item>[]
+  : T extends object
+    ? { readonly [Field in keyof T]: ReadonlyProtocolValue<T[Field]> }
+    : T;
+export type ReadonlySuppressionReplayRecordEnvelopeV7 =
+  ReadonlyProtocolValue<LocalReplayRecordEnvelopeV7>;
+export type VerifiedSuppressionChainReadLimitsV7 = Readonly<{
+  authority: 'none';
+  admissionAllowed: false;
+  originalEventStage: 'unavailable';
+  witnessFreshness: 'not_rechecked';
+  verificationInstant: number;
+  eventCount: number;
+  segmentCount: number;
+}>;
 /** Exact immutable objects, authenticated head and full local chain are checked before any apply. */
 const witnessSchema = suppressionHeadV7Schema
   .omit({ formatVersion: true, segments: true })
@@ -157,7 +174,7 @@ export function createSuppressionReplayVerifierV7(configuration: {
   };
   const verifiedChains = new WeakMap<
     VerifiedSuppressionChainV7,
-    readonly LocalReplayRecordEnvelopeV7[]
+    { readonly encryptedSegments: readonly Uint8Array[]; readonly verificationInstant: number }
   >();
   async function prepareVerifiedSuppressionChainV7(
     store: Pick<SuppressionRemoteStore, 'readHead' | 'readSegment'>,
@@ -183,6 +200,7 @@ export function createSuppressionReplayVerifierV7(configuration: {
     void _format;
     if (JSON.stringify(actual) !== JSON.stringify(expected) || segments.length === 0) return fail();
     const envelopes: LocalReplayRecordEnvelopeV7[] = [];
+    const encryptedSegments: Uint8Array[] = [];
     const seen = new Set<string>();
     let events = 0,
       total = 0;
@@ -195,14 +213,15 @@ export function createSuppressionReplayVerifierV7(configuration: {
         object.bytes.byteLength !== segment.byteLength
       )
         return fail();
-      total += object.bytes.byteLength;
+      const segmentBytes = Uint8Array.from(object.bytes);
+      total += segmentBytes.byteLength;
       if (
         total > MAX_CHAIN_BYTES ||
-        createHash('sha256').update(object.bytes).digest('hex') !== segment.sha256
+        createHash('sha256').update(segmentBytes).digest('hex') !== segment.sha256
       )
         return fail();
       const envelope = decryptReplaySegmentV7({
-        bytes: object.bytes,
+        bytes: segmentBytes,
         key: input.encryptionKey,
         expectedKeyId: input.keyId,
       });
@@ -223,6 +242,8 @@ export function createSuppressionReplayVerifierV7(configuration: {
           events++;
         }
       }
+      // Snapshot verified bytes; a mutable remote-store buffer is never kept.
+      encryptedSegments.push(segmentBytes);
       envelopes.push(envelope);
     }
     const result = Object.freeze({
@@ -233,7 +254,7 @@ export function createSuppressionReplayVerifierV7(configuration: {
       admissionAllowed: false as const,
       originalEventStage: 'unavailable' as const,
     });
-    verifiedChains.set(result, envelopes);
+    verifiedChains.set(result, { encryptedSegments, verificationInstant: now });
     return result;
   }
   /** No original-event installation capability exists. Fail closed before SQL or partial legacy replay. */
@@ -255,5 +276,56 @@ export function createSuppressionReplayVerifierV7(configuration: {
     };
   }
 
-  return { prepareVerifiedSuppressionChainV7, replayVerifiedSuppressionChainV7In };
+  /** A factory-membership gate, not an original-event installer. Re-decrypt the
+   * verified ciphertext snapshot through the existing strict envelope codec, so
+   * every callback owns a fresh validated copy. Trusted SQL adapters must await a
+   * Promise callback; callback failures propagate without becoming auth evidence.
+   * No monotonic/remote witness freshness policy is supplied by this factory. */
+  function withVerifiedSuppressionChainV7<T>(
+    handle: VerifiedSuppressionChainV7,
+    consume: (
+      envelopes: readonly ReadonlySuppressionReplayRecordEnvelopeV7[],
+      limits: VerifiedSuppressionChainReadLimitsV7,
+    ) => T,
+  ): T {
+    const state = verifiedChains.get(handle);
+    if (!state || typeof consume !== 'function') return fail();
+    let envelopes: LocalReplayRecordEnvelopeV7[];
+    try {
+      envelopes = state.encryptedSegments.map((bytes) =>
+        decryptReplaySegmentV7({
+          bytes,
+          key: input.encryptionKey,
+          expectedKeyId: input.keyId,
+        }),
+      );
+      for (const envelope of envelopes) {
+        for (const tx of envelope.transactions) {
+          validateLegacySuppressionRecordsForV7(tx.records, state.verificationInstant);
+          for (const record of tx.records)
+            if (Date.parse(record.occurredAt) > state.verificationInstant) return fail();
+        }
+      }
+    } catch {
+      return fail();
+    }
+    return consume(
+      envelopes,
+      Object.freeze({
+        authority: 'none',
+        admissionAllowed: false,
+        originalEventStage: 'unavailable',
+        witnessFreshness: 'not_rechecked',
+        verificationInstant: state.verificationInstant,
+        eventCount: handle.eventCount,
+        segmentCount: handle.segmentCount,
+      }),
+    );
+  }
+
+  return {
+    prepareVerifiedSuppressionChainV7,
+    replayVerifiedSuppressionChainV7In,
+    withVerifiedSuppressionChainV7,
+  };
 }

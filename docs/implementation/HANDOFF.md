@@ -559,3 +559,7 @@ Root actual child PG4/4를 확인했고 초기2pass/2fixturefail은 보존했다
 ## whole-affected application 경계 준비 · 2026-10-08
 
 새 수동 승인 contract30와 child key52 unit82/82 및 계약 build/api-client·platformTS/public subpath runtime 검증을 완료했다. SQL118 실제applicationcandidate/allfour approval actor는 기존 회복/루틴 sameTx writer를 좁게 추출해 재사용하며, race-only 변경 시 nutritionV4가 기존pin을 유지하는 실제 gap을 별도 private-context seam으로 처리한다. 가짜 제목/period 변경이나 기존readonly applicable false 토글은 하지 않는다. 원 SQL110/116 retainedbody는 보존하고 applicationcandidate의 실제 currentbasis를 새로 저장해 승인 시 recapture와 비교한다. SQL117 restore actor에는 actual110관계/244trigger 정의를 추가 제공했다. 원본tail typed callback 및 actualparent+child+tail loader/whole source closure·allfour acceptance·fullphase gates/독립review·공개/native 수용은 미완료다.
+
+## V7 원본 경계 및 공개 응답 재확인 · 2026-10-08
+
+Root가 verified V7 원본 callback unit31/actualPG6/scopedTS와 DB/roles/slot0를 확인했다. 원본6µs/WeakMap factory 소유/fresh clone을 보존하며 stale witness 재검증·SQL stage·복원 admission 완료로 세지 않는다. SQL117 원본 loader의 실제 암호 검증 handle 소비를 준비한다. 공개 workout.red-10-proto.xyz를 새로 읽었고 HTTP503/TLS verify0이었다(`/private/tmp/wm-public-workout-probe-20261008.json`). 공개 로그인·503 해제·제품 경로는 여전히 미완료이며 AWS 인증 재개 질문의 답변을 기다린다.
