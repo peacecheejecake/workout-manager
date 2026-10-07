@@ -1,7 +1,9 @@
+import type { SourceBudget } from './race-plan-impact-nested-sources.js';
 import type { Database, Transaction } from './database.js';
 import { AppConsentRequiredError, requireAppAdmission } from './app-admission.js';
 import {
   captureRacePlanImpactContext,
+  validateRaceSourceResponseBudget,
   RacePlanImpactContextError,
 } from './race-plan-impact-context.js';
 import {
@@ -35,20 +37,29 @@ function previewError(error: unknown): RacePlanImpactPreviewError {
 
 /** Caller owns the authenticated tenant transaction and its global/lifecycle locks.
  * No nested transaction, stored review, approval authority or actual write occurs. */
-export async function previewRacePlanImpactTransaction(tx: Transaction, unknownIntent: unknown) {
+export async function previewRacePlanImpactTransaction(
+  tx: Transaction,
+  unknownIntent: unknown,
+  requestSourceBudget: SourceBudget = { bytes: 0n, sources: 0 },
+) {
+  validateRaceSourceResponseBudget(requestSourceBudget);
   const parsed = raceProjectionIntentSchema.safeParse(unknownIntent);
   if (!parsed.success) throw new RacePlanImpactPreviewError('INVALID_INTENT');
-  const intent = parsed.data;
+  const intent = bounded(parsed.data);
   try {
     await requireAppAdmission(tx); // tenant0 remains held through calculation/commit
     const captureInput = {
       eventId: intent.expectedEvent.id,
       expectedRevision: intent.expectedEvent.revision,
     };
-    const initial = await captureRacePlanImpactContext(tx, {
-      ...captureInput,
-      selection: { kind: 'keep_plan' },
-    });
+    const initial = await captureRacePlanImpactContext(
+      tx,
+      {
+        ...captureInput,
+        selection: { kind: 'keep_plan' },
+      },
+      requestSourceBudget,
+    );
     if (
       intent.selection.kind === 'move_period' &&
       initial.currentTraining?.snapshot.id !== intent.selection.expectedCurrentPlanVersionId
@@ -59,11 +70,15 @@ export async function previewRacePlanImpactTransaction(tx: Transaction, unknownI
     bounded({ context: initial, projection: first });
     if (!('collectorSelection' in first)) return bounded({ context: initial, projection: first });
     // Only the real calendar projector derives IDs; recapture in the same transaction.
-    const context = await captureRacePlanImpactContext(tx, {
-      ...captureInput,
-      selection: first.collectorSelection,
-      calendarIntent: intent,
-    });
+    const context = await captureRacePlanImpactContext(
+      tx,
+      {
+        ...captureInput,
+        selection: first.collectorSelection,
+        calendarIntent: intent,
+      },
+      requestSourceBudget,
+    );
     return bounded({ context, projection: buildRacePlanImpactProjectionInput(context, intent) });
   } catch (error) {
     throw previewError(error);
@@ -78,6 +93,7 @@ export function createRacePlanImpactPreviewService(database: Database) {
       // Preserve malformed-intent rejection before opening the tenant transaction.
       const parsed = raceProjectionIntentSchema.safeParse(unknownIntent);
       if (!parsed.success) throw new RacePlanImpactPreviewError('INVALID_INTENT');
+      bounded(parsed.data);
       try {
         return await database.tenant(athleteId, (tx) =>
           previewRacePlanImpactTransaction(tx, parsed.data),
@@ -97,6 +113,7 @@ export function createRacePlanImpactSnapshotPreviewService(database: Database) {
     async preview(athleteId: string, unknownIntent: unknown) {
       const parsed = raceProjectionIntentSchema.safeParse(unknownIntent);
       if (!parsed.success) throw new RacePlanImpactPreviewError('INVALID_INTENT');
+      bounded(parsed.data);
       const snapshot = database.snapshotTenant;
       if (!snapshot) throw new RacePlanImpactPreviewError('CONTEXT_UNAVAILABLE');
       try {

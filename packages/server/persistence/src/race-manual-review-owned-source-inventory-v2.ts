@@ -463,11 +463,12 @@ export async function captureRaceManualReviewOwnedSourceInventoryV2In(
   const inventory = enumerateRaceManualReviewCopiedSourcesV2(candidate);
   if (inventory.inventoryState !== 'mapped' || !inventory.allCopiedBodiesIndexed)
     throw new RaceImpactDependencyError('INVALID_CONTEXT');
-  // Candidate bytes already have a 4MiB ingress boundary. Charge only newly
-  // transported ref metadata and owned bodies; locations count visits before dedup.
+  // Candidate/locally derived refs retain their own ingress/output limits.
+  // Only actual owned response bodies consume response bytes; locations keep
+  // the existing pre-dedup visit guard and are not physical transfer counts.
   reserveSourceBudget(
     budget,
-    BigInt(bytes(inventory.refs)),
+    0n,
     inventory.refs.reduce((n, r) => n + r.copiedLocations.length, 0),
   );
   const facts: z.infer<typeof factSchema>[] = [];

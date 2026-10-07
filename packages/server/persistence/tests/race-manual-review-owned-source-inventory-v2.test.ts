@@ -600,18 +600,80 @@ it('rejects malformed scalar, duplicate rows and oversize before body transport'
     expect(m.queries).toHaveLength(1);
   }
 });
-it('reserves source visits and shared bytes before body query', async () => {
-  for (const budget of [
-    { bytes: 0n, sources: 5000 },
-    { bytes: 4194000n, sources: 0 },
-  ]) {
-    const c = assembled(),
-      m = transaction(c);
-    await expect(
-      captureRaceManualReviewOwnedSourceInventoryV2In(m.tx, c, budget),
-    ).rejects.toThrow();
-    expect(m.queries).toHaveLength(0);
-  }
+function expectedResponseCharge(candidate: ReturnType<typeof assembled>) {
+  const inventory = enumerateRaceManualReviewCopiedSourcesV2(candidate);
+  return inventory.refs.reduce((total, ref) => {
+    const row = rowFor(candidate, ref.identity);
+    return (
+      total +
+      BigInt(
+        byteSize(row.record_json) + byteSize(row.current_record_json) + byteSize(row.metadata),
+      ) +
+      512n
+    );
+  }, 0n);
+}
+it('reserves copied source visits before dedup without charging local candidate or inventory bytes', async () => {
+  const c = assembled(input(4, true)),
+    m = transaction(c),
+    budget = emptyBudget();
+  const inventory = enumerateRaceManualReviewCopiedSourcesV2(c);
+  const result = await captureRaceManualReviewOwnedSourceInventoryV2In(m.tx, c, budget);
+  expect(result.status).toBe('observed_correspondence');
+  expect(budget.bytes).toBe(expectedResponseCharge(c));
+  expect(budget.sources).toBe(inventory.refs.reduce((n, ref) => n + ref.copiedLocations.length, 0));
+  expect(budget.sources).toBeGreaterThan(inventory.refs.length);
+  expect(byteSize(c)).toBeGreaterThan(0);
+  expect(byteSize(inventory)).toBeGreaterThan(0);
+});
+it('source response reservation fits the remaining shared budget exactly', async () => {
+  const c = assembled(),
+    m = transaction(c),
+    charge = expectedResponseCharge(c);
+  const budget = { bytes: 4194304n - charge, sources: 0 };
+  const result = await captureRaceManualReviewOwnedSourceInventoryV2In(m.tx, c, budget);
+  expect(result.status).toBe('observed_correspondence');
+  expect(budget.bytes).toBe(4194304n);
+  expect(m.queries.filter((q) => q.sql.includes(' body '))).toHaveLength(3);
+});
+it('rejects source visits before querying but response bytes after scalar and before body transport', async () => {
+  const c = assembled(),
+    inventory = enumerateRaceManualReviewCopiedSourcesV2(c);
+  const visits = inventory.refs.reduce((n, ref) => n + ref.copiedLocations.length, 0);
+  const visitMock = transaction(c);
+  await expect(
+    captureRaceManualReviewOwnedSourceInventoryV2In(visitMock.tx, c, {
+      bytes: 0n,
+      sources: 5001 - visits,
+    }),
+  ).rejects.toMatchObject({ code: 'CONTEXT_UNAVAILABLE', bound: 'unique_sources' });
+  expect(visitMock.queries).toHaveLength(0);
+  const first = required(inventory.refs[0]),
+    row = rowFor(c, first.identity);
+  const charge =
+    BigInt(byteSize(row.record_json) + byteSize(row.current_record_json) + byteSize(row.metadata)) +
+    512n;
+  const byteMock = transaction(c),
+    budget = { bytes: 4194305n - charge, sources: 0 };
+  await expect(
+    captureRaceManualReviewOwnedSourceInventoryV2In(byteMock.tx, c, budget),
+  ).rejects.toMatchObject({ code: 'CONTEXT_UNAVAILABLE', bound: 'decoded_bytes' });
+  expect(byteMock.queries).toHaveLength(1);
+  expect(byteMock.queries[0]?.sql).toContain(' scalar ');
+  expect(budget.bytes).toBe(4194305n);
+});
+it('keeps the caller mutable budget across repeated captures without resetting previous reservations', async () => {
+  const c = assembled(),
+    m = transaction(c),
+    budget = { bytes: 73n, sources: 11 };
+  const charge = expectedResponseCharge(c),
+    inventory = enumerateRaceManualReviewCopiedSourcesV2(c);
+  const visits = inventory.refs.reduce((n, ref) => n + ref.copiedLocations.length, 0);
+  await captureRaceManualReviewOwnedSourceInventoryV2In(m.tx, c, budget);
+  await captureRaceManualReviewOwnedSourceInventoryV2In(m.tx, c, budget);
+  expect(budget).toEqual({ bytes: 73n + 2n * charge, sources: 11 + 2 * visits });
+  expect(m.queries).toHaveLength(12);
+  expect(m.queries.every((q) => q.sql.includes('SELECT'))).toBe(true);
 });
 it('propagates actual SQL permission errors and rejects malformed body storage', async () => {
   const c = assembled(),

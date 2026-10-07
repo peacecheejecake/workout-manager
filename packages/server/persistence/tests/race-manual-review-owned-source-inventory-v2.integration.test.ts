@@ -846,7 +846,7 @@ it('long Unicode and escaped public session IDs preserve exact completion identi
     ]),
   );
 });
-it('ingress and inherited near-cap budgets reject before SQL transport; base zero measures helper transfer only', async () => {
+it('ingress and visit caps reject before SQL, byte caps before body transport; base zero measures helper transfer only', async () => {
   const f = await coherentSources(db);
   await snapshot(db, f.athlete, async (tx) => {
     const prepared = await prepareIn(tx, f.race.id);
@@ -858,15 +858,26 @@ it('ingress and inherited near-cap budgets reject before SQL transport; base zer
         return tx.query(sql, values);
       },
     };
-    for (const budget of [
-      { bytes: 4194304n, sources: 0 },
-      { bytes: 0n, sources: 5000 },
+    const statements: string[] = [];
+    const boundedReader: Transaction = {
+      athleteId: tx.athleteId,
+      query: async (sql, values) => {
+        statements.push(sql);
+        return measured.query(sql, values);
+      },
+    };
+    for (const { budget, expectedQueries } of [
+      { budget: { bytes: 4194304n, sources: 0 }, expectedQueries: 1 },
+      { budget: { bytes: 0n, sources: 5000 }, expectedQueries: 0 },
     ]) {
       queries = 0;
+      statements.length = 0;
       await expect(
-        captureRaceManualReviewOwnedSourceInventoryV2In(measured, prepared.candidate, budget),
+        captureRaceManualReviewOwnedSourceInventoryV2In(boundedReader, prepared.candidate, budget),
       ).rejects.toMatchObject({ code: 'CONTEXT_UNAVAILABLE' });
-      expect(queries).toBe(0);
+      expect(queries).toBe(expectedQueries);
+      expect(statements.some((sql) => sql.includes('manual_review_owned_v2 body'))).toBe(false);
+      if (expectedQueries === 1) expect(statements[0]).toContain('manual_review_owned_v2 scalar');
     }
     await expect(
       captureRaceManualReviewOwnedSourceInventoryV2In(

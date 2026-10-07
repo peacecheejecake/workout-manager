@@ -121,7 +121,7 @@ function equal(a: unknown, b: unknown): boolean {
   return impactDependencyDigest(a) === impactDependencyDigest(b);
 }
 const limitations = {
-  budgetCoverage: 'owned_transfer_only' as const,
+  budgetCoverage: 'request_source_response_reservations' as const,
   aggregatePhysicalTransfer: 'not_verified' as const,
   sourceCompleteness: 'unverified' as const,
   storage: 'not_persisted' as const,
@@ -137,23 +137,29 @@ const anchorSql = `SELECT txid_current()::text AS "transactionId",current_user::
 export async function prepareRaceManualReviewOwnedBindingV2In(
   tx: Transaction,
   unknownIntent: unknown,
-  ownedTransferBudget: SourceBudget,
+  requestSourceBudget: SourceBudget,
 ) {
   if (
-    ownedTransferBudget.bytes < 0n ||
-    !Number.isSafeInteger(ownedTransferBudget.sources) ||
-    ownedTransferBudget.sources < 0
+    requestSourceBudget.bytes < 0n ||
+    !Number.isSafeInteger(requestSourceBudget.sources) ||
+    requestSourceBudget.sources < 0
   )
     invalid();
   const intent = raceProjectionIntentSchema.safeParse(unknownIntent);
   if (!intent.success) throw new RacePlanImpactPreviewError('INVALID_INTENT');
-  reserveSourceBudget(ownedTransferBudget, 0n);
+  boundedPlain(intent.data);
+  // Bounded diagnostic row reservation before its query; not wire/heap telemetry.
+  reserveSourceBudget(requestSourceBudget, 2048n);
   const anchorRows = await tx.query(anchorSql);
   if (anchorRows.rows.length !== 1) invalid();
   const anchor = parse(anchorSchema, anchorRows.rows[0]);
   if (anchor.athleteId !== tx.athleteId) invalid();
-  reserveSourceBudget(ownedTransferBudget, BigInt(boundedPlain(anchor)));
-  const preparation = await prepareRaceManualReviewCompatibleV4In(tx, intent.data);
+  if (boundedPlain(anchor) > 2048) invalid();
+  const preparation = await prepareRaceManualReviewCompatibleV4In(
+    tx,
+    intent.data,
+    requestSourceBudget,
+  );
   if (preparation.status === 'blocked') {
     const result = { status: 'blocked' as const, preparation, ...limitations };
     boundedPlain(result);
@@ -169,7 +175,7 @@ export async function prepareRaceManualReviewOwnedBindingV2In(
     await captureRaceManualReviewOwnedSourceInventoryV2In(
       tx,
       preparation.candidate,
-      ownedTransferBudget,
+      requestSourceBudget,
     ),
   );
   if (owned.candidateDigest !== preparation.candidate.digest || owned.facts.length !== refs.length)
@@ -183,21 +189,50 @@ export async function prepareRaceManualReviewOwnedBindingV2In(
     )
       invalid();
   }
-  // This reserve concerns new refs/response metadata, not earlier preview body transfers.
-  reserveSourceBudget(
-    ownedTransferBudget,
-    BigInt(boundedPlain(refs)) + BigInt(refs.length) * 1024n,
-    refs.length,
-  );
+  // refs are a bounded Node→DB input, not a source response. Preserve visits.
+  boundedPlain(refs);
+  reserveSourceBudget(requestSourceBudget, 2048n, refs.length);
+  const remaining = 4194304n - requestSourceBudget.bytes;
   const observedRows = await tx.query(
-    `/* manual_review_owned_binding_consumer_v2 */ SELECT public.observe_manual_review_owned_source_bindings_v2($1::jsonb) AS observation,encode(sha256(convert_to(($1::jsonb)::text,'UTF8')),'hex') AS "expectedRefsDigest",txid_current()::text AS "transactionId",current_user::text AS "callerRole",current_setting('app.athlete_id',true) AS "athleteId",current_setting('transaction_isolation') AS isolation`,
-    [JSON.stringify(refs)],
+    `/* manual_review_owned_binding_consumer_v2 */ WITH observed AS MATERIALIZED (
+      SELECT public.observe_manual_review_owned_source_bindings_v2($1::jsonb) AS observation,
+       encode(sha256(convert_to(($1::jsonb)::text,'UTF8')),'hex') AS "expectedRefsDigest",
+       txid_current()::text AS "transactionId",current_user::text AS "callerRole",
+       current_setting('app.athlete_id',true) AS "athleteId",current_setting('transaction_isolation') AS isolation
+    ), sized AS MATERIALIZED (SELECT o.*,octet_length(to_jsonb(o)::text)::bigint AS n FROM observed o)
+    SELECT CASE WHEN n <= $2::bigint THEN observation ELSE NULL END AS observation,
+      "expectedRefsDigest","transactionId","callerRole","athleteId",isolation,
+      n::text AS "responseBytes",(n <= $2::bigint) AS "withinBudget" FROM sized`,
+    [JSON.stringify(refs), remaining.toString()],
   );
   if (observedRows.rows.length !== 1) invalid();
-  const wireSchema = anchorSchema
-    .extend({ observation: observerSchema, expectedRefsDigest: hash })
+  const gatedSchema = anchorSchema
+    .extend({
+      observation: observerSchema.nullable(),
+      expectedRefsDigest: hash,
+      responseBytes: decimal,
+      withinBudget: z.boolean(),
+    })
     .strict();
-  const wire = parse(wireSchema, observedRows.rows[0]);
+  const gated = parse(gatedSchema, observedRows.rows[0]);
+  const responseBytes = BigInt(gated.responseBytes);
+  if (!gated.withinBudget) {
+    if (gated.observation !== null || responseBytes <= remaining) invalid();
+    throw new RaceImpactDependencyError('CONTEXT_UNAVAILABLE', 'decoded_bytes');
+  }
+  if (gated.observation === null || responseBytes > remaining) invalid();
+  // One reservation for the already SQL-gated encoded response; never charge
+  // this payload again after decode. 2048 covers the bounded gate scalar fields.
+  reserveSourceBudget(requestSourceBudget, responseBytes);
+  const wire = {
+    observation: gated.observation,
+    expectedRefsDigest: gated.expectedRefsDigest,
+    transactionId: gated.transactionId,
+    callerRole: gated.callerRole,
+    athleteId: gated.athleteId,
+    isolation: gated.isolation,
+  };
+  if (BigInt(boundedPlain(wire)) > responseBytes) invalid();
   const observation = wire.observation;
   if (
     !equal(anchor, {
@@ -223,7 +258,7 @@ export async function prepareRaceManualReviewOwnedBindingV2In(
     )
       invalid();
   }
-  reserveSourceBudget(ownedTransferBudget, BigInt(boundedPlain(wire)));
+
   const result = {
     status:
       preparation.status === 'prepared_readonly' &&
@@ -253,6 +288,7 @@ export function createRaceManualReviewOwnedBindingV2Service(database: Database) 
     ): Promise<RaceManualReviewOwnedBindingV2> {
       const intent = raceProjectionIntentSchema.safeParse(unknownIntent);
       if (!intent.success) throw new RacePlanImpactPreviewError('INVALID_INTENT');
+      boundedPlain(intent.data);
       const snapshot = database.snapshotTenant;
       if (!snapshot) throw new RacePlanImpactPreviewError('CONTEXT_UNAVAILABLE');
       return snapshot(athleteId, (tx) =>

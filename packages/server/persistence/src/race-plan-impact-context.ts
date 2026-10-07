@@ -1,3 +1,4 @@
+import { reserveSourceBudget, type SourceBudget } from './race-plan-impact-nested-sources.js';
 import { captureMediaRetainedReadFacts } from './race-plan-impact-media-read-facts.js';
 import {
   raceProjectionIntentSchema,
@@ -73,6 +74,26 @@ export class RacePlanImpactContextError extends Error {
   ) {
     super(code);
     this.name = 'RacePlanImpactContextError';
+  }
+}
+/** Trusted mutable server counter port; validation preserves object identity.
+ * It is never decoded from a client's context or used as source authority. */
+export function validateRaceSourceResponseBudget(budget: SourceBudget): void {
+  if (
+    budget === null ||
+    typeof budget !== 'object' ||
+    typeof budget.bytes !== 'bigint' ||
+    budget.bytes < 0n ||
+    !Number.isSafeInteger(budget.sources) ||
+    budget.sources < 0
+  )
+    throw new RacePlanImpactContextError('INVALID_CONTEXT');
+  try {
+    reserveSourceBudget(budget, 0n);
+  } catch (error) {
+    if (error instanceof RaceImpactDependencyError)
+      throw new RacePlanImpactContextError(error.code, error.bound);
+    throw error;
   }
 }
 function fail(code: RacePlanImpactContextError['code']): never {
@@ -244,7 +265,7 @@ async function preflight(tx: Transaction, eventId: string) {
       UNION ALL SELECT record_json FROM supplementary_exercises
       UNION ALL SELECT values_json FROM races
       UNION ALL SELECT h.values_json FROM race_event_revision h JOIN races e ON h.entity_id=e.id AND h.revision=e.revision WHERE h.athlete_id=$1)
-    SELECT coalesce(sum(octet_length(body::text)+1024),0)::text AS bytes,
+    SELECT coalesce(sum(coalesce(octet_length(body::text),0)+1024),0)::text AS bytes,
       (SELECT count(*)::text FROM anchors) AS anchors,
       ((SELECT count(*) FROM plan_refs WHERE id IS NOT NULL)+(SELECT count(*) FROM race_refs WHERE id IS NOT NULL)+(SELECT count(*) FROM supplementary_routine_refs)+(SELECT count(*) FROM supplementary_exercise_refs)+(SELECT count(*) FROM frozen_schedule_refs)+(SELECT count(*) FROM blueprint_refs)+(SELECT count(*) FROM actual_refs))::text AS sources,
       (SELECT count(*)::text FROM supplementary_links) AS links,
@@ -353,22 +374,26 @@ const missingDependencies = [
 /** Partial, tenant-owned read context only. Caller supplies an existing lifecycle-fenced
  * transaction. Changed IDs must be derived from the pure projection, never client claims.
  * Coverage is always blocked until the listed remaining dependencies are implemented. */
-export async function captureRacePlanImpactContext(tx: Transaction, input: unknown) {
+export async function captureRacePlanImpactContext(
+  tx: Transaction,
+  input: unknown,
+  requestSourceBudget: SourceBudget = { bytes: 0n, sources: 0 },
+) {
+  validateRaceSourceResponseBudget(requestSourceBudget);
   const command = parse(inputSchema, input);
-  await tx.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [tx.athleteId]);
-  const baseBytes =
-    (await preflight(tx, command.eventId)) +
-    BigInt(
-      Buffer.byteLength(
-        JSON.stringify({
-          calendarIntent: command.calendarIntent ?? null,
-          collectorSelection: command.selection,
-        }),
-        'utf8',
-      ),
-    );
-  if (baseBytes > BigInt(decodedBytesCap))
+  if (Buffer.byteLength(JSON.stringify(command), 'utf8') > decodedBytesCap)
     throw new RacePlanImpactContextError('CONTEXT_UNAVAILABLE', 'decoded_bytes');
+  await tx.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [tx.athleteId]);
+  // Reserve this capture's new source responses before any root body query.
+  // Local calendar intent/selection and final DTO bytes have separate guards.
+  const baseBytes = await preflight(tx, command.eventId);
+  try {
+    reserveSourceBudget(requestSourceBudget, baseBytes);
+  } catch (error) {
+    if (error instanceof RaceImpactDependencyError)
+      throw new RacePlanImpactContextError(error.code, error.bound);
+    throw error;
+  }
   const restoreGeneration = await currentRestoreGeneration(tx);
   const sources = sourceCache(tx);
   const core = await captureCoreEvidenceDependencies(tx);
@@ -666,10 +691,13 @@ export async function captureRacePlanImpactContext(tx: Transaction, input: unkno
   try {
     dependencyInventory = await captureIntegratedDependencyInventory(tx);
     routineActualManifest = await captureRoutineActualManifest(tx, sources);
-    const sourceBudget = {
-      bytes: baseBytes,
-      sources: sources.sourceCount() + routineActualManifest.uniqueSourceCount,
-    };
+    const sourceBudget = requestSourceBudget;
+    // Existing per-capture source reservations, not database query or wire counts.
+    reserveSourceBudget(
+      sourceBudget,
+      0n,
+      sources.sourceCount() + routineActualManifest.uniqueSourceCount,
+    );
     course = await captureCourseReadSources(tx, event.course, sourceBudget);
     workoutTemplateSources = await captureWorkoutTemplateSources(
       tx,

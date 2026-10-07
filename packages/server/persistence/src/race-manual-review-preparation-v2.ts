@@ -1,3 +1,5 @@
+import { validateRaceSourceResponseBudget } from './race-plan-impact-context.js';
+import type { SourceBudget } from './race-plan-impact-nested-sources.js';
 import {
   assembleRaceManualReviewCandidateCompatibleV4,
   raceManualReviewCandidateV2InputSchema,
@@ -80,11 +82,13 @@ function canonicalProjection(
 export async function prepareRaceManualReviewCompatibleV4In(
   tx: Transaction,
   unknownIntent: unknown,
+  requestSourceBudget: SourceBudget = { bytes: 0n, sources: 0 },
 ) {
+  validateRaceSourceResponseBudget(requestSourceBudget);
   const parsed = raceProjectionIntentSchema.safeParse(unknownIntent);
   if (!parsed.success) throw new RacePlanImpactPreviewError('INVALID_INTENT');
-  const intent = parsed.data;
-  const preview = await previewRacePlanImpactTransaction(tx, intent);
+  const intent = bounded(parsed.data);
+  const preview = await previewRacePlanImpactTransaction(tx, intent, requestSourceBudget);
   const decoded = raceImpactConsumedCaptureSchema.safeParse(preview.context);
   if (!decoded.success) throw new RacePlanImpactPreviewError('INVALID_CONTEXT');
   const context = decoded.data;
@@ -197,6 +201,7 @@ export function createRaceManualReviewCompatibleV4PreparationService(database: D
     async prepare(athleteId: string, unknownIntent: unknown) {
       const parsed = raceProjectionIntentSchema.safeParse(unknownIntent);
       if (!parsed.success) throw new RacePlanImpactPreviewError('INVALID_INTENT');
+      bounded(parsed.data);
       const snapshot = database.snapshotTenant;
       if (!snapshot) throw new RacePlanImpactPreviewError('CONTEXT_UNAVAILABLE');
       return snapshot(athleteId, (tx) => prepareRaceManualReviewCompatibleV4In(tx, parsed.data));

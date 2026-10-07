@@ -1,3 +1,7 @@
+import { createNutritionRacePlanWriter } from '../src/nutrition-race-plan-writer.js';
+import { createNutritionRacePlanV4Writer } from '../src/nutrition-race-plan-v4-writer.js';
+import { saveNutritionPlanV4IntentSchema } from '@workout/contracts/nutrition-race-plan-v4';
+import { impactDependencyDigest } from '../src/race-plan-impact-dependencies.js';
 import { createPrivateTextResourceRepository } from '../src/resources.js';
 import { createSupplementaryRepository } from '../src/supplementary-core.js';
 import { validateRaceImpactConsumedManifest } from '../src/race-plan-impact-complete-manifest.js';
@@ -5,7 +9,7 @@ import {
   prepareRaceManualReviewOwnedBindingV2In,
   createRaceManualReviewOwnedBindingV2Service,
 } from '../src/race-manual-review-owned-binding-consumer-v2.js';
-// Prepared real-DB acceptance; Root executes. normal107 + raw114 staging only.
+// Root executes. Baseline normal107 + raw114; separate raw108/109/110/114 V4 staging.
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { Pool } from 'pg';
@@ -47,9 +51,14 @@ const admin = new Pool({ connectionString: adminUrl });
 const roles: string[] = [];
 let created = false;
 let db: Database;
-function url(role: string) {
+let staged: Database;
+let stagedCreated = false;
+const stagedName = `owned_binding_v4_stage_${suffix}`,
+  stagedOwner = `owned_binding_v4_owner_${suffix}`,
+  stagedRuntime = `owned_binding_v4_app_${suffix}`;
+function url(role: string, databaseName = name) {
   const u = new URL(adminUrl);
-  u.pathname = `/${name}`;
+  u.pathname = `/${databaseName}`;
   u.username = role;
   u.password = 'isolated';
   return u.toString();
@@ -96,9 +105,60 @@ beforeAll(async () => {
   ])
     await grant(url(ownerRole), runtimeRole);
   db = createDatabase({ connectionString: url(runtimeRole), max: 4 });
+  for (const role of [stagedOwner, stagedRuntime]) {
+    await admin.query(
+      `CREATE ROLE "${role}" LOGIN PASSWORD 'isolated' NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE`,
+    );
+    roles.push(role);
+  }
+  await admin.query(`CREATE DATABASE "${stagedName}" OWNER "${stagedOwner}"`);
+  stagedCreated = true;
+  await migrate(url(stagedOwner, stagedName), 107);
+  const stageOwner = new Pool({ connectionString: url(stagedOwner, stagedName) });
+  try {
+    for (const file of [
+      '108_nutrition_race_disconnection.sql',
+      '109_race_result_proof_lifecycle.sql',
+      '110_nutrition_disconnection_lineage.sql',
+      '114_manual_review_owned_source_bindings_v2.sql',
+    ]) {
+      await stageOwner.query(
+        await readFile(new URL(`../migrations/${file}`, import.meta.url), 'utf8'),
+      );
+    }
+    await stageOwner.query(
+      `GRANT EXECUTE ON FUNCTION public.read_nutrition_disconnection_origin(uuid,uuid,text),public.commit_nutrition_plan_v4(uuid,uuid,jsonb,jsonb),public.observe_manual_review_owned_source_bindings_v2(jsonb) TO "${stagedRuntime}"`,
+    );
+    expect(
+      (await stageOwner.query('SELECT max(version)::int AS version FROM schema_migrations'))
+        .rows[0]?.['version'],
+    ).toBe(107);
+  } finally {
+    await stageOwner.end();
+  }
+  for (const grant of [
+    grantCorePlanning,
+    grantSessionCompletions,
+    grantSupplementaryCore,
+    grantOperations,
+    grantRaces,
+    grantRoutineCore,
+    grantRecoveryCore,
+    grantCheckIns,
+    grantCourses,
+    grantNutritionCore,
+    grantResources,
+    grantResourceRetrieval,
+    grantGalleryMedia,
+    grantGarminUnofficial,
+  ])
+    await grant(url(stagedOwner, stagedName), stagedRuntime);
+  staged = createDatabase({ connectionString: url(stagedRuntime, stagedName), max: 4 });
 });
 afterAll(async () => {
   await db?.close();
+  await staged?.close();
+  if (stagedCreated) await dropIsolatedDatabase(admin, stagedName);
   if (created) await dropIsolatedDatabase(admin, name);
   for (const role of roles.reverse()) await admin.query(`DROP ROLE "${role}"`);
   await admin.end();
@@ -348,7 +408,7 @@ it('same snapshot public empty capture binds exact SQL and DTO namespaces withou
     const anchor = (await tx.query('SELECT txid_current()::text AS id')).rows[0];
     expect(result.sqlObservation.transactionId).toBe(anchor?.['id']);
     expect(result).toMatchObject({
-      budgetCoverage: 'owned_transfer_only',
+      budgetCoverage: 'request_source_response_reservations',
       aggregatePhysicalTransfer: 'not_verified',
       authority: 'none',
       freshness: 'not_checked',
@@ -752,4 +812,230 @@ it('public consumed resource deletion preserves the original blocked manifest de
   });
   expect(result.approvalAllowed).toBe(false);
   expect(await counts(athlete)).toEqual(before);
+});
+
+it('explicit raw108/109/110/114 public V4 multipin binds only the current full race with all eight namespaces', async () => {
+  const f = await coherentSources(staged);
+  const { athlete, race } = f;
+  // Synthetic identity fixture only; all domain source bodies below use public writers.
+  const offline = new Pool({ connectionString: url(stagedOwner, stagedName) });
+  try {
+    await offline.query(
+      "INSERT INTO identity_private.account(athlete_id,issuer,subject) VALUES($1::uuid,'https://synthetic.test',$2)",
+      [athlete, athlete],
+    );
+  } finally {
+    await offline.end();
+  }
+  const races = createRaceRepository(staged);
+  const values = { ...raceValues, planVersionId: f.plan.id };
+  const meal = (id: string) => ({
+    id,
+    category: 'before' as const,
+    title: 'Food',
+    anchor: {
+      kind: 'relative' as const,
+      entity: 'race' as const,
+      entityId: race.id,
+      point: 'start' as const,
+      offsetMinutes: -30,
+    },
+    foods: [
+      {
+        foodVersionId: null,
+        description: 'Preserved food',
+        quantity: 0,
+        unit: 'g' as const,
+        sourceBasis: 'manual_total' as const,
+      },
+    ],
+    targets: [],
+    instructions: 'Synthetic action',
+    evidenceIds: [],
+    source: 'user_confirmed' as const,
+  });
+  const initial = await createNutritionRacePlanWriter(staged).savePlanV2(athlete, {
+    schemaVersion: 2,
+    command: {
+      kind: 'create',
+      confirmed: true,
+      idempotencyKey: randomUUID(),
+      draft: {
+        period: { from: '2026-10-01', toInclusive: '2026-10-31' },
+        timezone: 'UTC',
+        purpose: 'Synthetic two meals',
+        linkedTrainingPlanVersionId: null,
+        items: [meal('old'), meal('changed')],
+      },
+    },
+    expectedRaceHeads: [{ namespace: 'race-event', eventId: race.id, revision: 1 }],
+  });
+  const changed = await races.updateRaceEvent(athlete, race.id, {
+    expectedRevision: 1,
+    idempotencyKey: randomUUID(),
+    values: { ...values, localStartTime: '10:00' },
+  });
+  const prior = initial;
+  const saved = await createNutritionRacePlanV4Writer(staged).savePlanV4(
+    athlete,
+    saveNutritionPlanV4IntentSchema.parse({
+      schemaVersion: 4,
+      intent: {
+        schemaVersion: 3,
+        command: {
+          kind: 'update',
+          confirmed: true,
+          planId: prior.planId,
+          expectedHeadVersionId: prior.versionId,
+          idempotencyKey: randomUUID(),
+          draft: {
+            period: prior.period,
+            timezone: prior.timezone,
+            purpose: prior.purpose,
+            linkedTrainingPlanVersionId: null,
+            items: prior.items.map(({ planVersionId, ...item }) => {
+              void planVersionId;
+              return item.id === 'changed'
+                ? { ...item, anchor: { ...meal('changed').anchor, offsetMinutes: -60 } }
+                : item;
+            }),
+          },
+        },
+        expectedRaceHeads: [{ namespace: 'race-event', eventId: race.id, revision: 2 }],
+        reconnectItemIds: [],
+      },
+    }),
+  );
+  expect('schemaVersion' in saved.plan && saved.plan.schemaVersion).toBe(4);
+  if (!('schemaVersion' in saved.plan) || saved.plan.schemaVersion !== 4)
+    throw Error('FIXTURE_EXPECTED_V4');
+  expect(saved.plan.raceTimingPins.map((p) => p.eventRevision)).toEqual([1, 2]);
+
+  const count = () =>
+    staged.tenant(
+      athlete,
+      async (tx) =>
+        (
+          await tx.query(
+            `SELECT
+    (SELECT count(*)::text FROM nutrition_plan_version WHERE athlete_id=$1) AS versions,
+    (SELECT count(*)::text FROM command_receipt WHERE athlete_id=$1) AS receipts,
+    (SELECT count(*)::text FROM race_command_receipt WHERE athlete_id=$1) AS race_receipts,
+    (SELECT count(*)::text FROM routine_command_receipt WHERE athlete_id=$1) AS routine_receipts,
+    (SELECT count(*)::text FROM outbox WHERE athlete_id=$1) AS outbox`,
+            [athlete],
+          )
+        ).rows,
+    );
+  const before = await count();
+  await snapshot(staged, athlete, async (tx) => {
+    const result = await prepareRaceManualReviewOwnedBindingV2In(
+      tx,
+      { ...intent(race.id), expectedEvent: { id: race.id, revision: changed.revision } },
+      { bytes: 0n, sources: 0 },
+    );
+    expect(result.status).toBe('observed_readonly');
+    if (result.status === 'blocked') throw Error('FIXTURE_CANDIDATE_MISSING');
+    expect(result.owned.status).toBe('observed_correspondence');
+    expect([...new Set(result.inventory.refs.map((ref) => ref.identity.kind))].sort()).toEqual([
+      'nutrition-plan-version',
+      'plan-snapshot',
+      'race-event',
+      'routine-blueprint-version',
+      'routine-occurrence',
+      'routine-run',
+      'routine-schedule-version',
+      'session-completion',
+    ]);
+    expect(
+      result.inventory.refs
+        .filter((ref) => ref.identity.kind === 'race-event')
+        .map((ref) => ref.identity),
+    ).toEqual([{ kind: 'race-event', sourceId: race.id, revision: 2 }]);
+    expect(
+      result.sqlObservation.rows
+        .filter((row) => row.identity.kind === 'race-event')
+        .map((row) => row.identity),
+    ).toEqual([{ kind: 'race-event', sourceId: race.id, revision: 2 }]);
+    expect(result.sqlObservation.rows.map((row) => row.identity)).toEqual(
+      result.inventory.refs.map((ref) => ref.identity),
+    );
+    expect(result.sqlObservation.rows.every((row) => row.state === 'observed')).toBe(true);
+    expect(
+      result.inventory.fragments
+        .filter((fragment) => fragment.kind === 'race-timing-pin')
+        .map((fragment) => fragment.sourceIdentity),
+    ).toEqual(
+      expect.arrayContaining([
+        { kind: 'race-event', sourceId: race.id, revision: 1 },
+        { kind: 'race-event', sourceId: race.id, revision: 2 },
+      ]),
+    );
+    const nutrition = result.preparation.candidate.body.projection.nutrition.find(
+      (row) => row.planVersionId === saved.plan.versionId,
+    );
+    expect(nutrition?.record).toEqual(saved.plan);
+    expect(
+      result.preparation.candidate.body.pinTransitions
+        .filter((pin) => pin.nutritionVersionId === saved.plan.versionId)
+        .map((pin) => ({
+          id: pin.itemId,
+          revision: pin.savedPin?.eventRevision,
+          target: pin.proposedTarget,
+          allocation: pin.allocation,
+        })),
+    ).toEqual([
+      {
+        id: 'changed',
+        revision: 2,
+        target: { eventId: race.id, eventRevision: 3 },
+        allocation: 'not_allocated',
+      },
+      {
+        id: 'old',
+        revision: 1,
+        target: { eventId: race.id, eventRevision: 3 },
+        allocation: 'not_allocated',
+      },
+    ]);
+    const identity = {
+      kind: 'nutrition-plan-version',
+      sourceId: saved.plan.planId,
+      versionId: saved.plan.versionId,
+    };
+    expect(result.owned.facts).toContainEqual({
+      identity,
+      state: 'matched',
+      dtoDigest: impactDependencyDigest(saved.plan),
+      reason: null,
+    });
+    expect(
+      result.sqlObservation.rows.find(
+        (row) =>
+          row.identity.kind === 'nutrition-plan-version' &&
+          row.identity.versionId === saved.plan.versionId,
+      )?.sourceRowDigest,
+    ).toMatch(/^[a-f0-9]{64}$/);
+    expect(result.sqlObservation.hashMethod).toBe('postgres-owned-source-row-jsonb-utc-v2');
+    expect(result).toMatchObject({
+      authority: 'none',
+      freshness: 'not_checked',
+      storage: 'not_persisted',
+      admissionAllowed: false,
+      approvalAllowed: false,
+      budgetCoverage: 'request_source_response_reservations',
+      aggregatePhysicalTransfer: 'not_verified',
+    });
+    expect(result.preparation.candidate.body.binding.event).toEqual({ id: race.id, revision: 2 });
+    expect(result.preparation.candidate.body.coverage.complete).toBe(false);
+    expect(
+      (
+        await tx.query('SELECT revision FROM race_event WHERE athlete_id=$1 AND id=$2', [
+          athlete,
+          race.id,
+        ])
+      ).rows[0]?.['revision'],
+    ).toBe(2);
+  });
+  expect(await count()).toEqual(before);
 });
