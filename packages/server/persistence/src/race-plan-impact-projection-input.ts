@@ -1,3 +1,4 @@
+import { raceRelativeScheduleImpactResultCompatibleV4BodySchema } from '@workout/server-coaching/race-relative-schedule-impact-codecs';
 import { z } from 'zod';
 import { raceEventSchema } from '@workout/contracts/races';
 import { planSnapshotSchema } from '@workout/contracts/planning';
@@ -362,6 +363,8 @@ export function buildRacePlanImpactProjectionInput(
     };
     const projection = projectRaceRelativeScheduleImpactCompatibleV4(input, ports);
     if (projection.status === 'rejected') return blocked(projection.reason, ordered(missingFacts));
+    if (!raceRelativeScheduleImpactResultCompatibleV4BodySchema.safeParse(projection).success)
+      return blocked('invalid_result', ordered(missingFacts));
     return {
       status: 'projected' as const,
       input,

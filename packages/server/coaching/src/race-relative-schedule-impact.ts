@@ -26,7 +26,7 @@ import { localDateSchema, localTimeSchema } from '@workout/contracts/primitives'
 import { projectRacePlanImpact } from './race-plan-impact.js';
 
 const id = z.string().min(1).max(200);
-const timingSchema = z.discriminatedUnion('state', [
+export const raceScheduleTimingSchema = z.discriminatedUnion('state', [
   z.strictObject({
     state: z.literal('resolved'),
     date: localDateSchema,
@@ -47,8 +47,9 @@ const timingSchema = z.discriminatedUnion('state', [
     ]),
   }),
 ]);
-type Timing = z.infer<typeof timingSchema>;
-const expansionSchema = z.discriminatedUnion('state', [
+export type RaceScheduleTiming = z.infer<typeof raceScheduleTimingSchema>;
+type Timing = RaceScheduleTiming;
+export const raceRoutineExpansionSchema = z.discriminatedUnion('state', [
   z.strictObject({
     state: z.literal('expanded'),
     occurrences: z.array(routineOccurrenceSchema).max(100),
@@ -68,13 +69,16 @@ const expansionSchema = z.discriminatedUnion('state', [
     ]),
   }),
 ]);
+export type RaceRoutineExpansion = z.infer<typeof raceRoutineExpansionSchema>;
 const nutritionContext = z.strictObject({
   record: nutritionPlanVersionSchema,
-  timings: z.array(z.strictObject({ itemId: id, timing: timingSchema })).max(5000),
+  timings: z.array(z.strictObject({ itemId: id, timing: raceScheduleTimingSchema })).max(5000),
 });
 const nutritionContextCompatibleV3 = nutritionContext.extend({
   record: nutritionPlanVersionCompatibleV3Schema,
-  timings: z.array(z.strictObject({ itemId: z.string().min(1), timing: timingSchema })).max(5000),
+  timings: z
+    .array(z.strictObject({ itemId: z.string().min(1), timing: raceScheduleTimingSchema }))
+    .max(5000),
 });
 const routineContext = z.strictObject({
   record: routineScheduleVersionSchema,
@@ -129,12 +133,14 @@ const inputSchema = z.strictObject({
 const inputSchemaCompatibleV3 = inputSchema.extend({
   nutrition: z.array(nutritionContextCompatibleV3).max(1000),
 });
-const inputSchemaCompatibleV4 = inputSchema.extend({
+export const raceRelativeScheduleImpactInputCompatibleV4Schema = inputSchema.extend({
   nutrition: z
     .array(nutritionContextCompatibleV3.extend({ record: nutritionPlanVersionCompatibleV4Schema }))
     .max(1000),
 });
-export type RaceRelativeScheduleImpactInputCompatibleV4 = z.infer<typeof inputSchemaCompatibleV4>;
+export type RaceRelativeScheduleImpactInputCompatibleV4 = z.infer<
+  typeof raceRelativeScheduleImpactInputCompatibleV4Schema
+>;
 export interface RaceScheduleCalculationPortsCompatibleV4 {
   resolveNutrition(context: {
     item: NutritionPlanVersionCompatibleV4['items'][number];
@@ -235,7 +241,7 @@ function projectRaceRelativeScheduleImpactInternal(
   try {
     const budget = { bytes: bytes(raw) };
     if (budget.bytes > 4194304) return reject('projection_bound');
-    const parsed = inputSchemaCompatibleV4.safeParse(raw);
+    const parsed = raceRelativeScheduleImpactInputCompatibleV4Schema.safeParse(raw);
     if (!parsed.success) return reject('invalid_input');
     const input = parsed.data;
     freezeSnapshot(input);
@@ -395,7 +401,7 @@ function projectRaceRelativeScheduleImpactInternal(
                 input.event.localStartTime === null
               ? { state: 'unresolved', reason: 'missing_race_time' }
               : decoded(
-                  timingSchema,
+                  raceScheduleTimingSchema,
                   ports.resolveNutrition({
                     item: proposed,
                     record,
@@ -514,7 +520,7 @@ function projectRaceRelativeScheduleImpactInternal(
         proposed.window.maxOccurrences > 100 || windowDays > 366
           ? { state: 'unresolved' as const, reason: 'EXPANSION_LIMIT_EXCEEDED' as const }
           : decoded(
-              expansionSchema,
+              raceRoutineExpansionSchema,
               ports.expandRoutine({
                 schedule: proposed,
                 sourcePlan: sourcePlan(

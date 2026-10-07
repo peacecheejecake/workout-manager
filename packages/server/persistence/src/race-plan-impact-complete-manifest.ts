@@ -113,7 +113,7 @@ const manual = z.strictObject({
     z.strictObject({ state: z.literal('present'), granted: z.boolean(), revision }),
   ]),
 });
-const scopeSchema = z.strictObject({
+export const raceImpactConsumedScopeSchema = z.strictObject({
   purpose: z.literal('manual_race_date_change'),
   athleteId: id,
   restoreGeneration: uuid,
@@ -122,7 +122,7 @@ const scopeSchema = z.strictObject({
   expectedAppRevision: revision,
   expectedReadSetDigest: hash,
 });
-export type RaceImpactConsumedScope = z.infer<typeof scopeSchema>;
+export type RaceImpactConsumedScope = z.infer<typeof raceImpactConsumedScopeSchema>;
 const tuple = z.strictObject({ aggregateId: uuid, versionId: uuid });
 const tupleKey = (row: { aggregateId: string; versionId: string }) =>
   JSON.stringify([row.aggregateId.toLowerCase(), row.versionId.toLowerCase()]);
@@ -533,7 +533,7 @@ const permissions = z.strictObject({
   aiConsent: consent,
   missing: z.array(z.enum(permissionMissing)).length(5),
 });
-const captureSchema = z.strictObject({
+export const raceImpactConsumedCaptureSchema = z.strictObject({
   status: z.literal('blocked'),
   coverage: z.strictObject({
     complete: z.literal(false),
@@ -593,6 +593,8 @@ const captureSchema = z.strictObject({
     routine: z.array(uuid).max(1000),
   }),
 });
+/** Runtime shape only; parsing does not grant ownership, freshness or approval. */
+export type RaceImpactConsumedCapture = z.infer<typeof raceImpactConsumedCaptureSchema>;
 export type RaceImpactManifestBlocker = {
   readonly path: string;
   readonly reason:
@@ -679,8 +681,8 @@ export function validateRaceImpactConsumedManifest(
   };
   if (!bounded(unknownCapture) || !bounded(unknownScope))
     return { status: 'blocked', blockers: [{ path: 'capture', reason: 'bounds_exceeded' }] };
-  const decoded = captureSchema.safeParse(unknownCapture),
-    scoped = scopeSchema.safeParse(unknownScope);
+  const decoded = raceImpactConsumedCaptureSchema.safeParse(unknownCapture),
+    scoped = raceImpactConsumedScopeSchema.safeParse(unknownScope);
   if (!decoded.success || !scoped.success)
     return {
       status: 'blocked',
