@@ -1,3 +1,7 @@
+import { createHealthKitRegistrationRepository } from '../src/healthkit-registration.js';
+import { createHealthKitIngestionRepository } from '../src/healthkit-ingestion.js';
+import { createHealthKitActivityRepository } from '../src/healthkit-activity.js';
+import { createHealthKitDeregistrationRepository } from '../src/healthkit-deregistration.js';
 import { createGalleryMediaRepository } from '../src/gallery-media.js';
 import { captureRaceManualMediaPurposeV2In } from '../src/race-manual-review-media-purpose-v2.js';
 import { captureMediaRetainedReadFacts } from '../src/race-plan-impact-media-read-facts.js';
@@ -39,6 +43,7 @@ import {
   grantGalleryMedia,
   grantGarminUnofficial,
   grantSessionCompletions,
+  grantHealthKitIngestion,
 } from '../src/migrate.js';
 import { dropIsolatedDatabase } from './drop-isolated-database.js';
 
@@ -105,6 +110,7 @@ beforeAll(async () => {
     grantGalleryMedia,
     grantGarminUnofficial,
     grantSessionCompletions,
+    grantHealthKitIngestion,
   ])
     await grant(url(ownerRole), runtimeRole);
   // Existing Activity API producer composition, not private chain-table privileges.
@@ -1645,4 +1651,318 @@ it('actual current access drift and live cleanup requests reject pre-captured me
     /MANUAL_CHAIN_/,
   );
   expect(await count(y.f.athlete)).toEqual({ evidence: 0, decision: 0, proposal: 0 });
+});
+
+// Synthetic local native protocol, never real-device authenticity evidence.
+async function healthKitActual() {
+  const f = await seed(),
+    consent = createConsentRepository(db);
+  await consent.setConsent(f.athlete, {
+    kind: 'ai',
+    granted: false,
+    expectedRevision: 0,
+    idempotencyKey: randomUUID(),
+  });
+  await consent.setConsent(f.athlete, {
+    kind: 'healthkit',
+    granted: true,
+    expectedRevision: 0,
+    idempotencyKey: randomUUID(),
+  });
+  const registration = createHealthKitRegistrationRepository(db),
+    sampleId = randomUUID();
+  const list = await registration.listWorkouts(f.athlete, {});
+  const registered = await registration.registerWorkouts(f.athlete, {
+    schemaVersion: 1,
+    sampleIds: [sampleId],
+    accountAttributionDeclared: true,
+    expectedConsentRevision: 1,
+    expectedRegistryRevision: list.registryRevision,
+    idempotencyKey: randomUUID(),
+  });
+  const claim = registered.claims.find((c) => c.sampleId === sampleId);
+  if (!claim) throw Error('HK_CLAIM_MISSING');
+  const event = {
+    kind: 'upsert' as const,
+    sampleId,
+    claimEpoch: claim.claimEpoch,
+    sourceBundleId: 'com.apple.health',
+    sourceVersion: null,
+    activityType: 20,
+    observedFrom: '2026-10-06T00:00:00Z',
+    observedTo: '2026-10-06T00:00:00Z',
+    durationSeconds: 0,
+    distanceMeters: null,
+    energyKilocalories: null,
+  };
+  const ingestion = createHealthKitIngestionRepository(db),
+    installationId = randomUUID();
+  await ingestion.ingestBatch(
+    f.athlete,
+    { schemaVersion: 2, installationId, batchId: randomUUID(), events: [event] },
+    1,
+  );
+  const sample = await db.tenant(f.athlete, (tx) =>
+    tx.query(
+      'SELECT payload_digest FROM healthkit_workout_sample WHERE athlete_id=$1 AND sample_id=$2',
+      [f.athlete, sampleId],
+    ),
+  );
+  const digest = z.string().parse(sample.rows[0]?.['payload_digest']);
+  const created = await createHealthKitActivityRepository(db).createActivity(f.athlete, {
+    sampleId,
+    expectedSampleDigest: digest,
+    confirmed: true,
+    idempotencyKey: randomUUID(),
+  });
+  const activities = createActivityRepository(db);
+  const current = await activities.updateOverlay(f.athlete, created.activityId, {
+    expectedRevision: 1,
+    idempotencyKey: randomUUID(),
+    reason: 'Explicit synthetic user overlay',
+    title: 'HK retained overlay',
+    distanceMeters: 0,
+  });
+  const catalog = await catalogFixture(f.athlete);
+  let run = await catalog.routines.startRun(f.athlete, {
+    runId: randomUUID(),
+    blueprintVersionId: catalog.blueprint.versionId,
+    occurrenceId: null,
+    idempotencyKey: randomUUID(),
+    confirmed: true,
+  });
+  run = await catalog.routines.recordStep(f.athlete, {
+    runId: run.run.id,
+    stepId: 'step',
+    state: 'performed',
+    actualRefs: [
+      {
+        kind: 'activity',
+        id: current.id,
+        revisionId: String(current.revision),
+        detailId: null,
+        allocationId: null,
+      },
+    ],
+    occurredAt: '2026-10-06T00:00:00Z',
+    reason: null,
+    expectedRevision: run.run.revision,
+    idempotencyKey: randomUUID(),
+    confirmed: true,
+  });
+  return {
+    f,
+    consent,
+    registration,
+    sampleId,
+    claim,
+    event,
+    ingestion,
+    installationId,
+    current,
+    activities,
+    run,
+  };
+}
+async function deregisterHealthKit(x: Awaited<ReturnType<typeof healthKitActual>>, target = db) {
+  const list = await createHealthKitRegistrationRepository(target).listWorkouts(x.f.athlete, {});
+  return createHealthKitDeregistrationRepository(target).deregisterWorkout(x.f.athlete, {
+    schemaVersion: 1,
+    sampleId: x.sampleId,
+    claimEpoch: x.claim.claimEpoch,
+    expectedConsentRevision: 1,
+    expectedRegistryRevision: list.registryRevision,
+    confirmRelatedRecordDeletion: true,
+    idempotencyKey: randomUUID(),
+  });
+}
+it('HK public registration/ingestion/canonical/overlay/run stores exact immutable readonly chain with AI false', async () => {
+  const x = await healthKitActual();
+  const saved = await snapshot(x.f.athlete, async (tx) => {
+    const p = await prepared(tx, x.f.intent);
+    const facts = p.basis.consumedUses.facts.filter(
+      (f) =>
+        f.identity.kind === 'activity-canonical-values' || f.identity.kind === 'activity-overlay',
+    );
+    expect(facts).toHaveLength(2);
+    for (const f of facts)
+      expect(f.sourcePurpose).toMatchObject({
+        kind: 'own_healthkit_activity',
+        activityId: x.current.id,
+        canonicalRevision: 2,
+        source: { kind: 'healthkit', sourceId: x.sampleId, revision: 1 },
+        healthkitConsent: { revision: 1 },
+        claim: { epoch: x.claim.claimEpoch },
+        overlayRevision: 2,
+      });
+    return { p, result: await store(tx, p) };
+  });
+  expect(saved.result).toMatchObject({ applicable: false, approvalAllowed: false });
+  expect(await snapshot(x.f.athlete, (tx) => read(tx, saved.result.evidenceId))).toMatchObject({
+    payload: saved.p.payload,
+  });
+  expect(await snapshot(x.f.athlete, (tx) => store(tx, saved.p))).toEqual(saved.result);
+  expect(await count(x.f.athlete)).toEqual({ evidence: 1, decision: 1, proposal: 1 });
+});
+for (const deletion of ['canonical', 'native_sample', 'deregister', 'withdraw'] as const)
+  it(`HK public ${deletion} original event scrubs payload; minimal receipt cannot resurrect source`, async () => {
+    const x = await healthKitActual(),
+      saved = await snapshot(x.f.athlete, async (tx) => {
+        const p = await prepared(tx, x.f.intent);
+        return { p, result: await store(tx, p) };
+      });
+    if (deletion === 'canonical')
+      await x.activities.deleteActivity(x.f.athlete, x.current.id, {
+        expectedRevision: x.current.revision,
+      });
+    else if (deletion === 'native_sample')
+      await x.ingestion.ingestBatch(
+        x.f.athlete,
+        {
+          schemaVersion: 2,
+          installationId: x.installationId,
+          batchId: randomUUID(),
+          events: [{ kind: 'delete', sampleId: x.sampleId, claimEpoch: x.claim.claimEpoch }],
+        },
+        1,
+      );
+    else if (deletion === 'deregister') await deregisterHealthKit(x);
+    else
+      await x.consent.setConsent(x.f.athlete, {
+        kind: 'healthkit',
+        granted: false,
+        expectedRevision: 1,
+        idempotencyKey: randomUUID(),
+      });
+    expect(await snapshot(x.f.athlete, (tx) => read(tx, saved.result.evidenceId))).toEqual({
+      schemaVersion: 2,
+      result: saved.result,
+      payload: null,
+    });
+    expect(await snapshot(x.f.athlete, (tx) => store(tx, saved.p))).toEqual(saved.result);
+    expect(await count(x.f.athlete)).toEqual({ evidence: 1, decision: 1, proposal: 1 });
+    const owner = new Pool({ connectionString: url(ownerRole) });
+    try {
+      const rows = await owner.query(
+        'SELECT kind,target_id FROM restore_suppression_event WHERE athlete_id=$1 AND kind=$2',
+        [x.f.athlete, 'activity_deleted'],
+      );
+      expect(rows.rows).toContainEqual({ kind: 'activity_deleted', target_id: x.current.id });
+    } finally {
+      await owner.end();
+    }
+  });
+it.each(['claim', 'sample', 'consent', 'extra'] as const)(
+  'HK %s JSON witness cannot mint final-store purpose',
+  async (field) => {
+    const x = await healthKitActual(),
+      p = await snapshot(x.f.athlete, (tx) => prepared(tx, x.f.intent));
+    const bad = structuredClone(p);
+    for (const f of bad.basis.consumedUses.facts) {
+      const obs = f.sourcePurpose;
+      if (!obs || obs.kind !== 'own_healthkit_activity') continue;
+      if (field === 'claim') obs.claim.epoch = randomUUID();
+      else if (field === 'sample') obs.sample.payloadDigest = 'f'.repeat(64);
+      else if (field === 'consent') obs.healthkitConsent.revision++;
+      else {
+        const forged = { ...obs, verified: true };
+        f.sourcePurpose = forged;
+      }
+    }
+    bad.request.expectedBasis = bad.basis;
+    await expect(snapshot(x.f.athlete, (tx) => store(tx, bad))).rejects.toThrow(
+      'MANUAL_CHAIN_SOURCE_USE_UNAVAILABLE',
+    );
+    expect(await count(x.f.athlete)).toEqual({ evidence: 0, decision: 0, proposal: 0 });
+  },
+);
+it('HK public conflicting same-UUID payload is rejected and original source/store stay unchanged', async () => {
+  const x = await healthKitActual(),
+    p = await snapshot(x.f.athlete, (tx) => prepared(tx, x.f.intent));
+  const sampleDigest = () =>
+    db.tenant(x.f.athlete, async (tx) => {
+      const result = await tx.query(
+        'SELECT payload_digest FROM healthkit_workout_sample WHERE athlete_id=$1 AND sample_id=$2',
+        [x.f.athlete, x.sampleId],
+      );
+      return z.string().parse(result.rows[0]?.['payload_digest']);
+    });
+  const originalDigest = await sampleDigest();
+  expect(await x.activities.getActivity(x.f.athlete, x.current.id)).toEqual(x.current);
+  await expect(
+    x.ingestion.ingestBatch(
+      x.f.athlete,
+      {
+        schemaVersion: 2,
+        installationId: x.installationId,
+        batchId: randomUUID(),
+        events: [{ ...x.event, distanceMeters: 0 }],
+      },
+      1,
+    ),
+  ).rejects.toThrow('IDEMPOTENCY_CONFLICT');
+  expect(await sampleDigest()).toBe(originalDigest);
+  expect(await x.activities.getActivity(x.f.athlete, x.current.id)).toEqual(x.current);
+  expect(await count(x.f.athlete)).toEqual({ evidence: 0, decision: 0, proposal: 0 });
+  const result = await snapshot(x.f.athlete, (tx) => store(tx, p));
+  expect(await snapshot(x.f.athlete, (tx) => read(tx, result.evidenceId))).toMatchObject({
+    payload: p.payload,
+  });
+  expect(await snapshot(x.f.athlete, (tx) => store(tx, p))).toEqual(result);
+  expect(await count(x.f.athlete)).toEqual({ evidence: 1, decision: 1, proposal: 1 });
+});
+it('HK current grant revision cannot reuse an earlier claim epoch even if grant remains true', async () => {
+  const x = await healthKitActual(),
+    p = await snapshot(x.f.athlete, (tx) => prepared(tx, x.f.intent));
+  await x.consent.setConsent(x.f.athlete, {
+    kind: 'healthkit',
+    granted: true,
+    expectedRevision: 1,
+    idempotencyKey: randomUUID(),
+  });
+  await expect(snapshot(x.f.athlete, (tx) => store(tx, p))).rejects.toThrow(
+    'MANUAL_CHAIN_SOURCE_USE_UNAVAILABLE',
+  );
+  expect(await count(x.f.athlete)).toEqual({ evidence: 0, decision: 0, proposal: 0 });
+});
+it('HK foreign tenant cannot store an owned purpose/payload from another scope', async () => {
+  const x = await healthKitActual(),
+    foreign = await seed(),
+    p = await snapshot(x.f.athlete, (tx) => prepared(tx, x.f.intent));
+  await expect(snapshot(foreign.athlete, (tx) => store(tx, p))).rejects.toThrow(
+    'MANUAL_CHAIN_STALE_BASIS',
+  );
+  expect(await count(foreign.athlete)).toEqual({ evidence: 0, decision: 0, proposal: 0 });
+});
+it('HK store-first public deregistration waits on tenant fence then scrubs the committed copy', async () => {
+  const x = await healthKitActual(),
+    started = gate(),
+    release = gate();
+  const held = observe(
+    snapshot(x.f.athlete, async (tx) => {
+      const p = await prepared(tx, x.f.intent),
+        result = await store(tx, p);
+      started.signal();
+      await release.promise;
+      return result;
+    }),
+  );
+  let deletion: Promise<Outcome<unknown>> | null = null;
+  try {
+    await waitStarted(started, held);
+    deletion = observe(deregisterHealthKit(x));
+    await ownLockWait();
+  } finally {
+    release.signal();
+    await held;
+    if (deletion !== null) await deletion;
+  }
+  const result = unwrap(await held);
+  if (deletion === null) throw Error('HK_DELETE_NOT_STARTED');
+  unwrap(await deletion);
+  expect(await snapshot(x.f.athlete, (tx) => read(tx, result.evidenceId))).toEqual({
+    schemaVersion: 2,
+    result,
+    payload: null,
+  });
 });

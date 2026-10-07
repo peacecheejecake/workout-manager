@@ -511,3 +511,9 @@ Root own media named adapter→실제 preparation/semantic 연결의 unit71/actu
 ## HealthKit 실제 준비 후속 · 2026-10-07
 
 Root HK unit426·실제 PG4 및 persistence TS를 확인했다. R1/R2의 actual 실패와 원인을 별도 보존하고 기존 공개 grant 누락·typed neutral tombstone fixture를 교정했다. [I 기록](progress/M2-02i.md)을 따른다. 미디어 SQL116+chain 실제 R2는39PASS였으나 HK를 포함한 회차는42PASS/1FAIL이며 마지막HK R3만4PASS다. 이 결과를 단일43PASS 회차로 합치지 않는다. registry107/main/push0·I/J/phase in_progress·외부 not_executed와 기존 사용자 결정은 유지한다.
+
+## Current HealthKit store·J capability 진행 · 2026-10-08
+
+Root 실제 HK storage39+chain13 PG52/52를 확인했고 초기50PASS/2FAIL을 보존한다. 별도 capability 계약/API/platform191/191는 phase의 검증 커밋 f3d78b15에 있다. [I](progress/M2-02i.md)·[J](progress/M2-02j.md) 기록을 따른다. 새 J editor/Host unit83·Next/Vite build는 성공했지만 Chrome actualR3/R4 각두Host2FAIL이다. R4의 exact recheck GET200 이후 선택이 retained에 남는 실패로, readonly proof DTO를 strict write DTO로 spread한 실제 UI 문제를 발견해 명시 최소 identity projection과 positive 재확인 회귀를 native actor가 수정 중이다. E2E/제품 경로 성공으로 승격하지 않는다.
+
+native 병렬은 J selector수정, Garmin current metadata/purpose gap 준비, 실제 authenticated export/restore integration조사로 비중복 배정했다. Root DB/browser·shared registry·graph/Git는 직렬 통합한다. Garmin collector에는 개별 provider processing consent mapping이 실제 없음을 확인했으므로 common provider gate를 임의로 추가하지 않고 not_captured/finiteblocked를 정확히 유지한다. 실제 underlying grant/retained-use closure는 별도 미완료다. PB Chip/Gun·거리 기준 및 AWS 로그인 가능 여부는 재질문했으며 답변 대기, FUT-09 실제 원문도 미수신이다. I/J/phase in_progress·main/push0·외부not_executed를 유지한다.
