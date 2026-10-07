@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import {
   accountExportSchema,
+  accountExportV35Schema,
   operationsStatusSchema,
   type AccountExport,
   type OperationsStatus,
@@ -758,7 +759,25 @@ const maxBytes = 8 * 1024 * 1024;
 // Identifiers are a static allowlist; no caller-controlled SQL or authentication tables.
 const exportSql = `WITH rows AS MATERIALIZED (${collections.map(([name, table, fields, order]) => `SELECT '${name}' AS collection,to_jsonb(r) AS payload,row_number() OVER () AS ordinal FROM (SELECT ${fields} FROM ${table} WHERE athlete_id=$1 ORDER BY ${order} LIMIT 1001) r`).join(' UNION ALL ')}), sizes AS (SELECT collection,count(*) AS count,sum(octet_length(payload::text)) AS bytes FROM rows GROUP BY collection), valid AS (SELECT coalesce(max(count),0)<=1000 AND coalesce(sum(bytes),0)<=${maxBytes - 65536} AS ok FROM sizes), groups AS (SELECT collection,jsonb_agg(payload ORDER BY ordinal) AS payload FROM rows WHERE (SELECT ok FROM valid) GROUP BY collection) SELECT (SELECT ok FROM valid) AS ok,coalesce(jsonb_object_agg(collection,payload),'{}'::jsonb) AS data FROM groups`;
 
+export interface OperationsV35Repository extends Omit<OperationsRepository, 'exportAccount'> {
+  exportAccount(athleteId: string): Promise<z.infer<typeof accountExportV35Schema>>;
+}
+
+/** Historical default remains V34 until the configured producer is explicitly changed. */
 export function createOperationsRepository(database: Database): OperationsRepository {
+  return createOperationsRepositoryWithExportSchema(database, accountExportSchema, 34);
+}
+
+/** Explicit retained V35 facts; this wire does not grant restore or approval authority. */
+export function createOperationsV35Repository(database: Database): OperationsV35Repository {
+  return createOperationsRepositoryWithExportSchema(database, accountExportV35Schema, 35);
+}
+
+function createOperationsRepositoryWithExportSchema<T extends AccountExport>(
+  database: Database,
+  schema: z.ZodType<T>,
+  schemaVersion: 34 | 35,
+): Omit<OperationsRepository, 'exportAccount'> & { exportAccount(athleteId: string): Promise<T> } {
   return {
     exportAccount(athleteId) {
       return database.tenant(athleteId, async (tx) => {
@@ -774,8 +793,8 @@ export function createOperationsRepository(database: Database): OperationsReposi
           .parse(result.rows[0]);
         if (!row.ok) throw new OperationsError('EXPORT_TOO_LARGE');
         const data = Object.fromEntries(collections.map(([name]) => [name, row.data[name] ?? []]));
-        const artifact = accountExportSchema.parse({
-          schemaVersion: 34,
+        const artifact = schema.parse({
+          schemaVersion,
           athleteId,
           exportedAt: new Date().toISOString(),
           data,
