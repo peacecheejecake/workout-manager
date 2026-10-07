@@ -1,6 +1,17 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState, useId, type FormEvent, type ReactNode } from 'react';
+import {
+  createContext,
+  use,
+  type ComponentType,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useId,
+  type FormEvent,
+  type ReactNode,
+} from 'react';
 import {
   QueryClient,
   QueryClientProvider,
@@ -22,6 +33,7 @@ import {
   resultDraft,
   resultFields,
   parseResult,
+  parseResultV2,
   bestDraft,
   bestFields,
   parseBest,
@@ -33,13 +45,19 @@ import {
   type RacePersonalBestPolicy,
   type RacePersonalBestExclusion,
 } from './race-personal-bests';
-import type { RaceResult } from '@workout/contracts/races';
+import type {
+  RaceResultCompatibleRead,
+  RaceResultValuesV2,
+} from '@workout/contracts/race-result-v2';
+import type { CompetitionsProofApi } from './competitions-proof-api';
+import { ProofSelector, selectedProofRefs, type ProofChoice } from './proof-selector';
 import styles from './competitions.module.css';
 
 export type CompetitionSection = 'events' | 'results' | 'training-bests';
 
 export interface CompetitionWorkspaceProps {
   /** URL state belongs to the host; omitted section shows the complete workspace. */
+  resultEditing?: { results: RaceApi['resultsV2']; proofs: CompetitionsProofApi };
   relations?: CompetitionRelations;
   section?: CompetitionSection;
   onSectionChange?: (section: CompetitionSection) => void;
@@ -213,65 +231,81 @@ function WorkspaceContent(props: CompetitionWorkspaceProps & { athleteId: string
           {eventListing.isError ? <p role="alert">{readableError(eventListing.error)}</p> : null}
         </div>
       ) : null}
-      <FamilyPanel
-        display={props.section === undefined || props.section === 'results' ? 'active' : 'inactive'}
-        title="실제 대회 결과"
-        family="race-result"
-        api={api.results}
-        scope={scope}
-        commandKey={commandKey}
-        makeDraft={resultDraft}
-        fields={(draft) => resultFields(draft, relations, eventChoices)}
-        parse={parseResult}
-        summary={(record) => (
-          <>
-            <h3>{record.localDate} 대회 결과</h3>
-            <p>
-              {record.timezone} · 대회{' '}
-              {record.raceEventId === null
-                ? '연결 없음'
-                : (eventChoices?.find((choice) => choice.id === record.raceEventId)?.label ??
-                  '연결된 대회')}
-            </p>
-            <p>
-              출처 {record.source.kind}
-              {record.source.kind === 'official'
-                ? ` · 제출된 출처 ${record.source.authority} · ${record.source.verifiedAt === null ? '검토 시각 미상' : `검토 시각 기록 ${record.source.verifiedAt}`}`
-                : record.source.kind === 'device'
-                  ? ` · ${record.source.providerLabel}`
-                  : ''}
-            </p>
-            {record.source.kind === 'official' ? (
+      {props.resultEditing ? (
+        <ResultPanel
+          display={
+            props.section === undefined || props.section === 'results' ? 'active' : 'inactive'
+          }
+          capability={props.resultEditing}
+          legacy={api.results}
+          scope={scope}
+          commandKey={commandKey}
+          relations={relations}
+          eventChoices={eventChoices}
+        />
+      ) : (
+        <FamilyPanel
+          display={
+            props.section === undefined || props.section === 'results' ? 'active' : 'inactive'
+          }
+          title="실제 대회 결과"
+          family="race-result"
+          api={api.results}
+          scope={scope}
+          commandKey={commandKey}
+          makeDraft={resultDraft}
+          fields={(draft) => resultFields(draft, relations, eventChoices)}
+          parse={parseResult}
+          summary={(record) => (
+            <>
+              <h3>{record.localDate} 대회 결과</h3>
               <p>
-                인증 자료 첨부 · 링크. 제출된 출처와 검토 시각만으로 기록의 진위가 확인되었다고
-                판단하지 않습니다.
+                {record.timezone} · 대회{' '}
+                {record.raceEventId === null
+                  ? '연결 없음'
+                  : (eventChoices?.find((choice) => choice.id === record.raceEventId)?.label ??
+                    '연결된 대회')}
               </p>
-            ) : null}
-            {record.source.kind === 'official' ? (
-              <a href={record.source.resultUrl} rel="noreferrer" target="_blank">
-                첨부 기록 링크
-              </a>
-            ) : null}
-            <p>
-              Chip {record.chipSeconds ?? '미상'} 초 · Gun {record.gunSeconds ?? '미상'} 초
-            </p>
-            <p>
-              공식 {record.officialDistanceMeters ?? '미상'} m · 기기{' '}
-              {record.deviceDistanceMeters ?? '미상'} m
-            </p>
-            <p>
-              실제 Activity{' '}
-              {record.linkedActivityId === null
-                ? '연결 없음'
-                : (relations?.activities?.find((choice) => choice.id === record.linkedActivityId)
-                    ?.label ?? '연결된 실제 활동')}{' '}
-              · 날씨 {record.weatherNote ?? '미상'}
-            </p>
-          </>
-        )}
-      >
-        {({ records, state }) => <PersonalBestComparison records={records} state={state} />}
-      </FamilyPanel>
+              <p>
+                출처 {record.source.kind}
+                {record.source.kind === 'official'
+                  ? ` · 제출된 출처 ${record.source.authority} · ${record.source.verifiedAt === null ? '검토 시각 미상' : `검토 시각 기록 ${record.source.verifiedAt}`}`
+                  : record.source.kind === 'device'
+                    ? ` · ${record.source.providerLabel}`
+                    : ''}
+              </p>
+              {record.source.kind === 'official' ? (
+                <p>
+                  인증 자료 첨부 · 링크. 제출된 출처와 검토 시각만으로 기록의 진위가 확인되었다고
+                  판단하지 않습니다.
+                </p>
+              ) : null}
+              {record.source.kind === 'official' ? (
+                <a href={record.source.resultUrl} rel="noreferrer" target="_blank">
+                  첨부 기록 링크
+                </a>
+              ) : null}
+              <p>
+                Chip {record.chipSeconds ?? '미상'} 초 · Gun {record.gunSeconds ?? '미상'} 초
+              </p>
+              <p>
+                공식 {record.officialDistanceMeters ?? '미상'} m · 기기{' '}
+                {record.deviceDistanceMeters ?? '미상'} m
+              </p>
+              <p>
+                실제 Activity{' '}
+                {record.linkedActivityId === null
+                  ? '연결 없음'
+                  : (relations?.activities?.find((choice) => choice.id === record.linkedActivityId)
+                      ?.label ?? '연결된 실제 활동')}{' '}
+                · 날씨 {record.weatherNote ?? '미상'}
+              </p>
+            </>
+          )}
+        >
+          {({ records, state }) => <PersonalBestComparison records={records} state={state} />}
+        </FamilyPanel>
+      )}
       <FamilyPanel
         display={
           props.section === undefined || props.section === 'training-bests' ? 'active' : 'inactive'
@@ -304,6 +338,8 @@ function WorkspaceContent(props: CompetitionWorkspaceProps & { athleteId: string
   );
 }
 function readableError(error: unknown): string {
+  if (error instanceof Error && error.message === 'PROOF_CONFIRMATION_REQUIRED')
+    return '기존 증빙을 정확 버전으로 다시 확인하거나 명시적으로 연결 해제하세요.';
   if (error instanceof ZodError)
     return '입력 형식 또는 서버 응답이 올바르지 않습니다. 날짜, 시간대, 연결 항목과 값을 확인하세요.';
   if (error instanceof RaceRequestError) {
@@ -357,6 +393,7 @@ function FamilyPanel<R extends RecordHead, V>({
   parse,
   summary,
   children,
+  Editor = RecordEditor,
 }: {
   display: 'active' | 'inactive';
   title: string;
@@ -368,6 +405,7 @@ function FamilyPanel<R extends RecordHead, V>({
   fields: (draft: Draft) => readonly Field[];
   parse: (draft: Draft) => V;
   summary: (record: R) => ReactNode;
+  Editor?: ComponentType<RecordEditorProps<V> & { record?: R | undefined }>;
   children?: (data: {
     records: readonly R[];
     state: 'pending' | 'error' | 'partial' | 'complete';
@@ -531,7 +569,8 @@ function FamilyPanel<R extends RecordHead, V>({
       ) : null}
       <p role="status">{status}</p>
       {editor ? (
-        <RecordEditor
+        <Editor
+          record={editor.kind === 'edit' ? editor.record : undefined}
           key={editor.kind === 'edit' ? editor.record.id : 'new'}
           title={title}
           initial={makeDraft(editor.kind === 'edit' ? editor.record : undefined)}
@@ -612,7 +651,7 @@ function PersonalBestComparison({
   records,
   state,
 }: {
-  records: readonly RaceResult[];
+  records: readonly RaceResultCompatibleRead[];
   state: 'pending' | 'error' | 'partial' | 'complete';
 }) {
   const uid = useId();
@@ -763,6 +802,12 @@ function PersonalBestComparison({
                   {' · '}
                   {group.best.record.source.kind === 'manual' ? '직접 입력' : '제출된 공식 출처'}
                   {group.best.evidence.linkPresent ? ' · 링크 근거 있음' : ''}
+                  {group.best.evidence.availableAttachments > 0
+                    ? ` · 자료 첨부 ${group.best.evidence.availableAttachments}개`
+                    : ''}
+                  {group.best.evidence.unavailableAttachments > 0
+                    ? ` · 사용 불가 자료 ${group.best.evidence.unavailableAttachments}개`
+                    : ''}
                 </li>
               ))}
             </ul>
@@ -782,6 +827,18 @@ function PersonalBestComparison({
     </section>
   );
 }
+type RecordEditorProps<V> = {
+  title: string;
+  initial: Draft;
+  fields: (draft: Draft) => readonly Field[];
+  parse: (draft: Draft) => V;
+  commandKey: () => string;
+  commandBasis: string;
+  revisionReview: ReactNode;
+  cancel: () => void;
+  commit: (values: V, key: string, signal: AbortSignal) => Promise<void>;
+  children?: ReactNode;
+};
 function RecordEditor<V>({
   title,
   initial,
@@ -792,17 +849,8 @@ function RecordEditor<V>({
   revisionReview,
   cancel,
   commit,
-}: {
-  title: string;
-  initial: Draft;
-  fields: (draft: Draft) => readonly Field[];
-  parse: (draft: Draft) => V;
-  commandKey: () => string;
-  commandBasis: string;
-  revisionReview: ReactNode;
-  cancel: () => void;
-  commit: (values: V, key: string, signal: AbortSignal) => Promise<void>;
-}) {
+  children,
+}: RecordEditorProps<V>) {
   const [draft, setDraft] = useState(initial);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
@@ -811,6 +859,7 @@ function RecordEditor<V>({
   const command = useRef<{ json: string; key: string } | null>(null);
   const controller = useRef<AbortController | null>(null);
   const alive = useRef(true);
+  const composing = useRef(false);
   useEffect(() => {
     alive.current = true;
     first.current?.focus();
@@ -821,7 +870,7 @@ function RecordEditor<V>({
   }, []);
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (pending) return;
+    if (pending || composing.current) return;
     setError('');
     try {
       const values = parse(draft);
@@ -840,6 +889,12 @@ function RecordEditor<V>({
     <form
       className={styles.form}
       aria-label={`${title} 편집 양식`}
+      onCompositionStart={() => {
+        composing.current = true;
+      }}
+      onCompositionEnd={() => {
+        composing.current = false;
+      }}
       onSubmit={(event) => {
         void submit(event);
       }}
@@ -894,6 +949,7 @@ function RecordEditor<V>({
             </div>
           );
         })}
+        {children}
       </fieldset>
       {error ? <p role="alert">{error}</p> : null}
       <div className={styles.actions}>
@@ -908,3 +964,212 @@ function RecordEditor<V>({
   );
 }
 export { RecordEditor as internalRecordEditor };
+
+type ResultSubmission =
+  | { mode: 'actual_only'; values: ReturnType<typeof parseResult> }
+  | { mode: 'proofs'; values: RaceResultValuesV2 };
+const ResultEditorContext = createContext<{
+  proofs: CompetitionsProofApi;
+  scope: readonly string[];
+} | null>(null);
+function ResultPanel({
+  display,
+  capability,
+  legacy,
+  scope,
+  commandKey,
+  relations,
+  eventChoices,
+}: {
+  display: 'active' | 'inactive';
+  capability: NonNullable<CompetitionWorkspaceProps['resultEditing']>;
+  legacy: RaceApi['results'];
+  scope: string[];
+  commandKey: () => string;
+  relations: CompetitionRelations | undefined;
+  eventChoices: readonly { id: string; label: string }[] | undefined;
+}) {
+  const api: PanelApi<RaceResultCompatibleRead, ResultSubmission> = {
+    read: (id, signal) => capability.results.read({ schemaVersion: 2, id }, signal),
+    list: (query, signal) => capability.results.list({ ...query, schemaVersion: 2 }, signal),
+    create: (input, signal) => {
+      if (input.values.mode !== 'proofs') throw new Error('RESULT_CREATE_REQUIRES_V2');
+      return capability.results.create(
+        { schemaVersion: 2, values: input.values.values, idempotencyKey: input.idempotencyKey },
+        signal,
+      );
+    },
+    update: (id, input, signal) =>
+      input.values.mode === 'actual_only'
+        ? legacy.update(
+            id,
+            {
+              values: input.values.values,
+              expectedRevision: input.expectedRevision,
+              idempotencyKey: input.idempotencyKey,
+            },
+            signal,
+          )
+        : capability.results.update(
+            id,
+            {
+              schemaVersion: 2,
+              values: input.values.values,
+              expectedRevision: input.expectedRevision,
+              idempotencyKey: input.idempotencyKey,
+            },
+            signal,
+          ),
+    delete: legacy.delete,
+  };
+  return (
+    <ResultEditorContext value={{ proofs: capability.proofs, scope }}>
+      <FamilyPanel
+        display={display}
+        title="실제 대회 결과"
+        family="race-result-v2"
+        api={api}
+        scope={scope}
+        commandKey={commandKey}
+        makeDraft={resultDraft}
+        fields={(draft) => resultFields(draft, relations, eventChoices)}
+        parse={(draft): ResultSubmission => ({ mode: 'actual_only', values: parseResult(draft) })}
+        Editor={ResultRecordEditor}
+        summary={(record) => (
+          <>
+            <h3>{record.localDate} 대회 결과</h3>
+            <p>
+              {record.timezone} · 출처 {record.source.kind}
+              {record.source.kind === 'official'
+                ? ` · 제출된 출처 ${record.source.authority}`
+                : record.source.kind === 'device'
+                  ? ` · ${record.source.providerLabel}`
+                  : ''}
+            </p>
+            <p>
+              대회{' '}
+              {record.raceEventId === null
+                ? '연결 없음'
+                : (eventChoices?.find((choice) => choice.id === record.raceEventId)?.label ??
+                  '연결된 대회')}{' '}
+              · 실제 Activity{' '}
+              {record.linkedActivityId === null
+                ? '연결 없음'
+                : (relations?.activities?.find((choice) => choice.id === record.linkedActivityId)
+                    ?.label ?? '연결된 실제 활동')}
+            </p>
+            {'schemaVersion' in record && record.source.kind === 'official' ? (
+              <a href={record.source.resultUrl} target="_blank" rel="noreferrer">
+                제출된 공식 기록 링크
+              </a>
+            ) : null}
+            <p>
+              Chip {record.chipSeconds ?? '미상'} 초 · Gun {record.gunSeconds ?? '미상'} 초
+            </p>
+            <p>
+              공식 {record.officialDistanceMeters ?? '미상'} m · 기기{' '}
+              {record.deviceDistanceMeters ?? '미상'} m
+            </p>
+            <p>날씨 {record.weatherNote ?? '미상'}</p>
+            {'schemaVersion' in record ? (
+              <>
+                {record.proofs.link ? (
+                  <a href={record.proofs.link} target="_blank" rel="noreferrer">
+                    첨부 기록 링크
+                  </a>
+                ) : null}
+                {record.proofs.attachments.length > 0 ? (
+                  <p>
+                    인증 자료 첨부 · 이미지/PDF {record.proofs.attachments.length}개 · 사용 불가{' '}
+                    {record.proofs.attachments.filter((a) => a.status === 'unavailable').length}개
+                  </p>
+                ) : null}
+              </>
+            ) : record.source.kind === 'official' ? (
+              <>
+                <a href={record.source.resultUrl} target="_blank" rel="noreferrer">
+                  첨부 기록 링크
+                </a>
+                <p>역사 검토 시각 {record.source.verifiedAt ?? '미상'}</p>
+              </>
+            ) : null}
+            <p>첨부 자료와 제출 출처는 진위 확인 완료가 아닙니다.</p>
+          </>
+        )}
+      >
+        {({ records, state }) => <PersonalBestComparison records={records} state={state} />}
+      </FamilyPanel>
+    </ResultEditorContext>
+  );
+}
+function ResultRecordEditor(
+  props: RecordEditorProps<ResultSubmission> & { record?: RaceResultCompatibleRead | undefined },
+) {
+  const context = use(ResultEditorContext);
+  if (context === null) throw new Error('RESULT_EDITOR_CAPABILITY_REQUIRED');
+  return <ResultProofEditor {...props} proofs={context.proofs} scope={context.scope} />;
+}
+function ResultProofEditor(
+  props: RecordEditorProps<ResultSubmission> & {
+    record?: RaceResultCompatibleRead | undefined;
+    proofs: CompetitionsProofApi;
+    scope: readonly string[];
+  },
+) {
+  const record = props.record;
+  const [mode, setMode] = useState<'actual_only' | 'proofs'>(record ? 'actual_only' : 'proofs');
+  const [link, setLink] = useState(
+    record && 'schemaVersion' in record ? (record.proofs.link ?? '') : '',
+  );
+  const [choices, setChoices] = useState<readonly ProofChoice[]>(() =>
+    record && 'schemaVersion' in record
+      ? record.proofs.attachments.map((attachment) => ({ state: 'retained', attachment }))
+      : [],
+  );
+  const uid = useId();
+  return (
+    <RecordEditor
+      {...props}
+      parse={(draft): ResultSubmission =>
+        mode === 'actual_only'
+          ? { mode, values: parseResult(draft) }
+          : { mode, values: parseResultV2(draft, link, selectedProofRefs(choices)) }
+      }
+    >
+      {record ? (
+        <div className={styles.field}>
+          <label htmlFor={`${uid}-mode`}>편집 범위</label>
+          <select
+            id={`${uid}-mode`}
+            value={mode}
+            onChange={(e) => setMode(e.target.value === 'proofs' ? 'proofs' : 'actual_only')}
+          >
+            <option value="actual_only">기록 값만 수정 · 기존 증빙 보존</option>
+            <option value="proofs">증빙도 명시적으로 변경</option>
+          </select>
+        </div>
+      ) : null}
+      {mode === 'actual_only' ? (
+        <p>기존 증빙 연결은 서버에서 그대로 보존합니다. 진위 검토 시각을 새로 만들지 않습니다.</p>
+      ) : (
+        <>
+          <div className={styles.field}>
+            <label htmlFor={`${uid}-link`}>증빙 HTTPS 링크 (선택)</label>
+            <input
+              id={`${uid}-link`}
+              type="url"
+              value={link}
+              onChange={(e) => setLink(e.target.value)}
+            />
+          </div>
+          <ProofSelector
+            api={props.proofs}
+            scope={props.scope}
+            choices={choices}
+            onChange={setChoices}
+          />
+        </>
+      )}
+    </RecordEditor>
+  );
+}

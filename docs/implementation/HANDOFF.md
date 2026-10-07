@@ -517,3 +517,9 @@ Root HK unit426·실제 PG4 및 persistence TS를 확인했다. R1/R2의 actual 
 Root 실제 HK storage39+chain13 PG52/52를 확인했고 초기50PASS/2FAIL을 보존한다. 별도 capability 계약/API/platform191/191는 phase의 검증 커밋 f3d78b15에 있다. [I](progress/M2-02i.md)·[J](progress/M2-02j.md) 기록을 따른다. 새 J editor/Host unit83·Next/Vite build는 성공했지만 Chrome actualR3/R4 각두Host2FAIL이다. R4의 exact recheck GET200 이후 선택이 retained에 남는 실패로, readonly proof DTO를 strict write DTO로 spread한 실제 UI 문제를 발견해 명시 최소 identity projection과 positive 재확인 회귀를 native actor가 수정 중이다. E2E/제품 경로 성공으로 승격하지 않는다.
 
 native 병렬은 J selector수정, Garmin current metadata/purpose gap 준비, 실제 authenticated export/restore integration조사로 비중복 배정했다. Root DB/browser·shared registry·graph/Git는 직렬 통합한다. Garmin collector에는 개별 provider processing consent mapping이 실제 없음을 확인했으므로 common provider gate를 임의로 추가하지 않고 not_captured/finiteblocked를 정확히 유지한다. 실제 underlying grant/retained-use closure는 별도 미완료다. PB Chip/Gun·거리 기준 및 AWS 로그인 가능 여부는 재질문했으며 답변 대기, FUT-09 실제 원문도 미수신이다. I/J/phase in_progress·main/push0·외부not_executed를 유지한다.
+
+## 증빙 화면 실제 교정 수용 · 2026-10-08
+
+Root가 read→write DTO 과다 필드 문제를 수정한 증빙 selector의 unit86·Next/Vite build 및 실제 Chrome R5/R6 각두 Host2/2를 확인했다. R6는320px·키보드·한글 입력값 보존을 포함하며 입력21 SHA 변경0, 시험 DB/전체5역할 잔존0이다. [J 기록](progress/M2-02j.md)에 R1–R4 실패와 교정·실제 증거를 분리했다. iPhone/native IME·운영 배포·normal registry/완전 authenticated restore 및 J/phase 완료 증거로 사용하지 않는다.
+
+Garmin 저장 canonical Activity 수동 목적은 사용자 승인된 S22 app core 처리 정의로 actual app admission을 적용하도록 정책 연결을 정정 중이다. 기존 not_captured 개별 collection 권한은 유지하며 app 동의를 신규 원격 수집이나 historical raw grant로 치환하지 않는다. metadata retained read와 새 core 처리 gate를 분리한다. 이전 blanket blocked 준비 기록은 역사로 보존하고 새 helper unit30 및 실제 PG는 별도로 기록한다. native 병렬은 V7 authenticated protocol 구현, Garmin core 목적 검증, 전체 원자 승인 successor 준비다. Root는 실제 DB/browser·공통 통합·Git/graph를 직렬 소유한다. 대회 삭제 시 승인 영양의 연결 해제·재연결/재승인 전 시각 사용 중단 및 음식/수량/실제 섭취 보존 결정을 유지한다. main/push0·I/J/phase in_progress·외부 not_executed다.

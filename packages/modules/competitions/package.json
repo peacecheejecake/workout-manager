@@ -16,6 +16,7 @@
   "exports": {
     "./competition-workspace": "./src/competition-workspace.tsx",
     "./race-api": "./src/race-api.ts",
+    "./result-capability-api": "./src/result-capability-api.ts",
     "./competitions-proof-api": "./src/competitions-proof-api.ts",
     "./competition-host": "./src/competition-host.tsx",
     "./race-detail": "./src/race-detail.tsx",

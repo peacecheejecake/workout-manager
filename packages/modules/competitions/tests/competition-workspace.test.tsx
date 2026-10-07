@@ -12,12 +12,15 @@ import {
 import { raceEventSchema, raceResultSchema, trainingBestSchema } from '@workout/contracts/races';
 import { fixtureServer } from '@workout/tooling/test-setup';
 import { CompetitionWorkspace } from '../src/competition-workspace';
+import { raceResultReadV2Schema } from '@workout/contracts/race-result-v2';
+import { createCompetitionsProofApi } from '../src/competitions-proof-api';
 import { createRaceApi, RaceRequestError } from '../src/race-api';
 import {
   eventDraft,
   parseEvent,
   resultDraft,
   parseResult,
+  parseResultV2,
   bestDraft,
   parseBest,
 } from '../src/race-forms';
@@ -1198,4 +1201,200 @@ it('V2 read rejects wrong identities, unknown DTO fields and raw oversized repli
       }),
     ).rejects.toThrow();
   }
+});
+
+function resultEditorSetup(
+  records: unknown[],
+  write: (request: TransportRequest) => { status: number; body: unknown },
+) {
+  const calls: TransportRequest[] = [];
+  const boundary = transport((request) => {
+    calls.push(request);
+    if (request.method !== 'GET') return write(request);
+    if (request.path.startsWith('/bff/v1/race-results/v2?'))
+      return { status: 200, body: { ...page('race-result', records), schemaVersion: 2 } };
+    if (
+      request.path.startsWith('/bff/v1/gallery/media?') ||
+      request.path.startsWith('/bff/v1/resources?')
+    )
+      return { status: 200, body: { items: [], total: 0 } };
+    if (request.path.startsWith('/bff/v1/races?'))
+      return { status: 200, body: page('race-event', []) };
+    return { status: 200, body: page('training-best', []) };
+  });
+  const capability = {
+    results: createRaceApi(boundary).resultsV2,
+    proofs: createCompetitionsProofApi(boundary),
+  };
+  const view = render(
+    <CompetitionWorkspace
+      section="results"
+      athleteId="actor"
+      sessionId="session"
+      transport={boundary}
+      resultEditing={capability}
+      newCommandKey={() => 'proof_retry_key'}
+    />,
+  );
+  return { calls, view, boundary, capability };
+}
+it('mixed V2 results render original actual values and V1 actual-only PATCH never sends proofs or verifiedAt', async () => {
+  const official = {
+    ...v2Record,
+    source: { kind: 'official', authority: '주최자', resultUrl: 'https://example.test/results' },
+    proofs: {
+      link: null,
+      attachments: [{ kind: 'gallery-image', mediaItemId: id, status: 'unavailable' }],
+    },
+  };
+  const fixture = resultEditorSetup([official], () => ({ status: 200, body: { id, revision: 3 } }));
+  await screen.findByText('Chip 0 초 · Gun 미상 초');
+  const user = userEvent.setup();
+  await user.click(screen.getByRole('button', { name: '편집' }));
+  expect(screen.getByLabelText('편집 범위')).toHaveValue('actual_only');
+  await user.clear(screen.getByLabelText('날씨 메모'));
+  await user.type(screen.getByLabelText('날씨 메모'), '비');
+  await user.click(screen.getByRole('button', { name: '저장' }));
+  await screen.findByText(/저장이 서버에 반영되었습니다/);
+  const call = fixture.calls.find((request) => request.method === 'PATCH');
+  expect(call?.path).toBe(`/bff/v1/race-results/${id}`);
+  expect(call?.body).not.toHaveProperty('schemaVersion');
+  expect(call?.body).not.toHaveProperty('values.proofs');
+  expect(call?.body).toMatchObject({
+    expectedRevision: 2,
+    values: {
+      source: { kind: 'official', authority: '주최자', resultUrl: 'https://example.test/results' },
+      chipSeconds: 0,
+      gunSeconds: null,
+      weatherNote: '비',
+    },
+  });
+  expect(call?.body).not.toHaveProperty('values.source.verifiedAt');
+});
+it('retained unavailable proof blocks explicit proof changes until unlink, keeping retry key and draft on conflict', async () => {
+  let tries = 0;
+  const retained = {
+    ...v2Record,
+    proofs: {
+      link: null,
+      attachments: [{ kind: 'gallery-image', mediaItemId: id, status: 'unavailable' }],
+    },
+  };
+  const fixture = resultEditorSetup([retained], () =>
+    ++tries === 1
+      ? { status: 409, body: { error: { code: 'REVISION_CONFLICT' } } }
+      : { status: 200, body: { id, revision: 3 } },
+  );
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole('button', { name: '편집' }));
+  await user.selectOptions(screen.getByLabelText('편집 범위'), 'proofs');
+  await user.type(screen.getByLabelText('증빙 HTTPS 링크 (선택)'), 'https://example.test/proof');
+  await user.click(screen.getByRole('button', { name: '저장' }));
+  await screen.findByText('기존 증빙을 정확 버전으로 다시 확인하거나 명시적으로 연결 해제하세요.');
+  expect(tries).toBe(0);
+  await user.click(screen.getByRole('button', { name: '증빙 연결 해제 1' }));
+  await user.click(screen.getByRole('button', { name: '저장' }));
+  await screen.findByText(/다른 변경과 충돌했습니다/);
+  expect(screen.getByLabelText('증빙 HTTPS 링크 (선택)')).toHaveValue('https://example.test/proof');
+  await user.click(screen.getByRole('button', { name: '저장' }));
+  await screen.findByText(/저장이 서버에 반영되었습니다/);
+  const calls = fixture.calls.filter((request) => request.method === 'PATCH');
+  expect(calls).toHaveLength(2);
+  expect(
+    calls.map(({ path, method, body, idempotencyKey }) => ({
+      path,
+      method,
+      body,
+      idempotencyKey,
+    }))[0],
+  ).toEqual(
+    calls.map(({ path, method, body, idempotencyKey }) => ({
+      path,
+      method,
+      body,
+      idempotencyKey,
+    }))[1],
+  );
+  expect(calls[0]).toMatchObject({
+    path: `/bff/v1/race-results/v2/${id}`,
+    body: {
+      schemaVersion: 2,
+      expectedRevision: 2,
+      values: { proofs: { link: 'https://example.test/proof', attachments: [] } },
+    },
+    idempotencyKey: 'proof_retry_key',
+  });
+});
+it('new V2 result uses explicit link and zero/null values, and suppresses submission during IME composition', async () => {
+  const fixture = resultEditorSetup([], () => ({ status: 201, body: { id, revision: 1 } }));
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole('button', { name: '새 실제 대회 결과 등록' }));
+  fireEvent.change(screen.getByLabelText('현지 날짜'), { target: { value: '2026-10-10' } });
+  await user.type(screen.getByLabelText('Chip 시간 (초)'), '0');
+  await user.type(screen.getByLabelText('증빙 HTTPS 링크 (선택)'), 'https://example.test/proof');
+  const note = screen.getByLabelText('날씨 메모');
+  fireEvent.compositionStart(note);
+  fireEvent.submit(screen.getByRole('form', { name: '실제 대회 결과 편집 양식' }));
+  expect(fixture.calls.filter((r) => r.method === 'POST')).toHaveLength(0);
+  fireEvent.compositionEnd(note);
+  await user.click(screen.getByRole('button', { name: '저장' }));
+  await screen.findByText(/저장이 서버에 반영되었습니다/);
+  expect(fixture.calls.find((r) => r.method === 'POST')).toMatchObject({
+    path: '/bff/v1/race-results/v2',
+    body: {
+      schemaVersion: 2,
+      values: {
+        chipSeconds: 0,
+        gunSeconds: null,
+        proofs: { link: 'https://example.test/proof', attachments: [] },
+      },
+    },
+  });
+});
+it('V2 proof draft is private to the authenticated lifetime and capability remains opt-in', async () => {
+  const fixture = resultEditorSetup([], () => ({ status: 201, body: { id, revision: 1 } }));
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole('button', { name: '새 실제 대회 결과 등록' }));
+  await user.type(screen.getByLabelText('증빙 HTTPS 링크 (선택)'), 'https://example.test/private');
+  fixture.view.rerender(
+    <CompetitionWorkspace
+      section="results"
+      athleteId="other"
+      sessionId="next"
+      transport={fixture.boundary}
+      resultEditing={fixture.capability}
+    />,
+  );
+  expect(screen.queryByDisplayValue('https://example.test/private')).not.toBeInTheDocument();
+  await user.click(await screen.findByRole('button', { name: '새 실제 대회 결과 등록' }));
+  expect(screen.getByLabelText('증빙 HTTPS 링크 (선택)')).toHaveValue('');
+  fixture.view.rerender(
+    <CompetitionWorkspace
+      section="results"
+      athleteId="other"
+      sessionId="next"
+      transport={fixture.boundary}
+    />,
+  );
+  expect(screen.queryByLabelText('증빙 HTTPS 링크 (선택)')).not.toBeInTheDocument();
+});
+it('V2 form parsing validates HTTPS/ref bounds without storing copied proof metadata', () => {
+  const draft = resultDraft(raceResultReadV2Schema.parse(v2Record));
+  expect(parseResultV2(draft, '', [])).toMatchObject({
+    chipSeconds: 0,
+    gunSeconds: null,
+    proofs: { link: null, attachments: [] },
+  });
+  expect(() => parseResultV2(draft, 'http://example.test/proof', [])).toThrow();
+  expect(() =>
+    parseResultV2(
+      draft,
+      '',
+      Array.from({ length: 5 }, () => ({
+        kind: 'gallery-image',
+        mediaItemId: id,
+        expectedAccessRevision: 1,
+      })),
+    ),
+  ).toThrow();
 });

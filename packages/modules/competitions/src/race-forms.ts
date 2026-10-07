@@ -1,9 +1,14 @@
 import {
+  raceResultValuesV2Schema,
+  type RaceResultCompatibleRead,
+  type RaceResultAttachmentInput,
+} from '@workout/contracts/race-result-v2';
+import {
   raceEventValuesSchema,
   raceResultValuesSchema,
   trainingBestValuesSchema,
 } from '@workout/contracts/race-commands';
-import type { RaceEvent, RaceResult, TrainingBest } from '@workout/contracts/races';
+import type { RaceEvent, TrainingBest } from '@workout/contracts/races';
 import type { CompetitionRelations, NamedChoice } from './competition-relations';
 
 export type Draft = Readonly<Record<string, string>>;
@@ -184,7 +189,7 @@ export function resultFields(
     field('weatherNote', '날씨 메모', 'textarea'),
   ];
 }
-export function resultDraft(record?: RaceResult): Draft {
+export function resultDraft(record?: RaceResultCompatibleRead): Draft {
   if (!record) return { sourceKind: 'manual', timezone: 'Asia/Seoul' };
   return strings({
     raceEventId: record.raceEventId,
@@ -256,5 +261,17 @@ export function parseBest(d: Draft) {
     basis: value(d, 'basis'),
     distanceMeters: number(d, 'distanceMeters'),
     elapsedSeconds: number(d, 'elapsedSeconds'),
+  });
+}
+
+/** Explicit V2 command values only; read descriptors are never coerced into write refs. */
+export function parseResultV2(
+  draft: Draft,
+  link: string,
+  attachments: readonly RaceResultAttachmentInput[],
+) {
+  return raceResultValuesV2Schema.parse({
+    ...parseResult(draft),
+    proofs: { link: link === '' ? null : link, attachments },
   });
 }

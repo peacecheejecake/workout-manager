@@ -12,6 +12,7 @@ vi.mock('../src/competition-workspace', () => ({
     return (
       <section aria-label="기존 대회 화면">
         <p>저장된 연결</p>
+        <input aria-label="비공개 결과 초안" defaultValue="" />
         {props.relations?.plans?.map((p) => (
           <p key={p.id}>{p.label}</p>
         ))}
@@ -35,11 +36,13 @@ function reply(body: unknown, status = 200) {
 function empty(path: string) {
   return path.includes('/plans')
     ? reply({ head: null, history: [] })
-    : path.includes('/courses')
-      ? reply({ courses: [], total: 0 })
-      : reply({ items: [], total: 0 });
+    : path === '/bff/v1/race-results/capabilities'
+      ? reply({ schemaVersion: 1, legacyResults: true, proofResultsV2: false })
+      : path.includes('/courses')
+        ? reply({ courses: [], total: 0 })
+        : reply({ items: [], total: 0 });
 }
-it('starts all three reads independently and supplies named authenticated metadata', async () => {
+it('starts capability and all three relation reads independently and supplies named authenticated metadata', async () => {
   const signals: AbortSignal[] = [];
   const pending: (() => void)[] = [];
   const request = vi.fn<AuthenticatedTransport['request']>(
@@ -69,7 +72,8 @@ it('starts all three reads independently and supplies named authenticated metada
       onSectionChange={onSectionChange}
     />,
   );
-  await waitFor(() => expect(request).toHaveBeenCalledTimes(3));
+  await waitFor(() => expect(request).toHaveBeenCalledTimes(4));
+  expect(workspace).not.toHaveBeenCalled();
   expect(signals.every((signal) => !signal.aborted)).toBe(true);
   await act(async () => {
     pending.forEach((resolve) => resolve());
@@ -129,7 +133,7 @@ it.each(['account', 'session'] as const)(
     const mounted = render(
       <CompetitionHost athleteId="alice" sessionId="a" transport={{ request: oldRequest }} />,
     );
-    await waitFor(() => expect(oldRequest).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(oldRequest).toHaveBeenCalledTimes(4));
     const request = vi.fn<AuthenticatedTransport['request']>(async (input) => empty(input.path));
     mounted.rerender(
       <CompetitionHost
@@ -138,7 +142,7 @@ it.each(['account', 'session'] as const)(
         transport={{ request }}
       />,
     );
-    await waitFor(() => expect(request).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(4));
     expect(oldSignals.every((signal) => signal.aborted)).toBe(true);
     await act(async () => {
       oldResolvers.forEach((resolve) => resolve());
@@ -162,7 +166,7 @@ it('does not issue authenticated reads when logged out and cancels pending reads
   mounted.rerender(
     <CompetitionHost athleteId="alice" sessionId="a" transport={{ request: pending }} />,
   );
-  await waitFor(() => expect(pending).toHaveBeenCalledTimes(3));
+  await waitFor(() => expect(pending).toHaveBeenCalledTimes(4));
   mounted.rerender(
     <CompetitionHost athleteId={null} sessionId="a" transport={{ request: pending }} />,
   );
@@ -211,4 +215,111 @@ it('treats malformed DTO as localized unavailable, retaining other successful ca
   ).toBeVisible();
   expect(workspace.mock.lastCall?.[0].relations?.activities).toBeUndefined();
   expect(workspace.mock.lastCall?.[0].relations?.courses).toEqual([]);
+});
+
+it.each([
+  [true, false, false],
+  [true, true, true],
+  [false, false, null],
+  [false, true, null],
+] as const)(
+  'uses actual capability legacy=%s proof=%s before mounting an editor',
+  async (legacyResults, proofResultsV2, expected) => {
+    const request = vi.fn<AuthenticatedTransport['request']>(async (input) =>
+      input.path.endsWith('/capabilities')
+        ? reply({ schemaVersion: 1, legacyResults, proofResultsV2 })
+        : empty(input.path),
+    );
+    render(<CompetitionHost athleteId="alice" sessionId="a" transport={{ request }} />);
+    if (expected === null) {
+      expect(await screen.findByText('현재 결과 편집을 사용할 수 없습니다.')).toBeVisible();
+      expect(workspace).not.toHaveBeenCalled();
+    } else {
+      await screen.findByText('저장된 연결');
+      expect(Boolean(workspace.mock.lastCall?.[0].resultEditing)).toBe(expected);
+    }
+  },
+);
+it.each([400, 404, 503])(
+  'does not infer legacy support from HTTP %s and only retries explicitly',
+  async (status) => {
+    let failed = true;
+    const request = vi.fn<AuthenticatedTransport['request']>(async (input) =>
+      input.path.endsWith('/capabilities') && failed
+        ? reply({ secret: 'private' }, status)
+        : empty(input.path),
+    );
+    render(<CompetitionHost athleteId="alice" sessionId="a" transport={{ request }} />);
+    await screen.findByText(/결과 편집 지원을 확인하지 못했습니다/);
+    expect(workspace).not.toHaveBeenCalled();
+    expect(screen.queryByText('private')).not.toBeInTheDocument();
+    failed = false;
+    await userEvent.click(screen.getByRole('button', { name: '결과 편집 지원 다시 확인' }));
+    await screen.findByText('저장된 연결');
+    expect(
+      request.mock.calls.filter(([input]) => input.path.endsWith('/capabilities')),
+    ).toHaveLength(2);
+  },
+);
+it('preserves the mounted private draft and mode on rerender, focus and reconnect', async () => {
+  const request = vi.fn<AuthenticatedTransport['request']>(async (input) =>
+    input.path.endsWith('/capabilities')
+      ? reply({ schemaVersion: 1, legacyResults: true, proofResultsV2: true })
+      : empty(input.path),
+  );
+  const transport = { request };
+  const mounted = render(<CompetitionHost athleteId="alice" sessionId="a" transport={transport} />);
+  const draft = await screen.findByRole('textbox', { name: '비공개 결과 초안' });
+  await userEvent.type(draft, '유지할 입력');
+  const editing = workspace.mock.lastCall?.[0].resultEditing;
+  mounted.rerender(
+    <CompetitionHost athleteId="alice" sessionId="a" transport={transport} section="results" />,
+  );
+  act(() => {
+    window.dispatchEvent(new Event('focus'));
+    window.dispatchEvent(new Event('online'));
+  });
+  expect(screen.getByRole('textbox', { name: '비공개 결과 초안' })).toHaveValue('유지할 입력');
+  expect(workspace.mock.lastCall?.[0].resultEditing).toBe(editing);
+  expect(request.mock.calls.filter(([input]) => input.path.endsWith('/capabilities'))).toHaveLength(
+    1,
+  );
+});
+it('replaces private cache and draft when the session transport is replaced', async () => {
+  const request = vi.fn<AuthenticatedTransport['request']>(async (input) => empty(input.path));
+  const transport = { request };
+  const mounted = render(<CompetitionHost athleteId="alice" sessionId="a" transport={transport} />);
+  await userEvent.type(
+    await screen.findByRole('textbox', { name: '비공개 결과 초안' }),
+    'old private',
+  );
+  const replacement = vi.fn<AuthenticatedTransport['request']>(async (input) => empty(input.path));
+  mounted.rerender(
+    <CompetitionHost athleteId="alice" sessionId="a" transport={{ request: replacement }} />,
+  );
+  expect(await screen.findByRole('textbox', { name: '비공개 결과 초안' })).toHaveValue('');
+  expect(
+    replacement.mock.calls.filter(([input]) => input.path.endsWith('/capabilities')),
+  ).toHaveLength(1);
+});
+it('rejects a malformed capability without opening the editor and bounds explicit retries', async () => {
+  const request = vi.fn<AuthenticatedTransport['request']>(async (input) =>
+    input.path.endsWith('/capabilities')
+      ? reply({ schemaVersion: 1, legacyResults: true, proofResultsV2: false, extra: 'private' })
+      : empty(input.path),
+  );
+  render(<CompetitionHost athleteId="alice" sessionId="a" transport={{ request }} />);
+  await screen.findByText(/결과 편집 지원을 확인하지 못했습니다/);
+  for (let index = 0; index < 3; index++) {
+    await userEvent.click(screen.getByRole('button', { name: '결과 편집 지원 다시 확인' }));
+    await waitFor(() =>
+      expect(
+        request.mock.calls.filter(([input]) => input.path.endsWith('/capabilities')),
+      ).toHaveLength(index + 2),
+    );
+  }
+  expect(
+    screen.queryByRole('button', { name: '결과 편집 지원 다시 확인' }),
+  ).not.toBeInTheDocument();
+  expect(workspace).not.toHaveBeenCalled();
 });

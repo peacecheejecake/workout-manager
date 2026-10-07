@@ -26,6 +26,7 @@ import { coachingWorkerContextPath } from './fixtures/coaching-worker-context.ts
 import { createOperationsRepository } from '../packages/server/persistence/src/operations.ts';
 import { createPlanningRepository } from '../packages/server/persistence/src/planning.ts';
 import { createRaceRepository } from '../packages/server/persistence/src/races.ts';
+import { createRaceResultV2Repository } from '../packages/server/persistence/src/race-result-v2.ts';
 import { createNutritionRepository } from '../packages/server/persistence/src/nutrition-core.ts';
 import { createSupplementaryRepository } from '../packages/server/persistence/src/supplementary-core.ts';
 import { createStretchingRepository } from '../packages/server/persistence/src/stretching.ts';
@@ -66,9 +67,9 @@ import { createConfiguredWalkingRoutes } from '../apps/api/src/routing-deploymen
 import { createConfiguredRoutingAdmission } from '../apps/api/src/routing-admission.ts';
 import { createBoundedTrackParser } from '../packages/server/track-storage/src/parse-host.ts';
 import { spawnSync } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Pool } from 'pg';
@@ -188,6 +189,30 @@ function disposablePg17AdminUrl(value: unknown): URL | null {
   return parsed;
 }
 const externalPg = disposablePg17AdminUrl(process.env['IDENTITY_E2E_DISPOSABLE_PG17_ADMIN_URL']);
+const resultStage = process.env['IDENTITY_E2E_RACE_RESULTS_V2'];
+if (resultStage !== undefined && resultStage !== 'staged-108-111')
+  throw new Error('IDENTITY_RACE_RESULT_STAGE_INVALID');
+const stageRaceResults = resultStage === 'staged-108-111';
+// Explicit disposable acceptance profile; this does not register migrations or
+// activate configured production repositories. Pin every raw predecessor.
+const raceResultStageFiles = [
+  [
+    '108_nutrition_race_disconnection.sql',
+    'b71fc7ab7cb863932f1472c28d46200f42f22bc25d8ca198b529b6cc564a20f4',
+  ],
+  [
+    '109_race_result_proof_lifecycle.sql',
+    'fd2ecf020660c48d39990acdedc5838651ff873e7970b882814264b58808a9fa',
+  ],
+  [
+    '110_nutrition_disconnection_lineage.sql',
+    'd2891aeaeb3af586c42e4e2ee924eb4adc9de0e61af3011219c654a185c91614',
+  ],
+  [
+    '111_race_result_preserved_proof_updates.sql',
+    '69b7689c8579575eb899d2602e979db697039cb75b8a7b8f71ab54154b0d4576',
+  ],
+] as const;
 
 const detectedBin = [
   process.env['PG_BIN'],
@@ -297,7 +322,8 @@ function close() {
   return shutdown;
 }
 for (const signal of ['SIGTERM', 'SIGINT'] as const) {
-  process.once(signal, () => {
+  process.on(signal, () => {
+    // Repeated terminal signals must await the same bounded cleanup promise.
     void close().then(
       () => process.exit(0),
       () => process.exit(1),
@@ -449,6 +475,73 @@ try {
     await createFixtureRole(admin, 'workout_runtime');
     await admin.query('ALTER SCHEMA public OWNER TO workout_owner');
     await migrate(ownerUrl);
+    if (stageRaceResults) {
+      const owner = new Pool({ connectionString: ownerUrl, max: 1 });
+      try {
+        const role = await owner.query(
+          'SELECT rolsuper,rolbypassrls FROM pg_roles WHERE rolname=current_user',
+        );
+        if (
+          role.rows.length !== 1 ||
+          role.rows[0]?.rolsuper !== false ||
+          role.rows[0]?.rolbypassrls !== false
+        )
+          throw new Error('IDENTITY_RACE_RESULT_STAGE_OWNER_INVALID');
+        const before = await owner.query(
+          'SELECT version,checksum FROM schema_migrations ORDER BY version',
+        );
+        if (before.rows.length !== 107 || before.rows.at(-1)?.version !== 107)
+          throw new Error('IDENTITY_RACE_RESULT_NORMAL_PROFILE_INVALID');
+        await owner.query('BEGIN');
+        try {
+          for (const [filename, expected] of raceResultStageFiles) {
+            const sql = await readFile(
+              new URL(`../packages/server/persistence/migrations/${filename}`, import.meta.url),
+            );
+            if (createHash('sha256').update(sql).digest('hex') !== expected)
+              throw new Error('IDENTITY_RACE_RESULT_STAGE_SHA_MISMATCH');
+            await owner.query(sql.toString('utf8'));
+          }
+          const after = await owner.query(
+            'SELECT version,checksum FROM schema_migrations ORDER BY version',
+          );
+          if (JSON.stringify(before.rows) !== JSON.stringify(after.rows))
+            throw new Error('IDENTITY_RACE_RESULT_NORMAL_PROFILE_CHANGED');
+          const table =
+            await owner.query(`SELECT relrowsecurity,relforcerowsecurity,pg_get_userbyid(relowner)=current_user AS owned
+            FROM pg_class WHERE oid='public.race_result_proof_ref'::regclass`);
+          if (
+            table.rows.length !== 1 ||
+            table.rows[0]?.relrowsecurity !== true ||
+            table.rows[0]?.relforcerowsecurity !== true ||
+            table.rows[0]?.owned !== true
+          )
+            throw new Error('IDENTITY_RACE_RESULT_STAGE_OWNER_INVALID');
+          const functions =
+            await owner.query(`SELECT pg_get_userbyid(proowner)=current_user AS owned,prosecdef,proconfig
+            FROM pg_proc WHERE oid=ANY(ARRAY[
+              'public.race_result_proof_source_suppressed(text,text,uuid)'::regprocedure,
+              'public.guard_race_result_proof_body()'::regprocedure]::oid[])`);
+          if (
+            functions.rows.length !== 2 ||
+            functions.rows.some(
+              (row) =>
+                row.owned !== true ||
+                row.prosecdef !== true ||
+                !Array.isArray(row.proconfig) ||
+                !row.proconfig.includes('search_path=pg_catalog, pg_temp'),
+            )
+          )
+            throw new Error('IDENTITY_RACE_RESULT_STAGE_FUNCTION_INVALID');
+          await owner.query('COMMIT');
+        } catch (error) {
+          await owner.query('ROLLBACK');
+          throw error;
+        }
+      } finally {
+        await owner.end();
+      }
+    }
     const owners = await admin.query(`SELECT pg_get_userbyid(relowner) AS owner FROM pg_class
       WHERE relnamespace='public'::regnamespace AND relname IN
       ('openai_budget_fx_definition','openai_budget_price_definition','openai_budget_activation','openai_budget_month','openai_budget_reservation','openai_budget_journal')`);
@@ -507,6 +600,19 @@ try {
     await grantActivityTracks(adminUrl, 'workout_runtime');
     await grantCourses(adminUrl, 'workout_runtime');
     await grantRaces(adminUrl, 'workout_runtime');
+    if (stageRaceResults) {
+      const acl = await admin.query(`SELECT
+        has_function_privilege('workout_runtime','public.race_result_proof_source_suppressed(text,text,uuid)','EXECUTE') AS narrow_execute,
+        has_function_privilege('workout_runtime','public.guard_race_result_proof_body()','EXECUTE') AS private_execute,
+        has_table_privilege('workout_runtime','public.race_result_proof_ref','SELECT,INSERT,UPDATE,DELETE') AS private_table`);
+      if (
+        acl.rows.length !== 1 ||
+        acl.rows[0]?.narrow_execute !== true ||
+        acl.rows[0]?.private_execute !== false ||
+        acl.rows[0]?.private_table !== false
+      )
+        throw new Error('IDENTITY_RACE_RESULT_STAGE_ACL_INVALID');
+    }
     // This isolated, nonproduction fixture creates its own untrusted v3 analysis output.
     await admin.query('GRANT INSERT ON coaching_analysis_output TO workout_runtime');
     await createFixtureRole(admin, 'workout_coaching_worker');
@@ -769,6 +875,7 @@ try {
     aiSettings: createAiSettingsService(createAiSettingsRepository(database)),
     planning: createPlanningRepository(database),
     races: createRaceRepository(database),
+    ...(stageRaceResults ? { raceResultsV2: createRaceResultV2Repository(database) } : {}),
     nutrition: createNutritionRepository(database),
     restoreGeneration: createRestoreGenerationRepository(database),
     supplementary: createSupplementaryRepository(database),
