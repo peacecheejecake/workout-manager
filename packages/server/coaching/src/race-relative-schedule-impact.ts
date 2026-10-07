@@ -72,7 +72,14 @@ export const raceRoutineExpansionSchema = z.discriminatedUnion('state', [
 export type RaceRoutineExpansion = z.infer<typeof raceRoutineExpansionSchema>;
 const nutritionContext = z.strictObject({
   record: nutritionPlanVersionSchema,
-  timings: z.array(z.strictObject({ itemId: id, timing: raceScheduleTimingSchema })).max(5000),
+  timings: z
+    .array(
+      z.strictObject({
+        itemId: nutritionPlanItemCoreSchema.shape.id,
+        timing: raceScheduleTimingSchema,
+      }),
+    )
+    .max(5000),
 });
 const nutritionContextCompatibleV3 = nutritionContext.extend({
   record: nutritionPlanVersionCompatibleV3Schema,
@@ -111,7 +118,7 @@ const inputSchema = z.strictObject({
       .array(
         z.strictObject({
           planVersionId: z.uuid(),
-          itemId: id,
+          itemId: nutritionPlanItemCoreSchema.shape.id,
           action: z.literal('replace_anchor'),
           anchor: nutritionPlanItemCoreSchema.shape.anchor,
         }),

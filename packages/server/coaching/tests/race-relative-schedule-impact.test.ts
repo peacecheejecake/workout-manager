@@ -603,3 +603,34 @@ it('bounds nested Plan identities before invoking any calculation', () => {
   expect(calculations.resolveNutrition).not.toHaveBeenCalled();
   expect(calculations.expandRoutine).not.toHaveBeenCalled();
 });
+
+it.each(['x'.repeat(201), '한글항목'.repeat(60)])(
+  'projects explicit replacement for a canonical long nutrition identity: %s',
+  (itemId) => {
+    const input = fixture();
+    const context = required(input.nutrition[0]);
+    context.record.items = context.record.items.map((entry) =>
+      entry.id === 'race-end' ? { ...entry, id: itemId } : entry,
+    );
+    context.timings = context.timings.map((entry) =>
+      entry.itemId === 'race-end' ? { ...entry, itemId } : entry,
+    );
+    input.resolutions.nutrition = [
+      {
+        planVersionId: context.record.versionId,
+        itemId,
+        action: 'replace_anchor',
+        anchor: {
+          kind: 'absolute',
+          date: '2026-03-09',
+          localTime: '09:00:00',
+          timezone: 'America/New_York',
+        },
+      },
+    ];
+    expect(item(projected(input), itemId)).toMatchObject({
+      after: { state: 'resolved', localTime: '09:00:00' },
+      resolution: { state: 'explicit' },
+    });
+  },
+);
