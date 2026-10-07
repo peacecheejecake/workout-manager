@@ -1,4 +1,13 @@
-import { randomUUID } from 'node:crypto';
+import { createGarminUnofficialStore } from '../src/garmin-unofficial.js';
+import { createActivityRepository } from '../src/activities.js';
+import { createActivityTrackRepository } from '../src/activity-tracks.js';
+import { createCourseRepository, type PreparedCourseContent } from '../src/courses.js';
+import { courseContentDigest } from '@workout/server-courses/digest';
+import { createPrivateTextResourceRepository } from '../src/resources.js';
+import { createSupplementaryRepository } from '../src/supplementary-core.js';
+import { createRoutineRepository } from '../src/routine-core.js';
+import { routineBlueprintVersionSchema } from '@workout/contracts/routines';
+import { createHash, randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { Pool } from 'pg';
 import { z } from 'zod';
@@ -12,6 +21,7 @@ import { captureRaceManualReviewLifecycleInventoryV2In } from '../src/race-manua
 import {
   migrate,
   grantCorePlanning,
+  grantActivityTracks,
   grantSupplementaryCore,
   grantOperations,
   grantRaces,
@@ -76,6 +86,7 @@ beforeAll(async () => {
   }
   for (const grant of [
     grantCorePlanning,
+    grantActivityTracks,
     grantSupplementaryCore,
     grantOperations,
     grantRaces,
@@ -91,6 +102,15 @@ beforeAll(async () => {
     grantSessionCompletions,
   ])
     await grant(url(ownerRole), runtimeRole);
+  // Existing Activity API producer composition, not private chain-table privileges.
+  const activityOwner = new Pool({ connectionString: url(ownerRole) });
+  try {
+    await activityOwner.query(
+      `GRANT SELECT,INSERT,UPDATE,DELETE ON activity_canonical,activity_source_head,activity_source_revision,activity_overlay,activity_overlay_revision,activity_suppression,activity_import_receipt TO "${runtimeRole}"`,
+    );
+  } finally {
+    await activityOwner.end();
+  }
   db = createDatabase({ connectionString: url(runtimeRole), max: 4 });
 });
 afterAll(async () => {
@@ -115,6 +135,16 @@ async function snapshot<T>(athlete: string, run: (tx: Transaction) => Promise<T>
 }
 async function seed() {
   const athlete = randomUUID();
+  // Synthetic identity FK prerequisite only; all health/source rows use public producers.
+  const identityOwner = new Pool({ connectionString: url(ownerRole) });
+  try {
+    await identityOwner.query(
+      'INSERT INTO identity_private.account(athlete_id,issuer,subject) VALUES($1,$2,$3)',
+      [athlete, 'https://synthetic.invalid', athlete],
+    );
+  } finally {
+    await identityOwner.end();
+  }
   await createConsentRepository(db).setConsent(athlete, {
     kind: 'app',
     granted: true,
@@ -596,4 +626,639 @@ it('v7 all-version matching preserves composite source namespaces and opaque Uni
   } finally {
     await owner.end();
   }
+});
+
+async function catalogFixture(athlete: string) {
+  const resources = createPrivateTextResourceRepository(db),
+    catalog = createSupplementaryRepository(db),
+    routines = createRoutineRepository(db);
+  const resource = await resources.create(athlete, {
+    sourceKind: 'text',
+    title: 'Synthetic source',
+    category: 'guide',
+    metadata: {},
+    tags: [],
+    favorite: false,
+    text: 'Synthetic plain text only.',
+    idempotencyKey: randomUUID(),
+  });
+  if (resource.status !== 'available') throw Error('FIXTURE_RESOURCE_UNAVAILABLE');
+  const exercise = await catalog.saveExercise(athlete, {
+    definition: {
+      schemaVersion: 2,
+      exerciseId: randomUUID(),
+      versionId: randomUUID(),
+      name: 'Synthetic balance',
+      family: 'balance_stability',
+      equipment: ['bodyweight'],
+      tags: [],
+      countDefinitions: [],
+      mediaAssetIds: [],
+      resourceVersionIds: [resource.version.id],
+      reviewState: 'unreviewed',
+      description: 'User defined synthetic movement',
+      safetyNotes: '',
+      supportedMetrics: ['duration'],
+      createdAt: '2026-01-01T00:00:00Z',
+    },
+    expectedVersionId: null,
+    idempotencyKey: randomUUID(),
+    confirmed: true,
+  });
+  const versionId = randomUUID();
+  const saved = await catalog.saveRoutine(athlete, {
+    template: {
+      schemaVersion: 2,
+      routineId: randomUUID(),
+      versionId,
+      title: 'Synthetic workout template',
+      purpose: 'User selected practice',
+      requiredEquipment: ['bodyweight'],
+      spec: {
+        schemaVersion: 2,
+        kind: 'supplementary',
+        routineVersionId: versionId,
+        blocks: [
+          {
+            id: 'block',
+            mode: 'single',
+            rounds: 1,
+            sets: [
+              {
+                id: 'set',
+                exerciseVersionId: exercise.definition.versionId,
+                side: 'unspecified',
+                count: null,
+                durationSeconds: {
+                  min: 30,
+                  max: 30,
+                  unit: 's',
+                  basis: 'user_confirmed',
+                  evidenceIds: [],
+                },
+                externalResistance: { kind: 'no_added_load' },
+                restAfterSeconds: 0,
+                tempo: null,
+                effort: null,
+              },
+            ],
+            restBetweenRoundsSeconds: null,
+          },
+        ],
+      },
+      createdAt: '2026-01-01T00:00:00Z',
+    },
+    expectedVersionId: null,
+    idempotencyKey: randomUUID(),
+    confirmed: true,
+  });
+  const blueprint = routineBlueprintVersionSchema.parse({
+    schemaVersion: 4,
+    routineId: randomUUID(),
+    versionId: randomUUID(),
+    title: 'Synthetic source blueprint',
+    intent: 'Retained source read',
+    status: 'published',
+    tags: [],
+    steps: [
+      {
+        id: 'step',
+        title: 'Named source',
+        content: {
+          kind: 'workout_template',
+          ref: { id: saved.template.routineId, versionId: saved.template.versionId },
+        },
+        timing: { kind: 'user_scheduled' },
+        required: true,
+        choiceGroupId: null,
+      },
+    ],
+    choiceGroups: [],
+    estimatedDurationSeconds: null,
+    createdAt: '2026-01-01T00:00:00Z',
+  });
+  const savedBlueprint = await routines.saveBlueprint(athlete, {
+    blueprint,
+    expectedVersionId: null,
+    idempotencyKey: randomUUID(),
+    confirmed: true,
+  });
+
+  return { routines, blueprint: savedBlueprint.blueprint };
+}
+
+const hashOf = (value: string) => createHash('sha256').update(value).digest('hex');
+function finalRef(input: {
+  athleteId: string;
+  activityId: string;
+  trackId: string;
+  uploadId: string;
+  artifactKind: 'raw' | 'normalized' | 'map_path';
+  sha256: string;
+  extension: 'fit' | 'gpx' | 'json';
+}) {
+  return `private/v1/tenants/${input.athleteId}/activities/${input.activityId}/tracks/${input.trackId}/${input.artifactKind}/uploads/${input.uploadId}/sha256/${input.sha256}.${input.extension}`;
+}
+
+/** Store one recording, as the API's upload lifecycle does. */
+async function storeTrack(athleteId: string, activityId: string, expectedActivityRevision: number) {
+  const tracks = createActivityTrackRepository(db);
+  const reservation = await tracks.reserve(
+    athleteId,
+    activityId,
+    { expectedActivityRevision, recordedTrackIndex: 0 },
+    `track-${randomUUID()}`,
+  );
+  const shared = {
+    athleteId,
+    activityId,
+    trackId: reservation.trackId,
+    uploadId: reservation.uploadId,
+  };
+  const rawSha = hashOf(`raw-${reservation.uploadId}`);
+  const normalizedSha = hashOf(`normalized-${reservation.uploadId}`);
+  const mapPathSha = hashOf(`map-${reservation.uploadId}`);
+  await tracks.prepareObjects(athleteId, reservation.uploadId, {
+    raw: {
+      storageRef: finalRef({ ...shared, artifactKind: 'raw', sha256: rawSha, extension: 'gpx' }),
+      sizeBytes: 2048,
+      sha256: rawSha,
+      format: 'gpx',
+      originalFileName: 'run.gpx',
+    },
+    normalized: {
+      storageRef: finalRef({
+        ...shared,
+        artifactKind: 'normalized',
+        sha256: normalizedSha,
+        extension: 'json',
+      }),
+      sizeBytes: 4096,
+      sha256: normalizedSha,
+    },
+    mapPath: {
+      storageRef: finalRef({
+        ...shared,
+        artifactKind: 'map_path',
+        sha256: mapPathSha,
+        extension: 'json',
+      }),
+      sizeBytes: 1024,
+      sha256: mapPathSha,
+    },
+    parse: {
+      parserId: 'gpx-track-v1',
+      parserVersion: 1,
+      recordedSourceKind: 'gpx-trk',
+      correspondenceDigest: hashOf(`correspondence-${reservation.uploadId}`),
+      sampleCount: 5,
+      positionedSampleCount: 4,
+      segmentCount: 1,
+      segmentPolicy: { version: 1, maxGapSeconds: 60, maxGapMeters: 200 },
+      distances: { deviceReportedMeters: 1000, recomputedFromPositionsMeters: 998 },
+    },
+  });
+  await tracks.markStaged(athleteId, reservation.uploadId);
+  await tracks.finalize(athleteId, reservation.uploadId);
+  return { trackId: reservation.trackId, mapPathSha };
+}
+
+const coordinates: [number, number][] = [
+  [126.9779, 37.5665],
+  [126.9789, 37.5668],
+  [126.9799, 37.5671],
+];
+
+function content(input: {
+  activityId: string;
+  trackId: string;
+  name?: string;
+  trackRevision?: number;
+  mapPathSha?: string;
+  endSampleId?: string;
+  coordinates?: [number, number][];
+}): PreparedCourseContent {
+  const line = input.coordinates ?? coordinates;
+  const [startPosition] = line;
+  const endPosition = line[line.length - 1];
+  if (startPosition === undefined || endPosition === undefined)
+    throw new Error('a course needs at least two vertices');
+  const generation = {
+    kind: 'recorded-segment',
+    activityId: input.activityId,
+    trackId: input.trackId,
+    trackRevision: input.trackRevision ?? 1,
+    lineIndex: 0,
+    segmentIndex: 0,
+    startSampleId: '0:0',
+    endSampleId: input.endSampleId ?? '0:2',
+    vertexCount: line.length,
+    mapPathContentSha256: input.mapPathSha ?? 'a'.repeat(64),
+    simplificationVersion: 1,
+    toleranceMeters: 2.5,
+  } as const;
+  const lineage = [
+    {
+      activityId: input.activityId,
+      trackId: input.trackId,
+      trackRevision: input.trackRevision ?? 1,
+    },
+  ];
+  const name = input.name ?? 'Seoul loop';
+  const result: PreparedCourseContent = {
+    name,
+    coordinates: line,
+    waypoints: [
+      { role: 'start', position: startPosition, name: null, sourceSampleId: '0:0', locked: false },
+      {
+        role: 'finish',
+        position: endPosition,
+        name: null,
+        sourceSampleId: generation.endSampleId,
+        locked: false,
+      },
+    ],
+    generation,
+    edit: { kind: 'created' },
+    lineage,
+    distanceMeters: 180.25,
+    contentDigest: '',
+  };
+  return { ...result, contentDigest: courseContentDigest(result) };
+}
+
+async function importedActual(kind: 'fit' | 'fixture') {
+  const f = await seed();
+  const activities = createActivityRepository(db);
+  const catalog = await catalogFixture(f.athlete);
+  const source = {
+    kind,
+    sourceId: `Local-식-${randomUUID()}`,
+    revision: 1,
+    contentHash: 'a'.repeat(64),
+  };
+  const imported = await activities.importActivity(f.athlete, {
+    idempotencyKey: randomUUID(),
+    source,
+    activity: {
+      title: 'Synthetic local retained recording',
+      kind: 'strength',
+      startedAt: '2026-10-06T00:00:00Z',
+      timezone: 'Asia/Seoul',
+      durationSeconds: 0,
+      durationKind: 'unknown',
+      distanceMeters: null,
+    },
+  });
+  const current = await activities.updateOverlay(f.athlete, imported.activityId, {
+    expectedRevision: imported.revision,
+    idempotencyKey: randomUUID(),
+    reason: 'Explicit synthetic user overlay',
+    title: 'Retained overlay',
+    distanceMeters: 0,
+  });
+  let run = await catalog.routines.startRun(f.athlete, {
+    runId: randomUUID(),
+    blueprintVersionId: catalog.blueprint.versionId,
+    occurrenceId: null,
+    idempotencyKey: randomUUID(),
+    confirmed: true,
+  });
+  run = await catalog.routines.recordStep(f.athlete, {
+    runId: run.run.id,
+    stepId: 'step',
+    state: 'performed',
+    actualRefs: [
+      {
+        kind: 'activity',
+        id: current.id,
+        revisionId: String(current.revision),
+        detailId: null,
+        allocationId: null,
+      },
+    ],
+    occurredAt: '2026-10-06T00:00:00Z',
+    reason: null,
+    expectedRevision: run.run.revision,
+    idempotencyKey: randomUUID(),
+    confirmed: true,
+  });
+  expect(run.run.origin).toEqual({ kind: 'unplanned' });
+  return { f, activities, current, source };
+}
+for (const kind of ['fit', 'fixture'] as const) {
+  it(`stores own local ${kind} current original and overlay; actual source deletion purges the sole payload`, async () => {
+    const x = await importedActual(kind);
+    const { p, result } = await snapshot(x.f.athlete, async (tx) => {
+      const p = await prepared(tx, x.f.intent);
+      const facts = p.basis.consumedUses.facts.filter(
+        (f) =>
+          f.identity.kind === 'activity-canonical-values' || f.identity.kind === 'activity-overlay',
+      );
+      expect(facts).toHaveLength(2);
+      for (const fact of facts)
+        expect(fact.sourcePurpose).toMatchObject({
+          kind: 'own_imported_activity',
+          sources: [
+            {
+              activityId: x.current.id,
+              canonicalRevision: x.current.revision,
+              source: { kind },
+              overlayRevision: x.current.revision,
+            },
+          ],
+        });
+      return { p, result: await store(tx, p) };
+    });
+    expect(await snapshot(x.f.athlete, (tx) => read(tx, result.evidenceId))).toMatchObject({
+      payload: p.payload,
+    });
+    await x.activities.deleteActivity(x.f.athlete, x.current.id, {
+      expectedRevision: x.current.revision,
+    });
+    expect(await snapshot(x.f.athlete, (tx) => read(tx, result.evidenceId))).toMatchObject({
+      payload: null,
+      result,
+    });
+    expect(await snapshot(x.f.athlete, (tx) => store(tx, p))).toEqual(result);
+    expect(await count(x.f.athlete)).toEqual({ evidence: 1, decision: 1, proposal: 1 });
+  });
+}
+
+it('rejects forged local source-purpose tuples although original copied bodies remain intact', async () => {
+  const x = await importedActual('fit');
+  const p = await snapshot(x.f.athlete, (tx) => prepared(tx, x.f.intent));
+  const basis = {
+    ...p.basis,
+    consumedUses: {
+      ...p.basis.consumedUses,
+      facts: p.basis.consumedUses.facts.map((f) => ({
+        ...f,
+        sourcePurpose:
+          f.sourcePurpose === null || f.sourcePurpose.kind === 'own_media_descriptor'
+            ? f.sourcePurpose
+            : {
+                ...f.sourcePurpose,
+                sources: f.sourcePurpose.sources.map((s) => ({
+                  ...s,
+                  source: { ...s.source, sourceId: 'FOREIGN-opaque-source' },
+                })),
+              },
+      })),
+    },
+  };
+  await expect(
+    snapshot(x.f.athlete, (tx) =>
+      store(tx, { ...p, basis, request: { ...p.request, expectedBasis: basis } }),
+    ),
+  ).rejects.toThrow('MANUAL_CHAIN_SOURCE_USE_UNAVAILABLE');
+  expect(await count(x.f.athlete)).toEqual({ evidence: 0, decision: 0, proposal: 0 });
+  expect(await snapshot(x.f.athlete, (tx) => store(tx, p))).toMatchObject({
+    applicable: false,
+    approvalAllowed: false,
+  });
+});
+
+it('stores manual recorded course and track metadata; original activity deletion purges through sealed lineage parents', async () => {
+  const f = await seed(),
+    activities = createActivityRepository(db),
+    courses = createCourseRepository(db);
+  const actual = await activities.createManualActivity(f.athlete, {
+    idempotencyKey: randomUUID(),
+    confirmed: true,
+    activity: {
+      title: 'Synthetic manual route',
+      kind: 'running',
+      startedAt: '2026-10-06T00:00:00Z',
+      timezone: 'Asia/Seoul',
+      durationSeconds: 600,
+      durationKind: 'timer',
+      distanceMeters: 1000,
+    },
+    report: { sessionRpe: null, note: null, planLink: null },
+  });
+  // Public upload lifecycle records synthetic descriptors only: no external binary bytes are verified.
+  const track = await storeTrack(f.athlete, actual.activityId, actual.revision);
+  const course = await courses.create(
+    f.athlete,
+    content({
+      activityId: actual.activityId,
+      trackId: track.trackId,
+      mapPathSha: track.mapPathSha,
+    }),
+    randomUUID(),
+  );
+  if (course.status !== 'available') throw Error('FIXTURE_COURSE_UNAVAILABLE');
+  const races = createRaceRepository(db);
+  const original = await races.getRaceEvent(f.athlete, f.race.id);
+  if (!original) throw Error('FIXTURE_EVENT_UNAVAILABLE');
+  const { id: _id, revision: _revision, ...values } = original;
+  const event = await races.updateRaceEvent(f.athlete, f.race.id, {
+    expectedRevision: f.race.revision,
+    idempotencyKey: randomUUID(),
+    values: {
+      ...values,
+      course: {
+        courseId: course.course.courseId,
+        courseRevision: course.revision.courseRevision,
+        revisionId: course.revision.revisionId,
+      },
+    },
+  });
+  const intent = { ...f.intent, expectedEvent: { id: event.id, revision: event.revision } };
+  const otherCourse = await courses.create(
+    f.athlete,
+    content({
+      activityId: actual.activityId,
+      trackId: track.trackId,
+      mapPathSha: track.mapPathSha,
+      name: 'Second shared manual recording',
+    }),
+    randomUUID(),
+  );
+  if (otherCourse.status !== 'available') throw Error('FIXTURE_SECOND_COURSE_UNAVAILABLE');
+  const secondEvent = await races.createRaceEvent(f.athlete, {
+    idempotencyKey: randomUUID(),
+    values: {
+      ...values,
+      title: 'Second same-lineage event',
+      course: {
+        courseId: otherCourse.course.courseId,
+        courseRevision: otherCourse.revision.courseRevision,
+        revisionId: otherCourse.revision.revisionId,
+      },
+    },
+  });
+  const second = await snapshot(f.athlete, async (tx) => {
+    const p = await prepared(tx, {
+      ...intent,
+      expectedEvent: { id: secondEvent.id, revision: secondEvent.revision },
+    });
+    return { p, result: await store(tx, p) };
+  });
+  const unrelatedEvent = await races.createRaceEvent(f.athlete, {
+    idempotencyKey: randomUUID(),
+    values: { ...values, title: 'Unrelated event', course: null },
+  });
+  const unrelated = await snapshot(f.athlete, async (tx) => {
+    const p = await prepared(tx, {
+      ...intent,
+      expectedEvent: { id: unrelatedEvent.id, revision: unrelatedEvent.revision },
+    });
+    return { p, result: await store(tx, p) };
+  });
+  const { p, result } = await snapshot(f.athlete, async (tx) => {
+    const p = await prepared(tx, intent);
+    const facts = p.basis.consumedUses.facts.filter((f) =>
+      ['course-revision', 'course-head-descriptor', 'activity-track-descriptor'].includes(
+        f.identity.kind,
+      ),
+    );
+    expect(facts).toHaveLength(3);
+    for (const fact of facts)
+      expect(fact.sourcePurpose).toMatchObject({
+        kind: 'own_manual_lineage',
+        sources: [{ activityId: actual.activityId, source: { kind: 'manual' } }],
+      });
+    return { p, result: await store(tx, p) };
+  });
+  await activities.deleteActivity(f.athlete, actual.activityId, {
+    expectedRevision: actual.revision,
+  });
+  expect(await snapshot(f.athlete, (tx) => read(tx, result.evidenceId))).toMatchObject({
+    payload: null,
+    result,
+  });
+  expect(await snapshot(f.athlete, (tx) => store(tx, p))).toEqual(result);
+  expect(await snapshot(f.athlete, (tx) => read(tx, second.result.evidenceId))).toMatchObject({
+    payload: null,
+    result: second.result,
+  });
+  expect(await snapshot(f.athlete, (tx) => store(tx, second.p))).toEqual(second.result);
+  expect(await snapshot(f.athlete, (tx) => read(tx, unrelated.result.evidenceId))).toMatchObject({
+    payload: unrelated.p.payload,
+    result: unrelated.result,
+  });
+  // Owner inspection of synthetic audit metadata proves reuse of the actual source event,
+  // rather than a newly minted self-claimed course suppression.
+  const owner = new Pool({ connectionString: url(ownerRole) }),
+    client = await owner.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query("SELECT set_config('app.athlete_id',$1,true)", [f.athlete]);
+    const rows = await client.query(
+      'SELECT s.kind FROM manual_race_chain_suppression_v2 m JOIN restore_suppression_event s ON s.athlete_id=m.athlete_id AND s.event_id=m.event_id WHERE m.athlete_id=$1 AND m.evidence_id=$2',
+      [f.athlete, result.evidenceId],
+    );
+    expect(rows.rows.length).toBeGreaterThan(0);
+    expect(rows.rows.every((row) => row['kind'] === 'activity_deleted')).toBe(true);
+    await client.query('ROLLBACK');
+  } finally {
+    client.release();
+    await owner.end();
+  }
+});
+
+it('public collected Garmin attribution refuses a previously local FIT payload at the final SQL source predicate', async () => {
+  const x = await importedActual('fit');
+  const p = await snapshot(x.f.athlete, (tx) => prepared(tx, x.f.intent));
+  const collector = createGarminUnofficialStore(db);
+  // Normal DB collector ledger port with synthetic attribution; no provider call or owner seed.
+  await collector.recordCollected({
+    athleteId: x.f.athlete,
+    garminActivityId: '987654321',
+    provider: 'garmin-connect-unofficial',
+    outcome: 'imported',
+    sources: [{ kind: x.source.kind, sourceId: x.source.sourceId }],
+    now: new Date('2026-10-07T00:00:00Z'),
+    appRevision: 1,
+  });
+  expect(await collector.provenance(x.f.athlete, x.current.id)).toMatchObject({
+    provider: 'garmin-connect-unofficial',
+    official: false,
+  });
+  await expect(snapshot(x.f.athlete, (tx) => store(tx, p))).rejects.toThrow(
+    'MANUAL_CHAIN_SOURCE_USE_UNAVAILABLE',
+  );
+  expect(await count(x.f.athlete)).toEqual({ evidence: 0, decision: 0, proposal: 0 });
+});
+
+it('public FIT recorded-course lineage is unavailable for manual-purpose storage, despite owned valid course and track descriptors', async () => {
+  const f = await seed(),
+    activities = createActivityRepository(db),
+    courses = createCourseRepository(db);
+  const imported = await activities.importActivity(f.athlete, {
+    idempotencyKey: randomUUID(),
+    source: {
+      kind: 'fit',
+      sourceId: `Imported-course-${randomUUID()}`,
+      revision: 1,
+      contentHash: 'b'.repeat(64),
+    },
+    activity: {
+      title: 'Synthetic imported course source',
+      kind: 'running',
+      startedAt: '2026-10-06T00:00:00Z',
+      timezone: 'Asia/Seoul',
+      durationSeconds: 600,
+      durationKind: 'timer',
+      distanceMeters: 1000,
+    },
+  });
+  const track = await storeTrack(f.athlete, imported.activityId, imported.revision);
+  const course = await courses.create(
+    f.athlete,
+    content({
+      activityId: imported.activityId,
+      trackId: track.trackId,
+      mapPathSha: track.mapPathSha,
+    }),
+    randomUUID(),
+  );
+  if (course.status !== 'available') throw Error('FIXTURE_IMPORTED_COURSE_UNAVAILABLE');
+  const races = createRaceRepository(db),
+    original = await races.getRaceEvent(f.athlete, f.race.id);
+  if (!original) throw Error('FIXTURE_EVENT_UNAVAILABLE');
+  const { id: _id, revision: _revision, ...values } = original;
+  const event = await races.updateRaceEvent(f.athlete, original.id, {
+    expectedRevision: original.revision,
+    idempotencyKey: randomUUID(),
+    values: {
+      ...values,
+      course: {
+        courseId: course.course.courseId,
+        courseRevision: course.revision.courseRevision,
+        revisionId: course.revision.revisionId,
+      },
+    },
+  });
+  const actual = await snapshot(f.athlete, (tx) =>
+    prepareRaceManualSemanticBasisV2In(
+      tx,
+      { ...f.intent, expectedEvent: { id: event.id, revision: event.revision } },
+      null,
+      { bytes: 0n, sources: 0 },
+    ),
+  );
+  expect(actual.status).toBe('blocked');
+  if (actual.status !== 'blocked' || !('prepared' in actual) || !('uses' in actual.prepared))
+    throw Error('FIXTURE_EXPECTED_COURSE_USE_BLOCK');
+  expect(
+    actual.prepared.uses.facts.filter((f) =>
+      ['course-revision', 'course-head-descriptor', 'activity-track-descriptor'].includes(
+        f.identity.kind,
+      ),
+    ),
+  ).toHaveLength(3);
+  for (const fact of actual.prepared.uses.facts.filter((f) =>
+    ['course-revision', 'course-head-descriptor', 'activity-track-descriptor'].includes(
+      f.identity.kind,
+    ),
+  ))
+    expect(fact).toMatchObject({
+      use: 'blocked',
+      reason: 'course_lineage_use_unavailable',
+      sourcePurpose: null,
+    });
+  expect(await count(f.athlete)).toEqual({ evidence: 0, decision: 0, proposal: 0 });
 });

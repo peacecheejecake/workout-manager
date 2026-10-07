@@ -229,6 +229,71 @@ REVOKE ALL ON FUNCTION public.manual_race_v2_parent_edges(jsonb) FROM PUBLIC;
 
 -- Exact immutable DTO projection for the supported own/core/text manual purpose.
 -- Unsupported provenance remains finite; no descriptor metadata grants provider/media use.
+-- Actual current local recording, independent of a supplied purpose observation.
+CREATE FUNCTION public.manual_race_v2_local_activity_state(activity uuid) RETURNS jsonb
+LANGUAGE sql STABLE SECURITY INVOKER SET search_path=pg_catalog,pg_temp AS $$
+ SELECT jsonb_build_object('activityId',c.id,'canonicalRevision',c.revision,
+  'source',jsonb_build_object('kind',h.kind,'sourceId',h.source_id,'revision',h.source_revision,'contentHash',h.content_hash),
+  'overlayRevision',(SELECT max(revision) FROM public.activity_overlay_revision z WHERE z.athlete_id=c.athlete_id AND z.activity_id=c.id),
+  'overlayPresent',o.values_json IS NOT NULL)
+ FROM public.activity_canonical c JOIN public.activity_source_head h ON h.athlete_id=c.athlete_id AND h.activity_id=c.id
+ JOIN public.activity_source_revision v ON v.athlete_id=h.athlete_id AND v.kind=h.kind AND v.source_id=h.source_id AND v.source_revision=h.source_revision AND v.content_hash=h.content_hash
+ LEFT JOIN public.activity_overlay o ON o.athlete_id=c.athlete_id AND o.activity_id=c.id
+ WHERE c.athlete_id=nullif(current_setting('app.athlete_id',true),'') AND c.id=$1 AND NOT c.deleted
+ AND h.kind IN ('manual','fit','fixture') AND v.normalized_raw=c.original
+ AND octet_length(c.original::text)+octet_length(v.normalized_raw::text)+coalesce(octet_length(o.values_json::text),4)<=4194304
+ AND NOT EXISTS(SELECT 1 FROM public.activity_suppression z WHERE z.athlete_id=h.athlete_id AND z.kind=h.kind AND z.source_id=h.source_id)
+ AND NOT EXISTS(SELECT 1 FROM public.garmin_activity_ledger_source z JOIN public.garmin_activity_ledger g ON g.athlete_id=z.athlete_id AND g.garmin_activity_id=z.garmin_activity_id WHERE z.athlete_id=h.athlete_id AND z.kind=h.kind AND z.source_id=h.source_id)
+$$;
+REVOKE ALL ON FUNCTION public.manual_race_v2_local_activity_state(uuid) FROM PUBLIC;
+CREATE FUNCTION public.manual_race_v2_verify_source_purpose(identity jsonb,purpose jsonb,course_ref jsonb) RETURNS void
+LANGUAGE plpgsql SECURITY INVOKER SET search_path=pg_catalog,pg_temp AS $$
+DECLARE v_k text:=identity->>'kind'; v_t text:=nullif(current_setting('app.athlete_id',true),''); v_state jsonb; v_source jsonb; v_requested jsonb; v_actual jsonb;
+ v_course_id uuid; v_revision integer; v_revision_id uuid; v_n bigint;
+BEGIN
+ IF v_k NOT IN ('activity-canonical-values','activity-overlay','course-revision','course-head-descriptor','activity-track-descriptor') THEN
+  IF purpose IS DISTINCT FROM 'null'::jsonb THEN RAISE EXCEPTION 'MANUAL_CHAIN_SOURCE_USE_UNAVAILABLE'; END IF; RETURN;
+ END IF;
+ IF v_k IN ('activity-canonical-values','activity-overlay') THEN
+  v_state:=public.manual_race_v2_local_activity_state((identity->>'sourceId')::uuid);
+  IF v_state IS NULL OR v_state->>'canonicalRevision' IS DISTINCT FROM identity->>'revision' THEN RAISE EXCEPTION 'MANUAL_CHAIN_SOURCE_USE_UNAVAILABLE'; END IF;
+  IF v_state->'source'->>'kind'='manual' AND purpose='null'::jsonb THEN RETURN; END IF;
+  IF purpose->>'kind' IS DISTINCT FROM 'own_imported_activity' OR v_state->'source'->>'kind' NOT IN ('fit','fixture') THEN RAISE EXCEPTION 'MANUAL_CHAIN_SOURCE_USE_UNAVAILABLE'; END IF;
+  v_actual:=jsonb_build_array(v_state);
+ ELSE
+  IF course_ref IS NULL OR course_ref='null'::jsonb OR purpose->>'kind' IS DISTINCT FROM 'own_manual_lineage' THEN RAISE EXCEPTION 'MANUAL_CHAIN_SOURCE_USE_UNAVAILABLE'; END IF;
+  v_course_id:=(course_ref->>'courseId')::uuid; v_revision:=(course_ref->>'courseRevision')::int; v_revision_id:=(course_ref->>'revisionId')::uuid;
+  IF v_k='course-revision' AND (identity->>'sourceId'<>v_course_id::text OR identity->>'revision'<>v_revision::text OR identity->>'revisionId'<>v_revision_id::text)
+   OR v_k='course-head-descriptor' AND NOT EXISTS(SELECT 1 FROM public.course h WHERE h.athlete_id=v_t AND h.course_id=v_course_id AND h.course_id::text=identity->>'sourceId' AND h.head_revision::text=identity->>'revision' AND h.status='available')
+   OR v_k='activity-track-descriptor' AND NOT EXISTS(SELECT 1 FROM public.course_revision_source l WHERE l.athlete_id=v_t AND l.course_id=v_course_id AND l.course_revision=v_revision AND l.activity_id::text=identity->>'sourceId' AND l.track_id::text=identity->>'trackId' AND l.track_revision::text=identity->>'revision')
+  THEN RAISE EXCEPTION 'MANUAL_CHAIN_SOURCE_USE_UNAVAILABLE'; END IF;
+  IF NOT EXISTS(SELECT 1 FROM public.course_revision r JOIN public.course h ON h.athlete_id=r.athlete_id AND h.course_id=r.course_id WHERE r.athlete_id=v_t AND r.course_id=v_course_id AND r.course_revision=v_revision AND r.revision_id=v_revision_id AND h.status='available' AND r.generation->>'kind'='recorded-segment'
+    AND EXISTS(SELECT 1 FROM public.course_revision_source l JOIN public.activity_track_revision tr ON tr.athlete_id=l.athlete_id AND tr.activity_id=l.activity_id AND tr.track_id=l.track_id AND tr.track_revision=l.track_revision WHERE l.athlete_id=r.athlete_id AND l.course_id=r.course_id AND l.course_revision=r.course_revision AND l.activity_id::text=r.generation->>'activityId' AND l.track_id::text=r.generation->>'trackId' AND l.track_revision::text=r.generation->>'trackRevision' AND tr.map_path_content_hash=r.generation->>'mapPathContentSha256'))
+   OR EXISTS(SELECT 1 FROM public.export_course_deletions() d WHERE d.athlete_id=v_t AND d.course_id=v_course_id)
+  THEN RAISE EXCEPTION 'MANUAL_CHAIN_SOURCE_USE_UNAVAILABLE'; END IF;
+  SELECT count(*) INTO v_n FROM public.course_revision_source l WHERE l.athlete_id=v_t AND l.course_id=v_course_id AND l.course_revision=v_revision;
+  IF v_n NOT BETWEEN 1 AND 12 THEN RAISE EXCEPTION 'MANUAL_CHAIN_SOURCE_USE_UNAVAILABLE'; END IF;
+  SELECT jsonb_agg(public.manual_race_v2_local_activity_state(l.activity_id) ORDER BY l.activity_id,l.track_id,l.track_revision) INTO v_actual
+  FROM public.course_revision_source l JOIN public.activity_track_revision tr ON tr.athlete_id=l.athlete_id AND tr.activity_id=l.activity_id AND tr.track_id=l.track_id AND tr.track_revision=l.track_revision
+  JOIN public.activity_source_head h ON h.athlete_id=tr.athlete_id AND h.activity_id=tr.activity_id AND h.kind=tr.source_kind AND h.source_id=tr.source_id AND h.source_revision=tr.source_revision
+  WHERE l.athlete_id=v_t AND l.course_id=v_course_id AND l.course_revision=v_revision AND h.kind='manual';
+  IF v_actual IS NULL OR jsonb_array_length(v_actual)<>v_n OR EXISTS(SELECT 1 FROM jsonb_array_elements(v_actual) a WHERE a='null'::jsonb) THEN RAISE EXCEPTION 'MANUAL_CHAIN_SOURCE_USE_UNAVAILABLE'; END IF;
+ END IF;
+ IF jsonb_typeof(purpose) IS DISTINCT FROM 'object' OR purpose-ARRAY['adapterVersion','kind','sources']<>'{}'::jsonb OR purpose->'adapterVersion' IS DISTINCT FROM '2'::jsonb OR jsonb_typeof(purpose->'sources') IS DISTINCT FROM 'array' OR jsonb_array_length(purpose->'sources')<>jsonb_array_length(v_actual) THEN RAISE EXCEPTION 'MANUAL_CHAIN_SOURCE_USE_UNAVAILABLE'; END IF;
+ v_requested:='[]'::jsonb;
+ FOR v_source IN SELECT value FROM jsonb_array_elements(purpose->'sources') LOOP
+  IF jsonb_typeof(v_source) IS DISTINCT FROM 'object' OR v_source-ARRAY['activityId','canonicalRevision','source','originalDigest','overlayRevision','overlayDigest']<>'{}'::jsonb
+   OR NOT(v_source ?& ARRAY['activityId','canonicalRevision','source','originalDigest','overlayRevision','overlayDigest']) OR jsonb_typeof(v_source->'originalDigest') IS DISTINCT FROM 'string' OR v_source->>'originalDigest' !~ '^[a-f0-9]{64}$'
+   OR (v_source->'overlayDigest'<>'null'::jsonb AND (jsonb_typeof(v_source->'overlayDigest') IS DISTINCT FROM 'string' OR v_source->>'overlayDigest' !~ '^[a-f0-9]{64}$'))
+  THEN RAISE EXCEPTION 'MANUAL_CHAIN_SOURCE_USE_UNAVAILABLE'; END IF;
+  v_requested:=v_requested||jsonb_build_array(jsonb_build_object('activityId',v_source->'activityId','canonicalRevision',v_source->'canonicalRevision','source',v_source->'source','overlayRevision',v_source->'overlayRevision','overlayPresent',v_source->'overlayDigest'<>'null'::jsonb));
+ END LOOP;
+ -- DTO checksum fields remain observations, never SQL row hashes/credentials. The
+ -- actual tuple/ledger hash/body equality above establishes the narrow local policy.
+ IF v_requested IS DISTINCT FROM v_actual THEN RAISE EXCEPTION 'MANUAL_CHAIN_SOURCE_USE_UNAVAILABLE'; END IF;
+END $$;
+REVOKE ALL ON FUNCTION public.manual_race_v2_verify_source_purpose(jsonb,jsonb,jsonb) FROM PUBLIC;
+
 CREATE FUNCTION public.manual_race_v2_source_dto(i jsonb) RETURNS jsonb
 LANGUAGE plpgsql SECURITY INVOKER SET search_path=pg_catalog,pg_temp SET TimeZone='UTC' AS $$
 DECLARE t text:=nullif(current_setting('app.athlete_id',true),'');q text;n bigint;bytes bigint;body jsonb;
@@ -253,14 +318,17 @@ BEGIN
  WHEN 'checklist-confirmation' THEN q:=$query$SELECT jsonb_build_object('id',id,'run_id',run_id,'step_id',step_id,'revision_id',revision_id,'occurred_at',to_char(occurred_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),'state',state) AS body FROM public.routine_checklist_confirmation WHERE athlete_id=$1 AND id=$2->>'sourceId' AND revision_id::text=$2->>'revisionId' AND run_id::text=$2->>'runId' AND step_id=$2->>'stepId'$query$;
  WHEN 'routine-timer' THEN q:=$query$SELECT jsonb_build_object('runId',run_id,'stepId',step_id,'revision',revision,'state',state,'durationSeconds',duration_seconds,'startedAt',to_char(started_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),'pausedAt',CASE WHEN paused_at IS NULL THEN NULL ELSE to_char(paused_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') END,'pausedMilliseconds',paused_milliseconds) AS body FROM public.routine_step_timer WHERE athlete_id=$1 AND run_id::text=$2->>'sourceId' AND step_id=$2->>'stepId' AND revision=($2->>'revision')::int$query$;
  WHEN 'manual-activity-source' THEN q:=$query$SELECT c.original AS body FROM public.activity_canonical c JOIN public.activity_source_head s ON s.athlete_id=c.athlete_id AND s.activity_id=c.id JOIN public.activity_source_revision v ON v.athlete_id=s.athlete_id AND v.kind=s.kind AND v.source_id=s.source_id AND v.source_revision=s.source_revision AND v.content_hash=s.content_hash LEFT JOIN public.activity_overlay o ON o.athlete_id=c.athlete_id AND o.activity_id=c.id WHERE c.athlete_id=$1 AND c.id::text=$2->>'sourceId' AND NOT c.deleted AND s.kind='manual' AND NOT EXISTS(SELECT 1 FROM public.activity_suppression z WHERE z.athlete_id=s.athlete_id AND z.kind=s.kind AND z.source_id=s.source_id) AND s.source_id=$2->>'sourceRecordId' AND s.source_revision=($2->>'sourceRevision')::int$query$;
- WHEN 'activity-overlay' THEN q:=$query$SELECT o.values_json AS body FROM public.activity_canonical c JOIN public.activity_source_head s ON s.athlete_id=c.athlete_id AND s.activity_id=c.id JOIN public.activity_source_revision v ON v.athlete_id=s.athlete_id AND v.kind=s.kind AND v.source_id=s.source_id AND v.source_revision=s.source_revision AND v.content_hash=s.content_hash LEFT JOIN public.activity_overlay o ON o.athlete_id=c.athlete_id AND o.activity_id=c.id WHERE c.athlete_id=$1 AND c.id::text=$2->>'sourceId' AND NOT c.deleted AND s.kind='manual' AND NOT EXISTS(SELECT 1 FROM public.activity_suppression z WHERE z.athlete_id=s.athlete_id AND z.kind=s.kind AND z.source_id=s.source_id) AND c.revision=($2->>'revision')::int AND (SELECT max(revision) FROM public.activity_overlay_revision h WHERE h.athlete_id=c.athlete_id AND h.activity_id=c.id)=c.revision$query$;
- WHEN 'activity-canonical-values' THEN q:=$query$SELECT c.original AS body FROM public.activity_canonical c JOIN public.activity_source_head s ON s.athlete_id=c.athlete_id AND s.activity_id=c.id JOIN public.activity_source_revision v ON v.athlete_id=s.athlete_id AND v.kind=s.kind AND v.source_id=s.source_id AND v.source_revision=s.source_revision AND v.content_hash=s.content_hash LEFT JOIN public.activity_overlay o ON o.athlete_id=c.athlete_id AND o.activity_id=c.id WHERE c.athlete_id=$1 AND c.id::text=$2->>'sourceId' AND NOT c.deleted AND s.kind='manual' AND NOT EXISTS(SELECT 1 FROM public.activity_suppression z WHERE z.athlete_id=s.athlete_id AND z.kind=s.kind AND z.source_id=s.source_id) AND c.revision=($2->>'revision')::int$query$;
+ WHEN 'activity-overlay' THEN q:=$query$SELECT o.values_json AS body FROM public.activity_canonical c JOIN public.activity_source_head s ON s.athlete_id=c.athlete_id AND s.activity_id=c.id JOIN public.activity_source_revision v ON v.athlete_id=s.athlete_id AND v.kind=s.kind AND v.source_id=s.source_id AND v.source_revision=s.source_revision AND v.content_hash=s.content_hash LEFT JOIN public.activity_overlay o ON o.athlete_id=c.athlete_id AND o.activity_id=c.id WHERE c.athlete_id=$1 AND c.id::text=$2->>'sourceId' AND NOT c.deleted AND s.kind IN ('manual','fit','fixture') AND v.normalized_raw=c.original AND NOT EXISTS(SELECT 1 FROM public.garmin_activity_ledger_source gl JOIN public.garmin_activity_ledger g ON g.athlete_id=gl.athlete_id AND g.garmin_activity_id=gl.garmin_activity_id WHERE gl.athlete_id=s.athlete_id AND gl.kind=s.kind AND gl.source_id=s.source_id) AND NOT EXISTS(SELECT 1 FROM public.activity_suppression z WHERE z.athlete_id=s.athlete_id AND z.kind=s.kind AND z.source_id=s.source_id) AND c.revision=($2->>'revision')::int AND (SELECT max(revision) FROM public.activity_overlay_revision h WHERE h.athlete_id=c.athlete_id AND h.activity_id=c.id)=c.revision$query$;
+ WHEN 'activity-canonical-values' THEN q:=$query$SELECT c.original AS body FROM public.activity_canonical c JOIN public.activity_source_head s ON s.athlete_id=c.athlete_id AND s.activity_id=c.id JOIN public.activity_source_revision v ON v.athlete_id=s.athlete_id AND v.kind=s.kind AND v.source_id=s.source_id AND v.source_revision=s.source_revision AND v.content_hash=s.content_hash LEFT JOIN public.activity_overlay o ON o.athlete_id=c.athlete_id AND o.activity_id=c.id WHERE c.athlete_id=$1 AND c.id::text=$2->>'sourceId' AND NOT c.deleted AND s.kind IN ('manual','fit','fixture') AND v.normalized_raw=c.original AND NOT EXISTS(SELECT 1 FROM public.garmin_activity_ledger_source gl JOIN public.garmin_activity_ledger g ON g.athlete_id=gl.athlete_id AND g.garmin_activity_id=gl.garmin_activity_id WHERE gl.athlete_id=s.athlete_id AND gl.kind=s.kind AND gl.source_id=s.source_id) AND NOT EXISTS(SELECT 1 FROM public.activity_suppression z WHERE z.athlete_id=s.athlete_id AND z.kind=s.kind AND z.source_id=s.source_id) AND c.revision=($2->>'revision')::int$query$;
+ WHEN 'course-revision' THEN q:=$query$SELECT jsonb_build_object('courseId',r.course_id,'courseRevision',r.course_revision,'revisionId',r.revision_id,'name',r.name,'geometry',r.geometry,'waypoints',r.waypoints,'generation',r.generation,'edit',r.edit,'distanceMeters',r.distance_meters,'contentDigest',r.content_digest,'createdAt',to_char(r.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),'lineage',(SELECT jsonb_agg(jsonb_build_object('activityId',l.activity_id,'trackId',l.track_id,'trackRevision',l.track_revision) ORDER BY l.activity_id,l.track_id,l.track_revision) FROM public.course_revision_source l WHERE l.athlete_id=r.athlete_id AND l.course_id=r.course_id AND l.course_revision=r.course_revision)) AS body FROM public.course_revision r JOIN public.course h ON h.athlete_id=r.athlete_id AND h.course_id=r.course_id WHERE r.athlete_id=$1 AND r.course_id::text=$2->>'sourceId' AND r.course_revision::text=$2->>'revision' AND r.revision_id::text=$2->>'revisionId' AND h.status='available' AND r.generation->>'kind'='recorded-segment'$query$;
+ WHEN 'course-head-descriptor' THEN q:=$query$SELECT jsonb_build_object('status',status,'courseId',course_id,'name',name,'visibility',visibility,'headRevision',head_revision,'revisionId',revision_id,'createdAt',to_char(created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),'updatedAt',to_char(updated_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')) AS body FROM public.course WHERE athlete_id=$1 AND course_id::text=$2->>'sourceId' AND head_revision::text=$2->>'revision' AND status='available'$query$;
+ WHEN 'activity-track-descriptor' THEN q:=$query$SELECT jsonb_build_object('activityId',r.activity_id,'trackId',r.track_id,'trackRevision',r.track_revision,'sourceKind',r.source_kind,'sourceId',r.source_id,'sourceRevision',r.source_revision,'recordedSourceKind',r.recorded_source_kind,'correspondence',jsonb_build_object('algorithm','track-correspondence-v1','parserId',r.parser_id,'parserVersion',r.parser_version,'digest',r.correspondence_digest),'file',jsonb_build_object('originalFileName',r.original_filename,'format',r.format,'byteSize',r.raw_size_bytes,'sha256',r.raw_content_hash),'derivatives',jsonb_build_array(jsonb_build_object('kind','normalized','byteSize',r.normalized_size_bytes,'sha256',r.normalized_content_hash),jsonb_build_object('kind','map_path','byteSize',r.map_path_size_bytes,'sha256',r.map_path_content_hash)),'sampleCount',r.sample_count,'positionedSampleCount',r.positioned_sample_count,'segmentCount',r.segment_count,'segmentPolicy',r.segment_policy,'distances',r.distances,'createdAt',to_char(r.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')) AS body FROM public.activity_track_revision r JOIN public.activity_canonical c ON c.athlete_id=r.athlete_id AND c.id=r.activity_id JOIN public.activity_source_head h ON h.athlete_id=c.athlete_id AND h.activity_id=c.id AND h.kind=r.source_kind AND h.source_id=r.source_id AND h.source_revision=r.source_revision WHERE r.athlete_id=$1 AND r.activity_id::text=$2->>'sourceId' AND r.track_id::text=$2->>'trackId' AND r.track_revision::text=$2->>'revision' AND NOT c.deleted AND h.kind='manual' AND public.manual_race_v2_local_activity_state(c.id) IS NOT NULL$query$;
  WHEN 'supplementary-session-copy' THEN q:=$query$SELECT l.embedded_spec_json AS body FROM public.supplementary_session_link l JOIN public.plan_snapshot p ON p.athlete_id=l.athlete_id AND p.id=l.plan_version_id WHERE l.athlete_id=$1 AND l.plan_version_id::text=$2->>'sourceId' AND l.planned_session_id=$2->>'sessionId' AND l.content_kind='embedded' AND EXISTS(SELECT 1 FROM jsonb_array_elements(p.draft->'sessions') s WHERE s->>'id'=l.planned_session_id)$query$;
  WHEN 'race-timing-pin-fragment' THEN RETURN NULL;
  ELSE RAISE EXCEPTION 'MANUAL_CHAIN_SOURCE_USE_UNAVAILABLE'; END CASE;
  EXECUTE 'WITH source AS ('||q||') SELECT count(*),coalesce(sum(octet_length(body::text)),0) FROM source' INTO n,bytes USING t,i;
  IF n<>1 OR bytes=0 THEN RAISE EXCEPTION 'MANUAL_CHAIN_SOURCE_UNAVAILABLE'; END IF;
- IF bytes>1049600 THEN RAISE EXCEPTION 'MANUAL_CHAIN_SOURCE_BOUND'; END IF;
+ IF bytes>(CASE WHEN i->>'kind'='course-revision' THEN 4194304 ELSE 1049600 END) THEN RAISE EXCEPTION 'MANUAL_CHAIN_SOURCE_BOUND'; END IF;
  EXECUTE q INTO STRICT body USING t,i;
  RETURN body;
 END $$;
@@ -435,9 +503,11 @@ BEGIN
   SELECT count(*) INTO count FROM jsonb_array_elements($7->'consumedUses'->'facts') x WHERE x->'identity'=i;
   IF count<>1 THEN RAISE EXCEPTION 'MANUAL_CHAIN_SOURCE_USE_UNAVAILABLE'; END IF;
   SELECT value INTO f FROM jsonb_array_elements($7->'consumedUses'->'facts') x WHERE x->'identity'=i;
-  IF f->'sourcePurpose' IS DISTINCT FROM 'null'::jsonb OR f->>'reason' IS NOT NULL OR f->>'use' IS DISTINCT FROM (CASE WHEN i->>'kind'='resource-text-version' THEN 'own_retained_text' ELSE 'core_manual' END)
+  IF f->>'reason' IS NOT NULL OR f->>'use' IS DISTINCT FROM (CASE WHEN i->>'kind'='resource-text-version' THEN 'own_retained_text' ELSE 'core_manual' END)
    OR f->'resourceSource' IS DISTINCT FROM (CASE WHEN i->>'kind'='resource-text-version' THEN jsonb_build_object('deleted',false) ELSE 'null'::jsonb END)
   THEN RAISE EXCEPTION 'MANUAL_CHAIN_SOURCE_USE_UNAVAILABLE'; END IF;
+  IF i->>'kind' IN ('course-revision','course-head-descriptor','activity-track-descriptor') AND inner_payload->'preparation'->'context'->'course'->'ref' IS DISTINCT FROM $7->'event'->'course' THEN RAISE EXCEPTION 'MANUAL_CHAIN_SOURCE_USE_UNAVAILABLE'; END IF;
+  PERFORM public.manual_race_v2_verify_source_purpose(i,f->'sourcePurpose',inner_payload->'preparation'->'context'->'course'->'ref');
  END LOOP;
  count:=0; bytes:=0;
  -- Full immutable DTO equality for every copied location, not just an input digest.
@@ -665,6 +735,7 @@ BEGIN
  OR (family='gallery-media' AND x.kind='gallery_media_deleted' AND x.target_id::text=source)
  OR (family IN ('activity','activity-track') AND x.kind='activity_deleted' AND x.target_id::text=source)
  OR (family='course' AND x.kind='course_deleted' AND x.target_id::text=source)
+ OR (family='course' AND x.kind='activity_deleted' AND EXISTS(SELECT 1 FROM public.manual_race_chain_lifecycle_edge_v2 a JOIN public.manual_race_chain_lifecycle_edge_v2 b ON b.athlete_id=a.athlete_id AND b.evidence_id=a.evidence_id AND b.ordinal=a.ordinal WHERE a.athlete_id=t AND a.edge->>'family'='course' AND a.edge->>'sourceId'=source AND b.edge->>'family'='activity' AND b.edge->>'role'='lineage' AND b.edge->>'sourceId'=x.target_id::text))
  OR (family='checkin' AND x.kind='check_in_deleted' AND x.target_id::text=source)
  OR (family='intake' AND x.kind='intake_entry_deleted' AND EXISTS(SELECT 1 FROM public.manual_race_chain_lifecycle_edge_v2 a JOIN public.manual_race_chain_lifecycle_edge_v2 b ON b.athlete_id=a.athlete_id AND b.evidence_id=a.evidence_id AND b.ordinal=a.ordinal WHERE a.athlete_id=t AND a.edge->>'family'='intake' AND a.edge->>'sourceId'=source AND b.edge->>'family'='intake-origin' AND b.edge->>'sourceId'=x.target_id::text)))
  ORDER BY CASE WHEN x.kind='tenant_erased' THEN 0 ELSE 1 END,x.occurred_at,x.event_id LIMIT 1;

@@ -499,3 +499,7 @@ Root imported companion 집중 unit359와 실제 source-purpose PG3(FIT/fixture/
 ## 증빙 V2 공통 경계 및 local 저장 첫 실험 · 2026-10-07
 
 Root V2 optional product 등록과 브라우저 Host exact path/method 경계의 unit153+33·API/platform TS·lint를 확인했다([J 기록](progress/M2-02j.md)). configured 정상 활성화·OIDC/DB 첨부 검증은 아직 없다. Native agent는 typed V2 client, own media purpose, local store/purge를 독점 범위에서 병렬 구현한다. local SQL116 확장 Root 실제 PG R1은32개 중31PASS/1FAIL이며 코스 저장의 PLpgSQL course_id ambiguity를 수정 중이다. 원 실패는 /private/tmp/wm-chain116-local-root-pg-r1-20261007.log에 보존하며 전체32 통과로 바꾸지 않는다. registry107·main/push0·I/J/phase in_progress·외부 not_executed를 유지한다.
+
+## Local 저장 실제 재검증 · 2026-10-07
+
+SQL116 local FIT/fixture와 manual recorded course 저장·삭제 R2는 Root actualPG34/34 및 DB/roles0이다([I 기록](progress/M2-02i.md)). R1 course ambiguity 실패는 보존했다. phase의 V2client commit6bc97834는 unit43/actualmoduleTS0이고 공개 proof DTO exact 조회 준비까지이며 J 첨부 화면·실 HTTP/DB activation은 아직 없다. Native 병렬3범위는 result editor/selector UI, own media purpose/semantic, SQL 저장 후속이다. normalregistry107·main/push0·I/J/phase in_progress·외부not_executed를 유지한다.
