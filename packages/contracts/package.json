@@ -280,6 +280,10 @@
     "./race-manual-public-impact": {
       "types": "./src/race-manual-public-impact.ts",
       "default": "./dist/race-manual-public-impact.js"
+    },
+    "./nutrition-race-plan-public-v4": {
+      "types": "./src/nutrition-race-plan-public-v4.ts",
+      "default": "./dist/nutrition-race-plan-public-v4.js"
     }
   },
   "scripts": {

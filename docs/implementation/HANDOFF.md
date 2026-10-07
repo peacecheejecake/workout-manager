@@ -158,7 +158,7 @@ APPROVE를 받았다. 당시 기록 갱신의 검토 refresh 후 main에 반영�
 
 앞선 실행 기준(2026-10-08): main `1d557358`, `phase/m2-02` 최신 검증 커밋 `dec6543e`. 이전 실행 기준 `2e56edd8`과 뒤에 이어지는 2026-09-27 기록은 역사적 스냅샷이며 최신 수용으로 승격하지 않는다. 이후 검증 커밋은 재개 시 `git log -1`로 확인한다.
 
-1. **M2-02i/j ready 구현**: I의 실제 목적별 source adapter·trusted Evidence→Decision→Proposal 저장·삭제/복원 closure·전체 도메인 원자 승인, J의 configured V2 증빙 경로·첨부/PB 화면을 완료한다. 비중복 scope를 native agent에 배정하고 Root가 shared schema/registry·실DB·graph/Git를 직렬 통합한다. PB chip/gun·거리 분류는 답변 대기를 유지한다.
+1. **M2-02i/j ready 구현**: I/J의 정상 runtime 설치·configured 활성화·최신 export/restore closure를 완료한다. 비중복 scope를 native agent에 배정하고 Root가 shared schema/registry·실DB·graph/Git를 직렬 통합한다. PB는 사용자 확정 Chip 우선·Chip null이면 Gun 비교로 구현해 실제 두 Host 4/4를 확인했다. 공개 영양 재연결은 별도 명시 승인 경로의 두 Host 2/2를 확인했으며 정상107에 쓰기 port를 자동 활성화하지 않는다. 전체 노드/phase 수용과 운영·native gate는 별도다.
 2. **M2-02 phase 검증·독립 검토**: runnable 노드 완료 후 전체 install/generated/lint/TS/build/unit/integration/identity 두 회차/format 및 해당 drill을 실제 실행하고, base/head를 고정한 context-less `gpt-6-sol` high 읽기 전용 phase review를 받는다. 승인과 기록 후 main fast-forward만 수행하며 push는 사용자 작업이다.
 3. **후속 graph·외부 gate**: I/J/K/L 완료 뒤 EXT-RESTOREa/b를 진행한다. AWS 인증 재개·실제 서버 상태와 새 실행 승인 없이는 recovery/drill/백업/복원/공개503 전환을 실행하지 않는다. 실기기 성능·제품 HealthKit·운영 OIDC·back-channel·ODbL 공개응답은 각각 실제 증거를 확보한다. FUT-09 실제 원문과 외부 `not_executed`는 별도 대기다.
 
@@ -601,3 +601,9 @@ Root가 신규 correspondence verifier의 단위19/19와 실제 PG composite1/1(
 ## 날짜 영향 통합 실제 수용 갱신 · 2026-10-08
 
 SQL127의 실제DB5/5 및 current/historical routine 분리 후 ended PG3/3·public/CheckIn copied17/17·Next/Vitecombined6/6(skip0)을 통과했다. 긴 영양ID 해결과 미해결 routine dates/window 입력부터 명시승인까지 실제두Host를 검증했다. [I 기록](progress/M2-02i.md)에 원실패/입력SHA/정리0·type/format후속차이를 보존한다. 다음 ready는 사용자 확정Chip우선 PB기본정책 및 공개 영양 V4재연결/재승인 preview/API/UI이며 nativeagent별 분리소유한다. 최신fullrestore·wholephase/독립review/main·운영/native gate는 미완료다.
+
+## PB 결정 반영·공개 영양 재연결 후속 수용 · 2026-10-08
+
+PB Chip우선/null일 때 Gun 기본 정책은 unit75/75와 실제두Host4/4로 `9d295764`에 커밋했다. 공개 영양 V4 write-free preview/API/명시 재연결 UI를 native agent의 비중복 소유로 병렬 구현해 Root unit395/395·실제PG15/15·Next/Vitebuild0·실제두Host2/2(skip0)을 확인했다. 실제 대회 삭제 후 시각 중단·새 대회만으로 자동재개0·미저장 비교 후 별도승인·멱등재생·음식/수량0|null/실제Intake 보존·320reflow를 수용했다. [I 기록](progress/M2-02i.md)에 SHA/한계/과거실패를 보존한다.
+
+정상registry107과 production writer/preview 부재는 유지한다. bounded 대회선택 첫50개와 manual계약에 표현불가한 reviewed provenance 재연결 한계도 별도 남는다. 다음 ready I/J 작업은 runtime 설치 profile/좁은grant/정상configured 활성화 및 최신 export·restore closure 준비다. 고정116/222의 target-only117119125를 최신runtime에 그대로 설치하거나 기존guard를 완화하지 않는다. 전체phase gate/독립review/main·운영503/native/외부not_executed 및 AWS로그인/FUT09원문 대기는 변경 없다.

@@ -8,6 +8,7 @@ import {
   type NutritionPlanVersion,
 } from '@workout/contracts/nutrition-core';
 import type { NutritionPlanVersionCompatibleV4 } from '@workout/contracts/nutrition-race-plan-v4';
+import { NutritionRaceReconnectEditor } from './nutrition-race-reconnect-editor';
 import { PlanReadonlyDetail } from './plan-readonly-detail';
 import { Button } from '@workout/ui-foundation/button';
 import { TextAreaField, TextField } from '@workout/ui-foundation/text-field';
@@ -178,13 +179,22 @@ function PlanLoaded({
   const [cloneDraft, setCloneDraft] = useState<NutritionPlanDraft | null>(null);
   if (loadedHead !== null && !parsedHead.success)
     return (
-      <PlanReadonlyDetail
-        record={latestHead ?? loadedHead}
-        history={history}
-        refreshing={refreshing}
-        onRefresh={onRefresh}
-        refreshFailed={refetchFailed}
-      />
+      <>
+        <PlanReadonlyDetail
+          record={latestHead ?? loadedHead}
+          history={history}
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          refreshFailed={refetchFailed}
+        />
+        <NutritionRaceReconnectEditor
+          api={api}
+          scope={scope}
+          record={loadedHead}
+          latestRecord={latestHead}
+          onCommitted={onRefresh}
+        />
+      </>
     );
   if (requestedPlanId !== null && baselineHead === null)
     return <p role="alert">계획을 찾을 수 없습니다.</p>;

@@ -1,0 +1,42 @@
+.editor {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+}
+.form,
+.editor fieldset,
+.editor label {
+  min-width: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+.editor fieldset {
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+}
+.editor select,
+.editor input[type='number'] {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: var(--target-primary);
+  padding: var(--space-2);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+}
+.editor input[type='checkbox'] {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+.editor :focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 2px;
+}

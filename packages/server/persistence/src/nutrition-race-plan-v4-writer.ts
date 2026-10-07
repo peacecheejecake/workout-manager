@@ -6,7 +6,10 @@ import {
   nutritionPlanVersionCompatibleV4Schema,
   type NutritionPlanVersionCompatibleV4,
 } from '@workout/contracts/nutrition-race-plan-v4';
-import type { SaveNutritionPlanV3Intent } from '@workout/contracts/nutrition-race-plan-v3';
+import {
+  saveNutritionPlanV3IntentSchema,
+  type SaveNutritionPlanV3Intent,
+} from '@workout/contracts/nutrition-race-plan-v3';
 import { planDraftSchema } from '@workout/contracts/planning';
 import type {
   ItemRaceTimingBinding,
@@ -15,6 +18,7 @@ import type {
 import type { Database, Transaction } from './database.js';
 import { lockAppAdmission, requireAppAdmission } from './app-admission.js';
 import { validateFoodPortions, NutritionReferenceError } from './nutrition-core.js';
+import { raceHeadExpectationRosterSchema } from '@workout/contracts/nutrition-race-timing';
 import { captureRaceTimingPins } from './race-timing-bindings.js';
 import { localInstant } from './integrated-planner.js';
 import { PersistenceConflict } from './outbox.js';
@@ -108,7 +112,13 @@ export function deriveNutritionAffectedItemIdsV4(
   prior: NutritionPlanVersionCompatibleV4,
   intent: SaveNutritionPlanV3Intent,
 ): readonly string[] {
-  const draft = intent.command.draft;
+  return deriveCalculationAffected(prior, calculationInput(intent));
+}
+function deriveCalculationAffected(
+  prior: NutritionPlanVersionCompatibleV4,
+  intent: NutritionV4CalculationInput,
+) {
+  const draft = intent.draft;
   const old = new Map(prior.items.map((item) => [item.id, item]));
   const changedContext =
     prior.timezone !== draft.timezone ||
@@ -244,8 +254,91 @@ async function originalReceipt(tx: Transaction, key: string, request: unknown, p
     return invalid();
   return { plan, notices: frozenNotices(plan, await replayTraining(tx, plan, exact.bytes)) };
 }
-async function priorHead(tx: Transaction, intent: SaveNutritionPlanV3Intent) {
-  const command = intent.command;
+/** Calculation data only. No approval/key/server-generated version is present. */
+export const nutritionV4CalculationInputSchema = saveNutritionPlanV3IntentSchema.shape.command
+  .omit({ kind: true, idempotencyKey: true, confirmed: true })
+  .extend({
+    expectedRaceHeads: saveNutritionPlanV3IntentSchema.shape.expectedRaceHeads,
+    reconnectItemIds: saveNutritionPlanV3IntentSchema.shape.reconnectItemIds,
+  })
+  .superRefine((input, ctx) => {
+    const items = new Map(input.draft.items.map((i) => [i.id, i]));
+    input.reconnectItemIds.forEach((id, index) => {
+      const previous = input.reconnectItemIds[index - 1],
+        item = items.get(id);
+      if (
+        (previous !== undefined && previous >= id) ||
+        !item ||
+        item.anchor.kind !== 'relative' ||
+        item.anchor.entity !== 'race'
+      )
+        ctx.addIssue({ code: 'custom', message: 'Invalid reconnect roster' });
+    });
+    const roster = raceHeadExpectationRosterSchema.safeParse({
+      items: input.draft.items.flatMap((i) =>
+        i.anchor.kind === 'disconnected' ? [] : [{ itemId: i.id, anchor: i.anchor }],
+      ),
+      expectedRaceHeads: input.expectedRaceHeads,
+    });
+    if (!roster.success)
+      for (const issue of roster.error.issues)
+        ctx.addIssue({ code: 'custom', message: issue.message, path: issue.path });
+  });
+export type NutritionV4CalculationInput = z.infer<typeof nutritionV4CalculationInputSchema>;
+export function assertNutritionV4PlainInput(input: unknown, limit = 524288): void {
+  const active = new WeakSet<object>();
+  let visits = 0,
+    primitiveBytes = 0;
+  const charge = (value: string) => {
+    primitiveBytes += Buffer.byteLength(value, 'utf8');
+    if (primitiveBytes > limit) throw new NutritionRacePlanV4WriterError('NUTRITION_V4_LIMIT');
+  };
+  function visit(value: unknown, depth: number): void {
+    if (++visits > 500000 || depth > 64)
+      throw new NutritionRacePlanV4WriterError('NUTRITION_V4_LIMIT');
+    if (typeof value === 'string') {
+      charge(value);
+      return;
+    }
+    if (value === null || typeof value === 'boolean') return;
+    if (typeof value === 'number') {
+      if (!Number.isFinite(value)) invalid();
+      return;
+    }
+    if (typeof value !== 'object' || active.has(value)) invalid();
+    if (Array.isArray(value) && Object.getPrototypeOf(value) !== Array.prototype) invalid();
+    if (
+      !Array.isArray(value) &&
+      Object.getPrototypeOf(value) !== Object.prototype &&
+      Object.getPrototypeOf(value) !== null
+    )
+      invalid();
+    if (Reflect.ownKeys(value).some((k) => typeof k !== 'string')) invalid();
+    active.add(value);
+    const properties = Object.getOwnPropertyDescriptors(value);
+    for (const [key, property] of Object.entries(properties)) {
+      if (Array.isArray(value) && key === 'length') continue;
+      charge(key);
+      if (!('value' in property) || !property.enumerable) invalid();
+      visit(property.value, depth + 1);
+    }
+    if (Array.isArray(value) && Object.keys(value).length !== value.length) invalid();
+    active.delete(value);
+  }
+  visit(input, 0);
+  if (bytes(input) > limit) throw new NutritionRacePlanV4WriterError('NUTRITION_V4_LIMIT');
+}
+function calculationInput(intent: SaveNutritionPlanV3Intent): NutritionV4CalculationInput {
+  return {
+    planId: intent.command.planId,
+    expectedHeadVersionId: intent.command.expectedHeadVersionId,
+    draft: intent.command.draft,
+    expectedRaceHeads: intent.expectedRaceHeads,
+    reconnectItemIds: intent.reconnectItemIds,
+  };
+}
+async function priorHead(tx: Transaction, intent: NutritionV4CalculationInput) {
+  const command = intent;
   const result = await tx.query(
     `SELECT h.version,h.version_id,octet_length(v.record_json::text)::text AS bytes,
       CASE WHEN octet_length(v.record_json::text)<=524288 THEN v.record_json ELSE NULL END AS record_json
@@ -280,12 +373,12 @@ async function priorHead(tx: Transaction, intent: SaveNutritionPlanV3Intent) {
 async function requireOrigins(
   tx: Transaction,
   prior: NutritionPlanVersionCompatibleV4,
-  intent: SaveNutritionPlanV3Intent,
+  intent: NutritionV4CalculationInput,
 ) {
   const old = new Map(prior.items.map((item) => [item.id, item]));
   const reconnect = new Set(intent.reconnectItemIds),
     origins: string[] = [];
-  for (const item of intent.command.draft.items) {
+  for (const item of intent.draft.items) {
     const previous = old.get(item.id);
     if (item.anchor.kind === 'disconnected' || previous?.anchor.kind === 'disconnected') {
       if (previous?.anchor.kind !== 'disconnected')
@@ -322,10 +415,10 @@ async function requireOrigins(
 }
 async function preparationSources(
   tx: Transaction,
-  intent: SaveNutritionPlanV3Intent,
+  intent: NutritionV4CalculationInput,
   initialSize: number,
 ) {
-  const draft = intent.command.draft;
+  const draft = intent.draft;
   let size = initialSize;
   const foods = [
     ...new Set(
@@ -387,9 +480,10 @@ async function preparationSources(
 }
 function selectTiming(
   prior: NutritionPlanVersionCompatibleV4,
-  intent: SaveNutritionPlanV3Intent,
+  intent: NutritionV4CalculationInput,
   affected: readonly string[],
   sources: Awaited<ReturnType<typeof preparationSources>>,
+  mode: 'diagnostic_only' | 'approval_requires_resolved' = 'approval_requires_resolved',
 ) {
   const changed = new Set(affected),
     reconnect = new Set(intent.reconnectItemIds);
@@ -411,7 +505,7 @@ function selectTiming(
   );
   const pins = new Map<string, RaceTimingPinV1>(),
     bindings: ItemRaceTimingBinding[] = [];
-  for (const item of intent.command.draft.items) {
+  for (const item of intent.draft.items) {
     if (item.anchor.kind !== 'relative') continue;
     const preserve = !changed.has(item.id) && !reconnect.has(item.id);
     if (item.anchor.entity === 'session') {
@@ -422,7 +516,8 @@ function selectTiming(
         localInstant(session.date, session.localStartTime, sources.training.timezone) === null ||
         (item.anchor.point === 'end' && session.durationSeconds === null)
       ) {
-        if (!preserve) throw new NutritionRacePlanV4WriterError('NUTRITION_V4_TIMING_UNRESOLVED');
+        if (!preserve && mode === 'approval_requires_resolved')
+          throw new NutritionRacePlanV4WriterError('NUTRITION_V4_TIMING_UNRESOLVED');
       }
       continue;
     }
@@ -472,7 +567,8 @@ function selectTiming(
           },
     );
     if (item.anchor.point === 'end' || selected.start.state === 'unknown') {
-      if (!preserve) throw new NutritionRacePlanV4WriterError('NUTRITION_V4_TIMING_UNRESOLVED');
+      if (!preserve && mode === 'approval_requires_resolved')
+        throw new NutritionRacePlanV4WriterError('NUTRITION_V4_TIMING_UNRESOLVED');
     }
   }
   return {
@@ -484,11 +580,28 @@ function selectTiming(
     ),
   };
 }
+/** Same-tx source capture and calculation. Caller must hold authenticated tenant
+ * fences and current app processing admission. Returned data grants no write. */
+export async function captureNutritionV4CalculationIn(
+  tx: Transaction,
+  unknownInput: unknown,
+  mode: 'diagnostic_only' | 'approval_requires_resolved' = 'approval_requires_resolved',
+) {
+  assertNutritionV4PlainInput(unknownInput);
+  const input = nutritionV4CalculationInputSchema.parse(unknownInput),
+    { prior, size } = await priorHead(tx, input);
+  const affected = deriveCalculationAffected(prior, input);
+  await requireOrigins(tx, prior, input);
+  const sources = await preparationSources(tx, input, addSize(bytes(input), size));
+  const timing = selectTiming(prior, input, affected, sources, mode);
+  return { input, prior, affected, sources, timing };
+}
 export interface NutritionRacePlanV4WriteOptions {
   readonly now?: () => Date;
   readonly id?: () => string;
 }
 function prepareWrite(unknownIntent: unknown) {
+  assertNutritionV4PlainInput(unknownIntent);
   if (bytes(unknownIntent) > 524288) throw new NutritionRacePlanV4WriterError('NUTRITION_V4_LIMIT');
   const outer = saveNutritionPlanV4IntentSchema.parse(unknownIntent),
     intent = outer.intent,
@@ -537,14 +650,15 @@ async function commitPreparedWrite(
   const replay = await originalReceipt(tx, key, request, command.planId);
   if (replay) return replay;
   await requireAppAdmission(tx);
-  const { prior, size } = await priorHead(tx, intent);
+  const calculation = calculationInput(intent);
+  const { prior, size } = await priorHead(tx, calculation);
   const affected =
     applicationContextId === undefined
       ? deriveNutritionAffectedItemIdsV4(prior, intent)
       : await raceApprovalAffectedItems(tx, applicationContextId, prepared.request, prior, intent);
-  await requireOrigins(tx, prior, intent);
-  const sources = await preparationSources(tx, intent, addSize(bytes(outer), size));
-  const timing = selectTiming(prior, intent, affected, sources);
+  await requireOrigins(tx, prior, calculation);
+  const sources = await preparationSources(tx, calculation, addSize(bytes(outer), size));
+  const timing = selectTiming(prior, calculation, affected, sources);
   const versionId = z.uuid().parse(id()).toLowerCase(),
     approvalId = z.uuid().parse(id()).toLowerCase();
   const saved = nutritionPlanVersionV4Schema.parse({

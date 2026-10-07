@@ -257,6 +257,16 @@ export function createSessionTransport(
     async request(input) {
       assertLiveSession(session, expired, available);
       const path = apiPathSchema.parse(input.path);
+      const nutritionV4PathAllowed =
+        (input.method === 'GET' && path === '/bff/v1/nutrition/plans/capabilities') ||
+        (input.method === 'POST' &&
+          /^\/bff\/v1\/nutrition\/plans\/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\/(?:preview-v4|approve-v4)$/.test(
+            path,
+          ));
+      // V1 has no plan child endpoints; keep its list/read/replay paths intact.
+      const reservedNutritionV4Path =
+        /^\/bff\/v1\/nutrition\/plans\/(?:capabilities(?:\/|\?|$)|[^/?]+\/)/i.test(path);
+      if (reservedNutritionV4Path && !nutritionV4PathAllowed) throw new Error('ROUTE_NOT_ALLOWED');
       const retrievalQueryAllowed = input.method === 'POST' && path === '/bff/v1/retrieval/queries';
       const checkInTemplatePathAllowed =
         (input.method === 'GET' &&
@@ -293,6 +303,7 @@ export function createSessionTransport(
           (path === '/bff/v1/ai-settings' || path === '/bff/v1/ai-settings/catalog')) ||
         (input.method === 'PUT' && path === '/bff/v1/ai-settings');
       if (
+        !nutritionV4PathAllowed &&
         !retrievalQueryAllowed &&
         !checkInTemplatePathAllowed &&
         !raceManualPublicPathAllowed &&

@@ -560,3 +560,22 @@ it('server difference preserves item identity and treats timezone/period/link ch
     deriveNutritionAffectedItemIdsV4(prior, saveNutritionPlanV3IntentSchema.parse(input.intent)),
   ).toEqual(['a', 'b']);
 });
+
+it('writer ingress rejects accessors and custom array prototypes before receipt or DB reads', () => {
+  const test = fixture();
+  let called = false;
+  expect(() =>
+    test.writer.savePlanV4('synthetic', {
+      get intent() {
+        called = true;
+        return {};
+      },
+    }),
+  ).toThrow('SOURCE_INVALID');
+  expect(called).toBe(false);
+  expect(test.calls).toEqual([]);
+  const input = intent(test.prior);
+  Object.setPrototypeOf(input.intent.command.draft.items, {});
+  expect(() => test.writer.savePlanV4('synthetic', input)).toThrow('SOURCE_INVALID');
+  expect(test.calls).toEqual([]);
+});

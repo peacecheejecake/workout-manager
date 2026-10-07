@@ -8,31 +8,34 @@ import type {
 } from '@workout/contracts/integrated-planner';
 import { localInstant, localParts } from './nutrition-calendar.js';
 
-export function projectNutritionItem(
-  item: z.infer<typeof nutritionPlanVersionSchema>['items'][number],
-  plan: z.infer<typeof nutritionPlanVersionSchema>,
-  linked: Map<string, z.infer<typeof planDraftSchema>>,
+/** Identity-free timing calculation from already validated inputs. Owned mutable
+ * races are explicit preview facts; approved frozen callers never pass this map. */
+export function projectNutritionTimingCore(
+  anchor: z.infer<typeof nutritionPlanVersionSchema>['items'][number]['anchor'],
+  linkedTrainingPlanVersionId: string | null,
+  linked: ReadonlyMap<string, z.infer<typeof planDraftSchema>>,
   timezone: string,
   ownedRaces: ReadonlyMap<string, RaceEvent> = new Map(),
-): { date: string; value: IntegratedNutritionItem } | UnresolvedNutritionItem {
-  const base = {
-    id: item.id,
-    planVersionId: item.planVersionId,
-    title: item.title,
-    category: item.category,
-    source: item.source,
-  };
-  const unresolved = (reason: UnresolvedNutritionItem['reason']) => ({ ...base, reason });
-  if (item.anchor.kind === 'absolute') {
-    if (item.anchor.timezone === timezone)
-      return { date: item.anchor.date, value: { ...base, localTime: item.anchor.localTime } };
-    if (item.anchor.localTime === null) return unresolved('timezone_mismatch');
-    const instant = localInstant(item.anchor.date, item.anchor.localTime, item.anchor.timezone);
+):
+  | { date: string; localTime: string | null; instant: number | null }
+  | { reason: UnresolvedNutritionItem['reason'] } {
+  const unresolved = (reason: UnresolvedNutritionItem['reason']) => ({ reason });
+  if (anchor.kind === 'absolute') {
+    if (anchor.timezone === timezone)
+      return {
+        date: anchor.date,
+        localTime: anchor.localTime,
+        instant:
+          anchor.localTime === null
+            ? null
+            : localInstant(anchor.date, anchor.localTime, anchor.timezone),
+      };
+    if (anchor.localTime === null) return unresolved('timezone_mismatch');
+    const instant = localInstant(anchor.date, anchor.localTime, anchor.timezone);
     if (instant === null) return unresolved('ambiguous_local_time');
     const local = localParts(instant, timezone);
-    return { date: local.date, value: { ...base, localTime: local.time } };
+    return { date: local.date, localTime: local.time, instant };
   }
-  const anchor = item.anchor;
   let start: number | null;
   let durationSeconds: number | null = null;
   if (anchor.entity === 'race') {
@@ -48,8 +51,8 @@ export function projectNutritionItem(
       return unresolved('missing_anchor');
     start = localInstant(race.localDate, race.localStartTime, race.timezone);
   } else {
-    if (plan.linkedTrainingPlanVersionId === null) return unresolved('missing_anchor');
-    const training = linked.get(plan.linkedTrainingPlanVersionId);
+    if (linkedTrainingPlanVersionId === null) return unresolved('missing_anchor');
+    const training = linked.get(linkedTrainingPlanVersionId);
     const session = training?.sessions.find((candidate) => candidate.id === anchor.entityId);
     if (!session || !training) return unresolved('missing_anchor');
     if (session.localStartTime === null) return unresolved('missing_session_time');
@@ -66,5 +69,31 @@ export function projectNutritionItem(
   if (!Number.isFinite(anchored) || Math.abs(anchored) > 8_640_000_000_000_000)
     return unresolved('offset_out_of_range');
   const local = localParts(anchored, timezone);
-  return { date: local.date, value: { ...base, localTime: local.time } };
+  return { date: local.date, localTime: local.time, instant: anchored };
+}
+
+export function projectNutritionItem(
+  item: z.infer<typeof nutritionPlanVersionSchema>['items'][number],
+  plan: z.infer<typeof nutritionPlanVersionSchema>,
+  linked: Map<string, z.infer<typeof planDraftSchema>>,
+  timezone: string,
+  ownedRaces: ReadonlyMap<string, RaceEvent> = new Map(),
+): { date: string; value: IntegratedNutritionItem } | UnresolvedNutritionItem {
+  const base = {
+    id: item.id,
+    planVersionId: item.planVersionId,
+    title: item.title,
+    category: item.category,
+    source: item.source,
+  };
+  const timing = projectNutritionTimingCore(
+    item.anchor,
+    plan.linkedTrainingPlanVersionId,
+    linked,
+    timezone,
+    ownedRaces,
+  );
+  return 'reason' in timing
+    ? { ...base, reason: timing.reason }
+    : { date: timing.date, value: { ...base, localTime: timing.localTime } };
 }

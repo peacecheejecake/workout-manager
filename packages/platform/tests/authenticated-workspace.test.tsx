@@ -1477,3 +1477,54 @@ it('keeps transport-reset consumer drafts across offline blocking and identical-
   fireEvent.click(screen.getByRole('button', { name: 'Save private draft' }));
   expect(await screen.findByText('saved')).toBeInTheDocument();
 });
+
+const nutritionV4PlanPath = '/bff/v1/nutrition/plans/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+it.each([
+  ['GET', '/bff/v1/nutrition/plans/capabilities'],
+  ['POST', nutritionV4PlanPath + '/preview-v4'],
+  ['POST', nutritionV4PlanPath + '/approve-v4'],
+] as const)('allows exact V4 %s %s through the private session', async (method, path) => {
+  fetchMock.mockResolvedValue(json({ accepted: true }));
+  await createSessionTransport(session, vi.fn()).request({
+    method,
+    path,
+    body: method === 'GET' ? null : {},
+    idempotencyKey: path.endsWith('approve-v4') ? 'stable-nutrition-key' : null,
+  });
+  expect(fetchMock).toHaveBeenCalledWith(
+    path,
+    expect.objectContaining({
+      credentials: 'same-origin',
+      cache: 'no-store',
+      headers: expect.objectContaining({
+        'x-workout-session-id': session.sessionId,
+        ...(method === 'POST' ? { 'x-csrf-token': session.csrfToken } : {}),
+        ...(path.endsWith('approve-v4') ? { 'idempotency-key': 'stable-nutrition-key' } : {}),
+      }),
+    }),
+  );
+});
+it.each([
+  ['POST', '/bff/v1/nutrition/plans/capabilities'],
+  ['GET', '/bff/v1/nutrition/plans/capabilities?schemaVersion=4'],
+  ['GET', nutritionV4PlanPath + '/preview-v4'],
+  ['POST', nutritionV4PlanPath + '/PREVIEW-V4'],
+  ['POST', nutritionV4PlanPath + '/%70review-v4'],
+  ['DELETE', nutritionV4PlanPath + '/approve-v4'],
+  ['PUT', nutritionV4PlanPath + '/approve-v4'],
+  ['POST', nutritionV4PlanPath + '/preview-v4?x=1'],
+  ['POST', nutritionV4PlanPath + '/approve-v4?x=1'],
+  ['POST', nutritionV4PlanPath + '/approve-v4/extra'],
+  ['POST', '/bff/v1/nutrition/plans/not-a-uuid/preview-v4'],
+  ['POST', '/bff/v1/nutrition/plans/%61aaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/preview-v4'],
+] as const)('denies V4 alias or method %s %s before fetch', async (method, path) => {
+  await expect(
+    createSessionTransport(session, vi.fn()).request({
+      method,
+      path,
+      body: {},
+      idempotencyKey: null,
+    }),
+  ).rejects.toThrow('ROUTE_NOT_ALLOWED');
+  expect(fetchMock).not.toHaveBeenCalled();
+});

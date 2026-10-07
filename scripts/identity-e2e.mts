@@ -29,6 +29,8 @@ import { createPlanningRepository } from '../packages/server/persistence/src/pla
 import { createRaceManualPublicRepository } from '../packages/server/persistence/src/race-manual-public.ts';
 import { createRaceRepository } from '../packages/server/persistence/src/races.ts';
 import { createRaceResultV2Repository } from '../packages/server/persistence/src/race-result-v2.ts';
+import { createNutritionRacePlanV4Writer } from '../packages/server/persistence/src/nutrition-race-plan-v4-writer.ts';
+import { createNutritionRacePlanV4PreviewRepository } from '../packages/server/persistence/src/nutrition-race-plan-v4-preview.ts';
 import {
   createNutritionRepository,
   createNutritionPlanV4Reader,
@@ -1157,7 +1159,11 @@ try {
     planning: createPlanningRepository(database),
     races: createRaceRepository(database),
     ...(stageRaceManualPublic
-      ? { raceManualPublic: createRaceManualPublicRepository(database) }
+      ? {
+          raceManualPublic: createRaceManualPublicRepository(database),
+          nutritionV4Writer: createNutritionRacePlanV4Writer(database),
+          nutritionV4Preview: createNutritionRacePlanV4PreviewRepository(database),
+        }
       : {}),
     ...(stageRaceResults ? { raceResultsV2: createRaceResultV2Repository(database) } : {}),
     nutrition: createNutritionRepository(database),

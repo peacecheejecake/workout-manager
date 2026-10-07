@@ -101,7 +101,8 @@
     "./race-plan-impact-preview": {
       "types": "./src/race-plan-impact-preview.ts",
       "default": "./src/race-plan-impact-preview.ts"
-    }
+    },
+    "./nutrition-race-plan-v4-preview": "./src/nutrition-race-plan-v4-preview.ts"
   },
   "devDependencies": {
     "@types/pg": "8.23.1",

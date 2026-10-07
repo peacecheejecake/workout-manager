@@ -508,3 +508,117 @@ it('explicit V4 factory selects each immutable revision tuple, while old factory
     }),
   ).toThrow('NUTRITION_FROZEN_TIMING_INVALID_INPUT');
 });
+
+it('identity-free approved and transient calculation preserve exact frozen pin timing', async () => {
+  const { createApprovedNutritionTimingProjectorV4, createTransientNutritionTimingProjectorV4 } =
+    await import('../src/nutrition-frozen-timing-projection.js');
+  const { planVersionId, ...draftItem } = item;
+  void planVersionId;
+  const context = { targetTimezone: 'Asia/Seoul', linkedTraining: null };
+  const approved = createApprovedNutritionTimingProjectorV4({ record, ...context });
+  const transient = createTransientNutritionTimingProjectorV4({
+    draft: {
+      period: record.period,
+      timezone: record.timezone,
+      purpose: record.purpose,
+      linkedTrainingPlanVersionId: null,
+      items: [draftItem],
+    },
+    raceTimingPins: record.raceTimingPins,
+    itemRaceTimingBindings: record.itemRaceTimingBindings,
+    ...context,
+  });
+  const selector = { itemId: item.id, raceSourceVisibility: 'available' };
+  expect(transient.project(selector)).toEqual(approved.project(selector));
+  expect(approved.project(selector)).toMatchObject({
+    state: 'resolved',
+    instant: '2026-10-07T00:00:17.000Z',
+  });
+});
+it('DST gap/fold cannot become a fabricated instant; historic wrapper retains original display', async () => {
+  const { createApprovedNutritionTimingProjectorV4, createTransientNutritionTimingProjectorV4 } =
+    await import('../src/nutrition-frozen-timing-projection.js');
+  for (const date of ['2026-03-08', '2026-11-01']) {
+    const time = date === '2026-03-08' ? '02:30' : '01:30';
+    const absolute = {
+      ...item,
+      anchor: { kind: 'absolute', date, localTime: time, timezone: 'America/New_York' },
+    };
+    const r = {
+      ...legacy,
+      timezone: 'America/New_York',
+      period: { from: date, toInclusive: date },
+      items: [absolute],
+    };
+    const approved = createApprovedNutritionTimingProjectorV4({
+      record: r,
+      targetTimezone: r.timezone,
+      linkedTraining: null,
+    });
+    const { planVersionId, ...draftItem } = absolute;
+    void planVersionId;
+    const transient = createTransientNutritionTimingProjectorV4({
+      draft: {
+        period: r.period,
+        timezone: r.timezone,
+        purpose: r.purpose,
+        linkedTrainingPlanVersionId: null,
+        items: [draftItem],
+      },
+      raceTimingPins: [],
+      itemRaceTimingBindings: [],
+      targetTimezone: r.timezone,
+      linkedTraining: null,
+    });
+    const selector = { itemId: item.id, raceSourceVisibility: 'available' };
+    expect(approved.project(selector)).toMatchObject({
+      state: 'unresolved',
+      reason: 'ambiguous_local_time',
+    });
+    expect(transient.project(selector)).toEqual(approved.project(selector));
+    const historical = projectFrozenNutritionTiming({
+      record: r,
+      ...selector,
+      targetTimezone: r.timezone,
+      linkedTraining: null,
+    });
+    expect(historical).toMatchObject({
+      status: 'projected',
+      projection: { date, value: { localTime: time } },
+    });
+  }
+});
+it('transient plain boundary rejects accessors, sparse arrays and oversized primitives without evaluating getters', async () => {
+  const { createTransientNutritionTimingProjectorV4 } =
+    await import('../src/nutrition-frozen-timing-projection.js');
+  let called = false;
+  expect(() =>
+    createTransientNutritionTimingProjectorV4({
+      get draft() {
+        called = true;
+        return {};
+      },
+    }),
+  ).toThrow();
+  expect(called).toBe(false);
+  expect(() => createTransientNutritionTimingProjectorV4(Array(1))).toThrow();
+  expect(() => createTransientNutritionTimingProjectorV4('x'.repeat(4194305))).toThrow();
+});
+
+it('approved-before retains reviewed provenance instead of inventing manual draft facts', async () => {
+  const { createApprovedNutritionTimingProjectorV4 } =
+    await import('../src/nutrition-frozen-timing-projection.js');
+  const reviewed = {
+    ...record,
+    items: [{ ...item, source: 'reviewed_rule', evidenceIds: ['owned-evidence'] }],
+  };
+  const original = JSON.stringify(reviewed);
+  expect(
+    createApprovedNutritionTimingProjectorV4({
+      record: reviewed,
+      targetTimezone: 'Asia/Seoul',
+      linkedTraining: null,
+    }).project({ itemId: item.id, raceSourceVisibility: 'available' }),
+  ).toMatchObject({ state: 'resolved', localTime: '09:00:17' });
+  expect(JSON.stringify(reviewed)).toBe(original);
+});

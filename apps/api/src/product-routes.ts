@@ -76,6 +76,7 @@ import { registerDashboardRoutes } from './dashboard-routes.js';
 import type { Principal } from './ports.js';
 import { registerPlanningRoutes } from './planning-routes.js';
 import { registerNutritionRoutes } from './nutrition-routes.js';
+import { registerNutritionV4Routes, type NutritionV4RoutesPorts } from './nutrition-v4-routes.js';
 import { registerSupplementaryRoutes } from './supplementary-routes.js';
 import { registerStretchingRoutes } from './stretching-routes.js';
 import { registerRoutineRoutes } from './routine-routes.js';
@@ -115,6 +116,8 @@ export interface ProductRepositories {
   planning?: PlanningRepository;
   nutrition?: NutritionRepository;
   nutritionV4?: NutritionPlanV4Reader;
+  nutritionV4Writer?: NutritionV4RoutesPorts['writer'];
+  nutritionV4Preview?: NutritionV4RoutesPorts['preview'];
   supplementary?: SupplementaryRepository;
   stretching?: StretchingRepository;
   routines?: RoutineRepository;
@@ -231,6 +234,15 @@ export function registerProductRoutes(
   if (repositories.activityContext)
     registerActivityContextRoutes(routes, repositories.activityContext, principal);
   if (repositories.planning) registerPlanningRoutes(routes, repositories.planning, principal);
+  registerNutritionV4Routes(
+    routes,
+    {
+      ...(repositories.nutritionV4Writer ? { writer: repositories.nutritionV4Writer } : {}),
+      ...(repositories.nutritionV4Preview ? { preview: repositories.nutritionV4Preview } : {}),
+      ...(repositories.nutritionV4 ? { reader: repositories.nutritionV4 } : {}),
+    },
+    principal,
+  );
   if (repositories.nutrition)
     registerNutritionRoutes(routes, repositories.nutrition, principal, repositories.nutritionV4);
   if (repositories.supplementary)

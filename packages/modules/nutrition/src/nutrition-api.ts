@@ -3,6 +3,15 @@ import type { AuthenticatedTransport, TransportRequest } from '@workout/contract
 import { transportReplySchema } from '@workout/contracts/core';
 import { activityListSchema } from '@workout/contracts/activity';
 import { planReadSchema, planSnapshotSchema } from '@workout/contracts/planning';
+import { raceEventListPageSchema } from '@workout/contracts/race-queries';
+import { raceEventReadSchema } from '@workout/contracts/race-commands';
+import {
+  nutritionPlanPublicCapabilitiesV4Schema,
+  nutritionPlanPublicPreviewV4RequestSchema,
+  nutritionPlanPublicPreviewV4Schema,
+  nutritionPlanPublicApproveV4RequestSchema,
+  nutritionPlanPublicApprovalV4ResultSchema,
+} from '@workout/contracts/nutrition-race-plan-public-v4';
 import { restoreGenerationResponseSchema } from '@workout/contracts/restore-generation';
 import {
   activeIntakeEntrySchema,
@@ -105,6 +114,71 @@ export function createNutritionApi(transport: AuthenticatedTransport) {
       ).then((read) => {
         if (read.planId !== id) throw new NutritionRequestError(502, 'INVALID_PLAN_RESPONSE');
         return read;
+      });
+    },
+    capabilitiesV4(signal?: AbortSignal) {
+      return request(
+        '/bff/v1/nutrition/plans/capabilities',
+        'GET',
+        nutritionPlanPublicCapabilitiesV4Schema,
+        null,
+        null,
+        signal,
+      );
+    },
+    listReconnectRaces(signal?: AbortSignal) {
+      return request('/bff/v1/races?limit=50', 'GET', raceEventListPageSchema, null, null, signal);
+    },
+    readReconnectRace(eventId: string, signal?: AbortSignal) {
+      const id = z.uuid().parse(eventId).toLowerCase();
+      return request(`/bff/v1/races/${id}`, 'GET', raceEventReadSchema, null, null, signal).then(
+        (race) => {
+          if (race.id !== id) throw new NutritionRequestError(502, 'INVALID_RACE_RESPONSE');
+          return race;
+        },
+      );
+    },
+    previewPlanV4(planId: string, raw: unknown, signal?: AbortSignal) {
+      const id = z.uuid().parse(planId).toLowerCase(),
+        body = nutritionPlanPublicPreviewV4RequestSchema.parse(raw);
+      return request(
+        `${planPath(id)}/preview-v4`,
+        'POST',
+        nutritionPlanPublicPreviewV4Schema,
+        body,
+        null,
+        signal,
+      ).then((preview) => {
+        if (
+          preview.status !== 'unavailable' &&
+          (preview.expectedPlan.planId !== id ||
+            preview.expectedPlan.versionId !== body.expectedHeadVersionId ||
+            JSON.stringify(preview.expectedRaceHeads) !== JSON.stringify(body.expectedRaceHeads))
+        )
+          throw new NutritionRequestError(502, 'INVALID_PREVIEW_RESPONSE');
+        return preview;
+      });
+    },
+    approvePlanV4(planId: string, raw: unknown, idempotencyKey: string, signal?: AbortSignal) {
+      const id = z.uuid().parse(planId).toLowerCase(),
+        body = nutritionPlanPublicApproveV4RequestSchema.parse(raw);
+      const key = z
+        .string()
+        .min(8)
+        .max(128)
+        .regex(/^[a-zA-Z0-9_-]+$/)
+        .parse(idempotencyKey);
+      return request(
+        `${planPath(id)}/approve-v4`,
+        'POST',
+        nutritionPlanPublicApprovalV4ResultSchema,
+        body,
+        key,
+        signal,
+      ).then((result) => {
+        if (result.plan.planId !== id)
+          throw new NutritionRequestError(502, 'INVALID_APPROVAL_RESPONSE');
+        return result;
       });
     },
     currentTrainingPlan(signal?: AbortSignal) {

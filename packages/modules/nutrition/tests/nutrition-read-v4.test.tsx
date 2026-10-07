@@ -162,7 +162,10 @@ describe('explicit nutrition V4 read', () => {
     await userEvent.click(screen.getByRole('button', { name: '서버 최신 버전 확인' }));
     expect(
       request.mock.calls.every(
-        ([input]) => input.method === 'GET' && input.path.includes('?maxSchemaVersion=4'),
+        ([input]) =>
+          input.method === 'GET' &&
+          (input.path.includes('?maxSchemaVersion=4') ||
+            input.path === '/bff/v1/nutrition/plans/capabilities'),
       ),
     ).toBe(true);
   });
