@@ -1,3 +1,4 @@
+import { localImportedActivityReadFactsSchema } from './race-plan-impact-local-imported-activity-read-facts.js';
 import { mediaRetainedReadFactsSchema } from './race-plan-impact-media-read-facts.js';
 import {
   validateMediaReadManifest,
@@ -574,6 +575,7 @@ export const raceImpactConsumedCaptureSchema = z.strictObject({
   routineTimerReads: z.array(routineRunReadSchema).max(1000).optional(),
   manualIntakeReadFacts: manualIntakeReadFactsSchema.optional(),
   manualActivityReadFacts: manualActivityReadFactsSchema.optional(),
+  localImportedActivityReadFacts: localImportedActivityReadFactsSchema.optional(),
   workoutTemplateSources: workoutTemplateSourceFactsSchema.optional(),
   resourceReadFacts: resourceRetainedReadFactsSchema.optional(),
   mediaReadFacts: mediaRetainedReadFactsSchema.optional(),
@@ -1041,6 +1043,11 @@ export function validateRaceImpactConsumedManifest(
     c.manualActivityReadFacts.athleteId !== c.athleteId
   )
     block('manualActivityReadFacts', 'scope_mismatch');
+  if (
+    c.localImportedActivityReadFacts !== undefined &&
+    c.localImportedActivityReadFacts.athleteId !== c.athleteId
+  )
+    block('localImportedActivityReadFacts', 'scope_mismatch');
   if (c.calendarIntent !== undefined && c.calendarIntent !== null) {
     const intent = c.calendarIntent;
     if (
@@ -1067,11 +1074,14 @@ export function validateRaceImpactConsumedManifest(
   }
   const routineResult = validateRoutineReadSources({
     manifest: c.routineActualManifest,
+    activityMetadata: c.sourcePermissionManifest.activityMediaPermissions.activities,
+    ...(c.localImportedActivityReadFacts === undefined
+      ? {}
+      : { localImportedActivityReadFacts: c.localImportedActivityReadFacts }),
     ...(c.manualActivityReadFacts === undefined
       ? {}
       : {
           activityReadFacts: c.manualActivityReadFacts,
-          activityMetadata: c.sourcePermissionManifest.activityMediaPermissions.activities,
         }),
     ...(c.manualIntakeReadFacts === undefined ? {} : { intakeReadFacts: c.manualIntakeReadFacts }),
     ...(c.routineTimerReads === undefined ? {} : { timerReads: c.routineTimerReads }),
@@ -1672,6 +1682,7 @@ export function validateRaceImpactConsumedManifest(
     c.completions.length +
     (c.manualIntakeReadFacts?.facts.length ?? 0) +
     (c.manualActivityReadFacts?.facts.length ?? 0) +
+    (c.localImportedActivityReadFacts?.facts.length ?? 0) +
     (c.workoutTemplateSources?.templates.length ?? 0) +
     (c.workoutTemplateSources?.exercises.length ?? 0) +
     (c.workoutTemplateSources?.targets.length ?? 0) +

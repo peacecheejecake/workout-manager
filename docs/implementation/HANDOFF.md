@@ -491,3 +491,7 @@ Root 신규 목적helper unit30·actualPG11·scopedTS/lint/format·DB/역할잔�
 ## Trusted chain 로컬 own/core/text 검증 · 2026-10-07
 
 SQL116 첫 두 설치 실패와 R3 11PASS/17FAIL+unhandled1을 수정한 R4는 Root 실제 **28/28 PASS**, focused unit68·scoped TS/lint/format·DB/역할잔존0이다. [I 기록](progress/M2-02i.md)에 초기 실패·exact SHA와 수용범위를 보존했다. canonical payload1·FK·minimal digest receipt·동시성/rollback·source delete/purge를 검증했으며 normal registry107·public activation0·Plan 적용0이다. NEW source preparation3은 course1PASS/FIT·fixture2FAIL로 앞단 manual-only companion 연결 gap을 실제 확인했다. 별도 imported metadata port 준비를 context/routine/complete에 연결하고 재검증할 예정이다. whole27 lifecycle/원격 tail/archive restore/전체 도메인 승인·J 첨부 공개 활성화·전체 phase 및 외부 gate는 계속 미완료다. main/push0·I/J/phase in_progress를 유지한다.
+
+## Imported 읽기·PB 반응형 실제 수용 · 2026-10-07
+
+Root imported companion 집중 unit359와 실제 source-purpose PG3(FIT/fixture/course), PB responsive Next/Vite 실제 identity2를 확인했다. 초기 FIT2FAIL은 보존하고 현재 연결의 실제 통과만 별도로 기록했다. [I 기록](progress/M2-02i.md)·[J 기록](progress/M2-02j.md)을 따른다. 합성 DB/역할 잔존0이며 SQL116 local FIT/course 저장 확장은 native agent WIP이다. provider/media 권한 연결 및 J configured proof/normal restore 후속을 병렬 조사한다. registry107·main/push0·I/J/phase in_progress·외부 not_executed는 유지한다. 대회 삭제 후 승인 영양은 연결 해제 표시·재연결/재승인 전 대회 시각 사용 중단·음식/수량/실제 섭취 보존 결정을 다시 확인했다.

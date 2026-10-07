@@ -1,3 +1,9 @@
+import { routineReadManifestSchema } from '../src/race-plan-impact-routine-manifest.js';
+import { manualActivityReadProjectionInputSchema } from '../src/race-plan-impact-manual-activity-read-facts.js';
+import {
+  type localImportedActivityReadFactsSchema,
+  projectLocalImportedActivityReadFacts,
+} from '../src/race-plan-impact-local-imported-activity-read-facts.js';
 import { createHash } from 'node:crypto';
 import { manualActivityCreateSchema } from '@workout/contracts/activity';
 import {
@@ -58,6 +64,7 @@ function fixture() {
   const manualIntakeFields: {
     manualIntakeReadFacts?: z.infer<typeof manualIntakeReadFactsSchema>;
     manualActivityReadFacts?: z.infer<typeof manualActivityReadFactsSchema>;
+    localImportedActivityReadFacts?: z.infer<typeof localImportedActivityReadFactsSchema>;
   } = {};
   return {
     ...manualIntakeFields,
@@ -3306,4 +3313,61 @@ it('binds original calendar intent to the captured read digest', () => {
     scope = sign(c);
   c.calendarIntent.newLocalDate = '2026-10-09';
   expect(validateRaceImpactConsumedManifest(c, scope).status).toBe('blocked');
+});
+
+function withLocalActivityRead() {
+  const c = withManualActivityRead();
+  const manifest = routineReadManifestSchema.parse(c.routineActualManifest);
+  const activityMetadata = manualActivityReadProjectionInputSchema.shape.activityMetadata.parse(
+    c.sourcePermissionManifest.activityMediaPermissions.activities,
+  );
+  const roster = manifest.actualRosters.activities[0],
+    metadata = activityMetadata[0];
+  if (
+    !roster ||
+    roster.source.state !== 'present' ||
+    !metadata ||
+    metadata.source.state !== 'present'
+  )
+    throw Error('fixture');
+  roster.source.kind = 'fit';
+  metadata.source.kind = 'fit';
+  c.routineActualManifest.actualRosters.activities = z
+    .array(z.json())
+    .parse(manifest.actualRosters.activities);
+  c.sourcePermissionManifest.activityMediaPermissions.activities = activityMetadata;
+  const actualFacts = manifest.runs.flatMap((r) => r.actuals.map((a) => a.fact));
+  const port = projectLocalImportedActivityReadFacts({
+    athleteId: athlete,
+    refs: actualFacts.map((f) => f.requested),
+    actualFacts,
+    activityRosters: [roster],
+    activityMetadata: [metadata],
+  });
+  if (port.status !== 'projected_retained_local_import_read_facts') throw Error(port.reason);
+  delete c.manualActivityReadFacts;
+  c.localImportedActivityReadFacts = port.facts;
+  return c;
+}
+it('full consumer removes local read blocker while preserving other missing sources and authority', () => {
+  const c = withLocalActivityRead(),
+    reasons = fullManualActivityReasons(c),
+    before = structuredClone(c);
+  expect(reasons.some((r) => r.reason === 'actual_permission_port_missing')).toBe(false);
+  const scope = sign(c);
+  validateRaceImpactConsumedManifest(c, scope);
+  expect(c).toEqual(before);
+});
+it('full consumer rejects foreign local read port', () => {
+  const c = withLocalActivityRead();
+  if (!c.localImportedActivityReadFacts) throw Error('fixture');
+  c.localImportedActivityReadFacts.athleteId = 'foreign';
+  blocked(c, 'scope_mismatch', 'localImportedActivityReadFacts');
+});
+it('full consumer blocks missing local read port without manual fallback', () => {
+  const c = withLocalActivityRead();
+  delete c.localImportedActivityReadFacts;
+  expect(
+    fullManualActivityReasons(c).some((r) => r.reason === 'actual_permission_port_missing'),
+  ).toBe(true);
 });

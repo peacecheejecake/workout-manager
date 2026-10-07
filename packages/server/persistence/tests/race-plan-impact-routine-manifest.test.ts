@@ -1,3 +1,4 @@
+import { projectLocalImportedActivityReadFacts } from '../src/race-plan-impact-local-imported-activity-read-facts.js';
 import { expect, it } from 'vitest';
 import { createHash } from 'node:crypto';
 import { manualActivityCreateSchema } from '@workout/contracts/activity';
@@ -905,4 +906,112 @@ it('does not treat an unused global provider metadata row as manual body permiss
   unused.source.kind = 'healthkit';
   c.activityMetadata.push(unused);
   expect(validateRoutineReadSources(c).status).toBe('validated_read_sources');
+});
+
+function localActivity(kind: 'fit' | 'fixture' = 'fit', deleted = false) {
+  const c = manualActivity(deleted);
+  const roster = c.manifest.actualRosters.activities[0];
+  const metadata = c.activityMetadata?.[0];
+  if (
+    !roster ||
+    roster.source.state !== 'present' ||
+    !metadata ||
+    metadata.source.state !== 'present'
+  )
+    throw Error('fixture');
+  roster.source.kind = kind;
+  metadata.source.kind = kind;
+  const projected = projectLocalImportedActivityReadFacts({
+    athleteId: 'synthetic-own',
+    refs: [actual(c).fact.requested],
+    actualFacts: [actual(c).fact],
+    activityRosters: c.manifest.actualRosters.activities,
+    activityMetadata: c.activityMetadata,
+  });
+  if (projected.status !== 'projected_retained_local_import_read_facts')
+    throw Error(projected.reason);
+  delete c.activityReadFacts;
+  c.localImportedActivityReadFacts = projected.facts;
+  return c;
+}
+it.each(['fit', 'fixture'] as const)(
+  'consumes exact local %s port without relabeling manual',
+  (kind) => {
+    const c = localActivity(kind),
+      before = structuredClone(c);
+    expect(validateRoutineReadSources(c).status).toBe('validated_read_sources');
+    expect(c).toEqual(before);
+  },
+);
+it.each(['missing', 'extra', 'revision', 'kind', 'digest'] as const)(
+  'blocks altered local port %s',
+  (part) => {
+    const c = localActivity();
+    if (part === 'missing') delete c.localImportedActivityReadFacts;
+    else if (part === 'extra') {
+      const f = c.localImportedActivityReadFacts?.facts[0];
+      if (!f) throw Error('fixture');
+      c.localImportedActivityReadFacts?.facts.push(structuredClone(f));
+    } else if (part === 'revision') {
+      const f = c.localImportedActivityReadFacts?.facts[0];
+      if (!f?.current) throw Error('fixture');
+      f.current.revision++;
+    } else if (part === 'kind') {
+      const r = c.manifest.actualRosters.activities[0];
+      if (!r || r.source.state !== 'present') throw Error('fixture');
+      r.source.kind = 'healthkit';
+    } else {
+      const f = c.localImportedActivityReadFacts?.facts[0];
+      if (!f) throw Error('fixture');
+      f.originalDigest = 'f'.repeat(64);
+    }
+    expect(validateRoutineReadSources(c).status).toBe('blocked');
+  },
+);
+
+it('validates mixed manual/local ports as separate exact consumed subsets', () => {
+  const c = localActivity(),
+    manual = manualActivity(),
+    row = c.manifest.runs[0],
+    manualRow = manual.manifest.runs[0],
+    roster = manual.manifest.actualRosters.activities[0],
+    metadata = manual.activityMetadata?.[0];
+  if (!row || !manualRow || !roster || !metadata) throw Error('fixture');
+  const copied = structuredClone(actual(manual));
+  copied.fact.requested.id = id(987);
+  if (!copied.fact.current) throw Error('fixture');
+  copied.fact.current.id = id(987);
+  roster.id = id(987);
+  metadata.id = id(987);
+  row.actuals.push(copied);
+  const progress = row.record.progress[0];
+  if (!progress) throw Error('fixture');
+  progress.actualRefs.push(copied.fact.requested);
+  row.historyDigest = digest(row.record);
+  c.manifest.uniqueSourceCount++;
+  if (c.timerReads?.[0]) c.timerReads[0].run = structuredClone(row.record);
+  c.manifest.actualRosters.activities.push(roster);
+  c.activityMetadata?.push(metadata);
+  const port = projectManualActivityReadFacts({
+    athleteId: 'synthetic-own',
+    refs: [copied.fact.requested],
+    actualFacts: [copied.fact],
+    activityRosters: [roster],
+    activityMetadata: [metadata],
+  });
+  if (port.status !== 'projected_retained_read_facts') throw Error(port.reason);
+  c.activityReadFacts = port.facts;
+  expect(validateRoutineReadSources(c).status).toBe('validated_read_sources');
+  delete c.localImportedActivityReadFacts;
+  expect(validateRoutineReadSources(c).status).toBe('blocked');
+});
+it('retains a deleted local observation without restoring its original body', () => {
+  const c = localActivity('fixture', true);
+  expect(validateRoutineReadSources(c).status).toBe('validated_read_sources');
+  expect(actual(c).fact.content).toBeNull();
+  expect(c.localImportedActivityReadFacts?.facts[0]).toMatchObject({
+    state: 'deleted',
+    originalDigest: null,
+    overlayDigest: null,
+  });
 });

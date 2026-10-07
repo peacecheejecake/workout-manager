@@ -1,3 +1,7 @@
+import {
+  projectLocalImportedActivityReadFacts,
+  type LocalImportedActivityReadFacts,
+} from './race-plan-impact-local-imported-activity-read-facts.js';
 import { reserveSourceBudget, type SourceBudget } from './race-plan-impact-nested-sources.js';
 import { captureMediaRetainedReadFacts } from './race-plan-impact-media-read-facts.js';
 import {
@@ -684,6 +688,7 @@ export async function captureRacePlanImpactContext(
   let routineTimerReads: Awaited<ReturnType<typeof captureRoutineTimerReads>>;
   let manualIntakeReadFacts: Awaited<ReturnType<typeof captureManualIntakeReadFacts>>;
   let manualActivityReadFacts: ManualActivityReadFacts;
+  let localImportedActivityReadFacts: LocalImportedActivityReadFacts;
   let workoutTemplateSources: Awaited<ReturnType<typeof captureWorkoutTemplateSources>>;
   let resourceReadFacts: Awaited<ReturnType<typeof captureResourceRetainedReadFacts>>;
   let mediaReadFacts: Awaited<ReturnType<typeof captureMediaRetainedReadFacts>>;
@@ -773,15 +778,42 @@ export async function captureRacePlanImpactContext(
         actual.fact.requested.kind === 'activity' ? [actual.fact] : [],
       ),
     );
-    const projectedActivityFacts = projectManualActivityReadFacts({
-      athleteId: tx.athleteId,
-      refs: activityFacts.map((fact) => fact.requested),
-      actualFacts: activityFacts,
-      activityRosters: routineActualManifest.actualRosters.activities,
-      activityMetadata: sourcePermissionManifest.activityMediaPermissions.activities,
-    });
+    const localIds = new Set(
+      routineActualManifest.actualRosters.activities
+        .filter(
+          (row) =>
+            row.source.state === 'present' &&
+            (row.source.kind === 'fit' || row.source.kind === 'fixture'),
+        )
+        .map((row) => row.id.toLowerCase()),
+    );
+    const localFacts = activityFacts.filter((fact) =>
+      localIds.has(fact.requested.id.toLowerCase()),
+    );
+    const manualFacts = activityFacts.filter(
+      (fact) => !localIds.has(fact.requested.id.toLowerCase()),
+    );
+    const projectInput = (facts: typeof activityFacts) => {
+      const ids = new Set(facts.map((fact) => fact.requested.id.toLowerCase()));
+      return {
+        athleteId: tx.athleteId,
+        refs: facts.map((fact) => fact.requested),
+        actualFacts: facts,
+        activityRosters: routineActualManifest.actualRosters.activities.filter((row) =>
+          ids.has(row.id.toLowerCase()),
+        ),
+        activityMetadata: sourcePermissionManifest.activityMediaPermissions.activities.filter(
+          (row) => ids.has(row.id.toLowerCase()),
+        ),
+      };
+    };
+    const projectedActivityFacts = projectManualActivityReadFacts(projectInput(manualFacts));
     if (projectedActivityFacts.status !== 'projected_retained_read_facts') fail('INVALID_CONTEXT');
     manualActivityReadFacts = projectedActivityFacts.facts;
+    const projectedLocalFacts = projectLocalImportedActivityReadFacts(projectInput(localFacts));
+    if (projectedLocalFacts.status !== 'projected_retained_local_import_read_facts')
+      fail('INVALID_CONTEXT');
+    localImportedActivityReadFacts = projectedLocalFacts.facts;
   } catch (error) {
     if (error instanceof RaceImpactDependencyError)
       throw new RacePlanImpactContextError(
@@ -823,6 +855,7 @@ export async function captureRacePlanImpactContext(
     routineTimerReads,
     manualIntakeReadFacts,
     manualActivityReadFacts,
+    localImportedActivityReadFacts,
     workoutTemplateSources,
     resourceReadFacts,
     mediaReadFacts,

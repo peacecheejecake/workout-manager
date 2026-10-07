@@ -1,3 +1,7 @@
+import {
+  localImportedActivityReadFactsSchema,
+  validateLocalImportedActivityReadFacts,
+} from './race-plan-impact-local-imported-activity-read-facts.js';
 import { z } from 'zod';
 import {
   actualRefSchema,
@@ -191,6 +195,7 @@ export const routineReadSourcesProjectionSchema = z.strictObject({
   // Retained read correspondence only; the full capture checks athlete scope.
   intakeReadFacts: manualIntakeReadFactsSchema.optional(),
   activityReadFacts: manualActivityReadFactsSchema.optional(),
+  localImportedActivityReadFacts: localImportedActivityReadFactsSchema.optional(),
   activityMetadata: manualActivityReadProjectionInputSchema.shape.activityMetadata.optional(),
 });
 export type RoutineReadSourcesProjection = z.infer<typeof routineReadSourcesProjectionSchema>;
@@ -262,6 +267,7 @@ export function validateRoutineReadSources(input: unknown): {
     (c.timerReads ?? []).reduce((n, r) => n + r.timers.length, 0) +
     (c.intakeReadFacts?.facts.length ?? 0) +
     (c.activityReadFacts?.facts.length ?? 0) +
+    (c.localImportedActivityReadFacts?.facts.length ?? 0) +
     (c.activityMetadata?.length ?? 0);
   if (
     visits +
@@ -341,18 +347,47 @@ export function validateRoutineReadSources(input: unknown): {
       if (prior && !equal(prior, a.fact)) block('activityReadFacts', 'actual_membership_mismatch');
       else consumedActivities.set(key, a.fact);
     }
+  const localIds = new Set(
+    m.actualRosters.activities
+      .filter(
+        (row) =>
+          row.source.state === 'present' &&
+          (row.source.kind === 'fit' || row.source.kind === 'fixture'),
+      )
+      .map((row) => row.id.toLowerCase()),
+  );
+  const allActivityFacts = [...consumedActivities.values()];
+  const inputFor = (local: boolean, athleteId: string) => {
+    const actualFacts = allActivityFacts.filter(
+      (f) => localIds.has(f.requested.id.toLowerCase()) === local,
+    );
+    const ids = new Set(actualFacts.map((f) => f.requested.id.toLowerCase()));
+    return {
+      athleteId,
+      refs: actualFacts.map((f) => f.requested),
+      actualFacts,
+      activityRosters: m.actualRosters.activities.filter((r) => ids.has(r.id.toLowerCase())),
+      activityMetadata: (c.activityMetadata ?? []).filter((r) => ids.has(r.id.toLowerCase())),
+    };
+  };
   const activityPortValid =
     c.activityReadFacts !== undefined &&
     c.activityMetadata !== undefined &&
-    validateManualActivityReadFacts(c.activityReadFacts, {
-      athleteId: c.activityReadFacts.athleteId,
-      refs: [...consumedActivities.values()].map((f) => f.requested),
-      actualFacts: [...consumedActivities.values()],
-      activityRosters: m.actualRosters.activities,
-      activityMetadata: c.activityMetadata,
-    }).status === 'validated_retained_read_facts';
+    validateManualActivityReadFacts(
+      c.activityReadFacts,
+      inputFor(false, c.activityReadFacts.athleteId),
+    ).status === 'validated_retained_read_facts';
+  const localPortValid =
+    c.localImportedActivityReadFacts !== undefined &&
+    c.activityMetadata !== undefined &&
+    validateLocalImportedActivityReadFacts(
+      c.localImportedActivityReadFacts,
+      inputFor(true, c.localImportedActivityReadFacts.athleteId),
+    ).status === 'validated_retained_local_import_read_facts';
   if (c.activityReadFacts && !activityPortValid)
     block('activityReadFacts', 'actual_membership_mismatch');
+  if (c.localImportedActivityReadFacts && !localPortValid)
+    block('localImportedActivityReadFacts', 'actual_membership_mismatch');
   for (const row of blueprints.values()) {
     if (
       !uuid.safeParse(row.record.routineId).success ||
@@ -536,7 +571,13 @@ export function validateRoutineReadSources(input: unknown): {
             f.current,
           ) &&
           retained.current.contentDigest === intake.get(retained.requested.id)?.contentDigest;
-        if (!matchesRetained && !(ref.kind === 'activity' && activityPortValid))
+        if (
+          !matchesRetained &&
+          !(
+            ref.kind === 'activity' &&
+            (localIds.has(ref.id.toLowerCase()) ? localPortValid : activityPortValid)
+          )
+        )
           block(`${path}.${a.stepId}`, 'actual_permission_port_missing');
         if (ref.kind === 'activity') {
           const roster = activities.get(ref.id.toLowerCase()),
