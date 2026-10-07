@@ -84,3 +84,13 @@ it('FIT alone stays unattributed; actual individual Garmin lineage requires a di
     ),
   ).toBe('garmin_policy_adapter_unavailable');
 });
+
+it('primitive/key UTF8 accumulation stops before caller serialization; escaped JSON remains bounded', () => {
+  for (const value of [
+    '食'.repeat(1400000),
+    { ['x'.repeat(4194305)]: null },
+    { a: 'x'.repeat(2100000), b: 'x'.repeat(2100000) },
+    { a: '\n'.repeat(2100000) },
+  ])
+    expect(() => assertRaceManualPlainV2(value)).toThrow();
+});

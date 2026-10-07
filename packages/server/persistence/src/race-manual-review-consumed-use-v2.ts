@@ -1,48 +1,30 @@
+import { activityValuesSchema, activityOverlaySchema } from '@workout/contracts/activity';
+import {
+  assertRaceManualSourcePurposePlainV2,
+  captureRaceManualLocalActivityPurposeV2In,
+  captureRaceManualCoursePurposeV2In,
+  raceManualSourcePurposeObservationV2Schema,
+} from './race-manual-review-source-purpose-adapters-v2.js';
 import { z } from 'zod';
 import type { Transaction } from './database.js';
 import { prepareRaceManualReviewFullOwnedBindingV2In } from './race-manual-review-full-owned-binding-consumer-v2.js';
 import { prepareRaceManualReviewRetainedPayloadV2 } from './race-manual-review-retained-payload-v2.js';
 import { raceManualReviewFullCopiedInventoryV2Schema } from './race-manual-review-full-copied-inventory-v2.js';
 import { reserveSourceBudget, type SourceBudget } from './race-plan-impact-nested-sources.js';
-import { RaceImpactDependencyError } from './race-plan-impact-dependencies.js';
+import {
+  RaceImpactDependencyError,
+  impactDependencyDigest,
+} from './race-plan-impact-dependencies.js';
 
 export function assertRaceManualPlainV2(value: unknown): void {
-  const active = new WeakSet<object>();
-  let visits = 0;
-  function visit(v: unknown, depth: number): void {
-    if (++visits > 4194305 || depth > 64) throw new RaceImpactDependencyError('INVALID_CONTEXT');
-    if (
-      v === null ||
-      typeof v === 'string' ||
-      typeof v === 'boolean' ||
-      (typeof v === 'number' && Number.isFinite(v))
-    )
-      return;
-    if (typeof v !== 'object' || active.has(v) || Object.getOwnPropertySymbols(v).length)
-      throw new RaceImpactDependencyError('INVALID_CONTEXT');
-    if (!Array.isArray(v) && Object.getPrototypeOf(v) !== Object.prototype)
-      throw new RaceImpactDependencyError('INVALID_CONTEXT');
-    if (
-      Array.isArray(v) &&
-      (Object.keys(v).length !== v.length || Object.getOwnPropertyNames(v).length !== v.length + 1)
-    )
-      throw new RaceImpactDependencyError('INVALID_CONTEXT');
-    active.add(v);
-    for (const [k, d] of Object.entries(Object.getOwnPropertyDescriptors(v))) {
-      if (Array.isArray(v) && k === 'length') continue;
-      if (!d.enumerable || !('value' in d)) throw new RaceImpactDependencyError('INVALID_CONTEXT');
-      visit(d.value, depth + 1);
-    }
-    active.delete(v);
-  }
-  visit(value, 0);
-  if (Buffer.byteLength(JSON.stringify(value) ?? '', 'utf8') > 4194304)
-    throw new RaceImpactDependencyError('CONTEXT_UNAVAILABLE', 'decoded_bytes');
+  assertRaceManualSourcePurposePlainV2(value);
 }
 const identity = raceManualReviewFullCopiedInventoryV2Schema.out.shape.refs.element.shape.identity;
 export const raceManualConsumedUseReasonV2Schema = z.enum([
   'preparation_blocked',
   'source_unavailable',
+  'source_tuple_mismatch',
+  'source_deleted',
   'activity_provenance_unavailable',
   'healthkit_policy_adapter_unavailable',
   'garmin_policy_adapter_unavailable',
@@ -66,6 +48,7 @@ export const raceManualConsumedUseFactsV2Schema = z.strictObject({
         use: z.enum(['core_manual', 'own_retained_text', 'blocked']),
         reason: raceManualConsumedUseReasonV2Schema.nullable(),
         sourceAuthentication: z.literal('unverified'),
+        sourcePurpose: raceManualSourcePurposeObservationV2Schema.nullable(),
         resourceAccess: z
           .strictObject({
             accessRevision: z.number().int().positive().max(2147483647),
@@ -181,6 +164,9 @@ export async function prepareRaceManualConsumedUseV2In(
   const resources = new Map(
     (c.resourceReadFacts?.facts ?? []).map((f) => [f.requestedVersionId.toLowerCase(), f]),
   );
+  const coursePurpose = c.course
+    ? await captureRaceManualCoursePurposeV2In(tx, c.course, budget)
+    : null;
   const facts: z.infer<typeof raceManualConsumedUseFactsV2Schema>['facts'] = [];
   for (const ref of binding.inventory.refs) {
     const i = ref.identity;
@@ -194,6 +180,63 @@ export async function prepareRaceManualConsumedUseV2In(
               null)
           : null,
       );
+    let sourcePurpose: z.infer<typeof raceManualSourcePurposeObservationV2Schema> | null = null;
+    if (
+      (i.kind === 'course-revision' ||
+        i.kind === 'course-head-descriptor' ||
+        i.kind === 'activity-track-descriptor') &&
+      coursePurpose
+    ) {
+      reason = coursePurpose.reason;
+      sourcePurpose = coursePurpose.observation;
+    }
+    if (
+      (i.kind === 'activity-canonical-values' || i.kind === 'activity-overlay') &&
+      activity?.source.state === 'present' &&
+      (activity.source.kind === 'fit' || activity.source.kind === 'fixture')
+    ) {
+      const copied = binding.inventory.refs.find(
+        (r) => r.identity.kind === i.kind && r.identity.sourceId === i.sourceId,
+      );
+      const canonical = c.routineActualManifest.runs
+        .flatMap((r) => r.actuals.map((a) => a.fact))
+        .find(
+          (f) =>
+            f.requested.kind === 'activity' &&
+            f.requested.id.toLowerCase() === i.sourceId.toLowerCase(),
+        );
+      if (!copied || canonical?.requested.kind !== 'activity' || !canonical.content)
+        reason = 'source_unavailable';
+      else {
+        const content = z
+          .strictObject({
+            original: activityValuesSchema,
+            overlay: activityOverlaySchema.nullable(),
+            detail: z.unknown().nullable(),
+          })
+          .parse(canonical.content);
+        const observed = await captureRaceManualLocalActivityPurposeV2In(
+          tx,
+          {
+            activityId: i.sourceId,
+            canonicalRevision: activity.revision,
+            source: {
+              kind: activity.source.kind,
+              sourceId: activity.source.sourceId,
+              revision: activity.source.revision,
+              contentHash: activity.source.contentHash,
+            },
+            expectedOriginalDigest: impactDependencyDigest(content.original),
+            expectedOverlayDigest:
+              content.overlay === null ? null : impactDependencyDigest(content.overlay),
+            expectedOverlayRevision: activity.overlay.revision,
+          },
+          budget,
+        );
+        reason = observed.reason;
+        sourcePurpose = observed.observation;
+      }
+    }
     let resourceAccess: z.infer<
       typeof raceManualConsumedUseFactsV2Schema
     >['facts'][number]['resourceAccess'] = null;
@@ -237,6 +280,7 @@ export async function prepareRaceManualConsumedUseV2In(
       reason,
       sourceAuthentication: 'unverified',
       resourceAccess,
+      sourcePurpose,
     });
   }
   const uses = raceManualConsumedUseFactsV2Schema.parse({

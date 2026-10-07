@@ -209,6 +209,7 @@ it('manual purpose excludes AI access revision/cleanup drift and retains raw del
         use: 'own_retained_text',
         reason: null,
         sourceAuthentication: 'unverified',
+        sourcePurpose: null,
         resourceAccess: { accessRevision: 1, deleted: false, cleanupPending: false },
       },
     ],
@@ -246,4 +247,12 @@ it('raw resource version/body correspondence remains a relevant semantic depende
     status: 'blocked',
     reason: 'semantic_basis_changed',
   });
+});
+
+it('semantic expected decoder shares pre-serialization primitive/key bound', () => {
+  for (const value of [
+    { ...basis(), extra: '食'.repeat(1400000) },
+    { ...basis(), ['x'.repeat(4194305)]: null },
+  ])
+    expect(raceManualSemanticBasisV2Schema.safeParse(value).success).toBe(false);
 });

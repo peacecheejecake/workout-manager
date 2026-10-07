@@ -27,37 +27,7 @@ const limitations = {
 const hash = z.string().regex(/^[a-f0-9]{64}$/);
 const plain = z.unknown().superRefine((value, ctx) => {
   try {
-    const active = new WeakSet<object>();
-    let visits = 0;
-    function visit(v: unknown, depth: number): void {
-      if (++visits > 4194305 || depth > 64) throw Error('bound');
-      if (
-        v === null ||
-        typeof v === 'string' ||
-        typeof v === 'boolean' ||
-        (typeof v === 'number' && Number.isFinite(v))
-      )
-        return;
-      if (typeof v !== 'object' || active.has(v) || Object.getOwnPropertySymbols(v).length)
-        throw Error('plain');
-      if (!Array.isArray(v) && Object.getPrototypeOf(v) !== Object.prototype)
-        throw Error('prototype');
-      if (
-        Array.isArray(v) &&
-        (Object.keys(v).length !== v.length ||
-          Object.getOwnPropertyNames(v).length !== v.length + 1)
-      )
-        throw Error('array');
-      active.add(v);
-      for (const [key, d] of Object.entries(Object.getOwnPropertyDescriptors(v))) {
-        if (Array.isArray(v) && key === 'length') continue;
-        if (!d.enumerable || !('value' in d)) throw Error('accessor');
-        visit(d.value, depth + 1);
-      }
-      active.delete(v);
-    }
-    visit(value, 0);
-    if (Buffer.byteLength(JSON.stringify(value) ?? '', 'utf8') > 4194304) throw Error('bytes');
+    assertRaceManualPlainV2(value);
   } catch {
     ctx.addIssue({ code: 'custom', message: 'Invalid bounded plain semantic basis' });
   }

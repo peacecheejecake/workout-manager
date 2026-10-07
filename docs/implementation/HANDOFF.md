@@ -487,3 +487,7 @@ Root 신규 목적helper unit30·actualPG11·scopedTS/lint/format·DB/역할잔�
 ## PB 화면 실제 소비자 연결 · 2026-10-07
 
 기존 결과 목록 pages에서 명시 비교 입력으로 PB를 계산하도록 연결했다. Root 두Host build 및 실제 OIDC/API/합성 DB Next·Vite identity2/2를 확인했고, 0초를 승자로 기대한 최초2FAIL은 기존 정책을 변경하지 않고 시험을 교정한 기록으로 보존했다. [J 기록](progress/M2-02j.md)을 따른다. V2 첨부 normal registry/owner/export/restore 및 실제 HTTP/UI 수용은 별도 미완료이며 J/phase in_progress를 유지한다. SQL116 첫 설치시험은 STABLE 함수를 index expression에 넣은 오류로 0PASS/28SKIP였다. 일반 lookup index로 수정한 R2는 아직 실제 재실행 전이며 성공으로 바꾸지 않는다. FIT는 앞단 strict manual companion 차단을 발견해 actual imported-source companion 연결이 필요하다. source/purpose/lifecycle/전체 원자 승인과 외부 gate를 계속 분리한다.
+
+## Trusted chain 로컬 own/core/text 검증 · 2026-10-07
+
+SQL116 첫 두 설치 실패와 R3 11PASS/17FAIL+unhandled1을 수정한 R4는 Root 실제 **28/28 PASS**, focused unit68·scoped TS/lint/format·DB/역할잔존0이다. [I 기록](progress/M2-02i.md)에 초기 실패·exact SHA와 수용범위를 보존했다. canonical payload1·FK·minimal digest receipt·동시성/rollback·source delete/purge를 검증했으며 normal registry107·public activation0·Plan 적용0이다. NEW source preparation3은 course1PASS/FIT·fixture2FAIL로 앞단 manual-only companion 연결 gap을 실제 확인했다. 별도 imported metadata port 준비를 context/routine/complete에 연결하고 재검증할 예정이다. whole27 lifecycle/원격 tail/archive restore/전체 도메인 승인·J 첨부 공개 활성화·전체 phase 및 외부 gate는 계속 미완료다. main/push0·I/J/phase in_progress를 유지한다.
