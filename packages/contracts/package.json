@@ -260,6 +260,10 @@
     "./race-result-capabilities": {
       "types": "./src/race-result-capabilities.ts",
       "default": "./dist/race-result-capabilities.js"
+    },
+    "./race-manual-approval": {
+      "types": "./src/race-manual-approval.ts",
+      "default": "./dist/race-manual-approval.js"
     }
   },
   "scripts": {

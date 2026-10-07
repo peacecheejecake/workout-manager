@@ -150,7 +150,7 @@ APPROVE를 받았다. 당시 기록 갱신의 검토 refresh 후 main에 반영�
 
 ## 다음 작업 순서
 
-현재 실행 기준(2026-10-08): main `1d557358`, `phase/m2-02` 최신 검증 커밋 `46f2c74b`. 이전 실행 기준 `2e56edd8`과 뒤에 이어지는 2026-09-27 기록은 역사적 스냅샷이며 최신 수용으로 승격하지 않는다. 이후 검증 커밋은 재개 시 `git log -1`로 확인한다.
+현재 실행 기준(2026-10-08): main `1d557358`, `phase/m2-02` 최신 검증 커밋 `601ba0ae`. 이전 실행 기준 `2e56edd8`과 뒤에 이어지는 2026-09-27 기록은 역사적 스냅샷이며 최신 수용으로 승격하지 않는다. 이후 검증 커밋은 재개 시 `git log -1`로 확인한다.
 
 1. **M2-02i/j ready 구현**: I의 실제 목적별 source adapter·trusted Evidence→Decision→Proposal 저장·삭제/복원 closure·전체 도메인 원자 승인, J의 configured V2 증빙 경로·첨부/PB 화면을 완료한다. 비중복 scope를 native agent에 배정하고 Root가 shared schema/registry·실DB·graph/Git를 직렬 통합한다. PB chip/gun·거리 분류는 답변 대기를 유지한다.
 2. **M2-02 phase 검증·독립 검토**: runnable 노드 완료 후 전체 install/generated/lint/TS/build/unit/integration/identity 두 회차/format 및 해당 drill을 실제 실행하고, base/head를 고정한 context-less `gpt-6-sol` high 읽기 전용 phase review를 받는다. 승인과 기록 후 main fast-forward만 수행하며 push는 사용자 작업이다.
@@ -555,3 +555,7 @@ Root 실제 current107+raw108–116 빈 DB catalog 추출을 부모 artifact act
 ## 실제 child 인코딩 후속 · 2026-10-08
 
 Root actual child PG4/4를 확인했고 초기2pass/2fixturefail은 보존했다. chain7+suppression1은 실제 행, 나머지6은 빈 census-only 및 transient0 검증이다. metadata/source bytes/full restore를 확대 인증하지 않는다. parent artifact 단위24/24를 검증 중이며 SQL117 loader와 네도메인 원자 승인 계약 구현을 병렬 진행한다. 기존 child factory handle의 prepare 이후 키철회·교체도 소비 전에 거절하도록 별도 후속 보강 중이다.
+
+## whole-affected application 경계 준비 · 2026-10-08
+
+새 수동 승인 contract30와 child key52 unit82/82 및 계약 build/api-client·platformTS/public subpath runtime 검증을 완료했다. SQL118 실제applicationcandidate/allfour approval actor는 기존 회복/루틴 sameTx writer를 좁게 추출해 재사용하며, race-only 변경 시 nutritionV4가 기존pin을 유지하는 실제 gap을 별도 private-context seam으로 처리한다. 가짜 제목/period 변경이나 기존readonly applicable false 토글은 하지 않는다. 원 SQL110/116 retainedbody는 보존하고 applicationcandidate의 실제 currentbasis를 새로 저장해 승인 시 recapture와 비교한다. SQL117 restore actor에는 actual110관계/244trigger 정의를 추가 제공했다. 원본tail typed callback 및 actualparent+child+tail loader/whole source closure·allfour acceptance·fullphase gates/독립review·공개/native 수용은 미완료다.
