@@ -272,10 +272,7 @@ export function createRaceRepository(
             revision: previousRevision,
           });
           const next = raceEventUpdateCommandSchema.parse(input).values;
-          if (
-            prior.localDate !== next.localDate &&
-            (prior.planVersionId !== null || next.planVersionId !== null)
-          )
+          if (prior.localDate !== next.localDate)
             throw new RaceRepositoryError('RACE_PLAN_IMPACT_REQUIRED');
         }
       }

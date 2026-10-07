@@ -8,8 +8,15 @@ import type {
   TrainingBestValues,
 } from '@workout/contracts/race-commands';
 import { createDatabase, type Database } from '../src/database.js';
-import { migrate, grantOperations, grantRaces, grantCourses } from '../src/migrate.js';
+import {
+  migrate,
+  grantOperations,
+  grantRaces,
+  grantCourses,
+  grantCorePlanning,
+} from '../src/migrate.js';
 import { createRaceRepository, type RaceRepository } from '../src/races.js';
+import { createConsentRepository } from '../src/repositories.js';
 import { createOperationsRepository } from '../src/operations.js';
 import { dropIsolatedDatabase } from './drop-isolated-database.js';
 
@@ -28,6 +35,7 @@ beforeAll(async () => {
   await grantOperations(adminUrl, 'workout_runtime');
   await grantRaces(adminUrl, 'workout_runtime');
   await grantCourses(adminUrl, 'workout_runtime');
+  await grantCorePlanning(adminUrl, 'workout_runtime');
   await admin.query('GRANT SELECT,INSERT,UPDATE,DELETE ON outbox TO workout_runtime');
   database = createDatabase({ connectionString: runtimeUrl, max: 8 });
   repository = createRaceRepository(database, { now: () => new Date(fixedTime) });
@@ -404,7 +412,7 @@ describe('race ledger transactions', () => {
     );
   });
 
-  it('rejects old/new linked Plan date changes, including unlink attempts, with no Plan writes', async () => {
+  it('rejects every public date change including unlinked and unlink attempts with no partial writes', async () => {
     const athlete = randomUUID(),
       refs = await seedReferences(athlete);
     await grantApp(athlete);
@@ -432,11 +440,62 @@ describe('race ledger transactions', () => {
         values: { ...eventValues(), localDate: '2026-10-11', planVersionId: refs.planId },
       }),
     ).rejects.toMatchObject({ code: 'RACE_PLAN_IMPACT_REQUIRED' });
-    await repository.updateRaceEvent(athlete, unlinked.id, {
+    const counts = () =>
+      database.tenant(athlete, (tx) =>
+        tx.query(
+          "SELECT (SELECT count(*)::int FROM race_event_revision) AS history,(SELECT count(*)::int FROM race_command_receipt) AS receipts,(SELECT count(*)::int FROM outbox) AS events,(SELECT revision FROM race_collection_head WHERE kind='race-event') AS head",
+        ),
+      );
+    const before = await counts();
+    await expect(
+      repository.updateRaceEvent(athlete, unlinked.id, {
+        idempotencyKey: randomUUID(),
+        expectedRevision: 1,
+        values: { ...eventValues(), localDate: '2026-10-11' },
+      }),
+    ).rejects.toMatchObject({ code: 'RACE_PLAN_IMPACT_REQUIRED' });
+    expect(await counts()).toEqual(before);
+    const metadata = {
       idempotencyKey: randomUUID(),
       expectedRevision: 1,
-      values: { ...eventValues(), localDate: '2026-10-11' },
+      values: { ...eventValues(), title: 'Same date metadata' },
+    };
+    const saved = await repository.updateRaceEvent(athlete, unlinked.id, metadata);
+    expect(saved).toEqual({ id: unlinked.id, revision: 2 });
+    expect((await repository.getRaceEvent(athlete, unlinked.id))?.localDate).toBe(
+      eventValues().localDate,
+    );
+    expect(await repository.updateRaceEvent(athlete, unlinked.id, metadata)).toEqual(saved);
+    await createConsentRepository(database).setConsent(athlete, {
+      kind: 'app',
+      granted: false,
+      expectedRevision: 1,
+      idempotencyKey: randomUUID(),
     });
+    const replayBefore = await counts();
+    expect(await repository.updateRaceEvent(athlete, unlinked.id, metadata)).toEqual(saved);
+    expect(await counts()).toEqual(replayBefore);
+    await expect(
+      repository.updateRaceEvent(athlete, unlinked.id, {
+        ...metadata,
+        idempotencyKey: randomUUID(),
+        expectedRevision: 2,
+      }),
+    ).rejects.toMatchObject({ code: 'APP_CONSENT_REQUIRED' });
+    await expect(
+      repository.updateRaceEvent(athlete, unlinked.id, {
+        ...metadata,
+        idempotencyKey: randomUUID(),
+        expectedRevision: 2,
+        values: { ...metadata.values, localDate: '2026-10-11' },
+      }),
+    ).rejects.toMatchObject({ code: 'APP_CONSENT_REQUIRED' });
+    await repository.deleteRaceEvent(athlete, unlinked.id, {
+      expectedRevision: 2,
+      idempotencyKey: randomUUID(),
+    });
+    expect(await repository.getRaceEvent(athlete, unlinked.id)).toBeNull();
+
     const plan = await admin.query('SELECT version,draft FROM plan_snapshot WHERE athlete_id=$1', [
       athlete,
     ]);
