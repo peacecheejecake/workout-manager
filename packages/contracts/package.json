@@ -264,6 +264,10 @@
     "./race-manual-approval": {
       "types": "./src/race-manual-approval.ts",
       "default": "./dist/race-manual-approval.js"
+    },
+    "./race-manual-public": {
+      "types": "./src/race-manual-public.ts",
+      "default": "./dist/race-manual-public.js"
     }
   },
   "scripts": {

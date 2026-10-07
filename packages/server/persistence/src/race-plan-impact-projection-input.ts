@@ -1,10 +1,9 @@
+import { raceManualProjectionIntentSchema as raceProjectionIntentSchema } from '@workout/contracts/race-manual-public';
 import { raceRelativeScheduleImpactResultCompatibleV4BodySchema } from '@workout/server-coaching/race-relative-schedule-impact-codecs';
 import { z } from 'zod';
 import { raceEventSchema } from '@workout/contracts/races';
 import { planSnapshotSchema } from '@workout/contracts/planning';
 import { sessionCompletionSchema } from '@workout/contracts/session-completion';
-import { localDateSchema } from '@workout/contracts/primitives';
-import { nutritionPlanItemCoreSchema } from '@workout/contracts/nutrition-core';
 import { nutritionPlanVersionCompatibleV4Schema } from '@workout/contracts/nutrition-race-plan-v4';
 import {
   routineBlueprintVersionSchema,
@@ -43,48 +42,9 @@ export type RaceProjectionCapture = Pick<
   >;
 };
 const id = z.string().min(1).max(200);
-export const raceProjectionIntentSchema = z.strictObject({
-  expectedEvent: z.strictObject({
-    id: z.uuid(),
-    revision: z.number().int().min(1).max(2147483647),
-  }),
-  newLocalDate: localDateSchema,
-  selection: z.discriminatedUnion('kind', [
-    z.strictObject({ kind: z.literal('keep_plan') }),
-    z.strictObject({
-      kind: z.literal('move_period'),
-      expectedCurrentPlanVersionId: z.uuid(),
-      periodId: id,
-      newStartDate: localDateSchema,
-      scope: z.enum(['period_only', 'descendants_and_sessions']),
-    }),
-  ]),
-  resolutions: z
-    .strictObject({
-      nutrition: z
-        .array(
-          z.strictObject({
-            planVersionId: z.uuid(),
-            itemId: id,
-            action: z.literal('replace_anchor'),
-            anchor: nutritionPlanItemCoreSchema.shape.anchor,
-          }),
-        )
-        .max(5000),
-      routines: z
-        .array(
-          z.strictObject({
-            scheduleVersionId: id,
-            action: z.literal('replace_rule'),
-            rule: routineScheduleVersionSchema.shape.rule,
-            window: routineScheduleVersionSchema.shape.window,
-            sourcePlanVersionId: z.uuid().nullable(),
-          }),
-        )
-        .max(1000),
-    })
-    .default({ nutrition: [], routines: [] }),
-});
+// Compatibility export preserves the original internal DTO and defaults.
+export { raceProjectionIntentSchema };
+
 const collectorIds = z
   .array(id)
   .max(1000)
