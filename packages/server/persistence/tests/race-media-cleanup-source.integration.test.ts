@@ -167,6 +167,25 @@ it('reports live owned media absent with exact accounted immutable object/upload
   }
   expect(await read(athlete, stored.item.id, 1)).toEqual(result);
 });
+it('snapshot runtime retains SQL113 locking-reader permission and exact same-backend fence assertions', async () => {
+  const athlete = await tenant(),
+    stored = await image(athlete),
+    expected = await read(athlete, stored.item.id, 1);
+  const snapshot = db.snapshotTenant;
+  if (!snapshot) throw new Error('MISSING_SNAPSHOT_CAPABILITY');
+  const actual = await snapshot(athlete, async (tx) => {
+    const isolation = await tx.query('SHOW transaction_isolation');
+    expect(isolation.rows).toEqual([{ transaction_isolation: 'repeatable read' }]);
+    return readRaceMediaCleanupSource(tx, {
+      mediaItemId: stored.item.id,
+      expectedAccessRevision: 1,
+    });
+  });
+  expect(actual).toEqual(expected);
+  expect(actual.status).toBe('available');
+  if (actual.status === 'available')
+    expect(actual.source).toMatchObject({ authority: 'db_cleanup_status_only', state: 'absent' });
+});
 it('observes original+preview pending then DB-worker completed without claiming external deletion', async () => {
   const athlete = await tenant(),
     stored = await deleted(athlete, true);

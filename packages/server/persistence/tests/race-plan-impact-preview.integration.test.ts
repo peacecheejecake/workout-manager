@@ -14,7 +14,11 @@ import { createRaceRepository, type RaceRepository } from '../src/races.js';
 import { captureRacePlanImpactContext } from '../src/race-plan-impact-context.js';
 import { buildRacePlanImpactProjectionInput } from '../src/race-plan-impact-projection-input.js';
 import { createConsentRepository } from '../src/repositories.js';
-import { createRacePlanImpactPreviewService } from '../src/race-plan-impact-preview.js';
+import {
+  createRacePlanImpactPreviewService,
+  createRacePlanImpactSnapshotPreviewService,
+} from '../src/race-plan-impact-preview.js';
+import { lockAppAdmission } from '../src/app-admission.js';
 import {
   migrate,
   migrationFileNames,
@@ -231,6 +235,72 @@ function deferred() {
     },
   };
 }
+it('explicit snapshot preview uses real owned sources without writes or approval authority', async () => {
+  const athlete = await account(),
+    event = await create(athlete),
+    before = await counts(athlete);
+  const result = await createRacePlanImpactSnapshotPreviewService(database).preview(
+    athlete,
+    intent(event.id),
+  );
+  expect(result.context.event.id).toBe(event.id);
+  expect(result.context.coverage.complete).toBe(false);
+  expect(result.projection).toMatchObject({ approvalAllowed: false, coverageComplete: false });
+  expect(await counts(athlete)).toEqual(before);
+});
+it('explicit snapshot preview rejects missing capability without silently opening an RC transaction', async () => {
+  let called = false;
+  const adapter: Database = {
+    tenant: async () => {
+      called = true;
+      throw new Error('UNEXPECTED_RC_FALLBACK');
+    },
+    exclusiveTenant: database.exclusiveTenant,
+    close: async () => {},
+  };
+  const service = createRacePlanImpactSnapshotPreviewService(adapter);
+  await expect(service.preview(randomUUID(), {})).rejects.toMatchObject({ code: 'INVALID_INTENT' });
+  await expect(service.preview(randomUUID(), intent(randomUUID()))).rejects.toMatchObject({
+    code: 'CONTEXT_UNAVAILABLE',
+  });
+  expect(called).toBe(false);
+});
+it('snapshot preview waiting behind a real public consent withdrawal sees the new denial', async () => {
+  const athlete = await account(),
+    event = await create(athlete),
+    held = deferred(),
+    release = deferred();
+  const writer: Database = {
+    ...database,
+    tenant: (id, operation) =>
+      database.tenant(id, async (tx) => {
+        await lockAppAdmission(tx);
+        held.resolve();
+        await release.promise;
+        return operation(tx);
+      }),
+  };
+  const withdraw = createConsentRepository(writer).setConsent(athlete, {
+    kind: 'app',
+    granted: false,
+    expectedRevision: 1,
+    idempotencyKey: randomUUID(),
+  });
+  await held.promise;
+  const read = createRacePlanImpactSnapshotPreviewService(database)
+    .preview(athlete, intent(event.id))
+    .then(
+      () => ({ code: 'UNEXPECTED_SUCCESS' }),
+      (error: unknown) => error,
+    );
+  try {
+    await waiting();
+  } finally {
+    release.resolve();
+  }
+  expect(await withdraw).toMatchObject({ granted: false, revision: 2 });
+  expect(await read).toMatchObject({ code: 'APP_CONSENT_REQUIRED' });
+});
 it('uses normal107 and real collector/calculator without writes, receipts, approval or complete coverage', async () => {
   expect(
     (

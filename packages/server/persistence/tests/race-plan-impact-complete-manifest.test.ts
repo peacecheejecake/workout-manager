@@ -1,3 +1,4 @@
+import { routineRunReadSchema } from '@workout/contracts/routine-commands';
 import { recoverySourceFactsSchema } from '../src/race-plan-impact-recovery-sources.js';
 import {
   recoveryMethodVersionSchema,
@@ -14,6 +15,7 @@ import {
   routineBlueprintVersionSchema,
   routineOccurrenceSchema,
   routineScheduleVersionSchema,
+  routineRunSchema,
   domainPlanRefSchema,
 } from '@workout/contracts/routines';
 import { supplementarySessionLinkSchema } from '@workout/contracts/supplementary-core';
@@ -190,7 +192,14 @@ function fixture() {
               z.strictObject({ state: z.literal('absent') }),
               z.strictObject({ state: z.literal('present'), versionId: z.uuid() }),
             ]),
-            startedRun: z.strictObject({ state: z.literal('absent') }),
+            startedRun: z.union([
+              z.strictObject({ state: z.literal('absent') }),
+              z.strictObject({
+                state: z.literal('present'),
+                runId: z.uuid(),
+                revision: z.number().int().min(0).max(2147483646),
+              }),
+            ]),
           }),
         )
         .parse([]),
@@ -530,7 +539,7 @@ it('blocks recovery catalog refs and runs rather than dropping them', () => {
     currentHead: null,
   });
   c.routineActualManifest.runs.push({ unresolved: true });
-  blocked(c, 'unsupported_consumed_channel', 'sourcePermissionManifest.catalog');
+  blocked(c, 'invalid_capture', 'capture');
 });
 it('requires exact schedule and blueprint membership', () => {
   const c = withNutritionRef();
@@ -985,7 +994,7 @@ it('blocks a specific unsupported actual-consuming run even with unrelated metad
   c.routineActualManifest.runs.push({
     record: { actualRefs: [{ kind: 'activity', id: plan, revisionId: version }] },
   });
-  blocked(c, 'unsupported_consumed_channel', 'routineActualManifest.runs');
+  blocked(c, 'invalid_capture', 'capture');
 });
 it('consumed media still requires its missing cleanup port when unused consent is granted or withdrawn', () => {
   for (const granted of [true, false]) {
@@ -1966,4 +1975,402 @@ it('rejects copied nutrition ref metadata unrelated to actual consumed recovery 
   const c = withRecovery(false);
   c.recoverySources.nutritionReferences = [{ aggregateId: plan, versionId: race }];
   blocked(c, 'source_identity_mismatch', 'recoverySources');
+});
+
+function recoveryHistoricalNutritionFixture(racePins = false, linked = false) {
+  const f = linked
+    ? linkedNutritionFixture(true, true)
+    : racePins
+      ? raceNutritionFixture(4, true)
+      : foodSourceFixture(true);
+  const r = withRecovery(false);
+  const historicalId = 'abcdefab-1234-4234-8234-123456789abc';
+  const historical = nutritionPlanVersionCompatibleV4Schema.parse({
+    ...f.row.record,
+    versionId: historicalId,
+    items: f.row.record.items.map((item) => ({ ...item, planVersionId: historicalId })),
+  });
+  f.row.record = nutritionPlanVersionCompatibleV4Schema.parse({
+    ...f.row.record,
+    version: 2,
+    previousVersionId: historicalId,
+  });
+  updateNutritionDigest(f);
+  const historicalNested = structuredClone({ ...f.nested, versionId: historicalId });
+  if ('schemaVersion' in historical)
+    historicalNested.recordDigest = impactDependencyDigest(historical);
+  const recovery = z
+    .strictObject({
+      aggregateId: z.uuid(),
+      versionId: z.uuid(),
+      record: recoveryStrategyVersionSchema,
+    })
+    .parse(r.recovery[0]);
+  recovery.record.draft.planRefs = [
+    { kind: 'nutrition', aggregateId: plan, headVersionId: historicalId },
+  ];
+  const fact = {
+    requested: { aggregateId: plan, versionId: historicalId },
+    state: 'historical',
+    reason: null,
+    content: { digest: impactDependencyDigest(historical) },
+    currentHead: { aggregateId: plan, versionId: version },
+  };
+  const c = {
+    ...f.c,
+    recovery: [recovery],
+    rosters: { ...f.c.rosters, recovery: r.rosters.recovery },
+    recoverySources: { ...r.recoverySources, nutritionReferences: [fact.requested] },
+    recoveryNutritionSources: {
+      records: [historical],
+      facts: [fact],
+      nestedSources: {
+        nutrition: [historicalNested],
+        loadedPlans: z
+          .array(planSnapshotSchema)
+          .parse(
+            linked
+              ? f.c.consumedSources.plans.filter(
+                  (p) => p.id === historical.linkedTrainingPlanVersionId,
+                )
+              : [],
+          ),
+      },
+      authority: 'none',
+      freshness: 'not_checked',
+    },
+  };
+  return { c, historical, historicalNested, fact };
+}
+it.each([false, true])(
+  'validates historical recovery nutrition exact food/pin sources without adding impact targets pins=%s',
+  (pins) => {
+    const f = recoveryHistoricalNutritionFixture(pins),
+      before = structuredClone(f.c.nutrition),
+      oldAffected = structuredClone(f.c.affected);
+    expect(inspect(f.c).status).toBe('validated_read_scope');
+    expect(f.c.nutrition).toEqual(before);
+    expect(f.c.affected).toEqual(oldAffected);
+    expect(f.c.recoveryNutritionSources.records).toEqual([f.historical]);
+  },
+);
+it.each([
+  'foreign_tuple',
+  'digest',
+  'missing_extra',
+  'unused_extra',
+  'head',
+  'nested_digest',
+  'missing_food',
+  'duplicate_fact',
+  'unknown_metadata',
+  'missing_race_source',
+])('rejects recovery historical nutrition mismatch %s', (kind) => {
+  const f = recoveryHistoricalNutritionFixture(kind === 'missing_race_source');
+  if (kind === 'foreign_tuple') f.fact.requested.aggregateId = generation;
+  if (kind === 'digest') f.fact.content.digest = '2'.repeat(64);
+  if (kind === 'missing_extra') f.c.recoveryNutritionSources.records = [];
+  if (kind === 'unused_extra')
+    f.c.recoveryNutritionSources.records.push(
+      nutritionPlanVersionCompatibleV4Schema.parse({
+        ...f.historical,
+        versionId: generation,
+        items: f.historical.items.map((item) => ({ ...item, planVersionId: generation })),
+      }),
+    );
+  if (kind === 'head') f.fact.currentHead.versionId = generation;
+  if (kind === 'nested_digest') f.historicalNested.recordDigest = '2'.repeat(64);
+  if (kind === 'missing_food') f.historicalNested.foods = [];
+  if (kind === 'duplicate_fact') f.c.recoveryNutritionSources.facts.push(structuredClone(f.fact));
+  if (kind === 'unknown_metadata')
+    return expect(
+      validateRaceImpactConsumedManifest(
+        { ...f.c, recoveryNutritionSources: { ...f.c.recoveryNutritionSources, verified: true } },
+        sign(f.c),
+      ).status,
+    ).toBe('blocked');
+  if (kind === 'missing_race_source') f.c.consumedSources.races = [f.c.event];
+  expect(inspect(f.c).status).toBe('blocked');
+});
+it('requires current duplicate tuple body, nested facts and head to agree with current captured nutrition', () => {
+  const r = recoveryPlanRef('nutrition'),
+    record = r.nutrition[0]?.record,
+    nested = r.sourcePermissionManifest.nestedNutritionSources[0];
+  if (!record || !nested) throw Error('fixture');
+  const c = {
+    ...r,
+    recoveryNutritionSources: {
+      records: [structuredClone(record)],
+      facts: [
+        {
+          requested: { aggregateId: plan, versionId: version },
+          state: 'current',
+          reason: null,
+          content: { digest: impactDependencyDigest(record) },
+          currentHead: { aggregateId: plan, versionId: version },
+        },
+      ],
+      nestedSources: { nutrition: [structuredClone(nested)], loadedPlans: [] },
+      authority: 'none',
+      freshness: 'not_checked',
+    },
+  };
+  expect(inspect(c).status).toBe('validated_read_scope');
+  c.recoveryNutritionSources.records[0] = nutritionPlanVersionCompatibleV4Schema.parse({
+    ...record,
+    purpose: 'Contradicting copy',
+  });
+  const fact = c.recoveryNutritionSources.facts[0];
+  if (!fact) throw Error('fixture');
+  fact.content.digest = impactDependencyDigest(c.recoveryNutritionSources.records[0]);
+  expect(inspect(c).status).toBe('blocked');
+});
+
+it('validates exact historical linked snapshot/session membership and rejects altered or missing loaded copy', () => {
+  const f = recoveryHistoricalNutritionFixture(false, true);
+  expect(inspect(f.c).status).toBe('validated_read_scope');
+  const loaded = f.c.recoveryNutritionSources.nestedSources.loadedPlans[0];
+  if (!loaded) throw Error('linked fixture');
+  loaded.draft.title = 'Changed source copy';
+  expect(inspect(f.c).status).toBe('blocked');
+  f.c.recoveryNutritionSources.nestedSources.loadedPlans = [];
+  expect(inspect(f.c).status).toBe('blocked');
+});
+it('rejects unavailable fact with injected protected body and malformed saved race pin identity', () => {
+  const f = recoveryHistoricalNutritionFixture(true);
+  const unavailable = {
+    ...f.c,
+    recoveryNutritionSources: {
+      ...f.c.recoveryNutritionSources,
+      facts: [
+        {
+          ...f.fact,
+          state: 'unavailable',
+          reason: 'owned_version_unavailable',
+          content: null,
+          currentHead: null,
+        },
+      ],
+    },
+  };
+  expect(inspect(unavailable).status).toBe('blocked');
+  const malformed = {
+    ...f.c,
+    recoveryNutritionSources: {
+      ...f.c.recoveryNutritionSources,
+      records: [{ ...f.historical, raceTimingPins: [{ eventId: 'foreign' }] }],
+    },
+  };
+  expect(inspect(malformed).status).toBe('blocked');
+});
+
+function withReadRun(performed = false, planned = false) {
+  const c = planned ? withNutritionRef() : fixture();
+  if (!planned) {
+    const record = routineBlueprintVersionSchema.parse({
+      schemaVersion: 4,
+      routineId: blueprintId,
+      versionId: blueprintVersion,
+      title: 'Read checklist',
+      intent: 'User facts',
+      status: 'published',
+      tags: [],
+      steps: [
+        {
+          id: 'step',
+          title: 'Review',
+          content: { kind: 'checklist', prompt: 'Review' },
+          timing: { kind: 'user_scheduled' },
+          required: true,
+          choiceGroupId: null,
+        },
+      ],
+      choiceGroups: [],
+      estimatedDurationSeconds: null,
+      createdAt: now,
+    });
+    c.routineActualManifest.blueprints = [
+      {
+        record,
+        version: 1,
+        currentHead: {
+          state: 'present',
+          versionId: blueprintVersion,
+          version: 1,
+          visibility: 'active',
+          favorite: false,
+        },
+        unsupportedContent: [],
+      },
+    ];
+    c.routineActualManifest.uniqueSourceCount = 1;
+  }
+  const ref = { kind: 'checklist_confirmation', id: race, revisionId: generation };
+  const run = routineRunSchema.parse({
+    id: plan,
+    revision: performed ? 1 : 0,
+    blueprint: { id: blueprintId, versionId: blueprintVersion },
+    origin: planned ? { kind: 'planned', occurrenceId: 'occurrence' } : { kind: 'unplanned' },
+    state: 'in_progress',
+    progress: performed
+      ? [
+          {
+            stepId: 'step',
+            revision: 1,
+            state: 'performed',
+            actualRefs: [ref],
+            occurredAt: now,
+            recordedAt: now,
+            reason: null,
+          },
+        ]
+      : [],
+    selectedChoices: {},
+    startedAt: now,
+    endedAt: null,
+  });
+  c.routineActualManifest.runs = [
+    {
+      record: run,
+      historyDigest: impactDependencyDigest(run),
+      actuals: performed
+        ? [
+            {
+              stepId: 'step',
+              fact: {
+                requested: ref,
+                state: 'current',
+                reason: null,
+                current: { id: race, revisionId: generation },
+                content: {
+                  id: race,
+                  run_id: plan,
+                  step_id: 'step',
+                  revision_id: generation,
+                  occurred_at: now,
+                  state: 'performed',
+                },
+              },
+            },
+          ]
+        : [],
+    },
+  ];
+  if (performed) c.routineActualManifest.uniqueSourceCount++;
+  if (planned) {
+    const occurrence = c.routineActualManifest.occurrences[0];
+    if (!occurrence) throw Error('fixture');
+    occurrence.startedRun = { state: 'present', runId: plan, revision: run.revision };
+  }
+  return {
+    ...c,
+    routineTimerReads: [{ run, timers: [] }].map((row) => routineRunReadSchema.parse(row)),
+  };
+}
+it('admits genuine initial publicrun revision0 readonly facts and exact empty timer inventory', () => {
+  const c = withReadRun();
+  expect(inspect(c).status).toBe('validated_read_scope');
+  expect(c.coverage.complete).toBe(false);
+});
+it('admits current checklist confirmation exactrun step/revision without performance authority', () => {
+  const c = withReadRun(true);
+  const result = inspect(c);
+  expect(result.status).toBe('validated_read_scope');
+  if (result.status === 'validated_read_scope') {
+    expect(result.approvalAuthority).toBe('none');
+    expect(result.freshness).toBe('not_checked');
+    expect(result.remaining).toHaveLength(5);
+  }
+});
+it('admits planned startedrun revision0 only after exactoccurrence andfrozenrefs checks', () => {
+  const c = withReadRun(false, true);
+  expect(inspect(c).status).toBe('validated_read_scope');
+});
+it('blocks missing actualtimer inventory specifically rather than inferringempty', () => {
+  const c = withReadRun();
+  const { routineTimerReads, ...old } = c;
+  void routineTimerReads;
+  blocked(old, 'timer_inventory_missing');
+});
+it('blocks checklist fact missing from actual run withoutsynthetic actualsubstitution', () => {
+  const c = withReadRun(true);
+  const run = c.routineActualManifest.runs[0];
+  const parsed = z
+    .strictObject({
+      record: routineRunSchema,
+      historyDigest: z.string(),
+      actuals: z.array(z.json()),
+    })
+    .parse(run);
+  parsed.actuals = [];
+  c.routineActualManifest.runs = [parsed];
+  blocked(c, 'actual_membership_mismatch');
+});
+it('blocks current revision history mismatch specifically', () => {
+  const c = withReadRun();
+  const row = c.routineActualManifest.runs[0];
+  const parsed = z
+    .strictObject({
+      record: routineRunSchema,
+      historyDigest: z.string(),
+      actuals: z.array(z.json()),
+    })
+    .parse(row);
+  parsed.historyDigest = '0'.repeat(64);
+  c.routineActualManifest.runs = [parsed];
+  blocked(c, 'history_mismatch');
+});
+it('rejects canonicaluniqueSourceCount missing cached checklist actual', () => {
+  const c = withReadRun(true);
+  c.routineActualManifest.uniqueSourceCount = 1;
+  blocked(c, 'source_identity_mismatch');
+});
+it('rejects planned startedrun association substitution evenwith correctrun body', () => {
+  const c = withReadRun(false, true);
+  const occurrence = c.routineActualManifest.occurrences[0];
+  if (!occurrence) throw Error('fixture');
+  occurrence.startedRun = { state: 'present', runId: race, revision: 0 };
+  blocked(c, 'source_identity_mismatch');
+});
+it('keeps actualrunningtimer a readfact and creates no additional activity', () => {
+  const c = withReadRun();
+  const read = c.routineTimerReads[0];
+  if (!read) throw Error('fixture');
+  read.timers = [
+    {
+      runId: plan,
+      stepId: 'step',
+      revision: 1,
+      state: 'running',
+      durationSeconds: 30,
+      startedAt: now,
+      pausedAt: null,
+      pausedMilliseconds: 0,
+    },
+  ];
+  expect(inspect(c).status).toBe('validated_read_scope');
+  expect(c.routineActualManifest.actualRosters.activities).toEqual([]);
+});
+it('rejects stale timer DTO instead of repinning it to latestrun', () => {
+  const c = withReadRun();
+  const read = c.routineTimerReads[0];
+  if (!read) throw Error('fixture');
+  read.run = { ...read.run, revision: 1 };
+  blocked(c, 'timer_source_mismatch');
+});
+it('enforces combined typedtimer visits before admitting a5001row inventory', () => {
+  const c = withReadRun();
+  const read = c.routineTimerReads[0];
+  if (!read) throw Error('fixture');
+  read.timers = Array.from({ length: 5001 }, () => ({
+    runId: plan,
+    stepId: 'step',
+    revision: 1,
+    state: 'running' as const,
+    durationSeconds: 30,
+    startedAt: now,
+    pausedAt: null,
+    pausedMilliseconds: 0,
+  }));
+  blocked(c, 'bounds_exceeded');
 });

@@ -60,7 +60,10 @@ import {
   grantGalleryMedia,
   grantGarminUnofficial,
 } from '../src/migrate.js';
-import { captureRacePlanImpactContext } from '../src/race-plan-impact-context.js';
+import {
+  captureRacePlanImpactContext,
+  captureRacePlanImpactConsumedScope,
+} from '../src/race-plan-impact-context.js';
 import { dropIsolatedDatabase } from './drop-isolated-database.js';
 const adminUrl = z.string().min(1).parse(process.env['TEST_DATABASE_ADMIN_URL']);
 const admin = new Pool({ connectionString: adminUrl });
@@ -1478,6 +1481,20 @@ it('B sees actual runtime start revision0, checklist partial and stopped immutab
     revision: 0,
   });
   expect(begun.readSetDigest).not.toBe(before.readSetDigest);
+  expect(begun.routineTimerReads).toEqual([{ run: started.run, timers: [] }]);
+  const timer = await repository.commandTimer(athlete, {
+    runId: started.run.id,
+    stepId: 'step',
+    action: 'start',
+    durationSeconds: 30,
+    expectedRevision: null,
+    idempotencyKey: randomUUID(),
+  });
+  const timed = await capture(athlete, event.id);
+  expect(timed.routineTimerReads).toEqual([{ run: started.run, timers: [timer] }]);
+  expect(timed.readSetDigest).not.toBe(begun.readSetDigest);
+  expect(timed.routineActualManifest.runs[0]?.record.progress).toEqual(started.run.progress);
+  expect(timed.routineActualManifest.actualRosters.activities).toEqual([]);
   const partial = await repository.recordStep(athlete, {
     runId: started.run.id,
     stepId: 'step',
@@ -1509,6 +1526,52 @@ it('B sees actual runtime start revision0, checklist partial and stopped immutab
   });
   expect(stopped.routineActualManifest.actualRosters.activities).toEqual([]);
   expect(stopped.coverage.complete).toBe(false);
+  const consumed = await database.tenant(athlete, (tx) =>
+    captureRacePlanImpactConsumedScope(tx, {
+      eventId: event.id,
+      expectedRevision: event.revision,
+      selection: { kind: 'keep_plan' },
+    }),
+  );
+  expect(consumed.consumedScope).toMatchObject({
+    status: 'validated_read_scope',
+    approvalAuthority: 'none',
+    freshness: 'not_checked',
+  });
+  expect(consumed.capture.coverage.complete).toBe(false);
+  expect(consumed.capture.coverage.missing).toHaveLength(5);
+});
+
+it('rejects5001 consumed routine timers by scalar preflight before transporting timer rows', async () => {
+  const athlete = await account(),
+    event = await create(athlete),
+    blueprint = await bSeedBlueprint(athlete),
+    started = await createRoutineRepository(database).startRun(athlete, {
+      runId: randomUUID(),
+      blueprintVersionId: blueprint.versionId,
+      occurrenceId: null,
+      idempotencyKey: randomUUID(),
+      confirmed: true,
+    });
+  await owned(athlete, (client) =>
+    client.query(
+      `INSERT INTO routine_step_timer(athlete_id,run_id,step_id,revision,state,duration_seconds,
+       started_at,paused_at,paused_milliseconds)
+       SELECT $1,$2,'synthetic-'||i,1,'running',30,'2026-10-07T00:00:00Z',NULL,0
+       FROM generate_series(1,5001) i`,
+      [athlete, started.run.id],
+    ),
+  );
+  const measured = await measuredCapture(athlete, event.id);
+  await expect(measured.result).rejects.toMatchObject({
+    code: 'CONTEXT_UNAVAILABLE',
+    bound: 'unique_sources',
+  });
+  expect(
+    measured.queries.some((query) =>
+      query.sql.includes('paused_milliseconds::text AS paused_milliseconds'),
+    ),
+  ).toBe(false);
 });
 
 it('B preserves requested Activity revision after same-count correction/deletion without inventing historical canonical body', async () => {

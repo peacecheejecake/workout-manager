@@ -1,4 +1,4 @@
-import { Pool } from 'pg';
+import { Pool, type PoolClient } from 'pg';
 import { z } from 'zod';
 
 const athleteIdSchema = z
@@ -19,7 +19,8 @@ export interface Database {
     athleteId: string,
     operation: (transaction: Transaction) => Promise<T>,
   ): Promise<T>;
-  /** Coherent as-of read, not latest-state/approval freshness. Optional for
+  /** Coherent capture starts after lifecycle/tenant fences, but does not itself
+   * grant processing or approval authority. Purpose-specific admission remains required. Optional for
    * injected test adapters; services requiring it must not fall back to RC. */
   snapshotTenant?<T>(
     athleteId: string,
@@ -35,6 +36,23 @@ export class TenantErasedError extends Error {
 /** Runtime credentials must be a non-owner, non-superuser, non-BYPASSRLS role. */
 export function createDatabase(options: { connectionString: string; max?: number }): Database {
   const pool = new Pool({ ...options, connectionTimeoutMillis: 5000, idleTimeoutMillis: 30000 });
+  async function validateRole(client: PoolClient): Promise<void> {
+    const role = await client.query(
+      "SELECT rolsuper, rolbypassrls, EXISTS (SELECT 1 FROM pg_class WHERE relname IN ('consent', 'outbox', 'command_receipt', 'plan_snapshot', 'plan_snapshot_aggregate', 'plan_head', 'plan_history', 'plan_scenario', 'plan_scenario_revision', 'plan_scenario_application', 'coaching_constraint', 'coaching_constraint_head', 'coaching_thread', 'coaching_message', 'core_evidence_snapshot', 'coaching_run', 'coaching_analysis_output', 'coaching_decision', 'coaching_proposal', 'coaching_candidate', 'integrated_candidate_v4', 'integrated_approval_v4', 'recovery_strategy_history', 'routine_schedule_history', 'nutrition_plan_version', 'nutrition_plan_head', 'nutrition_plan_history', 'food_definition_version', 'food_definition_head', 'intake_entry', 'intake_entry_revision', 'integrated_dependency_head', 'supplementary_exercise_version', 'supplementary_exercise_head', 'supplementary_routine_version', 'supplementary_routine_head', 'supplementary_routine_target_ref', 'supplementary_session_link', 'supplementary_session_target_ref', 'supplementary_execution', 'supplementary_set_log', 'supplementary_set_log_revision', 'supplementary_rest_timer', 'routine_blueprint_version', 'routine_blueprint_head', 'routine_schedule_version', 'routine_schedule_head', 'routine_occurrence', 'routine_run', 'routine_run_revision', 'routine_checklist_confirmation', 'routine_step_timer', 'routine_command_receipt', 'stretch_profile', 'stretching_log', 'stretching_log_revision', 'recovery_method_version', 'recovery_method_head', 'recovery_strategy_version', 'recovery_strategy_head', 'recovery_action_log', 'recovery_action_revision', 'resource', 'resource_version', 'resource_object', 'resource_upload_intent', 'resource_object_cleanup', 'resource_url_ingestion', 'resource_url_ingestion_attempt', 'resource_url_fetch_hop', 'resource_url_artifact', 'resource_url_provenance', 'resource_url_locator', 'resource_share', 'resource_access_audit', 'resource_derived_cleanup', 'resource_passage', 'resource_retrieval_cache', 'resource_grounding', 'resource_grounding_excerpt', 'resource_citation', 'gallery_media_item', 'gallery_media_derivative', 'gallery_media_object', 'gallery_upload_intent', 'activity_canonical', 'activity_source_head', 'activity_source_revision', 'activity_overlay', 'activity_overlay_revision', 'activity_suppression', 'activity_import_receipt', 'tenant_erasure', 'operations_audit', 'garmin_connection', 'garmin_attempt', 'check_in', 'check_in_revision', 'check_in_receipt', 'check_in_collection_head', 'session_completion', 'session_completion_revision', 'session_completion_receipt', 'session_completion_collection_head', 'course_thumbnail', 'routing_admission', 'garmin_unofficial_connection', 'garmin_unofficial_run', 'garmin_activity_ledger', 'garmin_activity_ledger_source', 'course_deletion', 'course_share', 'course_share_rate', 'course_share_audit', 'course_disclosure_receipt', 'course_privacy_zone_share_offset', 'course_share_area_budget', 'healthkit_workout_sample', 'healthkit_workout_batch_receipt', 'healthkit_workout_lineage', 'healthkit_existing_binding', 'restore_processing_admission', 'restore_processing_close_receipt', 'openai_budget_fx_definition', 'openai_budget_price_definition', 'openai_budget_activation', 'openai_budget_month', 'openai_budget_reservation', 'openai_budget_journal', 'ai_settings_catalog_definition', 'ai_settings_catalog_head', 'ai_settings_revision', 'ai_settings_head', 'race_event', 'race_event_revision', 'race_result', 'race_result_revision', 'training_best', 'training_best_revision', 'race_command_receipt', 'race_collection_head', 'restore_race_deletion_replay_receipt', 'race_manual_review', 'race_manual_review_source_ref', 'race_manual_review_source_suppression', 'restore_manual_review_source_replay_receipt') AND relowner = pg_roles.oid) AS owns_tables FROM pg_roles WHERE rolname = current_user",
+    );
+    const privileges = z.object({
+      rolsuper: z.literal(false),
+      rolbypassrls: z.literal(false),
+      owns_tables: z.literal(false),
+    });
+    privileges.parse(role.rows[0]);
+  }
+  type SnapshotFence = 'global' | 'lifecycle' | 'tenant';
+  const releaseSql: Record<SnapshotFence, string> = {
+    global: 'SELECT pg_advisory_unlock_shared(77210,1) AS unlocked',
+    lifecycle: 'SELECT pg_advisory_unlock_shared(hashtextextended($1,77206)) AS unlocked',
+    tenant: 'SELECT pg_advisory_unlock(hashtextextended($1,0)) AS unlocked',
+  };
   async function transact<T>(
     athleteId: string,
     operation: (transaction: Transaction) => Promise<T>,
@@ -44,8 +62,32 @@ export function createDatabase(options: { connectionString: string; max?: number
     athleteIdSchema.parse(athleteId);
     const client = await pool.connect();
     let discard = false;
+    if (snapshot)
+      client.on('error', () => {
+        discard = true;
+      });
     let active = true;
+    let releaseFailed = false;
+    let result: T;
+    const snapshotFences: SnapshotFence[] = [];
     try {
+      if (snapshot) {
+        // Session fences survive each autocommit statement. Acquire all three
+        // before BEGIN so the RR snapshot cannot predate a lock-waiting erase,
+        // consent change or restore. Always destroy this client after cleanup.
+        await client.query(
+          "SELECT set_config('statement_timeout', '5000', false), set_config('lock_timeout', '3000', false), set_config('search_path', 'pg_catalog,public', false)",
+        );
+        await validateRole(client);
+        await client.query('SELECT pg_advisory_lock_shared(77210,1)');
+        snapshotFences.push('global');
+        await client.query('SELECT pg_advisory_lock_shared(hashtextextended($1,77206))', [
+          athleteId,
+        ]);
+        snapshotFences.push('lifecycle');
+        await client.query('SELECT pg_advisory_lock(hashtextextended($1,0))', [athleteId]);
+        snapshotFences.push('tenant');
+      }
       await client.query(snapshot ? 'BEGIN ISOLATION LEVEL REPEATABLE READ READ WRITE' : 'BEGIN');
       await client.query(
         "SELECT set_config('statement_timeout', '5000', true), set_config('lock_timeout', '3000', true), set_config('search_path', 'pg_catalog,public', true)",
@@ -53,15 +95,7 @@ export function createDatabase(options: { connectionString: string; max?: number
       // Global restore fence precedes every lifecycle/tenant/domain lock, including
       // historical schemas. This lock alone does not authorize new processing.
       await client.query('SELECT pg_advisory_xact_lock_shared(77210,1)');
-      const role = await client.query(
-        "SELECT rolsuper, rolbypassrls, EXISTS (SELECT 1 FROM pg_class WHERE relname IN ('consent', 'outbox', 'command_receipt', 'plan_snapshot', 'plan_snapshot_aggregate', 'plan_head', 'plan_history', 'plan_scenario', 'plan_scenario_revision', 'plan_scenario_application', 'coaching_constraint', 'coaching_constraint_head', 'coaching_thread', 'coaching_message', 'core_evidence_snapshot', 'coaching_run', 'coaching_analysis_output', 'coaching_decision', 'coaching_proposal', 'coaching_candidate', 'integrated_candidate_v4', 'integrated_approval_v4', 'recovery_strategy_history', 'routine_schedule_history', 'nutrition_plan_version', 'nutrition_plan_head', 'nutrition_plan_history', 'food_definition_version', 'food_definition_head', 'intake_entry', 'intake_entry_revision', 'integrated_dependency_head', 'supplementary_exercise_version', 'supplementary_exercise_head', 'supplementary_routine_version', 'supplementary_routine_head', 'supplementary_routine_target_ref', 'supplementary_session_link', 'supplementary_session_target_ref', 'supplementary_execution', 'supplementary_set_log', 'supplementary_set_log_revision', 'supplementary_rest_timer', 'routine_blueprint_version', 'routine_blueprint_head', 'routine_schedule_version', 'routine_schedule_head', 'routine_occurrence', 'routine_run', 'routine_run_revision', 'routine_checklist_confirmation', 'routine_step_timer', 'routine_command_receipt', 'stretch_profile', 'stretching_log', 'stretching_log_revision', 'recovery_method_version', 'recovery_method_head', 'recovery_strategy_version', 'recovery_strategy_head', 'recovery_action_log', 'recovery_action_revision', 'resource', 'resource_version', 'resource_object', 'resource_upload_intent', 'resource_object_cleanup', 'resource_url_ingestion', 'resource_url_ingestion_attempt', 'resource_url_fetch_hop', 'resource_url_artifact', 'resource_url_provenance', 'resource_url_locator', 'resource_share', 'resource_access_audit', 'resource_derived_cleanup', 'resource_passage', 'resource_retrieval_cache', 'resource_grounding', 'resource_grounding_excerpt', 'resource_citation', 'gallery_media_item', 'gallery_media_derivative', 'gallery_media_object', 'gallery_upload_intent', 'activity_canonical', 'activity_source_head', 'activity_source_revision', 'activity_overlay', 'activity_overlay_revision', 'activity_suppression', 'activity_import_receipt', 'tenant_erasure', 'operations_audit', 'garmin_connection', 'garmin_attempt', 'check_in', 'check_in_revision', 'check_in_receipt', 'check_in_collection_head', 'session_completion', 'session_completion_revision', 'session_completion_receipt', 'session_completion_collection_head', 'course_thumbnail', 'routing_admission', 'garmin_unofficial_connection', 'garmin_unofficial_run', 'garmin_activity_ledger', 'garmin_activity_ledger_source', 'course_deletion', 'course_share', 'course_share_rate', 'course_share_audit', 'course_disclosure_receipt', 'course_privacy_zone_share_offset', 'course_share_area_budget', 'healthkit_workout_sample', 'healthkit_workout_batch_receipt', 'healthkit_workout_lineage', 'healthkit_existing_binding', 'restore_processing_admission', 'restore_processing_close_receipt', 'openai_budget_fx_definition', 'openai_budget_price_definition', 'openai_budget_activation', 'openai_budget_month', 'openai_budget_reservation', 'openai_budget_journal', 'ai_settings_catalog_definition', 'ai_settings_catalog_head', 'ai_settings_revision', 'ai_settings_head', 'race_event', 'race_event_revision', 'race_result', 'race_result_revision', 'training_best', 'training_best_revision', 'race_command_receipt', 'race_collection_head', 'restore_race_deletion_replay_receipt', 'race_manual_review', 'race_manual_review_source_ref', 'race_manual_review_source_suppression', 'restore_manual_review_source_replay_receipt') AND relowner = pg_roles.oid) AS owns_tables FROM pg_roles WHERE rolname = current_user",
-      );
-      const privileges = z.object({
-        rolsuper: z.literal(false),
-        rolbypassrls: z.literal(false),
-        owns_tables: z.literal(false),
-      });
-      privileges.parse(role.rows[0]);
+      await validateRole(client);
       await client.query("SELECT set_config('app.athlete_id', $1, true)", [athleteId]);
       // Separate namespace from per-command locks: never upgrade a shared command lock.
       await client.query(
@@ -76,7 +110,7 @@ export function createDatabase(options: { connectionString: string; max?: number
         ]);
         if (erased.rowCount) throw new TenantErasedError();
       }
-      const result = await operation({
+      result = await operation({
         athleteId,
         query: async (sql, values) => {
           if (!active) throw new Error('TRANSACTION_CLOSED');
@@ -87,7 +121,6 @@ export function createDatabase(options: { connectionString: string; max?: number
       const commit = await client.query('COMMIT');
       // PostgreSQL reports ROLLBACK, without throwing, for an aborted transaction.
       if (commit.command !== 'COMMIT') throw new Error('TRANSACTION_NOT_COMMITTED');
-      return result;
     } catch (error) {
       active = false;
       try {
@@ -97,8 +130,29 @@ export function createDatabase(options: { connectionString: string; max?: number
       }
       throw error;
     } finally {
-      client.release(discard);
+      for (const fence of snapshotFences.reverse()) {
+        try {
+          const result = await client.query(
+            releaseSql[fence],
+            fence === 'global' ? [] : [athleteId],
+          );
+          if (
+            !z
+              .array(z.strictObject({ unlocked: z.literal(true) }))
+              .length(1)
+              .safeParse(result.rows).success
+          )
+            releaseFailed = true;
+        } catch {
+          releaseFailed = true;
+        }
+      }
+      // Closing only this checked-out backend also covers unknown acquisition
+      // outcomes, failed rollback/unlock and session settings. Never pool it.
+      client.release(discard || snapshot || releaseFailed);
     }
+    if (releaseFailed) throw new Error('SNAPSHOT_FENCE_RELEASE_FAILED');
+    return result;
   }
   return {
     tenant: (athleteId, operation) => transact(athleteId, operation, false),

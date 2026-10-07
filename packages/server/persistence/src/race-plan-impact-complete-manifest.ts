@@ -4,6 +4,7 @@ import { planSnapshotSchema } from '@workout/contracts/planning';
 import { foodDefinitionVersionSchema } from '@workout/contracts/nutrition-core';
 import { nutritionAnchorSchema } from '@workout/contracts/nutrition';
 import { nutritionPlanVersionCompatibleV4Schema } from '@workout/contracts/nutrition-race-plan-v4';
+import { routineRunReadSchema } from '@workout/contracts/routine-commands';
 import { coreEvidenceDependencyManifestSchema } from '@workout/contracts/evidence-dependencies';
 import {
   routineBlueprintVersionSchema,
@@ -24,6 +25,12 @@ import {
   validateRecoveryReadSources,
   type RecoveryReadSourceBlocker,
 } from './race-plan-impact-recovery-manifest.js';
+
+import {
+  routineReadManifestSchema,
+  validateRoutineReadSources,
+  type RoutineReadBlocker,
+} from './race-plan-impact-routine-manifest.js';
 
 const hash = z.string().regex(/^[a-f0-9]{64}$/),
   uuid = z.uuid();
@@ -81,6 +88,8 @@ const scopeSchema = z.strictObject({
 });
 export type RaceImpactConsumedScope = z.infer<typeof scopeSchema>;
 const tuple = z.strictObject({ aggregateId: uuid, versionId: uuid });
+const tupleKey = (row: { aggregateId: string; versionId: string }) =>
+  JSON.stringify([row.aggregateId.toLowerCase(), row.versionId.toLowerCase()]);
 const relative = z.strictObject({
   itemId: z.string(),
   entity: z.enum(['race', 'session']),
@@ -213,12 +222,16 @@ const routineActual = z.strictObject({
         currentSchedule: presentVersion,
         startedRun: z.discriminatedUnion('state', [
           z.strictObject({ state: z.literal('absent') }),
-          z.strictObject({ state: z.literal('present'), runId: uuid, revision }),
+          z.strictObject({
+            state: z.literal('present'),
+            runId: uuid,
+            revision: z.number().int().min(0).max(2147483646),
+          }),
         ]),
       }),
     )
     .max(1000),
-  runs: jsonRows,
+  runs: routineReadManifestSchema.shape.runs,
   blueprints: z.array(blueprint).max(5000),
   schedules: z.array(schedule).max(5000),
   actualRosters: z.strictObject({
@@ -304,6 +317,26 @@ const nestedNutrition = z.strictObject({
   foods: z.array(nestedFood).max(5000),
   anchors: z.array(nestedAnchor).max(5000),
   linkedPlan: linkedNutritionPlan,
+});
+const recoveryNutritionSources = z.strictObject({
+  records: z.array(nutritionPlanVersionCompatibleV4Schema).max(5000),
+  facts: z
+    .array(
+      z.strictObject({
+        requested: tuple,
+        state: z.enum(['current', 'historical', 'unavailable']),
+        reason: z.literal('owned_version_unavailable').nullable(),
+        content: z.strictObject({ digest: hash }).nullable(),
+        currentHead: tuple.nullable(),
+      }),
+    )
+    .max(5000),
+  nestedSources: z.strictObject({
+    nutrition: z.array(nestedNutrition).max(5000),
+    loadedPlans: z.array(planSnapshotSchema).max(5000),
+  }),
+  authority: z.literal('none'),
+  freshness: z.literal('not_checked'),
 });
 const optionalRegistry = z.discriminatedUnion('state', [
   z.strictObject({ state: z.literal('absent') }),
@@ -499,6 +532,8 @@ const captureSchema = z.strictObject({
   nutrition: z.array(nutrition).max(1000),
   recovery: recoveryReadSourcesProjectionSchema.shape.recovery,
   recoverySources: recoverySourceFactsSchema.optional(),
+  recoveryNutritionSources: recoveryNutritionSources.optional(),
+  routineTimerReads: z.array(routineRunReadSchema).max(1000).optional(),
   routines: z.array(routine).max(1000),
   coreDependencies: coreEvidenceDependencyManifestSchema,
   dependencyInventory: z.array(z.json()).length(12),
@@ -528,7 +563,8 @@ export type RaceImpactManifestBlocker = {
     | 'source_membership_mismatch'
     | 'permission_port_missing'
     | 'bounds_exceeded'
-    | RecoveryReadSourceBlocker['reason'];
+    | RecoveryReadSourceBlocker['reason']
+    | RoutineReadBlocker['reason'];
 };
 export type RaceImpactConsumedManifestResult =
   | { readonly status: 'blocked'; readonly blockers: readonly RaceImpactManifestBlocker[] }
@@ -694,11 +730,100 @@ export function validateRaceImpactConsumedManifest(
     o.record.stepBindings.map((b) => b.plannedRef),
   );
   if (refs.length > 5000) block('plannedRefs', 'bounds_exceeded');
+  // These immutable bodies are recovery read sources only; they do not enter
+  // current rosters, relative impact targets, or approval write candidates.
+  const historicalNutrition = c.recoveryNutritionSources?.records ?? [];
+  const allNutrition = [
+    ...c.nutrition.map((n) => ({ ...n, operational: true })),
+    ...historicalNutrition
+      .filter((record) => !c.nutrition.some((n) => sameId(n.versionId, record.versionId)))
+      .map((record) => ({
+        aggregateId: record.planId,
+        versionId: record.versionId,
+        record,
+        sourceRelation:
+          record.linkedTrainingPlanVersionId === null
+            ? ('absent' as const)
+            : c.currentTraining &&
+                sameId(c.currentTraining.snapshot.id, record.linkedTrainingPlanVersionId)
+              ? ('current' as const)
+              : ('historical' as const),
+        relativeItems: [],
+        operational: false,
+      })),
+  ];
+  const rn = c.recoveryNutritionSources;
+  if (rn) {
+    const requested = new Set(
+      c.recovery.flatMap((row) =>
+        row.record.draft.planRefs
+          .filter((ref) => ref.kind === 'nutrition')
+          .map((ref) => tupleKey({ aggregateId: ref.aggregateId, versionId: ref.headVersionId })),
+      ),
+    );
+    const facts = new Map(rn.facts.map((f) => [tupleKey(f.requested), f]));
+    const bodies = new Map(
+      rn.records.map((record) => [
+        tupleKey({ aggregateId: record.planId, versionId: record.versionId }),
+        record,
+      ]),
+    );
+    if (
+      facts.size !== rn.facts.length ||
+      bodies.size !== rn.records.length ||
+      facts.size !== requested.size ||
+      [...facts.keys()].some((k) => !requested.has(k)) ||
+      [...bodies.keys()].some((k) => !requested.has(k))
+    )
+      block('recoveryNutritionSources', 'source_identity_mismatch');
+    for (const k of requested) {
+      const fact = facts.get(k),
+        record = bodies.get(k);
+      if (
+        !fact ||
+        fact.state === 'unavailable' ||
+        fact.reason !== null ||
+        !record ||
+        fact.content?.digest !== impactDependencyDigest(record)
+      ) {
+        block('recoveryNutritionSources', 'missing_source');
+        continue;
+      }
+      const current = c.nutrition.find((n) => sameId(n.aggregateId, record.planId));
+      if (
+        (fact.state === 'current') !==
+          (fact.currentHead !== null && sameId(fact.currentHead.versionId, record.versionId)) ||
+        (fact.currentHead !== null && !sameId(fact.currentHead.aggregateId, record.planId)) ||
+        (current
+          ? fact.currentHead === null ||
+            !sameId(fact.currentHead.versionId, current.versionId) ||
+            (sameId(current.versionId, record.versionId) && !equal(current.record, record))
+          : fact.currentHead !== null)
+      )
+        block('recoveryNutritionSources.head', 'source_identity_mismatch');
+    }
+    const linkedIds = new Set(
+      rn.records.flatMap((record) =>
+        record.linkedTrainingPlanVersionId === null
+          ? []
+          : [record.linkedTrainingPlanVersionId.toLowerCase()],
+      ),
+    );
+    const loaded = new Map(
+      rn.nestedSources.loadedPlans.map((plan) => [plan.id.toLowerCase(), plan]),
+    );
+    if (
+      loaded.size !== rn.nestedSources.loadedPlans.length ||
+      [...loaded.keys()].some((k) => !linkedIds.has(k)) ||
+      [...linkedIds].some((k) => !equal(loaded.get(k), plans.get(k)) || !loaded.has(k))
+    )
+      block('recoveryNutritionSources.loadedPlans', 'source_membership_mismatch');
+  }
   const usedPlans = new Set(
     [
       c.currentTraining?.snapshot.id,
       c.linkedPlan?.id,
-      ...c.nutrition.flatMap((n) =>
+      ...allNutrition.flatMap((n) =>
         n.record.linkedTrainingPlanVersionId === null ? [] : [n.record.linkedTrainingPlanVersionId],
       ),
       ...refs.filter((ref) => ref.domain === 'training').map((ref) => ref.versionId),
@@ -717,7 +842,7 @@ export function validateRaceImpactConsumedManifest(
     roster: c.rosters.recovery,
     recovery: c.recovery,
     plans: c.consumedSources.plans,
-    nutrition: c.nutrition.map(({ aggregateId, versionId, record }) => ({
+    nutrition: allNutrition.map(({ aggregateId, versionId, record }) => ({
       aggregateId,
       versionId,
       record,
@@ -753,8 +878,6 @@ export function validateRaceImpactConsumedManifest(
         ),
       ),
     );
-    const tupleKey = (row: { aggregateId: string; versionId: string }) =>
-      JSON.stringify([row.aggregateId.toLowerCase(), row.versionId.toLowerCase()]);
     const trainingTuples = new Set(
       c.recovery.flatMap((row) =>
         row.record.draft.planRefs
@@ -818,10 +941,19 @@ export function validateRaceImpactConsumedManifest(
         unavailable.kind === 'method' ? 'method_unavailable' : 'training_association_missing',
       );
   }
+  const routineResult = validateRoutineReadSources({
+    manifest: c.routineActualManifest,
+    ...(c.routineTimerReads === undefined ? {} : { timerReads: c.routineTimerReads }),
+  });
+  for (const finding of routineResult.blockers) {
+    // Existing exact planned-reference and source-plan guards below implement
+    // this companion's missing port; keep their actual membership validation.
+    if (finding.reason === 'planned_reference_port_missing') continue;
+    block(`routineActualManifest.${finding.path}`, finding.reason);
+  }
   // Unimplemented codecs cannot be admitted merely because their arrays are JSON.
   for (const [path, rows] of [
     ['completions', c.completions],
-    ['routineActualManifest.runs', c.routineActualManifest.runs],
     ['sourcePermissionManifest.resources', c.sourcePermissionManifest.resources],
   ] as const)
     if (rows.length) block(path, 'unsupported_consumed_channel');
@@ -848,8 +980,24 @@ export function validateRaceImpactConsumedManifest(
     nested.size !== versions.size
   )
     block('nestedNutritionSources', 'missing_source');
-  for (const [index, n] of c.nutrition.entries()) {
-    const path = `nutrition[${index}]`;
+  if (rn) {
+    const extras = new Map(rn.nestedSources.nutrition.map((n) => [n.versionId.toLowerCase(), n]));
+    if (
+      extras.size !== rn.nestedSources.nutrition.length ||
+      extras.size !== rn.records.length ||
+      rn.records.some((record) => !extras.has(record.versionId.toLowerCase()))
+    )
+      block('recoveryNutritionSources.nested', 'source_membership_mismatch');
+    for (const [key, value] of extras) {
+      if (nested.has(key) && !equal(nested.get(key), value))
+        block('recoveryNutritionSources.nested', 'source_identity_mismatch');
+      else nested.set(key, value);
+    }
+  }
+  for (const [index, n] of allNutrition.entries()) {
+    const path = n.operational
+      ? `nutrition[${index}]`
+      : `recoveryNutritionSources.records[${index}]`;
     if (
       !sameId(n.aggregateId, n.record.planId) ||
       !sameId(n.versionId, n.record.versionId) ||
@@ -943,9 +1091,9 @@ export function validateRaceImpactConsumedManifest(
     const relatives = new Map(n.relativeItems.map((item) => [item.itemId, item]));
     if (
       anchors.size !== source.anchors.length ||
-      relatives.size !== n.relativeItems.length ||
+      (n.operational && relatives.size !== n.relativeItems.length) ||
       anchors.size !== active.length ||
-      relatives.size !== active.length
+      (n.operational && relatives.size !== active.length)
     )
       block(path + '.anchors', 'source_membership_mismatch');
     for (const item of active) {
@@ -955,13 +1103,14 @@ export function validateRaceImpactConsumedManifest(
         relative = relatives.get(item.id);
       if (
         !captured ||
-        !relative ||
+        (n.operational && !relative) ||
         !equal(captured.anchor, anchor) ||
-        relative.entity !== anchor.entity ||
-        (anchor.entity === 'race'
-          ? !sameId(relative.entityId, anchor.entityId)
-          : relative.entityId !== anchor.entityId) ||
-        relative.point !== anchor.point
+        (relative &&
+          (relative.entity !== anchor.entity ||
+            (anchor.entity === 'race'
+              ? !sameId(relative.entityId, anchor.entityId)
+              : relative.entityId !== anchor.entityId) ||
+            relative.point !== anchor.point))
       ) {
         block(path + '.anchors', 'source_membership_mismatch');
         continue;
@@ -972,11 +1121,12 @@ export function validateRaceImpactConsumedManifest(
           !linked.draft.sessions.some((session) => session.id === anchor.entityId) ||
           captured.source.state !== 'owned' ||
           !sameId(captured.source.planVersionId, linked.id) ||
-          relative.sourceVersionId === null ||
-          !sameId(relative.sourceVersionId, linked.id) ||
-          relative.sourceRaceRevision !== undefined ||
-          relative.sourceRaceDigest !== undefined ||
-          (relative.affected && n.sourceRelation !== 'current')
+          (relative &&
+            (relative.sourceVersionId === null ||
+              !sameId(relative.sourceVersionId, linked.id) ||
+              relative.sourceRaceRevision !== undefined ||
+              relative.sourceRaceDigest !== undefined ||
+              (relative.affected && n.sourceRelation !== 'current')))
         )
           block(path + '.anchors', 'source_membership_mismatch');
       } else {
@@ -988,10 +1138,11 @@ export function validateRaceImpactConsumedManifest(
           !sameId(captured.source.requestedId, live.id) ||
           captured.source.revision !== live.revision ||
           captured.source.content?.digest !== impactDependencyDigest(live) ||
-          relative.sourceVersionId !== null ||
-          relative.sourceRaceRevision !== live.revision ||
-          relative.sourceRaceDigest !== impactDependencyDigest(live) ||
-          relative.affected !== sameId(live.id, c.event.id)
+          (relative &&
+            (relative.sourceVersionId !== null ||
+              relative.sourceRaceRevision !== live.revision ||
+              relative.sourceRaceDigest !== impactDependencyDigest(live) ||
+              relative.affected !== sameId(live.id, c.event.id)))
         )
           block(path + '.anchors', 'source_membership_mismatch');
       }
@@ -999,7 +1150,7 @@ export function validateRaceImpactConsumedManifest(
   }
   const usedRaces = new Set([
     c.event.id.toLowerCase(),
-    ...c.nutrition.flatMap((n) =>
+    ...allNutrition.flatMap((n) =>
       n.record.items.flatMap((item) =>
         item.anchor.kind === 'relative' && item.anchor.entity === 'race'
           ? [item.anchor.entityId.toLowerCase()]
@@ -1142,13 +1293,17 @@ export function validateRaceImpactConsumedManifest(
   );
   if (
     schedules.size !== c.routineActualManifest.schedules.length ||
-    new Set(c.routines.map((r) => r.aggregateId.toLowerCase())).size !== c.routines.length ||
-    c.routineActualManifest.uniqueSourceCount !== schedules.size + blueprints.size
+    new Set(c.routines.map((r) => r.aggregateId.toLowerCase())).size !== c.routines.length
   )
     block('routineActualManifest', 'source_identity_mismatch');
   for (const b of blueprints.values())
     if (
       ![...schedules.values()].some(
+        (row) =>
+          sameId(row.record.blueprint.versionId, b.record.versionId) &&
+          sameId(row.record.blueprint.id, b.record.routineId),
+      ) &&
+      !c.routineActualManifest.runs.some(
         (row) =>
           sameId(row.record.blueprint.versionId, b.record.versionId) &&
           sameId(row.record.blueprint.id, b.record.routineId),
@@ -1223,8 +1378,6 @@ export function validateRaceImpactConsumedManifest(
       )
     )
       block(`occurrence:${o.record.id}.selectedChoices`, 'source_membership_mismatch');
-    if (o.startedRun.state === 'present')
-      block(`occurrence:${o.record.id}.startedRun`, 'unsupported_consumed_channel');
   }
   const supp = c.supplementaryManifest,
     exerciseIds = new Set(supp.exercises.map((e) => e.versionId.toLowerCase()));
@@ -1295,7 +1448,7 @@ export function validateRaceImpactConsumedManifest(
   const am = c.sourcePermissionManifest.activityMediaPermissions;
   // Tenant-wide head/provider/consent inventories are metadata, not consumed
   // actual bodies or source permission. Keep their bytes in the read digest.
-  // Completion/run channels remain blocked at their specific rows above. A media row is
+  // Completion/unsupported actual channels remain blocked at their specific rows above. A media row is
   // different: captureActivityAndMediaPermissions emits it only for requested
   // media IDs from the consumed catalog/copy inventory.
   if (
@@ -1321,7 +1474,13 @@ export function validateRaceImpactConsumedManifest(
     refs.length +
     c.consumedSources.plans.length +
     c.consumedSources.races.length +
-    c.nutrition.reduce((sum, n) => sum + n.record.items.length, 0) +
+    allNutrition.reduce((sum, n) => sum + n.record.items.length, 0) +
+    (rn
+      ? rn.facts.length +
+        rn.records.length +
+        rn.nestedSources.loadedPlans.length +
+        rn.nestedSources.nutrition.reduce((sum, n) => sum + n.foods.length + n.anchors.length, 0)
+      : 0) +
     supp.sessions.length +
     supp.copies.length +
     supp.exercises.length +

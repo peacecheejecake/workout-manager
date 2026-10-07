@@ -7,6 +7,8 @@ import { currentRestoreGeneration } from './restore-generation.js';
 import { captureRaceManualBasis } from './race-plan-impact-manual-basis.js';
 import { captureRaceImpactSourcePermissions } from './race-plan-impact-source-permissions.js';
 import { captureRecoverySourceFacts } from './race-plan-impact-recovery-sources.js';
+import { captureRecoveryNutritionSourceFacts } from './race-plan-impact-recovery-nutrition-sources.js';
+import { captureRoutineTimerReads } from './race-plan-impact-routine-timers.js';
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { raceEventSchema, type RaceEvent } from '@workout/contracts/races';
@@ -613,6 +615,8 @@ export async function captureRacePlanImpactContext(tx: Transaction, input: unkno
   let supplementaryManifest!: Awaited<ReturnType<typeof captureSupplementaryReferenceManifest>>;
   let sourcePermissionManifest: Awaited<ReturnType<typeof captureRaceImpactSourcePermissions>>;
   let recoverySources: Awaited<ReturnType<typeof captureRecoverySourceFacts>>;
+  let recoveryNutritionSources: Awaited<ReturnType<typeof captureRecoveryNutritionSourceFacts>>;
+  let routineTimerReads: Awaited<ReturnType<typeof captureRoutineTimerReads>>;
   try {
     dependencyInventory = await captureIntegratedDependencyInventory(tx);
     routineActualManifest = await captureRoutineActualManifest(tx, sources);
@@ -623,6 +627,17 @@ export async function captureRacePlanImpactContext(tx: Transaction, input: unkno
     recoverySources = await captureRecoverySourceFacts(
       tx,
       recovery.map((row) => row.record),
+      sourceBudget,
+    );
+    recoveryNutritionSources = await captureRecoveryNutritionSourceFacts(
+      tx,
+      recoverySources.nutritionReferences,
+      sourceBudget,
+      sources,
+    );
+    routineTimerReads = await captureRoutineTimerReads(
+      tx,
+      routineActualManifest.runs.map((row) => row.record),
       sourceBudget,
     );
     sourcePermissionManifest = await captureRaceImpactSourcePermissions(tx, {
@@ -684,6 +699,8 @@ export async function captureRacePlanImpactContext(tx: Transaction, input: unkno
     nutrition,
     recovery,
     recoverySources,
+    recoveryNutritionSources,
+    routineTimerReads,
     routines,
     coreDependencies: core,
     dependencyInventory,

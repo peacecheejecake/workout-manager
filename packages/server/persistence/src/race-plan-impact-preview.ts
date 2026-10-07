@@ -86,3 +86,22 @@ export function createRacePlanImpactPreviewService(database: Database) {
     },
   };
 }
+
+/** Explicit internal coherent capture. The snapshot port acquires the latest
+ * lifecycle/app fences before starting its snapshot; no RC fallback is allowed.
+ * This read/calculation path does not create approval or restore authority. */
+export function createRacePlanImpactSnapshotPreviewService(database: Database) {
+  return {
+    async preview(athleteId: string, unknownIntent: unknown) {
+      const parsed = raceProjectionIntentSchema.safeParse(unknownIntent);
+      if (!parsed.success) throw new RacePlanImpactPreviewError('INVALID_INTENT');
+      const snapshot = database.snapshotTenant;
+      if (!snapshot) throw new RacePlanImpactPreviewError('CONTEXT_UNAVAILABLE');
+      try {
+        return await snapshot(athleteId, (tx) => previewRacePlanImpactTransaction(tx, parsed.data));
+      } catch (error) {
+        throw previewError(error);
+      }
+    },
+  };
+}
