@@ -198,6 +198,7 @@ async function preflight(tx: Transaction, eventId: string) {
       UNION SELECT linked_training_plan_version_id::text FROM nutrition
       UNION SELECT source_plan_version_id::text FROM routine
       UNION SELECT source_plan_version_id::text FROM frozen_schedules
+      UNION SELECT record_json->>'planVersionId' FROM session_completion WHERE athlete_id=$1
       UNION SELECT ref->>'headVersionId' FROM recovery r CROSS JOIN LATERAL jsonb_array_elements(
         CASE WHEN jsonb_typeof(r.record_json->'draft'->'planRefs')='array' THEN r.record_json->'draft'->'planRefs' ELSE '[]'::jsonb END) ref WHERE ref->>'kind'='training' LIMIT 5001),
     race_refs AS MATERIALIZED (SELECT $2::text AS id UNION SELECT anchor->>'entityId' FROM anchors WHERE anchor->>'entity'='race'),
@@ -432,28 +433,31 @@ export async function captureRacePlanImpactContext(tx: Transaction, input: unkno
     )
   ).rows;
   if (completionRows.length > cap) fail('CONTEXT_LIMIT');
-  const completions = completionRows.map((row) => {
-    const parsed = parse(
-      z.strictObject({
-        session_id: z.string().min(1).max(200),
-        revision,
-        record_json: sessionCompletionSchema,
-      }),
-      row,
-    );
-    if (
-      parsed.record_json.sessionId !== parsed.session_id ||
-      parsed.record_json.revision !== parsed.revision
-    )
-      fail('INVALID_CONTEXT');
-    if (
-      parsed.record_json.status === 'completed' &&
-      (!current ||
-        !current.snapshot.draft.sessions.some((session) => session.id === parsed.session_id))
-    )
-      fail('INVALID_CONTEXT');
-    return parsed.record_json;
-  });
+  const completions = await Promise.all(
+    completionRows.map(async (row) => {
+      const parsed = parse(
+        z.strictObject({
+          session_id: z.string().min(1).max(200),
+          revision,
+          record_json: sessionCompletionSchema,
+        }),
+        row,
+      );
+      if (
+        parsed.record_json.sessionId !== parsed.session_id ||
+        parsed.record_json.revision !== parsed.revision
+      )
+        fail('INVALID_CONTEXT');
+      if (
+        parsed.record_json.status === 'completed' &&
+        (!current ||
+          !current.snapshot.draft.sessions.some((session) => session.id === parsed.session_id))
+      )
+        fail('INVALID_CONTEXT');
+      await sources.plan(parsed.record_json.planVersionId);
+      return parsed.record_json;
+    }),
+  );
   if (current && !preservesSessionCompletions(current.snapshot.draft, completions))
     fail('INVALID_CONTEXT');
   const nutrients = await roster(tx, 'nutrition'),

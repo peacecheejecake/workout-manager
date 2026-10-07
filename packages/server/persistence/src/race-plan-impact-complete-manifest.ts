@@ -4,6 +4,10 @@ import { planSnapshotSchema } from '@workout/contracts/planning';
 import { foodDefinitionVersionSchema } from '@workout/contracts/nutrition-core';
 import { nutritionAnchorSchema } from '@workout/contracts/nutrition';
 import { nutritionPlanVersionCompatibleV4Schema } from '@workout/contracts/nutrition-race-plan-v4';
+import {
+  sessionCompletionSchema,
+  preservesSessionCompletions,
+} from '@workout/contracts/session-completion';
 import { routineRunReadSchema } from '@workout/contracts/routine-commands';
 import { coreEvidenceDependencyManifestSchema } from '@workout/contracts/evidence-dependencies';
 import {
@@ -522,7 +526,7 @@ const captureSchema = z.strictObject({
     .max(3),
   linkedPlan: planSnapshotSchema.nullable(),
   currentTraining: z.strictObject({ aggregateId: uuid, snapshot: planSnapshotSchema }).nullable(),
-  completions: jsonRows,
+  completions: z.array(sessionCompletionSchema).max(1000),
   course: z.json().nullable(),
   rosters: z.strictObject({
     nutrition: z.array(tuple).max(1000),
@@ -557,6 +561,8 @@ export type RaceImpactManifestBlocker = {
     | 'scope_mismatch'
     | 'digest_mismatch'
     | 'manual_admission_unavailable'
+    | 'completion_plan_source_missing'
+    | 'completion_revision_mismatch'
     | 'missing_source'
     | 'source_identity_mismatch'
     | 'unsupported_consumed_channel'
@@ -715,6 +721,46 @@ export function validateRaceImpactConsumedManifest(
     block('currentTraining', 'missing_source');
   if (c.linkedPlan && !equal(plans.get(c.linkedPlan.id.toLowerCase()), c.linkedPlan))
     block('linkedPlan', 'missing_source');
+  // Current self-reports reference an owned immutable version, not an
+  // aggregate identifier or exercise performance. The collector supplies the
+  // exact owned snapshot; aggregate/history authority remains a separate port.
+  const completionHead = c.coreDependencies.sessionCompletions;
+  if (
+    (completionHead.kind === 'exists' && completionHead.revision > 2147483646) ||
+    (c.completions.length > 0 && completionHead.kind === 'absent') ||
+    c.completions.some(
+      (report) => completionHead.kind === 'exists' && report.revision > completionHead.revision,
+    )
+  )
+    block('coreDependencies.sessionCompletions', 'completion_revision_mismatch');
+  if (new Set(c.completions.map((report) => report.sessionId)).size !== c.completions.length)
+    block('completions', 'source_identity_mismatch');
+  for (const report of c.completions) {
+    const path = `completions.${report.sessionId}`;
+    if (Buffer.byteLength(JSON.stringify(report), 'utf8') > 16384) block(path, 'bounds_exceeded');
+    const sourcePlan = plans.get(report.planVersionId.toLowerCase());
+    if (!sourcePlan) {
+      block(path, 'completion_plan_source_missing');
+      continue;
+    }
+    const session = sourcePlan.draft.sessions.find((row) => row.id === report.sessionId);
+    if (
+      !session ||
+      !equal(report.schedule, {
+        blockId: session.blockId,
+        date: session.date,
+        localStartTime: session.localStartTime,
+        timezone: sourcePlan.draft.timezone,
+      })
+    )
+      block(path, 'source_membership_mismatch');
+  }
+  if (
+    c.completions.some((report) => report.status === 'completed') &&
+    (!c.currentTraining ||
+      !preservesSessionCompletions(c.currentTraining.snapshot.draft, c.completions))
+  )
+    block('completions.currentTraining', 'source_membership_mismatch');
   const races = new Map(c.consumedSources.races.map((r) => [r.id.toLowerCase(), r]));
   if (!equal(races.get(c.event.id.toLowerCase()), c.event))
     block('consumedSources.races.event', 'missing_source');
@@ -823,6 +869,7 @@ export function validateRaceImpactConsumedManifest(
     [
       c.currentTraining?.snapshot.id,
       c.linkedPlan?.id,
+      ...c.completions.map((report) => report.planVersionId),
       ...allNutrition.flatMap((n) =>
         n.record.linkedTrainingPlanVersionId === null ? [] : [n.record.linkedTrainingPlanVersionId],
       ),
@@ -953,7 +1000,6 @@ export function validateRaceImpactConsumedManifest(
   }
   // Unimplemented codecs cannot be admitted merely because their arrays are JSON.
   for (const [path, rows] of [
-    ['completions', c.completions],
     ['sourcePermissionManifest.resources', c.sourcePermissionManifest.resources],
   ] as const)
     if (rows.length) block(path, 'unsupported_consumed_channel');
@@ -1472,6 +1518,7 @@ export function validateRaceImpactConsumedManifest(
   if (c.affected.routine.length) block('affected.routine', 'unsupported_consumed_channel');
   const visits =
     refs.length +
+    c.completions.length +
     c.consumedSources.plans.length +
     c.consumedSources.races.length +
     allNutrition.reduce((sum, n) => sum + n.record.items.length, 0) +

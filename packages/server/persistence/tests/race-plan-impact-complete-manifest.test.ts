@@ -1,3 +1,4 @@
+import { sessionCompletionSchema } from '@workout/contracts/session-completion';
 import { routineRunReadSchema } from '@workout/contracts/routine-commands';
 import { recoverySourceFactsSchema } from '../src/race-plan-impact-recovery-sources.js';
 import {
@@ -95,7 +96,7 @@ function fixture() {
     currentTraining: z
       .nullable(z.strictObject({ aggregateId: z.uuid(), snapshot: planSnapshotSchema }))
       .parse(null),
-    completions: jsonRows(),
+    completions: z.array(sessionCompletionSchema).parse([]),
     course: null,
     rosters: {
       nutrition: z.array(z.strictObject({ aggregateId: z.uuid(), versionId: z.uuid() })).parse([]),
@@ -2373,4 +2374,211 @@ it('enforces combined typedtimer visits before admitting a5001row inventory', ()
     pausedMilliseconds: 0,
   }));
   blocked(c, 'bounds_exceeded');
+});
+
+function withCompletion(historical = false) {
+  const c = historical ? withTrainingRef(true) : withSupplementary();
+  const source = c.consumedSources.plans.find((row) => row.id === version);
+  const session = source?.draft.sessions[0];
+  if (!source || !session) throw Error('completion source fixture');
+  c.completions.push(
+    sessionCompletionSchema.parse({
+      sessionId: session.id,
+      revision: 1,
+      planVersionId: source.id,
+      schedule: {
+        blockId: session.blockId,
+        date: session.date,
+        localStartTime: session.localStartTime,
+        timezone: source.draft.timezone,
+      },
+      status: 'completed',
+      reportedAt: now,
+      reason: null,
+      source: 'user',
+      method: 'self_report',
+      definitionVersion: 'session-completion-v1',
+    }),
+  );
+  c.coreDependencies.sessionCompletions = { kind: 'exists', revision: 1 };
+  return c;
+}
+it.each([false, true])(
+  'validates current self-report against exact owned version, historical=%s',
+  (historical) => {
+    const c = withCompletion(historical);
+    expect(inspect(c)).toMatchObject({
+      status: 'validated_read_scope',
+      approvalAuthority: 'none',
+      freshness: 'not_checked',
+    });
+    expect(c.coreDependencies.activities).toEqual({ count: '0', revisionSum: '0' });
+    expect(c.completions[0]?.schedule.localStartTime).toBeNull();
+  },
+);
+it('preserves retracted historical reports without requiring a current session', () => {
+  const c = withCompletion();
+  const report = c.completions[0];
+  if (!report) throw Error('report fixture');
+  c.completions[0] = sessionCompletionSchema.parse({
+    ...report,
+    status: 'retracted',
+    revision: 2,
+    reason: 'User correction',
+  });
+  c.coreDependencies.sessionCompletions = { kind: 'exists', revision: 2 };
+  c.currentTraining = null;
+  c.coreDependencies.trainingPlan = { kind: 'absent' };
+  expect(inspect(c).status).toBe('validated_read_scope');
+});
+it('blocks missing owned completion source, without guessing aggregate identity', () => {
+  const c = withCompletion();
+  c.completions[0] = sessionCompletionSchema.parse({ ...c.completions[0], planVersionId: race });
+  blocked(c, 'completion_plan_source_missing');
+});
+it.each(['sessionId', 'blockId', 'date', 'localStartTime', 'timezone'] as const)(
+  'rejects mismatched completion %s membership',
+  (field) => {
+    const c = withCompletion(),
+      report = c.completions[0];
+    if (!report) throw Error('report fixture');
+    c.completions[0] = sessionCompletionSchema.parse(
+      field === 'sessionId'
+        ? { ...report, sessionId: 'foreign-session' }
+        : {
+            ...report,
+            schedule: {
+              ...report.schedule,
+              [field]:
+                field === 'date'
+                  ? '2026-10-08'
+                  : field === 'localStartTime'
+                    ? '01:00'
+                    : field === 'timezone'
+                      ? 'UTC'
+                      : 'foreign-block',
+            },
+          },
+    );
+    blocked(c, 'source_membership_mismatch');
+  },
+);
+it('rejects duplicate opaque session identities', () => {
+  const c = withCompletion(),
+    report = c.completions[0];
+  if (!report) throw Error('report fixture');
+  c.completions.push(report);
+  blocked(c, 'source_identity_mismatch');
+});
+it.each(['absent', 'stale', 'overflow'] as const)('rejects completion collection %s', (state) => {
+  const c = withCompletion();
+  c.completions[0] = sessionCompletionSchema.parse({
+    ...c.completions[0],
+    revision: 2,
+    reason: 'Correction',
+  });
+  c.coreDependencies.sessionCompletions =
+    state === 'absent'
+      ? { kind: 'absent' }
+      : { kind: 'exists', revision: state === 'overflow' ? 2147483647 : 1 };
+  blocked(c, 'completion_revision_mismatch');
+});
+it('allows valid report and collection maximum without treating it as a performance count', () => {
+  const c = withCompletion();
+  c.completions[0] = sessionCompletionSchema.parse({
+    ...c.completions[0],
+    revision: 2147483646,
+    reason: 'Correction',
+  });
+  c.coreDependencies.sessionCompletions = { kind: 'exists', revision: 2147483646 };
+  expect(inspect(c).status).toBe('validated_read_scope');
+});
+it.each(['partial', 'skipped', 'stopped'])('does not invent completion status %s', (status) => {
+  const c = withCompletion();
+  const malformed = { ...c, completions: [{ ...c.completions[0], status }] };
+  expect(validateRaceImpactConsumedManifest(malformed, sign(c))).toMatchObject({
+    status: 'blocked',
+    blockers: [{ reason: 'invalid_capture' }],
+  });
+});
+it.each([
+  { revision: 0 },
+  { revision: null },
+  { actualDurationSeconds: 0 },
+  { deleted: true },
+  { source: 'provider' },
+  { reason: '' },
+])('rejects unknown or invalid completion facts %j', (patch) => {
+  const c = withCompletion();
+  expect(
+    validateRaceImpactConsumedManifest(
+      { ...c, completions: [{ ...c.completions[0], ...patch }] },
+      sign(c),
+    ),
+  ).toMatchObject({ status: 'blocked', blockers: [{ reason: 'invalid_capture' }] });
+});
+it('requires completed reports to remain in the current schedule', () => {
+  const c = withCompletion(true),
+    current = c.currentTraining;
+  if (!current) throw Error('current fixture');
+  const session = current.snapshot.draft.sessions[0];
+  if (!session) throw Error('current session fixture');
+  current.snapshot.draft.sessions[0] = {
+    ...session,
+    localStartTime: '01:00',
+  };
+  blocked(c, 'source_membership_mismatch');
+});
+it('detects completion mutation after read-set digest binding', () => {
+  const c = withCompletion(),
+    scope = sign(c);
+  c.completions[0] = sessionCompletionSchema.parse({
+    ...c.completions[0],
+    reportedAt: '2026-10-07T01:00:00.000Z',
+  });
+  expect(validateRaceImpactConsumedManifest(c, scope)).toMatchObject({
+    status: 'blocked',
+    blockers: expect.arrayContaining([{ path: 'readSetDigest', reason: 'digest_mismatch' }]),
+  });
+});
+it('rejects completion transport beyond actual producer 1000-row bound', () => {
+  const c = withCompletion(),
+    report = c.completions[0];
+  if (!report) throw Error('report fixture');
+  const malformed = { ...c, completions: Array.from({ length: 1001 }, () => report) };
+  expect(validateRaceImpactConsumedManifest(malformed, sign(c))).toMatchObject({
+    status: 'blocked',
+    blockers: [{ reason: 'invalid_capture' }],
+  });
+});
+
+it('matches UUID case variants but retains opaque session identity case', () => {
+  const c = withCompletion();
+  const report = c.completions[0];
+  if (!report) throw Error('report fixture');
+  c.completions[0] = sessionCompletionSchema.parse({
+    ...report,
+    planVersionId: report.planVersionId.toUpperCase(),
+  });
+  expect(inspect(c).status).toBe('validated_read_scope');
+  c.completions[0] = { ...report, sessionId: report.sessionId.toUpperCase() };
+  blocked(c, 'source_membership_mismatch');
+});
+it('does not manufacture actuals or collapse zero/null planned metrics', () => {
+  const c = withCompletion(),
+    current = c.currentTraining;
+  const session = current?.snapshot.draft.sessions[0];
+  if (!session) throw Error('session fixture');
+  session.durationSeconds = 0;
+  session.distanceMeters = null;
+  expect(inspect(c).status).toBe('validated_read_scope');
+  expect(session.durationSeconds).toBe(0);
+  expect(session.distanceMeters).toBeNull();
+  expect(c.coreDependencies.activities.count).toBe('0');
+});
+it('preserves an existing empty completion collection revision without fabricating reports', () => {
+  const c = fixture();
+  c.coreDependencies.sessionCompletions = { kind: 'exists', revision: 9 };
+  expect(inspect(c).status).toBe('validated_read_scope');
+  expect(c.completions).toEqual([]);
 });

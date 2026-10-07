@@ -1,3 +1,4 @@
+import { createSessionCompletionRepository } from '../src/session-completions.js';
 import {
   currentRestoreGeneration,
   requireCurrentRestoreGeneration,
@@ -49,6 +50,7 @@ import {
   migrate,
   migrationFileNames,
   grantOperations,
+  grantSessionCompletions,
   grantRaces,
   grantRoutineCore,
   grantRecoveryCore,
@@ -253,6 +255,7 @@ beforeAll(async () => {
   owner = new Pool({ connectionString: url(ownerRole) });
   await grantOperations(url(ownerRole), runtimeRole);
   await grantRaces(url(ownerRole), runtimeRole);
+  await grantSessionCompletions(url(ownerRole), runtimeRole);
   // The configured identity runtime uses these same domain grants; no fixture-only SELECT.
   await grantRoutineCore(url(ownerRole), runtimeRole);
   await grantRecoveryCore(url(ownerRole), runtimeRole);
@@ -492,6 +495,59 @@ it('captures completed head revisions without moving actual or planned schedule'
   expect(after.currentTraining).toEqual(before.currentTraining);
   expect(after.readSetDigest).not.toBe(before.readSetDigest);
 });
+it('captures public completion reports against their own frozen historical source without approving actual performance', async () => {
+  const athlete = await account(),
+    original = await training(athlete),
+    event = await create(athlete),
+    repository = createSessionCompletionRepository(database, {
+      now: () => new Date('2026-10-07T00:00:00Z'),
+    });
+  const completed = await repository.write(athlete, 'session', {
+    action: 'complete',
+    confirmed: true,
+    expectedPlanVersionId: original,
+    expectedRevision: null,
+    reason: null,
+    idempotencyKey: randomUUID(),
+  });
+  const updated = await training(athlete, { ...draft(), title: 'New current plan' }, false);
+  await owned(athlete, (client) =>
+    client.query('UPDATE plan_head SET version_id=$2 WHERE athlete_id=$1', [athlete, updated]),
+  );
+  if (!database.snapshotTenant) throw new Error('SNAPSHOT_CAPABILITY_MISSING');
+  const consumed = await database.snapshotTenant(athlete, (tx) =>
+    captureRacePlanImpactConsumedScope(tx, {
+      eventId: event.id,
+      expectedRevision: 1,
+      selection: { kind: 'keep_plan' },
+    }),
+  );
+  expect(consumed.capture.completions).toEqual([completed.report]);
+  expect(consumed.capture.currentTraining?.snapshot.id).toBe(updated);
+  expect(consumed.capture.consumedSources.plans.map((plan) => plan.id).sort()).toEqual(
+    [original, updated].sort(),
+  );
+  expect(consumed.consumedScope).toMatchObject({
+    status: 'validated_read_scope',
+    approvalAuthority: 'none',
+    freshness: 'not_checked',
+  });
+  expect(consumed.capture.routineActualManifest.actualRosters.activities).toEqual([]);
+  expect(consumed.capture.coverage.missing).toHaveLength(5);
+  const retracted = await repository.write(athlete, 'session', {
+    action: 'retract',
+    confirmed: true,
+    expectedPlanVersionId: updated,
+    expectedRevision: 1,
+    reason: 'Synthetic correction',
+    idempotencyKey: randomUUID(),
+  });
+  const after = await capture(athlete, event.id);
+  expect(after.completions).toEqual([retracted.report]);
+  expect(after.coreDependencies.sessionCompletions).toEqual({ kind: 'exists', revision: 2 });
+  expect(after.readSetDigest).not.toBe(consumed.capture.readSetDigest);
+});
+
 it('rejects unknown DTO keys and refuses1001 heads rather than claiming first1000 complete', async () => {
   const athlete = await account(),
     event = await create(athlete);
