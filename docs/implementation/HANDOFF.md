@@ -607,3 +607,9 @@ SQL127의 실제DB5/5 및 current/historical routine 분리 후 ended PG3/3·pub
 PB Chip우선/null일 때 Gun 기본 정책은 unit75/75와 실제두Host4/4로 `9d295764`에 커밋했다. 공개 영양 V4 write-free preview/API/명시 재연결 UI를 native agent의 비중복 소유로 병렬 구현해 Root unit395/395·실제PG15/15·Next/Vitebuild0·실제두Host2/2(skip0)을 확인했다. 실제 대회 삭제 후 시각 중단·새 대회만으로 자동재개0·미저장 비교 후 별도승인·멱등재생·음식/수량0|null/실제Intake 보존·320reflow를 수용했다. [I 기록](progress/M2-02i.md)에 SHA/한계/과거실패를 보존한다.
 
 정상registry107과 production writer/preview 부재는 유지한다. bounded 대회선택 첫50개와 manual계약에 표현불가한 reviewed provenance 재연결 한계도 별도 남는다. 다음 ready I/J 작업은 runtime 설치 profile/좁은grant/정상configured 활성화 및 최신 export·restore closure 준비다. 고정116/222의 target-only117119125를 최신runtime에 그대로 설치하거나 기존guard를 완화하지 않는다. 전체phase gate/독립review/main·운영503/native/외부not_executed 및 AWS로그인/FUT09원문 대기는 변경 없다.
+
+## 정상 설치 경로 실제 HTTP 수용 · 2026-10-08
+
+명시 `installed-runtime` identity 모드는 base107→별도17-step installer→좁은26RPC grant→실제 owner ledger 확인을 사용한다. raw staging과 target-only117/119/125는 이 경로에서 실행하지 않는다. Root actual Chromium Next/Vite 공개 proof/PB/미해결 영향/네 도메인 승인/영양 삭제·재연결 **12/12 PASS·skip0·exit0**,59.6초다. 로그 `/private/tmp/wm-installed-runtime-root-e2e-r1-20261008.log`, 입력3 SHA 및 정리 DB/role/slot0는 `/private/tmp/wm-installed-runtime-root-verified-20261008.json`에 있다. Root parser26+개인 manual export 관련86 **112/112** 단위 통과다. 전체 harness strict TS의 기존 oidc-provider 선언 TS7016 실패는 보존하며 tooling scoped typecheck와 구별한다.
+
+실제 설치 경로 수용은 configured production의 cold catalog/transitive 보안 지원·최신 전체 personal export/restore·phase 전체 gate/독립검토/main·운영503/native/외부 gate 통과가 아니다. 이 gate와 원문/AWS 사용자 답변 대기는 유지한다.

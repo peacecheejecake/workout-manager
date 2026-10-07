@@ -1,3 +1,9 @@
+import { parseIdentityRuntimeProfile } from './fixtures/identity-runtime-profile.ts';
+import {
+  installCurrentRuntime,
+  verifyCurrentRuntimeInstalledIn,
+} from '../packages/server/persistence/src/current-runtime-installation.ts';
+import { grantCurrentRuntimeProfile } from '../packages/server/persistence/src/current-runtime-grants.ts';
 import {
   identityGarminPort,
   identityMobileOrigin,
@@ -197,18 +203,19 @@ function disposablePg17AdminUrl(value: unknown): URL | null {
   return parsed;
 }
 const externalPg = disposablePg17AdminUrl(process.env['IDENTITY_E2E_DISPOSABLE_PG17_ADMIN_URL']);
-const resultStage = process.env['IDENTITY_E2E_RACE_RESULTS_V2'];
-if (resultStage !== undefined && resultStage !== 'staged-108-111')
-  throw new Error('IDENTITY_RACE_RESULT_STAGE_INVALID');
-const stageRaceResults = resultStage === 'staged-108-111';
-const checkInTemplateStage = process.env['IDENTITY_E2E_CHECK_IN_TEMPLATES'];
-if (checkInTemplateStage !== undefined && checkInTemplateStage !== 'staged-123')
-  throw new Error('IDENTITY_CHECKIN_TEMPLATE_STAGE_INVALID');
-const stageCheckInTemplates = checkInTemplateStage === 'staged-123';
-const manualStage = process.env['IDENTITY_E2E_RACE_MANUAL_PUBLIC'];
-if (manualStage !== undefined && manualStage !== 'staged-manual')
-  throw new Error('IDENTITY_RACE_MANUAL_STAGE_INVALID');
-const stageRaceManualPublic = manualStage === 'staged-manual';
+const {
+  stageRaceResults,
+  stageCheckInTemplates,
+  stageRaceManualPublic,
+  installedRuntime,
+  enableRaceResultsV2,
+  enableRaceManualPublic,
+  enableCheckInTemplates,
+} = parseIdentityRuntimeProfile({
+  raceResultsV2: process.env['IDENTITY_E2E_RACE_RESULTS_V2'],
+  raceManualPublic: process.env['IDENTITY_E2E_RACE_MANUAL_PUBLIC'],
+  checkInTemplates: process.env['IDENTITY_E2E_CHECK_IN_TEMPLATES'],
+});
 const checkInTemplateStageSha = '6d3ad2f18cb7b1c99d63ccff582214b6ba8f0318a72c1238092140a5ffc9444c';
 // Explicit disposable acceptance profile; this does not register migrations or
 // activate configured production repositories. Pin every raw predecessor.
@@ -584,7 +591,10 @@ try {
   try {
     await createFixtureRole(admin, 'workout_runtime');
     await admin.query('ALTER SCHEMA public OWNER TO workout_owner');
-    await migrate(ownerUrl);
+    if (installedRuntime) {
+      await migrate(ownerUrl, 107);
+      await installCurrentRuntime(ownerUrl);
+    } else await migrate(ownerUrl);
     if (stageRaceResults) {
       const owner = new Pool({ connectionString: ownerUrl, max: 1 });
       try {
@@ -871,7 +881,28 @@ try {
     await grantCourses(adminUrl, 'workout_runtime');
     await grantRaces(adminUrl, 'workout_runtime');
     await grantCorePlanning(adminUrl, 'workout_runtime');
-    if (stageRaceManualPublic) {
+    if (installedRuntime) {
+      await grantCurrentRuntimeProfile(ownerUrl, 'workout_runtime');
+      const owner = new Pool({
+        connectionString: ownerUrl,
+        max: 1,
+        connectionTimeoutMillis: 5000,
+        statement_timeout: 10000,
+        query_timeout: 12000,
+      });
+      try {
+        const profile = await verifyCurrentRuntimeInstalledIn(owner);
+        if (
+          profile.baselineSchemaVersion !== 107 ||
+          profile.runtimeStep !== 17 ||
+          profile.sourceDdlTip !== 127
+        )
+          throw new Error('IDENTITY_RUNTIME_INSTALLED_PROFILE_INVALID');
+      } finally {
+        await owner.end();
+      }
+    }
+    if (enableRaceManualPublic) {
       const acl = await admin.query(`SELECT
         has_function_privilege('workout_runtime','public.read_training_plan_aggregate(uuid)','EXECUTE') AS narrow_execute,
         has_table_privilege('workout_runtime','public.plan_snapshot_aggregate','SELECT,INSERT,UPDATE,DELETE') AS private_table`);
@@ -882,7 +913,7 @@ try {
       )
         throw new Error('IDENTITY_TRAINING_AGGREGATE_STAGE_ACL_INVALID');
     }
-    if (stageRaceResults) {
+    if (enableRaceResultsV2) {
       const acl = await admin.query(`SELECT
         has_function_privilege('workout_runtime','public.race_result_proof_source_suppressed(text,text,uuid)','EXECUTE') AS narrow_execute,
         has_function_privilege('workout_runtime','public.guard_race_result_proof_body()','EXECUTE') AS private_execute,
@@ -1158,14 +1189,14 @@ try {
     aiSettings: createAiSettingsService(createAiSettingsRepository(database)),
     planning: createPlanningRepository(database),
     races: createRaceRepository(database),
-    ...(stageRaceManualPublic
+    ...(enableRaceManualPublic
       ? {
           raceManualPublic: createRaceManualPublicRepository(database),
           nutritionV4Writer: createNutritionRacePlanV4Writer(database),
           nutritionV4Preview: createNutritionRacePlanV4PreviewRepository(database),
         }
       : {}),
-    ...(stageRaceResults ? { raceResultsV2: createRaceResultV2Repository(database) } : {}),
+    ...(enableRaceResultsV2 ? { raceResultsV2: createRaceResultV2Repository(database) } : {}),
     nutrition: createNutritionRepository(database),
     nutritionV4: createNutritionPlanV4Reader(database),
     restoreGeneration: createRestoreGenerationRepository(database),
@@ -1260,7 +1291,7 @@ try {
     courseSharing,
     ...(sharedCourseReader === undefined ? {} : { sharedCourseReader }),
     checkIns: createCheckInRepository(database),
-    ...(stageCheckInTemplates
+    ...(enableCheckInTemplates
       ? { checkInTemplates: createCheckInTemplateRepository(database) }
       : {}),
     dashboard: createDashboardRepository(database),
