@@ -112,6 +112,7 @@ const migrationFiles = [
   '104_ai_settings.sql',
   '105_tenant_reconcile_bounds.sql',
   '106_race_manual_review.sql',
+  '107_guard_race_review_stamp_authority.sql',
 ] as const;
 
 /**

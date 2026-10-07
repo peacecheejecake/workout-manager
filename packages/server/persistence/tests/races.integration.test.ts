@@ -456,10 +456,12 @@ describe('race ledger transactions', () => {
       idempotencyKey: randomUUID(),
       values: resultValues(),
     });
-    // A privileged fixture stands in for a future reviewed verification use case.
-    await admin.query(
-      "WITH tenant_context AS (SELECT set_config('app.athlete_id',$1,true)) UPDATE race_result SET values_json=jsonb_set(values_json,'{source,verifiedAt}',to_jsonb($3::text)) FROM tenant_context WHERE athlete_id=$1 AND id=$2",
-      [athlete, result.id, fixedTime],
+    // Plain table-owner offline historical fixture, not a verification producer.
+    await owned(athlete, (client) =>
+      client.query(
+        "UPDATE race_result SET values_json=jsonb_set(values_json,'{source,verifiedAt}',to_jsonb($3::text)) WHERE athlete_id=$1 AND id=$2",
+        [athlete, result.id, fixedTime],
+      ),
     );
     expect((await repository.getRaceResult(athlete, result.id))?.source).toMatchObject({
       kind: 'official',
