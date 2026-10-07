@@ -324,3 +324,11 @@ M2-01k-v-a~f의 각 로컬 구현·수용이 완료됐다. Root 통합 화면RTL
 Root는 설치된 PostgreSQL17.6 Docker 이미지의 localhost 전용·tmpfs·host-volume 미연결 일회용 서비스에서 V5 실제 SQL/RLS/cap/snapshot **8/8**을 확인했다. 입력268개 변화0, suite DB/role 각각0이며 [I의 최신 기록](progress/M2-02i.md)을 따른다. macOS IPC 삭제0이다. 앞선32개 정리 승인 대기는 이 실제 DB 시험을 더 이상 차단하지 않는다. 실제 browser는 아직 미실행이며 canonical identity fixture가 이 Docker 경로를 쓰도록 별도 opt-in 준비 중이다. 기본 local fixture·보안 gate는 유지한다.
 
 V3 disconnected 계약과 계산은 V1/V2 strict 의미를 유지하면서 새 상태를 표현한다. Root 계약55시험 및 actor helper79시험, contracts build/persistence TS를 확인했지만 authoritative marker·물리 삭제·API/current/history·receipt/export/restore·명시 재연결/재승인은 계속 구현 중이다. 번호108의 신규 storage migration, V3 영양 조회 API, 외부 일회용 PG17 identity fixture를 native agent별 분리 소유 범위로 병렬 진행한다. 미등록 migration 초안이나 합성 계약을 실제 privacy/승인/출시 통과로 표시하지 않는다. main은 `1d557358` clean으로 재확인했고 병합·push0이다.
+
+## 실제 연결 해제·화면 검증 후속 · 2026-10-07
+
+사용자의 대회 삭제 결정은 기존 영양 음식·수량·실제 섭취를 보존하고, 연결 해제 표시 후 재연결·재승인 전까지 대회 시각 사용을 중단하는 것이다. 미등록 SQL108의 실제 PG17 집중 시험13/13을 통과했으며 생성 DB·역할 잔존0이다. 첫 invalid meal fixture 실패는 별도 보존한다. 자세한 한계는 [I 기록](progress/M2-02i.md)에 있다. 정상 V2 승인·복원/export35·copied-channel 처리·명시 재연결은 여전히 미완료다.
+
+Playwright 실제 identity 대회 화면 E2E는 Next/Vite 두 shell **2/2 통과·exit0**(`/private/tmp/wm-pb-ui-pg17-20261007-r4/actual.log`)했다. R1 fixture startup 실패, R2 Chromium 부재, R3 Bob app 동의 누락에 따른 정상409를 각각 별도 보존했다. Bob에게 명시 동의를 추가한 뒤 기존 foreign404 기대값을 유지했다. 브라우저와 정상 public107은 실제 실행했지만 IdP·운동 자료는 합성 fixture다. PB 순위 계산·인증 자료 진위 검토·iPhone 증거가 아니다. fixture DB/역할 정리0/0을 확인했다.
+
+V3 receipt 소비자와 replay-only API는 원 승인 tuple만 반환하며 receipt 없음을 새 저장으로 바꾸지 않는다. 집중 unit30 및 API10·타입 검사·lint/format은 통과했고 실제 receipt PG 수용은 별도 준비 중이다. Root는 graph·API·실행 자원을 소유하고 native agents는 receipt 실DB 시험과 exact copied-channel 설계를 분리해 계속 진행한다. main 병합·push0, I/J와 phase 상태는 진행 중이다.
