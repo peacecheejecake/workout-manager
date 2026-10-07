@@ -406,15 +406,6 @@ const routineMember = z
       expansion,
     }),
     retainedStarted: z.array(started).max(1000),
-    retainedUnplanned: z
-      .array(
-        z.strictObject({
-          runId: idSchema,
-          blueprintVersionId: idSchema,
-          preservation: z.literal('unplanned_run_unchanged'),
-        }),
-      )
-      .max(1000),
   })
   .superRefine((member, context) => {
     for (const side of [member.before, member.after]) {
@@ -448,7 +439,7 @@ const routineMember = z
       }
     }
     unique(
-      [...member.retainedStarted, ...member.retainedUnplanned].map((entry) => entry.runId),
+      member.retainedStarted.map((entry) => entry.runId),
       context,
       'Duplicate retained run',
     );
@@ -508,7 +499,6 @@ const notice = z.strictObject({
     'DISCONNECTED_RETAINED',
     'STARTED_RUN_PRESERVED',
     'ENDED_SCHEDULE_RETAINED',
-    'UNPLANNED_RUN_PRESERVED',
   ]),
 });
 const present = z
@@ -526,6 +516,15 @@ const present = z
     nutrition: section(nutritionMember),
     recovery: section(recoveryMember),
     routines: section(routineMember),
+    retainedUnplanned: z
+      .array(
+        z.strictObject({
+          runId: idSchema,
+          blueprintVersionId: idSchema,
+          preservation: z.literal('unplanned_run_unchanged'),
+        }),
+      )
+      .max(1000),
     affected: z.array(target).max(1000),
     notices: z.array(notice).max(5000),
   })
@@ -581,6 +580,18 @@ const present = z
         code: 'custom',
         message: 'Affected roster must exactly match hypothetical writes',
       });
+    unique(
+      [
+        ...preview.retainedUnplanned.map((run) => run.runId),
+        ...(preview.routines.state === 'present'
+          ? preview.routines.members.flatMap((member) =>
+              member.retainedStarted.map((run) => run.runId),
+            )
+          : []),
+      ],
+      context,
+      'Duplicate preserved run across scheduled and unplanned rosters',
+    );
     const expectedNotices: z.infer<typeof notice>[] = [];
     for (const member of preview.nutrition.state === 'present' ? preview.nutrition.members : [])
       for (const row of member.timings) {
@@ -610,13 +621,6 @@ const present = z
           aggregateId: member.aggregateId,
           itemId: null,
           code: 'STARTED_RUN_PRESERVED',
-        });
-      if (member.retainedUnplanned.length)
-        expectedNotices.push({
-          domain: 'routine_schedule',
-          aggregateId: member.aggregateId,
-          itemId: null,
-          code: 'UNPLANNED_RUN_PRESERVED',
         });
     }
     const expected = new Set(expectedNotices.map((entry) => JSON.stringify(entry)));

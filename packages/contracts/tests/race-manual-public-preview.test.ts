@@ -247,6 +247,7 @@ function fixture() {
         },
       ],
     },
+    retainedUnplanned: [],
     routines: {
       state: 'present',
       members: [
@@ -269,7 +270,6 @@ function fixture() {
               preservation: 'started_run_frozen',
             },
           ],
-          retainedUnplanned: [],
         },
       ],
     },
@@ -584,4 +584,36 @@ describe('whole public frozen/hypothetical preview', () => {
         .success,
     ).toBe(false);
   });
+});
+
+it('preserves parentless unplanned runs without inventing a schedule aggregate', () => {
+  const f = fixture();
+  const run = {
+    runId: 'unplanned-run',
+    blueprintVersionId: 'frozen-blueprint',
+    preservation: 'unplanned_run_unchanged',
+  };
+  expect(raceManualPublicPreviewSchema.parse({ ...f, retainedUnplanned: [run] })).toMatchObject({
+    retainedUnplanned: [run],
+  });
+  expect(parse({ ...f, retainedUnplanned: [run, run] })).toBe(false);
+  expect(parse({ ...f, retainedUnplanned: [{ ...run, aggregateId: id(4) }] })).toBe(false);
+});
+it('requires explicit unplanned roster and rejects overlap with a started scheduled run', () => {
+  const f = fixture();
+  const { retainedUnplanned, ...missing } = f;
+  expect(retainedUnplanned).toEqual([]);
+  expect(parse(missing)).toBe(false);
+  expect(
+    parse({
+      ...f,
+      retainedUnplanned: [
+        {
+          runId: 'run',
+          blueprintVersionId: 'bp-v1',
+          preservation: 'unplanned_run_unchanged',
+        },
+      ],
+    }),
+  ).toBe(false);
 });
