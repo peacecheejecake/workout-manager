@@ -29,7 +29,11 @@ import {
   type NutritionPlanVersion,
 } from '@workout/contracts/nutrition-core';
 import { nutritionPlanVersionCompatibleV4Schema } from '@workout/contracts/nutrition-race-plan-v4';
-import { recoveryStrategyVersionSchema } from '@workout/contracts/recovery-core';
+import {
+  RaceManualApprovalDomainWriteError,
+  persistRecoveryStrategyVersionIn,
+  persistRoutineScheduleVersionIn,
+} from './race-manual-approval-domain-writes.js';
 import { planDraftSchema, type PlanDraft } from '@workout/contracts/planning';
 import {
   integratedApprovalV023Schema,
@@ -77,6 +81,18 @@ export class IntegratedApprovalV4Error extends Error {
       | 'AI_CONSENT_REQUIRED',
   ) {
     super(code);
+  }
+}
+
+/** Preserve the existing API error taxonomy only for domain write rejections. */
+export async function runIntegratedApprovalDomainWrite<T>(write: () => Promise<T>): Promise<T> {
+  try {
+    return await write();
+  } catch (error) {
+    if (error instanceof RaceManualApprovalDomainWriteError) {
+      throw new IntegratedApprovalV4Error(error.code);
+    }
+    throw error;
   }
 }
 
@@ -890,48 +906,14 @@ export function createIntegratedApprovalV4Repository(
           const head = expectation.get(`${write.domain}:${write.aggregateId}`);
           if (!head) throw new IntegratedApprovalV4Error('STALE_BASIS');
           if (write.domain === 'recovery') {
-            const previousRow =
-              head.head.kind === 'exists'
-                ? (
-                    await tx.query(
-                      'SELECT record_json FROM recovery_strategy_version WHERE athlete_id=$1 AND version_id=$2',
-                      [athleteId, head.head.versionId],
-                    )
-                  ).rows[0]
-                : undefined;
-            const previous = previousRow
-              ? recoveryStrategyVersionSchema.parse(previousRow['record_json'])
-              : null;
-            const saved = recoveryStrategyVersionSchema.parse({
-              schemaVersion: 1,
-              strategyId: write.aggregateId,
-              versionId: randomUUID(),
-              version: (previous?.version ?? 0) + 1,
-              previousVersionId: previous?.versionId ?? null,
-              status: 'user_confirmed',
-              selectedOptionId: write.selectedOptionId,
-              createdAt: approvedAt,
-              draft: write.proposed,
-            });
-            await tx.query(
-              `INSERT INTO recovery_strategy_version
-               (athlete_id,strategy_id,version_id,version,previous_version_id,previous_version,record_json)
-               VALUES($1,$2,$3,$4,$5,$6,$7::jsonb)`,
-              [
-                athleteId,
-                saved.strategyId,
-                saved.versionId,
-                saved.version,
-                saved.previousVersionId,
-                previous?.version ?? null,
-                JSON.stringify(saved),
-              ],
-            );
-            await tx.query(
-              `INSERT INTO recovery_strategy_head(athlete_id,strategy_id,version,version_id)
-               VALUES($1,$2,$3,$4) ON CONFLICT(athlete_id,strategy_id)
-               DO UPDATE SET version=EXCLUDED.version,version_id=EXCLUDED.version_id`,
-              [athleteId, saved.strategyId, saved.version, saved.versionId],
+            const saved = await runIntegratedApprovalDomainWrite(() =>
+              persistRecoveryStrategyVersionIn(tx, {
+                aggregateId: write.aggregateId,
+                expectedVersionId: head.head.kind === 'exists' ? head.head.versionId : null,
+                draft: write.proposed,
+                selectedOptionId: write.selectedOptionId,
+                approvedAt,
+              }),
             );
             versions.push({
               domain: 'recovery',
@@ -940,64 +922,21 @@ export function createIntegratedApprovalV4Repository(
             });
           }
           if (write.domain === 'routine_schedule') {
-            const previousVersionId = head.head.kind === 'exists' ? head.head.versionId : null;
-            if (
-              write.proposed.versionId === previousVersionId ||
-              write.occurrences.some(
-                (item) =>
-                  item.schedule.id !== write.aggregateId ||
-                  item.schedule.versionId !== write.proposed.versionId ||
-                  item.blueprint.id !== write.proposed.blueprint.id ||
-                  item.blueprint.versionId !== write.proposed.blueprint.versionId,
-              )
-            )
-              throw new IntegratedApprovalV4Error('CANDIDATE_NOT_APPROVABLE');
-            await tx.query(
-              `INSERT INTO routine_schedule_version
-               (athlete_id,schedule_id,version_id,prior_version_id,blueprint_routine_id,
-                blueprint_version_id,source_plan_version_id,record_json,created_at)
-               VALUES($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9)`,
-              [
-                athleteId,
-                write.aggregateId,
-                write.proposed.versionId,
-                previousVersionId,
-                write.proposed.blueprint.id,
-                write.proposed.blueprint.versionId,
-                write.sourcePlanVersionId,
-                JSON.stringify(write.proposed),
+            const saved = await runIntegratedApprovalDomainWrite(() =>
+              persistRoutineScheduleVersionIn(tx, {
+                aggregateId: write.aggregateId,
+                expectedVersionId: head.head.kind === 'exists' ? head.head.versionId : null,
+                schedule: write.proposed,
+                sourcePlanVersionId: write.sourcePlanVersionId,
+                occurrences: write.occurrences,
                 approvedAt,
-              ],
+              }),
             );
-            await tx.query(
-              `INSERT INTO routine_schedule_head(athlete_id,schedule_id,version_id) VALUES($1,$2,$3)
-               ON CONFLICT(athlete_id,schedule_id) DO UPDATE SET version_id=EXCLUDED.version_id`,
-              [athleteId, write.aggregateId, write.proposed.versionId],
-            );
-            for (const item of write.occurrences) {
-              await tx.query(
-                `INSERT INTO routine_occurrence
-                 (athlete_id,id,schedule_id,schedule_version_id,blueprint_routine_id,
-                  blueprint_version_id,anchor_key,scheduled_at,record_json)
-                 VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)`,
-                [
-                  athleteId,
-                  item.id,
-                  write.aggregateId,
-                  write.proposed.versionId,
-                  item.blueprint.id,
-                  item.blueprint.versionId,
-                  item.anchorKey,
-                  item.scheduledAt,
-                  JSON.stringify(item),
-                ],
-              );
-              occurrenceIds.push(item.id);
-            }
+            occurrenceIds.push(...saved.occurrenceIds);
             versions.push({
               domain: 'routine_schedule',
               aggregateId: write.aggregateId,
-              versionId: write.proposed.versionId,
+              versionId: saved.versionId,
             });
           }
         }
