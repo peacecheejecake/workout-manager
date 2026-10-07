@@ -1,4 +1,5 @@
 import { expect, it } from 'vitest';
+import { projectRaceRelativeScheduleImpactCompatibleV4 } from '@workout/server-coaching/race-relative-schedule-impact';
 import { raceEventSchema } from '@workout/contracts/races';
 import { planSnapshotSchema } from '@workout/contracts/planning';
 import {
@@ -11,6 +12,7 @@ import { sessionCompletionSchema } from '@workout/contracts/session-completion';
 import { nutritionPlanVersionSchema } from '@workout/contracts/nutrition-core';
 import {
   buildRacePlanImpactProjectionInput,
+  createRacePlanImpactCapturedCalculationPorts,
   type RaceProjectionCapture,
 } from '../src/race-plan-impact-projection-input.js';
 
@@ -602,5 +604,51 @@ it('rejects conflicting consumed source identities and malformed source bodies',
   expect(buildRacePlanImpactProjectionInput(capture, intent(capture))).toMatchObject({
     status: 'blocked',
     reason: 'invalid_input_or_capture',
+  });
+});
+
+it('shares the captured calculation cache and isolates it from later caller mutations', () => {
+  const capture = fixture();
+  const other = { ...capture.event, id: '20000000-0000-4000-8000-000000000002' };
+  capture.consumedSources = { plans: [], races: [other] };
+  const row = capture.nutrition[0];
+  if (!row) throw new Error('Missing nutrition');
+  row.record.items = row.record.items.map((item) =>
+    item.anchor.kind === 'relative' && item.anchor.entity === 'race'
+      ? { ...item, anchor: { ...item.anchor, entityId: other.id } }
+      : item,
+  );
+  const result = projected(capture);
+  const ports = createRacePlanImpactCapturedCalculationPorts(capture);
+  expect(projectRaceRelativeScheduleImpactCompatibleV4(result.input, ports)).toEqual(
+    result.projection,
+  );
+  const item = row.record.items.find((value) => value.id === 'race');
+  if (!item) throw new Error('Missing item');
+  const args = {
+    item,
+    record: row.record,
+    sourcePlan: capture.linkedPlan?.draft ?? null,
+    event: capture.event,
+  };
+  const before = ports.resolveNutrition(args);
+  other.localStartTime = '08:00:00';
+  expect(ports.resolveNutrition(args)).toEqual(before);
+  expect(createRacePlanImpactCapturedCalculationPorts(capture).resolveNutrition(args)).not.toEqual(
+    before,
+  );
+});
+it('rejects conflicting exact race bodies before exposing shared ports', () => {
+  const capture = fixture();
+  capture.consumedSources = {
+    plans: [],
+    races: [{ ...capture.event, title: 'Conflicting event' }],
+  };
+  expect(() => createRacePlanImpactCapturedCalculationPorts(capture)).toThrow(
+    'INVALID_CAPTURED_RACE_SOURCES',
+  );
+  expect(buildRacePlanImpactProjectionInput(capture, intent(capture))).toMatchObject({
+    status: 'blocked',
+    reason: 'source_identity_mismatch',
   });
 });

@@ -133,6 +133,35 @@ function unique<T>(values: T[], key: (value: T) => string) {
   if (new Set(values.map(key)).size !== values.length) throw new Error('duplicate_capture');
 }
 
+function capturedRaceMap(
+  event: z.infer<typeof raceEventSchema>,
+  consumedRaces: z.infer<typeof raceEventSchema>[],
+) {
+  const races = new Map<string, z.infer<typeof raceEventSchema>>();
+  for (const race of [event, ...consumedRaces]) {
+    const previous = races.get(race.id);
+    if (previous && JSON.stringify(previous) !== JSON.stringify(race)) return null;
+    races.set(race.id, race);
+  }
+  return races;
+}
+
+/** Same captured event cache as the projection builder. This pure port factory
+ * performs no reads and grants no source ownership, permission or freshness. */
+export function createRacePlanImpactCapturedCalculationPorts(capture: RaceProjectionCapture) {
+  const raw = { event: capture.event, races: capture.consumedSources?.races ?? [] };
+  const encoded = JSON.stringify(raw);
+  if (encoded === undefined || Buffer.byteLength(encoded, 'utf8') > 4194304)
+    throw new Error('INVALID_CAPTURED_RACE_SOURCES');
+  const event = raceEventSchema.parse(raw.event);
+  const consumed = z.array(raceEventSchema).max(5000).parse(raw.races);
+  const races = capturedRaceMap(event, consumed);
+  if (races === null) throw new Error('INVALID_CAPTURED_RACE_SOURCES');
+  return createRaceRelativeScheduleCalculationPortsCompatibleV4(
+    [...races.values()].sort((a, b) => compare(a.id, b.id)),
+  );
+}
+
 /** Finite collector membership derived from the actual calendar projector. */
 export function deriveRacePlanImpactCollectorSelection(
   calendar: Extract<ReturnType<typeof projectRacePlanImpact>, { status: 'projected' }>,
@@ -210,13 +239,8 @@ export function buildRacePlanImpactProjectionInput(
         races: z.array(raceEventSchema).max(5000),
       })
       .parse(capture.consumedSources ?? { plans: [], races: [] });
-    const races = new Map<string, z.infer<typeof raceEventSchema>>();
-    for (const race of [event, ...consumed.races]) {
-      const previous = races.get(race.id);
-      if (previous && JSON.stringify(previous) !== JSON.stringify(race))
-        return blocked('source_identity_mismatch');
-      races.set(race.id, race);
-    }
+    const races = capturedRaceMap(event, consumed.races);
+    if (races === null) return blocked('source_identity_mismatch');
     const plans = new Map<string, z.infer<typeof planSnapshotSchema>>();
     for (const plan of [currentPlan, linked, ...consumed.plans]) {
       if (!plan) continue;
@@ -336,9 +360,7 @@ export function buildRacePlanImpactProjectionInput(
         calendar,
         collectorSelection,
       };
-    const ports = createRaceRelativeScheduleCalculationPortsCompatibleV4(
-      [...races.values()].sort((a, b) => compare(a.id, b.id)),
-    );
+    const ports = createRacePlanImpactCapturedCalculationPorts(capture);
     const input: RaceRelativeScheduleImpactInputCompatibleV4 = {
       event,
       newLocalDate: intent.newLocalDate,

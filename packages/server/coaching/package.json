@@ -18,6 +18,7 @@
     "./race-relative-schedule-impact": "./src/race-relative-schedule-impact.ts",
     "./race-plan-impact": "./src/race-plan-impact.ts",
     "./race-manual-review-candidate": "./src/race-manual-review-candidate.ts",
+    "./race-manual-review-candidate-v2": "./src/race-manual-review-candidate-v2.ts",
     "./race-manual-review-integrity": "./src/race-manual-review-integrity.ts",
     "./coaching-execution-selection": "./src/coaching-execution-selection.ts",
     "./race-plan-impact-codecs": "./src/race-plan-impact-codecs.ts",
