@@ -1,4 +1,8 @@
 import {
+  readTrainingPlanAggregateSource,
+  type TrainingPlanAggregateSource,
+} from './training-plan-aggregate-source.js';
+import {
   captureNestedNutritionSources,
   captureActivityAndMediaPermissions,
   reserveSourceBudget,
@@ -88,6 +92,7 @@ export async function captureRaceImpactSourcePermissions(
   );
   const mediaIds = new Set(input.mediaIds ?? []);
   const planned = [];
+  const trainingAssociations = new Map<string, Promise<TrainingPlanAggregateSource | null>>();
   for (const requested of refs) {
     // These two producers have concrete session/item membership. Recovery and
     // routine_schedule generic itemId semantics are not implemented by their writers.
@@ -175,8 +180,21 @@ export async function captureRaceImpactSourcePermissions(
     if ('versionId' in record && record.versionId !== requested.versionId)
       throw new RaceImpactDependencyError('INVALID_CONTEXT');
     if ('planId' in record) nutritionRecords.set(record.versionId, record);
+    let immutableAssociation: TrainingPlanAggregateSource | null = null;
+    if (training) {
+      const key = requested.versionId.toLowerCase();
+      let pending = trainingAssociations.get(key);
+      if (!pending) {
+        pending = readTrainingPlanAggregateSource(tx, key);
+        trainingAssociations.set(key, pending);
+      }
+      immutableAssociation = await pending;
+    }
     const aggregateMatches = training
-      ? head?.aggregate_id === requested.planId
+      ? immutableAssociation
+        ? immutableAssociation.aggregateId === requested.planId.toLowerCase()
+        : head?.aggregate_id.toLowerCase() === requested.planId.toLowerCase() &&
+          head.version_id.toLowerCase() === requested.versionId.toLowerCase()
       : 'planId' in record && record.planId === requested.planId;
     const member =
       'sessions' in record
@@ -196,6 +214,17 @@ export async function captureRaceImpactSourcePermissions(
       });
       continue;
     }
+    if (training && input.sources && 'sessions' in record) {
+      // Expose the actual exact owned version in the shared consumed-source
+      // cache, so frozen supplementary/session membership is checked too.
+      // The association above never substitutes the current head body.
+      const consumed = await input.sources.plan(requested.versionId);
+      if (
+        consumed.id.toLowerCase() !== requested.versionId.toLowerCase() ||
+        impactDependencyDigest(consumed.draft) !== impactDependencyDigest(record)
+      )
+        throw new RaceImpactDependencyError('INVALID_CONTEXT');
+    }
     planned.push({
       requested,
       state:
@@ -204,8 +233,18 @@ export async function captureRaceImpactSourcePermissions(
       currentHead: head,
       content: { digest: impactDependencyDigest(record) },
       aggregateIdentity: training
-        ? ('current_head_association_only' as const)
+        ? immutableAssociation
+          ? ('immutable_version' as const)
+          : ('current_head_association_only' as const)
         : ('immutable_version' as const),
+      ...(immutableAssociation
+        ? {
+            exactOwnedVersion: {
+              aggregateId: immutableAssociation.aggregateId,
+              versionId: immutableAssociation.versionId,
+            },
+          }
+        : {}),
     });
   }
   const catalog = [];

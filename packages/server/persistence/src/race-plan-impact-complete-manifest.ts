@@ -609,8 +609,16 @@ export function validateRaceImpactConsumedManifest(
     (!c.linkedPlan || !sameId(c.event.planVersionId, c.linkedPlan.id))
   )
     block('event.planVersionId', 'missing_source');
+  const refs = c.routineActualManifest.occurrences.flatMap((o) =>
+    o.record.stepBindings.map((b) => b.plannedRef),
+  );
+  if (refs.length > 5000) block('plannedRefs', 'bounds_exceeded');
   const usedPlans = new Set(
-    [c.currentTraining?.snapshot.id, c.linkedPlan?.id]
+    [
+      c.currentTraining?.snapshot.id,
+      c.linkedPlan?.id,
+      ...refs.filter((ref) => ref.domain === 'training').map((ref) => ref.versionId),
+    ]
       .filter((value) => value !== undefined)
       .map((value) => value.toLowerCase()),
   );
@@ -684,10 +692,6 @@ export function validateRaceImpactConsumedManifest(
     if (expectedFoods.size || source?.foods.length)
       block(path + '.foods', 'unsupported_consumed_channel');
   }
-  const refs = c.routineActualManifest.occurrences.flatMap((o) =>
-    o.record.stepBindings.map((b) => b.plannedRef),
-  );
-  if (refs.length > 5000) block('plannedRefs', 'bounds_exceeded');
   const plannedByKey = new Map(
     c.sourcePermissionManifest.planned.map((p) => [impactDependencyDigest(p.requested), p]),
   );
@@ -720,17 +724,34 @@ export function validateRaceImpactConsumedManifest(
         block(path, 'source_membership_mismatch');
     } else if (ref.domain === 'training') {
       const source = plans.get(ref.versionId.toLowerCase());
+      const head = c.currentTraining;
+      const headMatches = head
+        ? entry.currentHead !== null &&
+          sameId(entry.currentHead.aggregate_id, head.aggregateId) &&
+          sameId(entry.currentHead.version_id, head.snapshot.id)
+        : entry.currentHead === null;
+      const stateMatches =
+        entry.state === 'current'
+          ? entry.currentHead !== null && sameId(entry.currentHead.version_id, ref.versionId)
+          : entry.currentHead === null || !sameId(entry.currentHead.version_id, ref.versionId);
+      const associationMatches =
+        entry.aggregateIdentity === 'immutable_version'
+          ? entry.exactOwnedVersion !== undefined &&
+            entry.exactOwnedVersion !== null &&
+            sameId(entry.exactOwnedVersion.aggregateId, ref.planId) &&
+            sameId(entry.exactOwnedVersion.versionId, ref.versionId)
+          : entry.aggregateIdentity === 'current_head_association_only' &&
+            entry.state === 'current' &&
+            head !== null &&
+            sameId(head.aggregateId, ref.planId) &&
+            sameId(head.snapshot.id, ref.versionId) &&
+            entry.exactOwnedVersion == null;
       if (
         !source ||
-        !c.currentTraining ||
-        !sameId(c.currentTraining.aggregateId, ref.planId) ||
-        !sameId(c.currentTraining.snapshot.id, ref.versionId) ||
         !source.draft.sessions.some((i) => i.id === ref.itemId) ||
-        entry.state !== 'current' ||
-        entry.aggregateIdentity !== 'current_head_association_only' ||
-        !entry.currentHead ||
-        !sameId(entry.currentHead.aggregate_id, ref.planId) ||
-        !sameId(entry.currentHead.version_id, ref.versionId) ||
+        !headMatches ||
+        !stateMatches ||
+        !associationMatches ||
         entry.content.digest !== impactDependencyDigest(source.draft)
       )
         block(path, 'source_membership_mismatch');

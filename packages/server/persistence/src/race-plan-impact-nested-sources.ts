@@ -4,6 +4,7 @@ import type { NutritionPlanVersionCompatibleV4 } from '@workout/contracts/nutrit
 import { planSnapshotSchema, type PlanSnapshot } from '@workout/contracts/planning';
 import type { RaceEvent } from '@workout/contracts/races';
 import type { Transaction } from './database.js';
+import { readRaceMediaCleanupSource } from './race-media-cleanup-source.js';
 import {
   RaceImpactDependencyError,
   impactDependencyDigest as digest,
@@ -539,6 +540,13 @@ export async function captureActivityAndMediaPermissions(
       }),
       rows[0],
     );
+    // The reader returns at most64 hashed refs and a16KiB finite DTO. Reserve
+    // that bound before transporting private cleanup facts into the capture.
+    reserveSourceBudget(budget, 16384n, 1);
+    const cleanup = await readRaceMediaCleanupSource(tx, {
+      mediaItemId: row.id,
+      expectedAccessRevision: row.access_revision,
+    });
     media.push({
       requestedId: id,
       state: row.deleted ? ('deleted' as const) : ('owned' as const),
@@ -559,10 +567,10 @@ export async function captureActivityAndMediaPermissions(
             contentHash: row.content_hash,
             previewPresent: row.preview_present,
           },
-      cleanup: {
-        state: 'unavailable' as const,
-        reason: 'authenticated_cleanup_status_port_absent',
-      },
+      cleanup:
+        cleanup.status === 'available'
+          ? cleanup.source
+          : { state: 'unavailable' as const, reason: cleanup.reason },
     });
   }
   return {

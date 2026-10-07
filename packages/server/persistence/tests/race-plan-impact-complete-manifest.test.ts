@@ -235,6 +235,10 @@ function fixture() {
               .nullable(),
             content: z.strictObject({ digest: z.string() }).nullable(),
             aggregateIdentity: z.enum(['immutable_version', 'current_head_association_only']),
+            exactOwnedVersion: z
+              .strictObject({ aggregateId: z.uuid(), versionId: z.uuid() })
+              .nullable()
+              .optional(),
           }),
         )
         .parse([]),
@@ -1009,4 +1013,118 @@ it('rejects duplicate finite consent kinds without fabricating the omitted absen
     { kind: 'media', state: 'absent' },
   ];
   blocked(c, 'invalid_capture');
+});
+
+function withTrainingRef(historical = false, immutable = true) {
+  const c = withNutritionRef(),
+    snapshot = withSupplementary().currentTraining?.snapshot;
+  if (!snapshot) throw Error('fixture training');
+  const latest = historical
+    ? planSnapshotSchema.parse({ ...snapshot, id: generation, version: 2 })
+    : snapshot;
+  c.currentTraining = { aggregateId: plan, snapshot: latest };
+  c.coreDependencies.trainingPlan = { kind: 'exists', versionId: latest.id };
+  c.consumedSources.plans = historical ? [snapshot, latest] : [snapshot];
+  c.supplementaryManifest.sessions = c.consumedSources.plans.flatMap((p) =>
+    p.draft.sessions
+      .filter((s) => s.sport === 'strength')
+      .map((s) => ({ planVersionId: p.id, plannedSessionId: s.id, state: 'absent' as const })),
+  );
+  const occurrence = c.routineActualManifest.occurrences[0];
+  if (!occurrence) throw Error('fixture occurrence');
+  const ref = domainPlanRefSchema.parse({
+    domain: 'training',
+    planId: plan,
+    versionId: snapshot.id,
+    itemId: 'strength',
+  });
+  occurrence.record.stepBindings = [{ stepId: 'step', plannedRef: ref }];
+  c.sourcePermissionManifest.planned = [
+    {
+      requested: ref,
+      state: historical ? 'historical' : 'current',
+      reason: null,
+      currentHead: { aggregate_id: plan, version_id: latest.id },
+      content: { digest: impactDependencyDigest(snapshot.draft) },
+      aggregateIdentity: immutable ? 'immutable_version' : 'current_head_association_only',
+      ...(immutable ? { exactOwnedVersion: { aggregateId: plan, versionId: snapshot.id } } : {}),
+    },
+  ];
+  return c;
+}
+it.each([
+  { historical: false, immutable: true },
+  { historical: true, immutable: true },
+  { historical: false, immutable: false },
+])(
+  'validates exact training membership %j as readonly scope without approval or freshness claims',
+  (options) => {
+    const c = withTrainingRef(options.historical, options.immutable),
+      before = structuredClone(c),
+      result = inspect(c);
+    expect(result.status).toBe('validated_read_scope');
+    if (result.status === 'validated_read_scope') {
+      expect(result.approvalAuthority).toBe('none');
+      expect(result.freshness).toBe('not_checked');
+      expect(result.remaining).toHaveLength(5);
+    }
+    expect(c.coverage).toEqual(before.coverage);
+    expect(c.coverage.complete).toBe(false);
+    expect(c.consumedSources.plans).toEqual(before.consumedSources.plans);
+  },
+);
+it('rejects historical training fallback even when current aggregate matches', () => {
+  blocked(withTrainingRef(true, false), 'source_membership_mismatch');
+});
+it.each([
+  'head_aggregate',
+  'head_version',
+  'wrong_state',
+  'digest',
+  'session',
+  'missing_body',
+  'missing_tuple',
+  'tuple_aggregate',
+  'tuple_version',
+  'extra_ref',
+  'extra_body',
+])('rejects immutable historical training %s mismatch', (kind) => {
+  const c = withTrainingRef(true),
+    entry = c.sourcePermissionManifest.planned[0];
+  if (!entry) throw Error('fixture planned');
+  if (kind === 'head_aggregate' && entry.currentHead) entry.currentHead.aggregate_id = race;
+  if (kind === 'head_version' && entry.currentHead) entry.currentHead.version_id = version;
+  if (kind === 'wrong_state') entry.state = 'current';
+  if (kind === 'digest' && entry.content) entry.content.digest = '2'.repeat(64);
+  if (kind === 'session') {
+    entry.requested.itemId = 'wrong-session';
+    const o = c.routineActualManifest.occurrences[0];
+    if (!o) throw Error('fixture');
+    o.record.stepBindings = [{ stepId: 'step', plannedRef: entry.requested }];
+  }
+  if (kind === 'missing_body')
+    c.consumedSources.plans = c.consumedSources.plans.filter((p) => p.id !== version);
+  if (kind === 'missing_tuple') delete entry.exactOwnedVersion;
+  if (kind === 'tuple_aggregate' && entry.exactOwnedVersion)
+    entry.exactOwnedVersion.aggregateId = race;
+  if (kind === 'tuple_version' && entry.exactOwnedVersion)
+    entry.exactOwnedVersion.versionId = generation;
+  if (kind === 'extra_ref')
+    c.sourcePermissionManifest.planned.push({
+      ...entry,
+      requested: { ...entry.requested, itemId: 'extra-session' },
+    });
+  if (kind === 'extra_body') {
+    const source = c.consumedSources.plans[0];
+    if (!source) throw Error('fixture');
+    c.consumedSources.plans.push(planSnapshotSchema.parse({ ...source, id: race }));
+  }
+  blocked(
+    c,
+    kind === 'extra_ref'
+      ? 'missing_source'
+      : kind === 'extra_body'
+        ? 'unsupported_consumed_channel'
+        : 'source_membership_mismatch',
+  );
 });

@@ -250,6 +250,18 @@ export async function grantCorePlanning(
       `GRANT SELECT,INSERT,UPDATE,DELETE ON consent,outbox,command_receipt,plan_head TO "${runtimeRole}"`,
     );
     await pool.query(`GRANT SELECT,INSERT ON plan_snapshot,plan_history TO "${runtimeRole}"`);
+    // Staged SQL112 adds an owned version→aggregate reader; its private ledger
+    // is never granted to the API role. Normal107 remains supported.
+    const association = await pool.query(
+      "SELECT to_regprocedure('public.read_training_plan_aggregate(uuid)') IS NOT NULL AS available",
+    );
+    const available = association.rows[0]?.['available'];
+    if (association.rows.length !== 1 || typeof available !== 'boolean')
+      throw new Error('INVALID_TRAINING_AGGREGATE_CAPABILITY');
+    if (available)
+      await pool.query(
+        `GRANT EXECUTE ON FUNCTION public.read_training_plan_aggregate(uuid) TO "${runtimeRole}"`,
+      );
   } finally {
     await pool.end();
   }
@@ -1217,6 +1229,18 @@ export async function grantGalleryMedia(
        public.tombstone_gallery_media_receipts(uuid)
        TO "${runtimeRole}"`,
     );
+    // SQL113 exposes bounded DB cleanup facts, not object references or worker
+    // leases. Historical schemas and the normal107 registry have no capability.
+    const cleanup = await pool.query(
+      "SELECT to_regprocedure('public.read_race_media_cleanup(uuid,integer)') IS NOT NULL AS available",
+    );
+    const available = cleanup.rows[0]?.['available'];
+    if (cleanup.rows.length !== 1 || typeof available !== 'boolean')
+      throw new Error('INVALID_RACE_MEDIA_CLEANUP_CAPABILITY');
+    if (available)
+      await pool.query(
+        `GRANT EXECUTE ON FUNCTION public.read_race_media_cleanup(uuid,integer) TO "${runtimeRole}"`,
+      );
   } finally {
     await pool.end();
   }
