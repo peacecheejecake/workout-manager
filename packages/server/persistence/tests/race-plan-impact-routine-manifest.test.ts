@@ -1,3 +1,4 @@
+import { projectGarminActivityReadFacts } from '../src/race-plan-impact-garmin-activity-read-facts.js';
 import { projectLocalImportedActivityReadFacts } from '../src/race-plan-impact-local-imported-activity-read-facts.js';
 import { expect, it } from 'vitest';
 import { createHash } from 'node:crypto';
@@ -1014,4 +1015,130 @@ it('retains a deleted local observation without restoring its original body', ()
     originalDigest: null,
     overlayDigest: null,
   });
+});
+
+function garminActivity() {
+  const c = localActivity(),
+    roster = c.manifest.actualRosters.activities[0],
+    metadata = c.activityMetadata?.[0];
+  if (
+    !roster ||
+    roster.source.state !== 'present' ||
+    !metadata ||
+    metadata.source.state !== 'present'
+  )
+    throw Error('fixture');
+  c.garminLineage = [
+    {
+      kind: 'fit',
+      source_id: roster.source.sourceId,
+      provider: 'garmin-connect-unofficial',
+      official: false,
+      outcome: 'imported',
+    },
+  ];
+  const port = projectGarminActivityReadFacts({
+    athleteId: 'synthetic-own',
+    refs: [actual(c).fact.requested],
+    actualFacts: [actual(c).fact],
+    activityRosters: [roster],
+    activityMetadata: [metadata],
+    garminSources: [
+      {
+        activityId: roster.id,
+        reason: null,
+        observation: {
+          adapterVersion: 2,
+          kind: 'owned_garmin_current_source',
+          activityId: roster.id,
+          canonicalRevision: roster.revision,
+          source: {
+            kind: 'fit',
+            sourceId: roster.source.sourceId,
+            revision: roster.source.sourceRevision,
+            contentHash: roster.source.contentHash,
+          },
+          originalDigest: roster.originalDigest,
+          overlayDigest: null,
+          overlayRevision: null,
+          collectionPermission: 'not_captured',
+          collection: {
+            garminActivityId: '12345',
+            provider: 'garmin-connect-unofficial',
+            official: false,
+            outcome: 'imported',
+            collectedAt: at,
+          },
+        },
+      },
+    ],
+  });
+  if (port.status === 'blocked') throw Error(port.reason);
+  delete c.localImportedActivityReadFacts;
+  c.garminActivityReadFacts = port.facts;
+  return c;
+}
+it('consumes actual Garmin-ledger partition only through distinct metadata port, with no purpose authority', () => {
+  const c = garminActivity(),
+    before = structuredClone(c);
+  expect(validateRoutineReadSources(c)).toMatchObject({
+    status: 'validated_read_sources',
+    authority: 'none',
+    freshness: 'not_checked',
+  });
+  expect(c).toEqual(before);
+  expect(c.garminActivityReadFacts?.facts[0]?.source?.collectionPermission).toBe('not_captured');
+});
+it.each(['missing', 'lineage', 'provider', 'source', 'extra', 'duplicate', 'body'] as const)(
+  'Garmin %s read correspondence cannot fall back to local',
+  (part) => {
+    const c = garminActivity(),
+      f = c.garminActivityReadFacts?.facts[0],
+      l = c.garminLineage?.[0];
+    if (!f?.source || !l) throw Error('fixture');
+    if (part === 'missing') delete c.garminActivityReadFacts;
+    if (part === 'lineage') delete c.garminLineage;
+    if (part === 'provider') l.provider = 'garmin-official';
+    if (part === 'source') f.source.source.sourceId = 'Other-opaque-source';
+    if (part === 'extra')
+      c.garminActivityReadFacts?.facts.push({ ...f, requested: { ...f.requested, id: id(90) } });
+    if (part === 'duplicate') c.garminActivityReadFacts?.facts.push(structuredClone(f));
+    if (part === 'body') actual(c).fact.content = null;
+    expect(validateRoutineReadSources(c).status).toBe('blocked');
+  },
+);
+it('Garmin ledger prevents an otherwise valid local FIT companion from covering the wrong namespace', () => {
+  const c = localActivity(),
+    r = c.manifest.actualRosters.activities[0];
+  if (r?.source.state !== 'present') throw Error('fixture');
+  c.garminLineage = [
+    {
+      kind: 'fit',
+      source_id: r.source.sourceId,
+      provider: 'garmin-connect-unofficial',
+      official: false,
+      outcome: 'imported',
+    },
+  ];
+  expect(reasons(c)).toContain('actual_permission_port_missing');
+});
+it('unused actual ledger rows preserve manual/local membership and opaque keys stay case sensitive', () => {
+  const c = localActivity();
+  c.garminLineage = [
+    {
+      kind: 'fit',
+      source_id: 'Unconsumed-식-A',
+      provider: 'garmin-connect-unofficial',
+      official: false,
+      outcome: 'imported',
+    },
+  ];
+  expect(validateRoutineReadSources(c).status).toBe('validated_read_sources');
+  const g = garminActivity(),
+    l = g.garminLineage?.[0];
+  if (!l) throw Error('fixture');
+  l.source_id = l.source_id.toUpperCase();
+  if (l.source_id === g.garminActivityReadFacts?.facts[0]?.source?.source.sourceId)
+    l.source_id += 'A';
+  expect(validateRoutineReadSources(g).status).toBe('blocked');
 });

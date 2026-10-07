@@ -1,4 +1,8 @@
 import {
+  projectGarminActivityReadFacts,
+  type GarminActivityReadFacts,
+} from '../src/race-plan-impact-garmin-activity-read-facts.js';
+import {
   projectHealthKitActivityReadFacts,
   type HealthKitActivityReadFacts,
 } from '../src/race-plan-impact-healthkit-activity-read-facts.js';
@@ -3497,4 +3501,123 @@ it('HK primary witness must match captured claim/consent/sample, unrelated bindi
   ).toBe(false);
   hk.claim = { state: 'present', epoch: race, consentRevision: 2 };
   blocked(c, 'source_identity_mismatch', 'healthKitActivityReadFacts.source');
+});
+
+function withGarminActivityRead() {
+  const c: ReturnType<typeof withLocalActivityRead> & {
+    garminActivityReadFacts?: GarminActivityReadFacts;
+  } = withLocalActivityRead();
+  const m = routineReadManifestSchema.parse(c.routineActualManifest),
+    metadata = manualActivityReadProjectionInputSchema.shape.activityMetadata.parse(
+      c.sourcePermissionManifest.activityMediaPermissions.activities,
+    ),
+    r = m.actualRosters.activities[0],
+    a = metadata[0];
+  if (!r || r.source.state !== 'present' || !a || a.source.state !== 'present')
+    throw Error('fixture');
+  c.sourcePermissionManifest.activityMediaPermissions.garminLineage = [
+    {
+      kind: 'fit',
+      source_id: r.source.sourceId,
+      provider: 'garmin-connect-unofficial',
+      official: false,
+      outcome: 'imported',
+    },
+  ];
+  const actualFacts = m.runs.flatMap((run) => run.actuals.map((a) => a.fact));
+  const p = projectGarminActivityReadFacts({
+    athleteId: athlete,
+    refs: actualFacts.map((f) => f.requested),
+    actualFacts,
+    activityRosters: [r],
+    activityMetadata: metadata,
+    garminSources: [
+      {
+        activityId: r.id,
+        reason: null,
+        observation: {
+          adapterVersion: 2,
+          kind: 'owned_garmin_current_source',
+          activityId: r.id,
+          canonicalRevision: r.revision,
+          source: {
+            kind: 'fit',
+            sourceId: r.source.sourceId,
+            revision: r.source.sourceRevision,
+            contentHash: r.source.contentHash,
+          },
+          originalDigest: r.originalDigest,
+          overlayDigest: null,
+          overlayRevision: null,
+          collectionPermission: 'not_captured',
+          collection: {
+            garminActivityId: '12345',
+            provider: 'garmin-connect-unofficial',
+            official: false,
+            outcome: 'imported',
+            collectedAt: now,
+          },
+        },
+      },
+    ],
+  });
+  if (p.status === 'blocked') throw Error(p.reason);
+  delete c.localImportedActivityReadFacts;
+  c.garminActivityReadFacts = p.facts;
+  return c;
+}
+it('full consumer validates current Garmin metadata read partition without granting source purpose/approval', () => {
+  const c = withGarminActivityRead(),
+    scope = sign(c),
+    before = structuredClone(c);
+  expect(
+    fullManualActivityReasons(c).some((r) => r.reason === 'actual_permission_port_missing'),
+  ).toBe(false);
+  validateRaceImpactConsumedManifest(c, scope);
+  expect(c).toEqual(before);
+  expect(c.coverage).toMatchObject({ complete: false });
+});
+it.each(['missing', 'foreign', 'lineage', 'extra', 'duplicate', 'body', 'tuple'] as const)(
+  'full Garmin %s read witness blocks exact membership',
+  (part) => {
+    const c = withGarminActivityRead(),
+      f = c.garminActivityReadFacts?.facts[0];
+    const port = c.garminActivityReadFacts;
+    if (!f?.source || !port) throw Error('fixture');
+    if (part === 'missing') delete c.garminActivityReadFacts;
+    if (part === 'foreign') port.athleteId = 'foreign';
+    if (part === 'lineage') c.sourcePermissionManifest.activityMediaPermissions.garminLineage = [];
+    if (part === 'extra') port.facts.push({ ...f, requested: { ...f.requested, id: race } });
+    if (part === 'duplicate') port.facts.push(structuredClone(f));
+    if (part === 'body') f.source.originalDigest = 'd'.repeat(64);
+    if (part === 'tuple') f.source.collection.provider = 'garmin-official';
+    const reasons = fullManualActivityReasons(c);
+    expect(
+      reasons.some(
+        (r) =>
+          r.path.includes('garminActivityReadFacts') ||
+          r.reason === 'actual_permission_port_missing' ||
+          (part === 'tuple' && r.reason === 'invalid_capture'),
+      ),
+    ).toBe(true);
+    if (part === 'foreign') blocked(c, 'scope_mismatch', 'garminActivityReadFacts');
+  },
+);
+it('full ledger correspondence rejects forged local fallback for a consumed Garmin source', () => {
+  const c = withLocalActivityRead(),
+    m = routineReadManifestSchema.parse(c.routineActualManifest),
+    r = m.actualRosters.activities[0];
+  if (r?.source.state !== 'present') throw Error('fixture');
+  c.sourcePermissionManifest.activityMediaPermissions.garminLineage = [
+    {
+      kind: 'fit',
+      source_id: r.source.sourceId,
+      provider: 'garmin-connect-unofficial',
+      official: false,
+      outcome: 'imported',
+    },
+  ];
+  expect(
+    fullManualActivityReasons(c).some((r) => r.reason === 'actual_permission_port_missing'),
+  ).toBe(true);
 });

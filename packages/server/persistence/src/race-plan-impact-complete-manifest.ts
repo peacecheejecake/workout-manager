@@ -1,3 +1,4 @@
+import { garminActivityReadFactsSchema } from './race-plan-impact-garmin-activity-read-facts.js';
 import { healthKitActivityReadFactsSchema } from './race-plan-impact-healthkit-activity-read-facts.js';
 import { localImportedActivityReadFactsSchema } from './race-plan-impact-local-imported-activity-read-facts.js';
 import { mediaRetainedReadFactsSchema } from './race-plan-impact-media-read-facts.js';
@@ -578,6 +579,7 @@ export const raceImpactConsumedCaptureSchema = z.strictObject({
   manualActivityReadFacts: manualActivityReadFactsSchema.optional(),
   localImportedActivityReadFacts: localImportedActivityReadFactsSchema.optional(),
   healthKitActivityReadFacts: healthKitActivityReadFactsSchema.optional(),
+  garminActivityReadFacts: garminActivityReadFactsSchema.optional(),
   workoutTemplateSources: workoutTemplateSourceFactsSchema.optional(),
   resourceReadFacts: resourceRetainedReadFactsSchema.optional(),
   mediaReadFacts: mediaRetainedReadFactsSchema.optional(),
@@ -1038,6 +1040,11 @@ export function validateRaceImpactConsumedManifest(
         unavailable.kind === 'method' ? 'method_unavailable' : 'training_association_missing',
       );
   }
+  if (
+    c.garminActivityReadFacts !== undefined &&
+    c.garminActivityReadFacts.athleteId !== c.athleteId
+  )
+    block('garminActivityReadFacts', 'scope_mismatch');
   if (c.manualIntakeReadFacts !== undefined && c.manualIntakeReadFacts.athleteId !== c.athleteId)
     block('manualIntakeReadFacts', 'scope_mismatch');
   if (
@@ -1082,6 +1089,10 @@ export function validateRaceImpactConsumedManifest(
   const routineResult = validateRoutineReadSources({
     manifest: c.routineActualManifest,
     activityMetadata: c.sourcePermissionManifest.activityMediaPermissions.activities,
+    garminLineage: c.sourcePermissionManifest.activityMediaPermissions.garminLineage,
+    ...(c.garminActivityReadFacts === undefined
+      ? {}
+      : { garminActivityReadFacts: c.garminActivityReadFacts }),
     ...(c.healthKitActivityReadFacts === undefined
       ? {}
       : { healthKitActivityReadFacts: c.healthKitActivityReadFacts }),
@@ -1718,6 +1729,7 @@ export function validateRaceImpactConsumedManifest(
     (c.manualActivityReadFacts?.facts.length ?? 0) +
     (c.localImportedActivityReadFacts?.facts.length ?? 0) +
     (c.healthKitActivityReadFacts?.facts.length ?? 0) +
+    (c.garminActivityReadFacts?.facts.length ?? 0) +
     (c.workoutTemplateSources?.templates.length ?? 0) +
     (c.workoutTemplateSources?.exercises.length ?? 0) +
     (c.workoutTemplateSources?.targets.length ?? 0) +

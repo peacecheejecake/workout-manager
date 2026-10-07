@@ -1,4 +1,8 @@
 import {
+  garminActivityReadFactsSchema,
+  validateGarminActivityReadFacts,
+} from './race-plan-impact-garmin-activity-read-facts.js';
+import {
   healthKitActivityReadFactsSchema,
   validateHealthKitActivityReadFacts,
 } from './race-plan-impact-healthkit-activity-read-facts.js';
@@ -201,6 +205,19 @@ export const routineReadSourcesProjectionSchema = z.strictObject({
   activityReadFacts: manualActivityReadFactsSchema.optional(),
   localImportedActivityReadFacts: localImportedActivityReadFactsSchema.optional(),
   healthKitActivityReadFacts: healthKitActivityReadFactsSchema.optional(),
+  garminActivityReadFacts: garminActivityReadFactsSchema.optional(),
+  garminLineage: z
+    .array(
+      z.strictObject({
+        kind: z.enum(['manual', 'fit', 'fixture', 'healthkit']),
+        source_id: z.string().min(1).max(200),
+        provider: z.enum(['garmin-official', 'garmin-connect-unofficial']),
+        official: z.boolean(),
+        outcome: z.enum(['imported', 'unchanged', 'stale', 'suppressed']),
+      }),
+    )
+    .max(5000)
+    .optional(),
   activityMetadata: manualActivityReadProjectionInputSchema.shape.activityMetadata.optional(),
 });
 export type RoutineReadSourcesProjection = z.infer<typeof routineReadSourcesProjectionSchema>;
@@ -274,6 +291,8 @@ export function validateRoutineReadSources(input: unknown): {
     (c.activityReadFacts?.facts.length ?? 0) +
     (c.localImportedActivityReadFacts?.facts.length ?? 0) +
     (c.healthKitActivityReadFacts?.facts.length ?? 0) +
+    (c.garminActivityReadFacts?.facts.length ?? 0) +
+    (c.garminLineage?.length ?? 0) +
     (c.activityMetadata?.length ?? 0);
   if (
     visits +
@@ -353,12 +372,28 @@ export function validateRoutineReadSources(input: unknown): {
       if (prior && !equal(prior, a.fact)) block('activityReadFacts', 'actual_membership_mismatch');
       else consumedActivities.set(key, a.fact);
     }
+  const ledgerKey = (r: { kind: string; source_id: string }) =>
+    JSON.stringify([r.kind, r.source_id]);
+  const lineage = new Map((c.garminLineage ?? []).map((r) => [ledgerKey(r), r]));
+  if (lineage.size !== (c.garminLineage?.length ?? 0))
+    block('garminLineage', 'source_identity_mismatch');
+  const garminIds = new Set(
+    m.actualRosters.activities
+      .filter(
+        (r) =>
+          r.source.state === 'present' &&
+          (r.source.kind === 'fit' || r.source.kind === 'fixture') &&
+          lineage.has(ledgerKey({ kind: r.source.kind, source_id: r.source.sourceId })),
+      )
+      .map((r) => r.id.toLowerCase()),
+  );
   const localIds = new Set(
     m.actualRosters.activities
       .filter(
         (row) =>
           row.source.state === 'present' &&
-          (row.source.kind === 'fit' || row.source.kind === 'fixture'),
+          (row.source.kind === 'fit' || row.source.kind === 'fixture') &&
+          !garminIds.has(row.id.toLowerCase()),
       )
       .map((row) => row.id.toLowerCase()),
   );
@@ -368,14 +403,16 @@ export function validateRoutineReadSources(input: unknown): {
       .filter((r) => r.source.state === 'present' && r.source.kind === 'healthkit')
       .map((r) => r.id.toLowerCase()),
   );
-  const inputFor = (kind: 'manual' | 'local' | 'hk', athleteId: string) => {
+  const inputFor = (kind: 'manual' | 'local' | 'hk' | 'garmin', athleteId: string) => {
     const actualFacts = allActivityFacts.filter(
       (f) =>
-        (localIds.has(f.requested.id.toLowerCase())
-          ? 'local'
-          : hkIds.has(f.requested.id.toLowerCase())
-            ? 'hk'
-            : 'manual') === kind,
+        (garminIds.has(f.requested.id.toLowerCase())
+          ? 'garmin'
+          : localIds.has(f.requested.id.toLowerCase())
+            ? 'local'
+            : hkIds.has(f.requested.id.toLowerCase())
+              ? 'hk'
+              : 'manual') === kind,
     );
     const ids = new Set(actualFacts.map((f) => f.requested.id.toLowerCase()));
     return {
@@ -411,6 +448,33 @@ export function validateRoutineReadSources(input: unknown): {
         reason: f.state === 'current' ? null : f.reason,
       })),
     }).status === 'validated_retained_healthkit_read_facts';
+  const garminPortValid =
+    c.garminActivityReadFacts !== undefined &&
+    c.activityMetadata !== undefined &&
+    validateGarminActivityReadFacts(c.garminActivityReadFacts, {
+      ...inputFor('garmin', c.garminActivityReadFacts.athleteId),
+      garminSources: c.garminActivityReadFacts.facts.map((f) => ({
+        activityId: f.requested.id,
+        observation: f.source,
+        reason: f.state === 'current' ? null : f.reason,
+      })),
+    }).status === 'validated_retained_garmin_read_facts';
+  if (c.garminActivityReadFacts && !garminPortValid)
+    block('garminActivityReadFacts', 'actual_membership_mismatch');
+  for (const f of c.garminActivityReadFacts?.facts ?? []) {
+    const source = f.source;
+    if (!source) continue;
+    const l = lineage.get(
+      ledgerKey({ kind: source.source.kind, source_id: source.source.sourceId }),
+    );
+    if (
+      !l ||
+      l.provider !== source.collection.provider ||
+      l.official !== source.collection.official ||
+      l.outcome !== source.collection.outcome
+    )
+      block('garminActivityReadFacts.source', 'source_identity_mismatch');
+  }
   if (c.healthKitActivityReadFacts && !hkPortValid)
     block('healthKitActivityReadFacts', 'actual_membership_mismatch');
   if (c.activityReadFacts && !activityPortValid)
@@ -604,11 +668,13 @@ export function validateRoutineReadSources(input: unknown): {
           !matchesRetained &&
           !(
             ref.kind === 'activity' &&
-            (localIds.has(ref.id.toLowerCase())
-              ? localPortValid
-              : hkIds.has(ref.id.toLowerCase())
-                ? hkPortValid
-                : activityPortValid)
+            (garminIds.has(ref.id.toLowerCase())
+              ? garminPortValid
+              : localIds.has(ref.id.toLowerCase())
+                ? localPortValid
+                : hkIds.has(ref.id.toLowerCase())
+                  ? hkPortValid
+                  : activityPortValid)
           )
         )
           block(`${path}.${a.stepId}`, 'actual_permission_port_missing');

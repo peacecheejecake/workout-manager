@@ -147,3 +147,16 @@ it('media grant and descriptor observations remain strict facts rather than perm
     'media_policy_adapter_unavailable',
   );
 });
+
+it('Garmin retained metadata read is separate from pending consumed purpose/storage integration', () => {
+  expect(
+    classifyRaceManualConsumedSourceV2(
+      'activity-canonical-values',
+      'fit',
+      'garmin-connect-unofficial',
+    ),
+  ).toBe('garmin_policy_adapter_unavailable');
+  expect(classifyRaceManualConsumedSourceV2('activity-overlay', 'fit', 'garmin-official')).toBe(
+    'garmin_policy_adapter_unavailable',
+  );
+});

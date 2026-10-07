@@ -1,3 +1,8 @@
+import { captureRaceManualGarminActivitySourceV2In } from './race-manual-review-garmin-purpose-v2.js';
+import {
+  projectGarminActivityReadFacts,
+  type GarminActivityReadFacts,
+} from './race-plan-impact-garmin-activity-read-facts.js';
 import { activityValuesSchema, activityOverlaySchema } from '@workout/contracts/activity';
 import { captureRaceManualHealthKitPurposeV2In } from './race-manual-review-healthkit-purpose-v2.js';
 import {
@@ -697,6 +702,7 @@ export async function captureRacePlanImpactContext(
   let manualActivityReadFacts: ManualActivityReadFacts;
   let localImportedActivityReadFacts: LocalImportedActivityReadFacts;
   let healthKitActivityReadFacts: HealthKitActivityReadFacts;
+  let garminActivityReadFacts: GarminActivityReadFacts;
   let workoutTemplateSources: Awaited<ReturnType<typeof captureWorkoutTemplateSources>>;
   let resourceReadFacts: Awaited<ReturnType<typeof captureResourceRetainedReadFacts>>;
   let mediaReadFacts: Awaited<ReturnType<typeof captureMediaRetainedReadFacts>>;
@@ -786,12 +792,30 @@ export async function captureRacePlanImpactContext(
         actual.fact.requested.kind === 'activity' ? [actual.fact] : [],
       ),
     );
+    // Actual tenant-owned ledger capture determines attribution; opaque source IDs
+    // are never interpreted as provider names or authentication.
+    const ledgerKeys = new Set(
+      sourcePermissionManifest.activityMediaPermissions.garminLineage.map((r) =>
+        JSON.stringify([r.kind, r.source_id]),
+      ),
+    );
+    const garminIds = new Set(
+      routineActualManifest.actualRosters.activities
+        .filter(
+          (r) =>
+            r.source.state === 'present' &&
+            (r.source.kind === 'fit' || r.source.kind === 'fixture') &&
+            ledgerKeys.has(JSON.stringify([r.source.kind, r.source.sourceId])),
+        )
+        .map((r) => r.id.toLowerCase()),
+    );
     const localIds = new Set(
       routineActualManifest.actualRosters.activities
         .filter(
           (row) =>
             row.source.state === 'present' &&
-            (row.source.kind === 'fit' || row.source.kind === 'fixture'),
+            (row.source.kind === 'fit' || row.source.kind === 'fixture') &&
+            !garminIds.has(row.id.toLowerCase()),
         )
         .map((row) => row.id.toLowerCase()),
     );
@@ -806,7 +830,9 @@ export async function captureRacePlanImpactContext(
     const hkFacts = activityFacts.filter((f) => hkIds.has(f.requested.id.toLowerCase()));
     const manualFacts = activityFacts.filter(
       (f) =>
-        !localIds.has(f.requested.id.toLowerCase()) && !hkIds.has(f.requested.id.toLowerCase()),
+        !localIds.has(f.requested.id.toLowerCase()) &&
+        !hkIds.has(f.requested.id.toLowerCase()) &&
+        !garminIds.has(f.requested.id.toLowerCase()),
     );
     const projectInput = (facts: typeof activityFacts) => {
       const ids = new Set(facts.map((fact) => fact.requested.id.toLowerCase()));
@@ -822,6 +848,62 @@ export async function captureRacePlanImpactContext(
         ),
       };
     };
+    const garminInput = projectInput(
+      activityFacts.filter((f) => garminIds.has(f.requested.id.toLowerCase())),
+    );
+    const garminSources = [];
+    for (const activityId of new Set(garminInput.refs.map((r) => r.id.toLowerCase()))) {
+      const fact = garminInput.actualFacts.find((f) => f.requested.id.toLowerCase() === activityId),
+        metadata = garminInput.activityMetadata.find((m) => m.id.toLowerCase() === activityId),
+        roster = garminInput.activityRosters.find((r) => r.id.toLowerCase() === activityId);
+      if (
+        !fact?.content ||
+        !metadata ||
+        !roster ||
+        metadata.source.state !== 'present' ||
+        metadata.source.kind !== 'fit'
+      ) {
+        garminSources.push({
+          activityId,
+          observation: null,
+          reason: 'garmin_source_unavailable' as const,
+        });
+        continue;
+      }
+      const body = z
+        .strictObject({
+          original: activityValuesSchema,
+          overlay: activityOverlaySchema.nullable(),
+          detail: z.unknown().nullable(),
+        })
+        .parse(fact.content);
+      const observed = await captureRaceManualGarminActivitySourceV2In(
+        tx,
+        {
+          activityId,
+          canonicalRevision: roster.revision,
+          source: {
+            kind: 'fit',
+            sourceId: metadata.source.sourceId,
+            revision: metadata.source.revision,
+            contentHash: metadata.source.contentHash,
+          },
+          expectedOriginalDigest: impactDependencyDigest(body.original),
+          expectedOverlayDigest:
+            body.overlay === null ? null : impactDependencyDigest(body.overlay),
+          expectedOverlayRevision: metadata.overlay.revision,
+        },
+        sourceBudget,
+      );
+      garminSources.push({
+        activityId,
+        observation: observed.observation,
+        reason: observed.reason,
+      });
+    }
+    const projectedGarmin = projectGarminActivityReadFacts({ ...garminInput, garminSources });
+    if (projectedGarmin.status !== 'projected_retained_garmin_read_facts') fail('INVALID_CONTEXT');
+    garminActivityReadFacts = projectedGarmin.facts;
     const projectedActivityFacts = projectManualActivityReadFacts(projectInput(manualFacts));
     if (projectedActivityFacts.status !== 'projected_retained_read_facts') fail('INVALID_CONTEXT');
     manualActivityReadFacts = projectedActivityFacts.facts;
@@ -926,6 +1008,7 @@ export async function captureRacePlanImpactContext(
     manualActivityReadFacts,
     localImportedActivityReadFacts,
     healthKitActivityReadFacts,
+    garminActivityReadFacts,
     workoutTemplateSources,
     resourceReadFacts,
     mediaReadFacts,
