@@ -44,6 +44,7 @@ import {
   type TrainingBestListPage,
 } from '@workout/contracts/race-queries';
 import { enqueue, PersistenceConflict } from './outbox.js';
+import { buildRaceResultLegacySuccessor } from './race-result-legacy-update.js';
 import {
   projectStoredRaceResultLegacyRead,
   RaceResultLegacyProjectionError,
@@ -252,6 +253,7 @@ export function createRaceRepository(
       // Completed receipts survive revocation; fresh core plan/actual writes do not.
       await requireAppAdmission(tx);
       let previousRevision = 0;
+      let priorResultValues: unknown;
       if (id !== null) {
         const rows = await tx.query(
           `SELECT revision,values_json FROM ${table} WHERE athlete_id=$1 AND id=$2 AND NOT deleted FOR UPDATE`,
@@ -260,6 +262,7 @@ export function createRaceRepository(
         const previous = rows.rows[0];
         if (!previous) throw new RaceRepositoryError('RACE_NOT_FOUND');
         previousRevision = raceCommandResultSchema.shape.revision.parse(previous['revision']);
+        if (kind === 'race-result') priorResultValues = previous['values_json'];
         if (!('expectedRevision' in input) || input.expectedRevision !== previousRevision)
           throw new PersistenceConflict('REVISION_CONFLICT');
         if (kind === 'race-event') {
@@ -311,7 +314,21 @@ export function createRaceRepository(
           ...result,
         });
       await requireReferences(tx, record);
-      const { id: _id, revision: _revision, ...values } = record;
+      // Preserve the original V1 request hash and successful receipt semantics.
+      // The owned head was locked/CAS checked above; SQL successor guards, not
+      // this pure shaping or a retained-read projection, authorize proof copies.
+      const storedRecord =
+        kind === 'race-result' && id !== null
+          ? buildRaceResultLegacySuccessor({
+              prior: { id, revision: previousRevision, values: priorResultValues },
+              nextValues: raceResultCreateCommandSchema.parse({
+                idempotencyKey,
+                values: input.values,
+              }).values,
+              nextRevision: result.revision,
+            })
+          : record;
+      const { id: _id, revision: _revision, ...values } = storedRecord;
       const timestamp = z.date().parse(now());
       if (id === null)
         await tx.query(
