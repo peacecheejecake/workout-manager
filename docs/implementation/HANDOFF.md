@@ -613,3 +613,9 @@ PB Chip우선/null일 때 Gun 기본 정책은 unit75/75와 실제두Host4/4로 
 명시 `installed-runtime` identity 모드는 base107→별도17-step installer→좁은26RPC grant→실제 owner ledger 확인을 사용한다. raw staging과 target-only117/119/125는 이 경로에서 실행하지 않는다. Root actual Chromium Next/Vite 공개 proof/PB/미해결 영향/네 도메인 승인/영양 삭제·재연결 **12/12 PASS·skip0·exit0**,59.6초다. 로그 `/private/tmp/wm-installed-runtime-root-e2e-r1-20261008.log`, 입력3 SHA 및 정리 DB/role/slot0는 `/private/tmp/wm-installed-runtime-root-verified-20261008.json`에 있다. Root parser26+개인 manual export 관련86 **112/112** 단위 통과다. 전체 harness strict TS의 기존 oidc-provider 선언 TS7016 실패는 보존하며 tooling scoped typecheck와 구별한다.
 
 실제 설치 경로 수용은 configured production의 cold catalog/transitive 보안 지원·최신 전체 personal export/restore·phase 전체 gate/독립검토/main·운영503/native/외부 gate 통과가 아니다. 이 gate와 원문/AWS 사용자 답변 대기는 유지한다.
+
+## 개인 export successor 병렬 구현 배정 · 2026-10-08
+
+Root는 새 migration128 `128_personal_export_retained_runtime.sql`을 개인 template/manual public export의 좁은 두 reader 전용으로 직렬 배정했다. SQL·실제PG 시험준비, NEW `retained-personal-export` mapper/unit, current-runtime-support의 실제catalog integration 시험은 nativeagent별 분리소유한다. 기존001..127과 installer17/checksum/defaultexport34를 수정하지 않으며 SQL128의 존재만으로 설치/지원/producer/복원 완료를 표시하지 않는다. Root가 actualDB·공통exports/operationsV36·installation/grant witness·graph/Git 통합을 맡는다. 내부전용 candidate/preparation을 공개 JSON에 넣지 않는다.
+
+`40e68342` 정상설치 HTTP12/12와 `fe3ae229` 개인publicmanual 구조계약86/86은 phase branch에만 커밋했다. 운영 cold 지원·최신전체export/restore·wholephase/독립review/main·공개503/native/외부 gate와 AWS로그인/FUT09원문 답변은 대기 중이다.
