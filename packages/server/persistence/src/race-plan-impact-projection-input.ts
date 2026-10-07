@@ -3,10 +3,8 @@ import { raceEventSchema } from '@workout/contracts/races';
 import { planSnapshotSchema } from '@workout/contracts/planning';
 import { sessionCompletionSchema } from '@workout/contracts/session-completion';
 import { localDateSchema } from '@workout/contracts/primitives';
-import {
-  nutritionPlanVersionSchema,
-  nutritionPlanItemCoreSchema,
-} from '@workout/contracts/nutrition-core';
+import { nutritionPlanItemCoreSchema } from '@workout/contracts/nutrition-core';
+import { nutritionPlanVersionCompatibleV4Schema } from '@workout/contracts/nutrition-race-plan-v4';
 import {
   routineBlueprintVersionSchema,
   routineOccurrenceSchema,
@@ -18,11 +16,11 @@ import {
   type RacePlanImpactReason,
 } from '@workout/server-coaching/race-plan-impact';
 import {
-  projectRaceRelativeScheduleImpact,
-  type RaceRelativeScheduleImpactInput,
+  projectRaceRelativeScheduleImpactCompatibleV4,
+  type RaceRelativeScheduleImpactInputCompatibleV4,
 } from '@workout/server-coaching/race-relative-schedule-impact';
 import type { RacePlanImpactContext } from './race-plan-impact-context.js';
-import { createRaceRelativeScheduleCalculationPorts } from './race-relative-schedule-calculation.js';
+import { createRaceRelativeScheduleCalculationPortsCompatibleV4 } from './race-relative-schedule-calculation.js';
 
 /** Internal collector DTO only. This projection seam authenticates no browser capture. */
 export type RaceProjectionCapture = Pick<
@@ -101,7 +99,10 @@ const compare = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 const approval = { approvalAllowed: false as const, coverageComplete: false as const };
 export type RaceProjectionBlockReason =
   | RacePlanImpactReason
-  | Extract<ReturnType<typeof projectRaceRelativeScheduleImpact>, { status: 'rejected' }>['reason']
+  | Extract<
+      ReturnType<typeof projectRaceRelativeScheduleImpactCompatibleV4>,
+      { status: 'rejected' }
+    >['reason']
   | 'event_revision_conflict'
   | 'unsupported_coverage'
   | 'linked_plan_identity_mismatch'
@@ -222,15 +223,20 @@ export function buildRacePlanImpactProjectionInput(
       return found?.draft ?? null;
     }
     const records = capture.nutrition.map((row) => {
-      const record = nutritionPlanVersionSchema.parse(row.record);
+      const record = nutritionPlanVersionCompatibleV4Schema.parse(row.record);
       if (record.planId !== row.aggregateId || record.versionId !== row.versionId)
         throw new Error('source_identity_mismatch');
       for (const item of record.items)
         if (item.anchor.kind === 'relative' && item.anchor.entity === 'race') {
-          missingFacts.push({
-            kind: 'immutable_race_pin',
-            id: JSON.stringify([record.versionId, item.id]),
-          });
+          const binding =
+            'schemaVersion' in record
+              ? record.itemRaceTimingBindings.find((entry) => entry.itemId === item.id)?.binding
+              : undefined;
+          if (!binding || binding.state === 'legacy_unpinned')
+            missingFacts.push({
+              kind: 'immutable_race_pin',
+              id: JSON.stringify([record.versionId, item.id]),
+            });
           if (!races.has(item.anchor.entityId))
             fatal.push({ kind: 'race_anchor_body', id: item.anchor.entityId });
         }
@@ -263,7 +269,7 @@ export function buildRacePlanImpactProjectionInput(
     const runs = manifest.runs.map((row) => routineRunSchema.parse(row.record));
     unique(occurrences, (row) => row.id);
     unique(runs, (row) => row.id);
-    const routines: RaceRelativeScheduleImpactInput['routines'] = [];
+    const routines: RaceRelativeScheduleImpactInputCompatibleV4['routines'] = [];
     for (const row of schedules) {
       sourcePlan(row.sourcePlanVersionId);
       const blueprint = blueprints.find(
@@ -309,10 +315,10 @@ export function buildRacePlanImpactProjectionInput(
         calendar,
         collectorSelection,
       };
-    const ports = createRaceRelativeScheduleCalculationPorts(
+    const ports = createRaceRelativeScheduleCalculationPortsCompatibleV4(
       [...races.values()].sort((a, b) => compare(a.id, b.id)),
     );
-    const input: RaceRelativeScheduleImpactInput = {
+    const input: RaceRelativeScheduleImpactInputCompatibleV4 = {
       event,
       newLocalDate: intent.newLocalDate,
       currentPlan,
@@ -334,7 +340,7 @@ export function buildRacePlanImpactProjectionInput(
       routines,
       resolutions: intent.resolutions,
     };
-    const projection = projectRaceRelativeScheduleImpact(input, ports);
+    const projection = projectRaceRelativeScheduleImpactCompatibleV4(input, ports);
     if (projection.status === 'rejected') return blocked(projection.reason, ordered(missingFacts));
     return {
       status: 'projected' as const,
@@ -350,7 +356,11 @@ export function buildRacePlanImpactProjectionInput(
             .map((item) => ({
               nutritionVersionId: row.record.versionId,
               itemId: item.id,
-              binding: { state: 'legacy_unpinned' as const },
+              binding:
+                'schemaVersion' in row.record
+                  ? (row.record.itemRaceTimingBindings.find((entry) => entry.itemId === item.id)
+                      ?.binding ?? { state: 'legacy_unpinned' as const })
+                  : { state: 'legacy_unpinned' as const },
             })),
         ),
       },

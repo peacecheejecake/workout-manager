@@ -1,8 +1,6 @@
 import { z } from 'zod';
-import {
-  foodDefinitionVersionSchema,
-  type NutritionPlanVersion,
-} from '@workout/contracts/nutrition-core';
+import { foodDefinitionVersionSchema } from '@workout/contracts/nutrition-core';
+import type { NutritionPlanVersionCompatibleV4 } from '@workout/contracts/nutrition-race-plan-v4';
 import { planSnapshotSchema, type PlanSnapshot } from '@workout/contracts/planning';
 import type { RaceEvent } from '@workout/contracts/races';
 import type { Transaction } from './database.js';
@@ -53,7 +51,7 @@ function foodProvenanceFacts(value: z.infer<typeof foodDefinitionVersionSchema>[
  * the parent cache before supplementary copy capture. No period filtering or provider I/O. */
 export async function captureNestedNutritionSources(
   tx: Transaction,
-  records: readonly NutritionPlanVersion[],
+  records: readonly NutritionPlanVersionCompatibleV4[],
   budget: SourceBudget,
   ports?: { plan(id: string): Promise<PlanSnapshot>; race(id: string): Promise<RaceEvent> },
 ) {
@@ -266,6 +264,7 @@ export async function captureNestedNutritionSources(
     }
     nutrition.push({
       versionId: record.versionId,
+      ...('schemaVersion' in record ? { recordDigest: digest(record) } : {}),
       foods,
       anchors,
       linkedPlan:

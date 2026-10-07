@@ -1,5 +1,8 @@
 import { expect, it } from 'vitest';
-import { projectFrozenNutritionTiming } from '../src/nutrition-frozen-timing-projection.js';
+import {
+  projectFrozenNutritionTiming,
+  createFrozenNutritionProjector,
+} from '../src/nutrition-frozen-timing-projection.js';
 import { raceTimingPinV1Schema } from '@workout/contracts/nutrition-race-timing';
 import { localDateSchema } from '@workout/contracts/primitives';
 import { projectNutritionItem, localInstant } from '../src/integrated-planner.js';
@@ -365,4 +368,143 @@ it('low-year valid pins follow corrected public correspondence while null stays 
       projectFrozenNutritionTiming({ ...input, record: { ...record, raceTimingPins: [unknown] } }),
     ).toMatchObject({ status: 'unresolved', detail: 'start_unknown' });
   }
+});
+
+const disconnectedRecord = {
+  ...record,
+  schemaVersion: 3,
+  items: [
+    {
+      ...item,
+      anchor: { kind: 'disconnected', entity: 'race' },
+      foods: [
+        {
+          foodVersionId: null,
+          description: 'Synthetic zero',
+          quantity: 0,
+          unit: 'g',
+          sourceBasis: 'manual_total',
+        },
+        {
+          foodVersionId: null,
+          description: 'Synthetic unknown',
+          quantity: null,
+          unit: 'unspecified',
+          sourceBasis: 'unknown',
+        },
+      ],
+    },
+  ],
+  raceTimingPins: [],
+  itemRaceTimingBindings: [],
+};
+it('V3 disconnected preserves food/null/zero captured context without placement or source timing', () => {
+  const before = JSON.stringify(disconnectedRecord);
+  const context = {
+    record: disconnectedRecord,
+    targetTimezone: input.targetTimezone,
+    linkedTraining: null,
+  };
+  const factory = createFrozenNutritionProjector(context);
+  expect(factory.record.items[0]?.foods).toEqual(disconnectedRecord.items[0]?.foods);
+  for (const raceSourceVisibility of ['available', 'unknown', 'unavailable']) {
+    const selector = { itemId: item.id, raceSourceVisibility };
+    const result = factory.project(selector);
+    expect(result).toEqual(projectFrozenNutritionTiming({ ...context, ...selector }));
+    expect(result).toMatchObject({
+      status: 'unresolved',
+      detail: 'race_disconnected',
+      item: { reason: 'missing_anchor' },
+      storage: 'not_persisted',
+      approvalAllowed: false,
+    });
+    expect(result).not.toHaveProperty('projection');
+    expect(JSON.stringify(result)).not.toContain(event);
+    expect(JSON.stringify(result)).not.toContain(pin.start.instant);
+  }
+  expect(JSON.stringify(disconnectedRecord)).toBe(before);
+});
+it('V3 mixed record keeps active captured timing while disconnected item never repins', () => {
+  const next = {
+    ...record,
+    schemaVersion: 3,
+    items: [record.items[0], { ...disconnectedRecord.items[0], id: 'removed' }],
+  };
+  expect(projectFrozenNutritionTiming({ ...input, record: next })).toEqual(
+    projectFrozenNutritionTiming(input),
+  );
+  expect(projectFrozenNutritionTiming({ ...input, record: next, itemId: 'removed' })).toMatchObject(
+    { status: 'unresolved', detail: 'race_disconnected' },
+  );
+});
+it.each(['entityId', 'point', 'offsetMinutes', 'reason', 'instant', 'sourceDigest'])(
+  'V3 disconnected rejects deleted source field %s',
+  (field) => {
+    expect(() =>
+      projectFrozenNutritionTiming({
+        ...input,
+        record: {
+          ...disconnectedRecord,
+          items: [
+            {
+              ...disconnectedRecord.items[0],
+              anchor: { kind: 'disconnected', entity: 'race', [field]: event },
+            },
+          ],
+        },
+      }),
+    ).toThrow('NUTRITION_FROZEN_TIMING_INVALID_INPUT');
+  },
+);
+it('V3 disconnected rejects stale bindings and orphan pins rather than silently ignoring them', () => {
+  for (const patch of [
+    { raceTimingPins: record.raceTimingPins },
+    { itemRaceTimingBindings: record.itemRaceTimingBindings },
+  ])
+    expect(() =>
+      projectFrozenNutritionTiming({ ...input, record: { ...disconnectedRecord, ...patch } }),
+    ).toThrow('NUTRITION_FROZEN_TIMING_INVALID_INPUT');
+});
+it('explicit V4 factory selects each immutable revision tuple, while old factory rejects V4', async () => {
+  const { nutritionPlanVersionV4Schema } =
+    await import('@workout/contracts/nutrition-race-plan-v4');
+  const { createFrozenNutritionProjectorCompatibleV4 } =
+    await import('../src/nutrition-frozen-timing-projection.js');
+  const nextItem = { ...item, id: 'meal-2' };
+  const newer = {
+    ...pin,
+    eventRevision: 2,
+    sourceDigest: 'b'.repeat(64),
+    localStartTime: '10:00:17',
+    start: { state: 'known', instant: '2026-10-07T01:00:17Z' },
+  };
+  const multipin = nutritionPlanVersionV4Schema.parse({
+    ...record,
+    schemaVersion: 4,
+    items: [item, nextItem],
+    raceTimingPins: [pin, newer],
+    itemRaceTimingBindings: [
+      { itemId: item.id, binding: { state: 'captured', eventId: event, eventRevision: 1 } },
+      { itemId: nextItem.id, binding: { state: 'captured', eventId: event, eventRevision: 2 } },
+    ],
+  });
+  const context = { record: multipin, targetTimezone: 'Asia/Seoul', linkedTraining: null };
+  const projector = createFrozenNutritionProjectorCompatibleV4(context);
+  expect(projector.project({ itemId: item.id, raceSourceVisibility: 'available' })).toMatchObject({
+    status: 'projected',
+    projection: { value: { localTime: '09:00:17' } },
+    approvalAllowed: false,
+  });
+  expect(
+    projector.project({ itemId: nextItem.id, raceSourceVisibility: 'available' }),
+  ).toMatchObject({ status: 'projected', projection: { value: { localTime: '10:00:17' } } });
+  expect(() => createFrozenNutritionProjector(context)).toThrow(
+    'NUTRITION_FROZEN_TIMING_INVALID_INPUT',
+  );
+  expect(() =>
+    createFrozenNutritionProjectorCompatibleV4({
+      ...context,
+      record: { ...multipin, raceTimingPins: [pin] },
+    }),
+  ).toThrow('NUTRITION_FROZEN_TIMING_INVALID_INPUT');
 });

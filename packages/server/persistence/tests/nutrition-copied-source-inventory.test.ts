@@ -1,3 +1,4 @@
+import { nutritionPlanVersionV4Schema } from '@workout/contracts/nutrition-race-plan-v4';
 import { describe, expect, it } from 'vitest';
 import { integratedCandidateV4Schema } from '@workout/contracts/integrated-coaching';
 import { nutritionPlanVersionSchema } from '@workout/contracts/nutrition-core';
@@ -580,5 +581,84 @@ describe('exact nutrition copied source inventory', () => {
         body: { ...body, versions: [...body.versions, ...body.versions] },
       }).kind,
     ).toBe('unsupported');
+  });
+});
+
+it('classifies exact V4 frozen multipin source without substituting first event pin or altering source digest', () => {
+  const original = row(),
+    eventId = id(110),
+    body = routineCandidate([{ planId, versionId, itemId: 'Meal' }]);
+  const base = original.record_json.items[0];
+  if (!base) throw Error('fixture');
+  const pin = (eventRevision: number) => ({
+    pinVersion: 1,
+    namespace: 'race-event-revision',
+    eventId,
+    eventRevision,
+    sourceDigestVersion: 'race-event-values-canonical-v1',
+    sourceDigest: String(eventRevision).repeat(64),
+    localDate: '2026-10-07',
+    localStartTime: null,
+    timezone: 'UTC',
+    start: { state: 'unknown', reason: 'start_time_not_recorded' },
+    end: { state: 'unknown', reason: 'race_end_not_recorded' },
+  });
+  const record = nutritionPlanVersionV4Schema.parse({
+    ...original.record_json,
+    schemaVersion: 4,
+    items: [
+      {
+        ...base,
+        anchor: {
+          kind: 'relative',
+          entity: 'race',
+          entityId: eventId,
+          point: 'start',
+          offsetMinutes: 0,
+        },
+      },
+      {
+        ...base,
+        id: 'second',
+        anchor: {
+          kind: 'relative',
+          entity: 'race',
+          entityId: eventId,
+          point: 'start',
+          offsetMinutes: 0,
+        },
+      },
+    ],
+    raceTimingPins: [pin(1), pin(2)],
+    itemRaceTimingBindings: [
+      { itemId: 'Meal', binding: { state: 'captured', eventId, eventRevision: 1 } },
+      { itemId: 'second', binding: { state: 'captured', eventId, eventRevision: 2 } },
+    ],
+  });
+  const source = { ...original, record_json: record },
+    before = JSON.stringify(source),
+    digest = body.digest;
+  expect(classify(body, [source])).toMatchObject({
+    kind: 'related',
+    manifest: { nutritionItemRefs: [{ planId, versionId, itemId: 'Meal' }] },
+  });
+  expect(JSON.stringify(source)).toBe(before);
+  expect(body.digest).toBe(digest);
+  expect(classify(body, [{ ...source, athlete_id: id(111) }])).toEqual({
+    kind: 'unsupported',
+    reason: 'source_tuple_mismatch',
+  });
+  expect(
+    classify(body, [{ ...source, record_json: { ...record, raceTimingPins: [pin(1)] } }]),
+  ).toEqual({ kind: 'unsupported', reason: 'source_tuple_mismatch' });
+  const disconnectedRecord = nutritionPlanVersionV4Schema.parse({
+    ...record,
+    items: [{ ...base, anchor: { kind: 'disconnected', entity: 'race' } }],
+    raceTimingPins: [],
+    itemRaceTimingBindings: [],
+  });
+  expect(classify(body, [{ ...source, record_json: disconnectedRecord }])).toMatchObject({
+    kind: 'related',
+    disconnectedVersions: [{ namespace: 'nutrition-plan-version', planId, versionId }],
   });
 });

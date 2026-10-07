@@ -5,7 +5,7 @@ import {
   integratedCandidateV4Schema,
   type IntegratedCandidateV4,
 } from '@workout/contracts/integrated-coaching';
-import { nutritionPlanVersionCompatibleV3Schema } from '@workout/contracts/nutrition-race-plan-v3';
+import { nutritionPlanVersionCompatibleV4Schema } from '@workout/contracts/nutrition-race-plan-v4';
 
 export const nutritionCopiedSourceMaximumRefs = 5000;
 export const nutritionCopiedSourceMaximumRowBytes = 512 * 1024;
@@ -272,7 +272,7 @@ const sourceRow = z.strictObject({
   athlete_id: tenant,
   plan_id: uuid,
   version_id: uuid,
-  record_json: nutritionPlanVersionCompatibleV3Schema,
+  record_json: nutritionPlanVersionCompatibleV4Schema,
 });
 /** Validates exact frozen source rows, never substitutes current aggregate heads.
  * Caller must read through its authenticated tenant transaction. Race owner/event

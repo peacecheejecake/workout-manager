@@ -3,7 +3,7 @@ import {
   captureActivityAndMediaPermissions,
   reserveSourceBudget,
 } from './race-plan-impact-nested-sources.js';
-import type { NutritionPlanVersion } from '@workout/contracts/nutrition-core';
+import type { NutritionPlanVersionCompatibleV4 } from '@workout/contracts/nutrition-race-plan-v4';
 import type { PlanSnapshot } from '@workout/contracts/planning';
 import type { RaceEvent } from '@workout/contracts/races';
 import type { captureSupplementaryReferenceManifest } from './race-plan-impact-dependencies.js';
@@ -13,7 +13,7 @@ import {
 } from '@workout/contracts/supplementary-core';
 import { z } from 'zod';
 import { planDraftSchema } from '@workout/contracts/planning';
-import { nutritionPlanVersionSchema } from '@workout/contracts/nutrition-core';
+import { nutritionPlanVersionCompatibleV4Schema } from '@workout/contracts/nutrition-race-plan-v4';
 import { recoveryMethodVersionSchema } from '@workout/contracts/recovery-core';
 import {
   routineStepContentSchema,
@@ -43,7 +43,7 @@ export async function captureRaceImpactSourcePermissions(
     plannedRefs: readonly DomainPlanRef[];
     resourceVersionIds: readonly string[];
     catalogRefs?: readonly z.infer<typeof routineStepContentSchema>[];
-    nutritionRecords?: readonly NutritionPlanVersion[];
+    nutritionRecords?: readonly NutritionPlanVersionCompatibleV4[];
     mediaIds?: readonly string[];
     sources?: { plan(id: string): Promise<PlanSnapshot>; race(id: string): Promise<RaceEvent> };
     captureSupplementary?: (
@@ -83,7 +83,7 @@ export async function captureRaceImpactSourcePermissions(
   const nutritionRecords = new Map(
     (input.nutritionRecords ?? []).map((record) => [
       record.versionId,
-      parse(nutritionPlanVersionSchema, record),
+      parse(nutritionPlanVersionCompatibleV4Schema, record),
     ]),
   );
   const mediaIds = new Set(input.mediaIds ?? []);
@@ -171,7 +171,7 @@ export async function captureRaceImpactSourcePermissions(
     const row = parse(z.strictObject({ body: z.unknown() }), rows[0]);
     const record = training
       ? parse(planDraftSchema, row.body)
-      : parse(nutritionPlanVersionSchema, row.body);
+      : parse(nutritionPlanVersionCompatibleV4Schema, row.body);
     if ('versionId' in record && record.versionId !== requested.versionId)
       throw new RaceImpactDependencyError('INVALID_CONTEXT');
     if ('planId' in record) nutritionRecords.set(record.versionId, record);
@@ -400,7 +400,7 @@ export async function captureRaceImpactSourcePermissions(
     }
     const record = workout
       ? parse(routineTemplateVersionSchema, body)
-      : parse(nutritionPlanVersionSchema, body);
+      : parse(nutritionPlanVersionCompatibleV4Schema, body);
     if ('planId' in record) nutritionRecords.set(record.versionId, record);
     const id = 'routineId' in record ? record.routineId : record.planId;
     if (id !== requested.ref.id || record.versionId !== requested.ref.versionId)

@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { raceEventSchema, type RaceEvent } from '@workout/contracts/races';
 import { planSnapshotSchema, type PlanSnapshot } from '@workout/contracts/planning';
-import { nutritionPlanVersionSchema } from '@workout/contracts/nutrition-core';
+import { nutritionPlanVersionCompatibleV4Schema } from '@workout/contracts/nutrition-race-plan-v4';
 import { recoveryStrategyVersionSchema } from '@workout/contracts/recovery-core';
 import { routineScheduleVersionSchema } from '@workout/contracts/routines';
 import {
@@ -453,7 +453,7 @@ export async function captureRacePlanImpactContext(tx: Transaction, input: unkno
     schedules = await roster(tx, 'routine');
   const nutrition = [];
   for (const row of nutrients) {
-    const record = parse(nutritionPlanVersionSchema, row.record_json);
+    const record = parse(nutritionPlanVersionCompatibleV4Schema, row.record_json);
     if (record.planId !== row.aggregate_id || record.versionId !== row.version_id)
       fail('INVALID_CONTEXT');
     const source =

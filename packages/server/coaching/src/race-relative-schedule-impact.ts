@@ -1,4 +1,12 @@
 import { z } from 'zod';
+import {
+  nutritionPlanVersionCompatibleV3Schema,
+  type NutritionPlanVersionCompatibleV3,
+} from '@workout/contracts/nutrition-race-plan-v3';
+import {
+  nutritionPlanVersionCompatibleV4Schema,
+  type NutritionPlanVersionCompatibleV4,
+} from '@workout/contracts/nutrition-race-plan-v4';
 import { raceEventSchema } from '@workout/contracts/races';
 import { planSnapshotSchema, type PlanDraft, type PlanSnapshot } from '@workout/contracts/planning';
 import {
@@ -64,6 +72,10 @@ const nutritionContext = z.strictObject({
   record: nutritionPlanVersionSchema,
   timings: z.array(z.strictObject({ itemId: id, timing: timingSchema })).max(5000),
 });
+const nutritionContextCompatibleV3 = nutritionContext.extend({
+  record: nutritionPlanVersionCompatibleV3Schema,
+  timings: z.array(z.strictObject({ itemId: z.string().min(1), timing: timingSchema })).max(5000),
+});
 const routineContext = z.strictObject({
   record: routineScheduleVersionSchema,
   sourcePlanVersionId: z.uuid().nullable(),
@@ -114,6 +126,37 @@ const inputSchema = z.strictObject({
       .max(1000),
   }),
 });
+const inputSchemaCompatibleV3 = inputSchema.extend({
+  nutrition: z.array(nutritionContextCompatibleV3).max(1000),
+});
+const inputSchemaCompatibleV4 = inputSchema.extend({
+  nutrition: z
+    .array(nutritionContextCompatibleV3.extend({ record: nutritionPlanVersionCompatibleV4Schema }))
+    .max(1000),
+});
+export type RaceRelativeScheduleImpactInputCompatibleV4 = z.infer<typeof inputSchemaCompatibleV4>;
+export interface RaceScheduleCalculationPortsCompatibleV4 {
+  resolveNutrition(context: {
+    item: NutritionPlanVersionCompatibleV4['items'][number];
+    record: NutritionPlanVersionCompatibleV4;
+    sourcePlan: PlanDraft | null;
+    event: z.infer<typeof raceEventSchema>;
+    proposedFromEvent?: z.infer<typeof raceEventSchema>;
+  }): unknown;
+  expandRoutine: RaceScheduleCalculationPorts['expandRoutine'];
+}
+export type RaceRelativeScheduleImpactInputCompatibleV3 = z.infer<typeof inputSchemaCompatibleV3>;
+export interface RaceScheduleCalculationPortsCompatibleV3 {
+  resolveNutrition(context: {
+    item: NutritionPlanVersionCompatibleV3['items'][number];
+    record: NutritionPlanVersionCompatibleV3;
+    sourcePlan: PlanDraft | null;
+    event: z.infer<typeof raceEventSchema>;
+    /** Explicit hypothetical facts; never a replacement saved pin. */
+    proposedFromEvent?: z.infer<typeof raceEventSchema>;
+  }): unknown;
+  expandRoutine: RaceScheduleCalculationPorts['expandRoutine'];
+}
 export type RaceRelativeScheduleImpactInput = z.infer<typeof inputSchema>;
 export interface RaceScheduleCalculationPorts {
   /** Runtime adapter uses the existing resolver. Unknown race end stays null; this function never infers duration. */
@@ -185,14 +228,14 @@ function decoded<T>(schema: z.ZodType<T>, value: unknown, budget: { bytes: numbe
 }
 /** Pure candidate preparation only. Neither resolver success nor explicit resolution
  * writes schedules, runs, actuals, versions, receipts, outbox or approval history. */
-export function projectRaceRelativeScheduleImpact(
+function projectRaceRelativeScheduleImpactInternal(
   raw: unknown,
-  ports: RaceScheduleCalculationPorts,
+  ports: RaceScheduleCalculationPortsCompatibleV4,
 ) {
   try {
     const budget = { bytes: bytes(raw) };
     if (budget.bytes > 4194304) return reject('projection_bound');
-    const parsed = inputSchema.safeParse(raw);
+    const parsed = inputSchemaCompatibleV4.safeParse(raw);
     if (!parsed.success) return reject('invalid_input');
     const input = parsed.data;
     freezeSnapshot(input);
@@ -358,6 +401,11 @@ export function projectRaceRelativeScheduleImpact(
                     record,
                     sourcePlan: sourcePlan(record.linkedTrainingPlanVersionId, true),
                     event: { ...input.event, localDate: input.newLocalDate },
+                    ...('schemaVersion' in record &&
+                    proposed.anchor.kind === 'relative' &&
+                    proposed.anchor.entity === 'race'
+                      ? { proposedFromEvent: input.event }
+                      : {}),
                   }),
                   budget,
                 );
@@ -550,6 +598,61 @@ export function projectRaceRelativeScheduleImpact(
         routines.some((context) => context.notice === 'affected_unresolved_requires_resolution'),
       completionReports: input.completionReports,
     };
+  } catch (error) {
+    if (error instanceof ProjectionFailure) return reject(error.reason);
+    return reject('invalid_port_result');
+  }
+}
+
+/** Explicit internal compatible read only; this is not a stored approval or HTTP DTO. */
+export function projectRaceRelativeScheduleImpactCompatibleV3(
+  raw: unknown,
+  ports: RaceScheduleCalculationPortsCompatibleV3,
+) {
+  try {
+    if (bytes(raw) > 4194304) return reject('projection_bound');
+    const parsed = inputSchemaCompatibleV3.safeParse(raw);
+    if (!parsed.success) return reject('invalid_input');
+    return projectRaceRelativeScheduleImpactInternal(parsed.data, {
+      expandRoutine: (context) => ports.expandRoutine(context),
+      resolveNutrition: (context) =>
+        ports.resolveNutrition({
+          ...context,
+          record: nutritionPlanVersionCompatibleV3Schema.parse(context.record),
+        }),
+    });
+  } catch {
+    return reject('invalid_port_result');
+  }
+}
+/** Explicit multipin-compatible internal projection; never approval authority. */
+export function projectRaceRelativeScheduleImpactCompatibleV4(
+  raw: unknown,
+  ports: RaceScheduleCalculationPortsCompatibleV4,
+) {
+  return projectRaceRelativeScheduleImpactInternal(raw, ports);
+}
+/** Existing V1 seam keeps its strict decoder and legacy calculation semantics. */
+export function projectRaceRelativeScheduleImpact(
+  raw: unknown,
+  ports: RaceScheduleCalculationPorts,
+) {
+  try {
+    if (bytes(raw) > 4194304) return reject('projection_bound');
+    const parsed = inputSchema.safeParse(raw);
+    if (!parsed.success) return reject('invalid_input');
+    return projectRaceRelativeScheduleImpactInternal(parsed.data, {
+      expandRoutine: (context) => ports.expandRoutine(context),
+      resolveNutrition: (context) => {
+        const legacy = {
+          ...context,
+          item: nutritionPlanItemCoreSchema.parse(context.item),
+          record: nutritionPlanVersionSchema.parse(context.record),
+        };
+        freezeSnapshot(legacy);
+        return ports.resolveNutrition(legacy);
+      },
+    });
   } catch (error) {
     if (error instanceof ProjectionFailure) return reject(error.reason);
     return reject('invalid_port_result');
