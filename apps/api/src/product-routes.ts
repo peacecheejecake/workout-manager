@@ -1,5 +1,7 @@
 import type { RaceRepository } from '@workout/server-persistence/races';
 import { registerRaceRoutes } from './race-routes.js';
+import type { RaceResultV2Repository } from '@workout/server-persistence/race-result-v2';
+import { registerRaceResultV2Routes } from './race-result-v2-routes.js';
 import type { CoachingConstraintRepository } from '@workout/server-persistence/coaching-constraints';
 import { registerCoachingConstraintRoutes } from './coaching-constraint-routes.js';
 import type { CoreEvidenceSnapshotRepository } from '@workout/server-persistence/evidence-snapshots';
@@ -118,6 +120,7 @@ export interface ProductRepositories {
   integratedFixtureV4?: IntegratedFixtureV4Repository;
   activities?: ActivityRepository;
   races?: RaceRepository;
+  raceResultsV2?: RaceResultV2Repository;
   healthKitRegistration?: Pick<
     HealthKitRegistrationRepository,
     'registerWorkouts' | 'listWorkouts'
@@ -219,6 +222,8 @@ export function registerProductRoutes(
   if (repositories.recovery) registerRecoveryRoutes(routes, repositories.recovery, principal);
   if (repositories.activities) registerActivityRoutes(routes, repositories.activities, principal);
   if (repositories.races) registerRaceRoutes(routes, repositories.races, principal);
+  if (repositories.raceResultsV2)
+    registerRaceResultV2Routes(routes, repositories.raceResultsV2, principal);
   if (repositories.healthKitRegistration)
     registerHealthKitRegistrationRoutes(routes, repositories.healthKitRegistration, principal);
   if (repositories.healthKitDeregistration)

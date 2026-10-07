@@ -495,3 +495,7 @@ SQL116 첫 두 설치 실패와 R3 11PASS/17FAIL+unhandled1을 수정한 R4는 R
 ## Imported 읽기·PB 반응형 실제 수용 · 2026-10-07
 
 Root imported companion 집중 unit359와 실제 source-purpose PG3(FIT/fixture/course), PB responsive Next/Vite 실제 identity2를 확인했다. 초기 FIT2FAIL은 보존하고 현재 연결의 실제 통과만 별도로 기록했다. [I 기록](progress/M2-02i.md)·[J 기록](progress/M2-02j.md)을 따른다. 합성 DB/역할 잔존0이며 SQL116 local FIT/course 저장 확장은 native agent WIP이다. provider/media 권한 연결 및 J configured proof/normal restore 후속을 병렬 조사한다. registry107·main/push0·I/J/phase in_progress·외부 not_executed는 유지한다. 대회 삭제 후 승인 영양은 연결 해제 표시·재연결/재승인 전 대회 시각 사용 중단·음식/수량/실제 섭취 보존 결정을 다시 확인했다.
+
+## 증빙 V2 공통 경계 및 local 저장 첫 실험 · 2026-10-07
+
+Root V2 optional product 등록과 브라우저 Host exact path/method 경계의 unit153+33·API/platform TS·lint를 확인했다([J 기록](progress/M2-02j.md)). configured 정상 활성화·OIDC/DB 첨부 검증은 아직 없다. Native agent는 typed V2 client, own media purpose, local store/purge를 독점 범위에서 병렬 구현한다. local SQL116 확장 Root 실제 PG R1은32개 중31PASS/1FAIL이며 코스 저장의 PLpgSQL course_id ambiguity를 수정 중이다. 원 실패는 /private/tmp/wm-chain116-local-root-pg-r1-20261007.log에 보존하며 전체32 통과로 바꾸지 않는다. registry107·main/push0·I/J/phase in_progress·외부 not_executed를 유지한다.

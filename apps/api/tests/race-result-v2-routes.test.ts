@@ -10,6 +10,7 @@ import { AppConsentRequiredError } from '@workout/server-persistence/app-admissi
 import { PersistenceConflict } from '@workout/server-persistence/repositories';
 import { registerRaceResultV2Routes } from '../src/race-result-v2-routes.js';
 import { ProductRequestError } from '../src/product-boundary.js';
+import { createApi } from '../src/app.js';
 const id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const athlete = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const values = {
@@ -32,8 +33,8 @@ const headers = {
   'idempotency-key': 'race_fixture_0001',
 };
 const apps: ReturnType<typeof Fastify>[] = [];
-function setup(enabled = true) {
-  const repo: RaceResultV2Repository = {
+function mockRepository(): RaceResultV2Repository {
+  return {
     create: vi.fn<RaceResultV2Repository['create']>().mockResolvedValue({ id, revision: 1 }),
     update: vi.fn<RaceResultV2Repository['update']>().mockResolvedValue({ id, revision: 2 }),
     read: vi
@@ -48,6 +49,9 @@ function setup(enabled = true) {
       nextCursor: null,
     }),
   };
+}
+function setup(enabled = true) {
+  const repo = mockRepository();
   const app = Fastify({ logger: false });
   apps.push(app);
   app.setErrorHandler((error, _request, reply) => {
@@ -334,5 +338,102 @@ describe('explicit race-result V2 route boundary; synthetic auth/repository, no 
         .statusCode,
     ).toBe(404);
     expect(disabled.repo.list).not.toHaveBeenCalled();
+  });
+});
+
+// Uses the actual createApi product hooks with synthetic authentication and
+// repository ports. This is neither OIDC/PG nor configured deployment evidence.
+describe('V2 injection inside the actual authenticated product boundary', () => {
+  const csrfToken = 'c'.repeat(43);
+  const origin = 'https://workout.example';
+  const cookieHeaders = {
+    cookie: 'session=fixture',
+    origin,
+    'x-workout-session-id': 'current',
+    'x-csrf-token': csrfToken,
+    'idempotency-key': 'race_fixture_0001',
+  };
+  function boundary(enabled = true) {
+    const repo = mockRepository();
+    const app = createApi({
+      auth: {
+        authenticate: async (credentials) =>
+          credentials.cookie === 'session=fixture'
+            ? { athleteId: athlete, sessionId: 'current', csrfToken, method: 'cookie' }
+            : credentials.authorization === 'Bearer fixture'
+              ? { athleteId: athlete, sessionId: 'current', method: 'bearer' }
+              : null,
+      },
+      consent: { getConsent: vi.fn(), setConsent: vi.fn() },
+      ...(enabled ? { raceResultsV2: repo } : {}),
+      allowedOrigins: [origin],
+    });
+    apps.push(app);
+    return { app, repo };
+  }
+  it('keeps V2 absent without an injected repository', async () => {
+    const { app, repo } = boundary(false);
+    const response = await app.inject({
+      method: 'GET',
+      url: '/bff/v1/race-results/v2?schemaVersion=2',
+      headers: cookieHeaders,
+    });
+    expect(response.statusCode).toBe(404);
+    expect(repo.list).not.toHaveBeenCalled();
+  });
+  it.each([
+    { name: 'unauthenticated', headers: {}, status: 401 },
+    {
+      name: 'old session',
+      headers: { ...cookieHeaders, 'x-workout-session-id': 'old' },
+      status: 409,
+    },
+    { name: 'missing CSRF', headers: { ...cookieHeaders, 'x-csrf-token': '' }, status: 403 },
+    {
+      name: 'foreign Origin',
+      headers: { ...cookieHeaders, origin: 'https://foreign.example' },
+      status: 403,
+    },
+  ])('rejects $name before reaching the V2 repository', async ({ headers, status }) => {
+    const { app, repo } = boundary();
+    const response = await app.inject({
+      method: 'POST',
+      url: '/bff/v1/race-results/v2',
+      headers,
+      payload: { schemaVersion: 2, values },
+    });
+    expect(response.statusCode).toBe(status);
+    expect(repo.create).not.toHaveBeenCalled();
+  });
+  it('uses the authenticated tenant and carries V2 inside the real cookie boundary', async () => {
+    const { app, repo } = boundary();
+    const response = await app.inject({
+      method: 'POST',
+      url: '/bff/v1/race-results/v2',
+      headers: cookieHeaders,
+      payload: { schemaVersion: 2, values },
+    });
+    expect(response.statusCode).toBe(201);
+    expect(repo.create).toHaveBeenCalledWith(athlete, {
+      schemaVersion: 2,
+      values,
+      idempotencyKey: cookieHeaders['idempotency-key'],
+    });
+    expect(response.headers['cache-control']).toBe('private, no-store');
+  });
+  it('keeps bearer and strict explicit read query behavior', async () => {
+    const { app, repo } = boundary();
+    const headers = { authorization: 'Bearer fixture' };
+    expect(
+      (await app.inject({ method: 'GET', url: '/bff/v1/race-results/v2', headers })).statusCode,
+    ).toBe(400);
+    expect(repo.list).not.toHaveBeenCalled();
+    const response = await app.inject({
+      method: 'GET',
+      url: '/bff/v1/race-results/v2?schemaVersion=2',
+      headers,
+    });
+    expect(response.statusCode).toBe(200);
+    expect(repo.list).toHaveBeenCalledWith(athlete, { schemaVersion: 2, limit: 50, cursor: null });
   });
 });

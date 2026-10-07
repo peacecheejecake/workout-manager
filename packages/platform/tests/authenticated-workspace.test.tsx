@@ -144,6 +144,68 @@ describe('session-bound authenticated transport', () => {
   });
 
   it.each([
+    ['GET', '/bff/v1/race-results/v2?schemaVersion=2&limit=50'],
+    ['GET', '/bff/v1/race-results/v2/00000000-0000-4000-8000-000000000001?schemaVersion=2'],
+    ['POST', '/bff/v1/race-results/v2'],
+    ['PATCH', '/bff/v1/race-results/v2/00000000-0000-4000-8000-000000000001'],
+  ] as const)(
+    'carries explicit V2 result %s %s through the session boundary',
+    async (method, path) => {
+      fetchMock.mockResolvedValue(json({ accepted: true }));
+      const write = method !== 'GET';
+      const body = write ? { schemaVersion: 2, values: { proofs: [] } } : null;
+      const signal = new AbortController().signal;
+      await createSessionTransport(session, vi.fn()).request({
+        path,
+        method,
+        body,
+        idempotencyKey: write ? 'synthetic-v2-command' : null,
+        signal,
+      });
+      expect(fetchMock).toHaveBeenCalledExactlyOnceWith(path, {
+        method,
+        credentials: 'same-origin',
+        cache: 'no-store',
+        redirect: 'error',
+        signal,
+        headers: {
+          'x-workout-session-id': session.sessionId,
+          ...(write
+            ? {
+                'x-csrf-token': session.csrfToken,
+                'idempotency-key': 'synthetic-v2-command',
+                'content-type': 'application/json',
+              }
+            : {}),
+        },
+        ...(write ? { body: JSON.stringify(body) } : {}),
+      });
+    },
+  );
+  it.each([
+    ['DELETE', '/bff/v1/race-results/v2/00000000-0000-4000-8000-000000000001'],
+    ['PUT', '/bff/v1/race-results/v2'],
+    ['POST', '/bff/v1/race-results/v2?schemaVersion=2'],
+    ['PATCH', '/bff/v1/race-results/v2/00000000-0000-4000-8000-000000000001?schemaVersion=2'],
+    ['GET', '/bff/v1/races/v2'],
+    ['GET', '/bff/v1/training-bests/v2'],
+    ['GET', '/bff/v1/race-results/v2/admin'],
+    ['GET', '/bff/v1/race-results/v2/00000000-0000-4000-8000-000000000001/admin'],
+    ['GET', '/bff/v1/race-results/v2-other'],
+    ['GET', '/bff/v1/race-results/v2/'],
+  ] as const)('refuses unsupported V2 result %s %s before fetch', async (method, path) => {
+    await expect(
+      createSessionTransport(session, vi.fn()).request({
+        path,
+        method,
+        body: null,
+        idempotencyKey: null,
+      }),
+    ).rejects.toThrow('ROUTE_NOT_ALLOWED');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
     ['GET', '/bff/v1/ai-settings'],
     ['GET', '/bff/v1/ai-settings/catalog'],
     ['PUT', '/bff/v1/ai-settings'],
