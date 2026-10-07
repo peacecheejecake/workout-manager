@@ -1,3 +1,8 @@
+import {
+  validateRaceImpactConsumedManifest,
+  type RaceImpactConsumedScope,
+  type RaceImpactConsumedManifestResult,
+} from './race-plan-impact-complete-manifest.js';
 import { currentRestoreGeneration } from './restore-generation.js';
 import { captureRaceManualBasis } from './race-plan-impact-manual-basis.js';
 import { captureRaceImpactSourcePermissions } from './race-plan-impact-source-permissions.js';
@@ -728,3 +733,32 @@ async function captureCourse(tx: Transaction, event: RaceEvent) {
   return { ref, digest: course.content_digest };
 }
 export type RacePlanImpactContext = Awaited<ReturnType<typeof captureRacePlanImpactContext>>;
+
+/** Server capture → structural consumed-read scope only. The caller owns the
+ * fenced tenant transaction. Neither this capture nor the validator checks
+ * subsequent freshness or authorizes storage/approval/source processing.
+ * Expected facts originate here, never from client capture/digest/ready flags.
+ */
+export async function captureRacePlanImpactConsumedScope(tx: Transaction, input: unknown) {
+  const capture = await captureRacePlanImpactContext(tx, input);
+  let consumedScope: RaceImpactConsumedManifestResult;
+  const app = capture.manualBasis.app;
+  if (app.state !== 'present' || !app.granted) {
+    consumedScope = {
+      status: 'blocked',
+      blockers: [{ path: 'manualBasis.app', reason: 'manual_admission_unavailable' }],
+    };
+  } else {
+    const scope: RaceImpactConsumedScope = {
+      purpose: capture.manualBasis.purpose,
+      athleteId: capture.athleteId,
+      restoreGeneration: capture.restoreGeneration,
+      expectedEvent: { id: capture.event.id, revision: capture.event.revision },
+      expectedPolicy: capture.manualBasis.policy,
+      expectedAppRevision: app.revision,
+      expectedReadSetDigest: capture.readSetDigest,
+    };
+    consumedScope = validateRaceImpactConsumedManifest(capture, scope);
+  }
+  return { capture, consumedScope };
+}
