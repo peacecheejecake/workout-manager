@@ -1,6 +1,10 @@
 import { z } from 'zod';
 import { workoutTemplateSourceFactsSchema } from './race-plan-impact-workout-template-sources.js';
 import { impactDependencyDigest as digest } from './race-plan-impact-dependencies.js';
+import {
+  resourceRetainedReadFactsSchema,
+  validateResourceRetainedReadFacts,
+} from './race-plan-impact-resource-read-facts.js';
 const uuid = z.uuid().transform((v) => v.toLowerCase()),
   hash = z.string().regex(/^[a-f0-9]{64}$/);
 const request = workoutTemplateSourceFactsSchema.shape.requests.element;
@@ -46,6 +50,7 @@ export const workoutTemplateReadProjectionSchema = z.strictObject({
   requests: z.array(request).max(5000),
   catalogRows: z.array(workoutCatalogRowSchema).max(5000),
   sourceFacts: workoutTemplateSourceFactsSchema.optional(),
+  resourceReadFacts: resourceRetainedReadFactsSchema.optional(),
 });
 export type WorkoutTemplateReadProjection = z.infer<typeof workoutTemplateReadProjectionSchema>;
 export type WorkoutTemplateReadBlocker = {
@@ -227,7 +232,24 @@ export function validateWorkoutTemplateReadSources(unknownProjection: unknown) {
         !equal(l.content?.mediaAssetIds, b.mediaAssetIds)
       )
         block(epath, 'source_membership_mismatch');
-      if (b.resourceVersionIds.length) block(epath, 'resource_permission_port_missing');
+      if (b.resourceVersionIds.length) {
+        const retained = c.resourceReadFacts;
+        if (!retained) block(epath, 'resource_permission_port_missing');
+        else {
+          if (validateResourceRetainedReadFacts(retained).status !== 'validated_read_sources')
+            block(epath, 'source_unavailable');
+          for (const resourceVersionId of b.resourceVersionIds) {
+            const normalized = uuid.safeParse(resourceVersionId);
+            const fact = retained.facts.find(
+              (row) =>
+                row.requestedVersionId ===
+                (normalized.success ? normalized.data : resourceVersionId),
+            );
+            if (!fact || !fact.record || !['current', 'historical'].includes(fact.state))
+              block(epath, 'source_unavailable');
+          }
+        }
+      }
       if (b.mediaAssetIds.length) block(epath, 'media_permission_port_missing');
     }
   }

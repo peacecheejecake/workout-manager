@@ -6,6 +6,7 @@ import {
   captureNestedNutritionSources,
   captureActivityAndMediaPermissions,
   reserveSourceBudget,
+  type SourceBudget,
 } from './race-plan-impact-nested-sources.js';
 import type { NutritionPlanVersionCompatibleV4 } from '@workout/contracts/nutrition-race-plan-v4';
 import type { PlanSnapshot } from '@workout/contracts/planning';
@@ -55,10 +56,17 @@ export async function captureRaceImpactSourcePermissions(
     ) => Promise<Awaited<ReturnType<typeof captureSupplementaryReferenceManifest>>>;
     baseBytes: bigint;
     existingSourceCount: number;
+    sharedBudget?: SourceBudget;
   },
 ) {
   parse(z.number().int().min(0).max(5000), input.existingSourceCount);
   if (input.baseBytes < 0n) throw new RaceImpactDependencyError('INVALID_CONTEXT');
+  if (
+    input.sharedBudget !== undefined &&
+    (input.sharedBudget.bytes !== input.baseBytes ||
+      input.sharedBudget.sources !== input.existingSourceCount)
+  )
+    throw new RaceImpactDependencyError('INVALID_CONTEXT');
   const refs = [
     ...new Map(
       input.plannedRefs.map((ref) => {
@@ -622,6 +630,12 @@ export async function captureRaceImpactSourcePermissions(
         aiAuthorized: row.ai_authorized,
       },
     });
+  }
+  // Carry all intermediate catalog/body accounting into subsequent source
+  // readers. The optional port preserves existing standalone callers.
+  if (input.sharedBudget !== undefined) {
+    input.sharedBudget.bytes = budget.bytes;
+    input.sharedBudget.sources = budget.sources;
   }
   return {
     complete: false as const,

@@ -3,6 +3,11 @@ import {
   type WorkoutTemplateReadBlocker,
 } from './race-plan-impact-workout-template-manifest.js';
 import { workoutTemplateSourceFactsSchema } from './race-plan-impact-workout-template-sources.js';
+import { resourceRetainedReadFactsSchema } from './race-plan-impact-resource-read-facts.js';
+import {
+  validateResourceReadManifest,
+  type ResourceReadManifestBlocker,
+} from './race-plan-impact-resource-manifest.js';
 import { manualActivityReadFactsSchema } from './race-plan-impact-manual-activity-read-facts.js';
 import { manualIntakeReadFactsSchema } from './race-plan-impact-intake-read-facts.js';
 import {
@@ -553,6 +558,7 @@ const captureSchema = z.strictObject({
   manualIntakeReadFacts: manualIntakeReadFactsSchema.optional(),
   manualActivityReadFacts: manualActivityReadFactsSchema.optional(),
   workoutTemplateSources: workoutTemplateSourceFactsSchema.optional(),
+  resourceReadFacts: resourceRetainedReadFactsSchema.optional(),
   routines: z.array(routine).max(1000),
   coreDependencies: coreEvidenceDependencyManifestSchema,
   dependencyInventory: z.array(z.json()).length(12),
@@ -587,7 +593,8 @@ export type RaceImpactManifestBlocker = {
     | RecoveryReadSourceBlocker['reason']
     | RoutineReadBlocker['reason']
     | CourseReadBlocker
-    | WorkoutTemplateReadBlocker['reason'];
+    | WorkoutTemplateReadBlocker['reason']
+    | ResourceReadManifestBlocker['reason'];
 };
 export type RaceImpactConsumedManifestResult =
   | { readonly status: 'blocked'; readonly blockers: readonly RaceImpactManifestBlocker[] }
@@ -1029,11 +1036,6 @@ export function validateRaceImpactConsumedManifest(
     if (finding.reason === 'planned_reference_port_missing') continue;
     block(`routineActualManifest.${finding.path}`, finding.reason);
   }
-  // Unimplemented codecs cannot be admitted merely because their arrays are JSON.
-  for (const [path, rows] of [
-    ['sourcePermissionManifest.resources', c.sourcePermissionManifest.resources],
-  ] as const)
-    if (rows.length) block(path, 'unsupported_consumed_channel');
   const courseResult = validateCourseReadManifest(
     { athleteId: c.athleteId, eventCourse: c.event.course },
     c.course,
@@ -1347,6 +1349,7 @@ export function validateRaceImpactConsumedManifest(
       (row) => row.requested.kind === 'workout_template',
     ),
     ...(c.workoutTemplateSources === undefined ? {} : { sourceFacts: c.workoutTemplateSources }),
+    ...(c.resourceReadFacts === undefined ? {} : { resourceReadFacts: c.resourceReadFacts }),
   });
   for (const finding of workoutResult.blockers)
     block(`workoutTemplateSources.${finding.path}`, finding.reason);
@@ -1538,7 +1541,17 @@ export function validateRaceImpactConsumedManifest(
   );
   if (usedExercises.size !== exerciseIds.size || supp.routines.length)
     block('supplementaryManifest.roster', 'source_membership_mismatch');
-  if (supp.exercises.some((e) => e.resourceVersionIds.length || e.mediaAssetIds.length))
+  const resourceResult = validateResourceReadManifest({
+    requestedVersionIds: [
+      ...supp.exercises.flatMap((e) => e.resourceVersionIds),
+      ...(c.workoutTemplateSources?.exercises.flatMap((e) => e.record.resourceVersionIds) ?? []),
+    ],
+    metadata: c.sourcePermissionManifest.resources,
+    ...(c.resourceReadFacts === undefined ? {} : { sourceFacts: c.resourceReadFacts }),
+  });
+  for (const finding of resourceResult.blockers)
+    block(`resourceReadFacts.${finding.path}`, finding.reason);
+  if (supp.exercises.some((e) => e.mediaAssetIds.length))
     block('supplementaryManifest.exercises.permissions', 'permission_port_missing');
   const am = c.sourcePermissionManifest.activityMediaPermissions;
   // Tenant-wide head/provider/consent inventories are metadata, not consumed
@@ -1573,6 +1586,7 @@ export function validateRaceImpactConsumedManifest(
     (c.workoutTemplateSources?.templates.length ?? 0) +
     (c.workoutTemplateSources?.exercises.length ?? 0) +
     (c.workoutTemplateSources?.targets.length ?? 0) +
+    (c.resourceReadFacts?.facts.length ?? 0) +
     c.consumedSources.plans.length +
     c.consumedSources.races.length +
     allNutrition.reduce((sum, n) => sum + n.record.items.length, 0) +

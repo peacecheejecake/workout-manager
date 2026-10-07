@@ -1,4 +1,5 @@
 import { captureWorkoutTemplateSources } from './race-plan-impact-workout-template-sources.js';
+import { captureResourceRetainedReadFacts } from './race-plan-impact-resource-read-facts.js';
 import {
   projectManualActivityReadFacts,
   type ManualActivityReadFacts,
@@ -630,6 +631,7 @@ export async function captureRacePlanImpactContext(tx: Transaction, input: unkno
   let manualIntakeReadFacts: Awaited<ReturnType<typeof captureManualIntakeReadFacts>>;
   let manualActivityReadFacts: ManualActivityReadFacts;
   let workoutTemplateSources: Awaited<ReturnType<typeof captureWorkoutTemplateSources>>;
+  let resourceReadFacts: Awaited<ReturnType<typeof captureResourceRetainedReadFacts>>;
   let course: Awaited<ReturnType<typeof captureCourseReadSources>>;
   try {
     dependencyInventory = await captureIntegratedDependencyInventory(tx);
@@ -696,7 +698,13 @@ export async function captureRacePlanImpactContext(tx: Transaction, input: unkno
       ],
       baseBytes: sourceBudget.bytes,
       existingSourceCount: sourceBudget.sources,
+      sharedBudget: sourceBudget,
     });
+    resourceReadFacts = await captureResourceRetainedReadFacts(
+      tx,
+      sourcePermissionManifest.resources.map((row) => row.requestedVersionId),
+      sourceBudget,
+    );
     const activityFacts = routineActualManifest.runs.flatMap((run) =>
       run.actuals.flatMap((actual) =>
         actual.fact.requested.kind === 'activity' ? [actual.fact] : [],
@@ -751,6 +759,7 @@ export async function captureRacePlanImpactContext(tx: Transaction, input: unkno
     manualIntakeReadFacts,
     manualActivityReadFacts,
     workoutTemplateSources,
+    resourceReadFacts,
     routines,
     coreDependencies: core,
     dependencyInventory,
