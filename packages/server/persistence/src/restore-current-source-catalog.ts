@@ -213,6 +213,14 @@ const catalogSchema = z.strictObject({
   registry: normalRegistry,
 });
 export type CurrentSourceCatalogMetadata = z.infer<typeof catalogSchema>;
+/** Pure structural parsing; this grants no source, fingerprint or restore authority. */
+export function parseCurrentSourceCatalogMetadata(raw: unknown): CurrentSourceCatalogMetadata {
+  boundedPlain(raw);
+  const parsed = catalogSchema.safeParse(raw);
+  if (!parsed.success) reject('CATALOG_UNSUPPORTED');
+  return parsed.data;
+}
+
 const snapshotSchema = z.strictObject({
   transactionSnapshot: z.string().regex(/^[0-9]+:[0-9]+:[0-9,]*$/),
   isolation: z.enum(['repeatable read', 'serializable']),
@@ -536,10 +544,7 @@ export async function captureCurrentSourceCatalogIn(
     JSON.stringify(p.roles),
   ]);
   const raw = payload.rows[0]?.['catalog'];
-  boundedPlain(raw);
-  const parsed = catalogSchema.safeParse(raw);
-  if (!parsed.success) reject('CATALOG_UNSUPPORTED');
-  const catalog = parsed.data;
+  const catalog = parseCurrentSourceCatalogMetadata(raw);
   if (
     JSON.stringify(catalog.registry) !== JSON.stringify(p.normalRegistry) ||
     JSON.stringify(catalog.roles.map((r) => ({ tag: r.tag, name: r.name }))) !==
