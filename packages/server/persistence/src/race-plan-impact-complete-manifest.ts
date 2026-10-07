@@ -1,3 +1,9 @@
+import {
+  validateWorkoutTemplateReadSources,
+  type WorkoutTemplateReadBlocker,
+} from './race-plan-impact-workout-template-manifest.js';
+import { workoutTemplateSourceFactsSchema } from './race-plan-impact-workout-template-sources.js';
+import { manualActivityReadFactsSchema } from './race-plan-impact-manual-activity-read-facts.js';
 import { manualIntakeReadFactsSchema } from './race-plan-impact-intake-read-facts.js';
 import {
   courseReadManifestSchema,
@@ -545,6 +551,8 @@ const captureSchema = z.strictObject({
   recoveryNutritionSources: recoveryNutritionSources.optional(),
   routineTimerReads: z.array(routineRunReadSchema).max(1000).optional(),
   manualIntakeReadFacts: manualIntakeReadFactsSchema.optional(),
+  manualActivityReadFacts: manualActivityReadFactsSchema.optional(),
+  workoutTemplateSources: workoutTemplateSourceFactsSchema.optional(),
   routines: z.array(routine).max(1000),
   coreDependencies: coreEvidenceDependencyManifestSchema,
   dependencyInventory: z.array(z.json()).length(12),
@@ -578,7 +586,8 @@ export type RaceImpactManifestBlocker = {
     | 'bounds_exceeded'
     | RecoveryReadSourceBlocker['reason']
     | RoutineReadBlocker['reason']
-    | CourseReadBlocker;
+    | CourseReadBlocker
+    | WorkoutTemplateReadBlocker['reason'];
 };
 export type RaceImpactConsumedManifestResult =
   | { readonly status: 'blocked'; readonly blockers: readonly RaceImpactManifestBlocker[] }
@@ -998,8 +1007,19 @@ export function validateRaceImpactConsumedManifest(
   }
   if (c.manualIntakeReadFacts !== undefined && c.manualIntakeReadFacts.athleteId !== c.athleteId)
     block('manualIntakeReadFacts', 'scope_mismatch');
+  if (
+    c.manualActivityReadFacts !== undefined &&
+    c.manualActivityReadFacts.athleteId !== c.athleteId
+  )
+    block('manualActivityReadFacts', 'scope_mismatch');
   const routineResult = validateRoutineReadSources({
     manifest: c.routineActualManifest,
+    ...(c.manualActivityReadFacts === undefined
+      ? {}
+      : {
+          activityReadFacts: c.manualActivityReadFacts,
+          activityMetadata: c.sourcePermissionManifest.activityMediaPermissions.activities,
+        }),
     ...(c.manualIntakeReadFacts === undefined ? {} : { intakeReadFacts: c.manualIntakeReadFacts }),
     ...(c.routineTimerReads === undefined ? {} : { timerReads: c.routineTimerReads }),
   });
@@ -1295,7 +1315,8 @@ export function validateRaceImpactConsumedManifest(
     if (
       b.unsupportedContent.length ||
       b.record.steps.some(
-        (step) => !['checklist', 'nutrition_template'].includes(step.content.kind),
+        (step) =>
+          !['checklist', 'nutrition_template', 'workout_template'].includes(step.content.kind),
       )
     )
       block(`blueprint:${b.record.versionId}`, 'unsupported_consumed_channel');
@@ -1317,6 +1338,18 @@ export function validateRaceImpactConsumedManifest(
     catalogRows.size !== catalogRequests.size
   )
     block('sourcePermissionManifest.catalog', 'missing_source');
+  const workoutResult = validateWorkoutTemplateReadSources({
+    athleteId: c.athleteId,
+    requests: [...catalogRequests.values()].filter(
+      (request) => request.kind === 'workout_template',
+    ),
+    catalogRows: c.sourcePermissionManifest.catalog.filter(
+      (row) => row.requested.kind === 'workout_template',
+    ),
+    ...(c.workoutTemplateSources === undefined ? {} : { sourceFacts: c.workoutTemplateSources }),
+  });
+  for (const finding of workoutResult.blockers)
+    block(`workoutTemplateSources.${finding.path}`, finding.reason);
   for (const [key, requested] of catalogRequests) {
     const row = catalogRows.get(key);
     if (
@@ -1324,6 +1357,7 @@ export function validateRaceImpactConsumedManifest(
       c.recoverySources?.methodCatalogRequests.some((ref) => equal(ref, requested))
     )
       continue;
+    if (requested.kind === 'workout_template') continue;
     if (requested.kind !== 'nutrition_template') {
       block('sourcePermissionManifest.catalog', 'unsupported_consumed_channel');
       continue;
@@ -1535,6 +1569,10 @@ export function validateRaceImpactConsumedManifest(
     refs.length +
     c.completions.length +
     (c.manualIntakeReadFacts?.facts.length ?? 0) +
+    (c.manualActivityReadFacts?.facts.length ?? 0) +
+    (c.workoutTemplateSources?.templates.length ?? 0) +
+    (c.workoutTemplateSources?.exercises.length ?? 0) +
+    (c.workoutTemplateSources?.targets.length ?? 0) +
     c.consumedSources.plans.length +
     c.consumedSources.races.length +
     allNutrition.reduce((sum, n) => sum + n.record.items.length, 0) +

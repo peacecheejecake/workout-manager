@@ -1,4 +1,7 @@
 import { expect, it } from 'vitest';
+import { createHash } from 'node:crypto';
+import { manualActivityCreateSchema } from '@workout/contracts/activity';
+import { projectManualActivityReadFacts } from '../src/race-plan-impact-manual-activity-read-facts.js';
 import { activeIntakeEntrySchema } from '@workout/contracts/nutrition-core';
 import {
   routineBlueprintVersionSchema,
@@ -743,4 +746,163 @@ it('does not let empty intake port authorize activity', () => {
     freshness: 'not_checked',
   };
   expect(reasons(c)).toContain('actual_permission_port_missing');
+});
+
+function manualActivity(deleted = false) {
+  const c = fixture();
+  activity(c);
+  const a = actual(c),
+    roster = c.manifest.actualRosters.activities[0];
+  if (!roster || roster.source.state !== 'present') throw Error('fixture');
+  const original = manualActivityCreateSchema.shape.activity.parse({
+    title: 'Synthetic manual',
+    kind: 'unknown',
+    startedAt: at,
+    durationSeconds: 0,
+    durationKind: 'unknown',
+    timezone: 'UTC',
+    distanceMeters: null,
+  });
+  roster.originalDigest = digest(original);
+  roster.source.kind = 'manual';
+  roster.source.contentHash = createHash('sha256').update(JSON.stringify(original)).digest('hex');
+  if (deleted) {
+    roster.deleted = true;
+    roster.revision = 2;
+    a.fact.state = 'deleted';
+    a.fact.current = { id: roster.id, revision: 2, deleted: true };
+    a.fact.content = null;
+  } else a.fact.content = { original, overlay: null, detail: null };
+  c.activityMetadata = [
+    {
+      id: roster.id,
+      revision: roster.revision,
+      deleted,
+      overlay: { state: 'absent', revision: null },
+      source: {
+        state: 'present',
+        kind: 'manual',
+        sourceId: roster.source.sourceId,
+        revision: 1,
+        contentHash: roster.source.contentHash,
+        suppressed: deleted,
+        revisionRecord: { state: 'present' },
+      },
+    },
+  ];
+  const port = projectManualActivityReadFacts({
+    athleteId: 'synthetic-own',
+    refs: [a.fact.requested],
+    actualFacts: [a.fact],
+    activityRosters: c.manifest.actualRosters.activities,
+    activityMetadata: c.activityMetadata,
+  });
+  if (port.status !== 'projected_retained_read_facts') throw Error(port.reason);
+  c.activityReadFacts = port.facts;
+  return structuredClone(c);
+}
+it.each([false, true])(
+  'accepts exact current/deleted manual Activity retained read deleted=%s',
+  (deleted) => {
+    const c = manualActivity(deleted),
+      before = JSON.stringify(c);
+    expect(validateRoutineReadSources(c)).toMatchObject({
+      status: 'validated_read_sources',
+      authority: 'none',
+      freshness: 'not_checked',
+    });
+    expect(JSON.stringify(c)).toBe(before);
+    if (deleted) expect(actual(c).fact.content).toBeNull();
+  },
+);
+it.each(['port', 'metadata'] as const)(
+  'keeps manual Activity permission missing without %s',
+  (part) => {
+    const c = manualActivity();
+    if (part === 'port') delete c.activityReadFacts;
+    else delete c.activityMetadata;
+    expect(reasons(c)).toContain('actual_permission_port_missing');
+  },
+);
+it.each(['body', 'head', 'source', 'overlay', 'suppression'] as const)(
+  'rejects manual Activity %s correspondence mismatch',
+  (field) => {
+    const c = manualActivity(),
+      a = actual(c),
+      m = c.activityMetadata?.[0],
+      s = c.manifest.actualRosters.activities[0];
+    if (!m || !s || m.source.state !== 'present') throw Error('fixture');
+    if (field === 'body') a.fact.content = null;
+    if (field === 'head') m.revision = 2;
+    if (field === 'source') m.source.sourceId = 'different-source';
+    if (field === 'overlay') s.overlayDigest = '0'.repeat(64);
+    if (field === 'suppression') m.source.suppressed = true;
+    expect(reasons(c)).toContain('actual_permission_port_missing');
+    expect(reasons(c)).toContain('actual_membership_mismatch');
+  },
+);
+it.each(['fit', 'fixture', 'healthkit'] as const)(
+  'does not accept %s as manual through forged port',
+  (kind) => {
+    const c = manualActivity(),
+      s = c.manifest.actualRosters.activities[0],
+      m = c.activityMetadata?.[0];
+    if (!s || !m || s.source.state !== 'present' || m.source.state !== 'present')
+      throw Error('fixture');
+    s.source.kind = kind;
+    m.source.kind = kind;
+    expect(reasons(c)).toContain('actual_permission_port_missing');
+  },
+);
+it('keeps historical Activity body missing and blocked', () => {
+  const c = manualActivity(),
+    a = actual(c),
+    s = c.manifest.actualRosters.activities[0],
+    m = c.activityMetadata?.[0];
+  if (!s || !m) throw Error('fixture');
+  s.revision = 2;
+  m.revision = 2;
+  a.fact.state = 'unavailable';
+  a.fact.reason = 'requested_revision_unavailable';
+  a.fact.current = { id: s.id, revision: 2, deleted: false };
+  a.fact.content = null;
+  expect(reasons(c)).toContain('actual_source_unavailable');
+});
+it.each(['detailId', 'allocationId'] as const)('does not authorize manual Activity %s', (field) => {
+  const c = manualActivity(),
+    a = actual(c),
+    p = run(c).record.progress[0];
+  if (a.fact.requested.kind !== 'activity' || !p) throw Error('fixture');
+  a.fact.requested[field] = id(98);
+  p.actualRefs = [structuredClone(a.fact.requested)];
+  sync(c);
+  expect(reasons(c)).toContain('actual_permission_port_missing');
+});
+it('accepts equal repeated consumed Activity facts without silently replacing divergent copies', () => {
+  const c = manualActivity(),
+    b = blueprint(c),
+    a = actual(c),
+    p = run(c).record.progress[0],
+    step = b.record.steps[0];
+  if (!p || !step) throw Error('fixture');
+  b.record.steps.push({ ...structuredClone(step), id: 'second' });
+  run(c).record.progress.push({ ...structuredClone(p), stepId: 'second' });
+  run(c).actuals.push({ ...structuredClone(a), stepId: 'second' });
+  sync(c);
+  expect(validateRoutineReadSources(c).status).toBe('validated_read_sources');
+  const second = run(c).actuals[1];
+  if (!second) throw Error('fixture');
+  second.fact.content = null;
+  expect(reasons(c)).toContain('actual_membership_mismatch');
+});
+it('does not treat an unused global provider metadata row as manual body permission', () => {
+  const c = manualActivity(),
+    m = c.activityMetadata?.[0];
+  if (!m || !c.activityMetadata) throw Error('fixture');
+  const unused = structuredClone(m);
+  unused.id = id(77);
+  if (unused.source.state !== 'present') throw Error('fixture');
+  unused.source.kind = 'healthkit';
+  c.activityMetadata.push(unused);
+  expect(validateRoutineReadSources(c).status).toBe('validated_read_sources');
 });

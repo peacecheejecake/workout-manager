@@ -1,3 +1,5 @@
+import { createSupplementaryRepository } from '../src/supplementary-core.js';
+import { createActivityRepository } from '../src/activities.js';
 import { captureCourseReadSources } from '../src/race-plan-impact-course-sources.js';
 import { createCourseRepository, type PreparedCourseContent } from '../src/courses.js';
 import { courseContentDigest } from '@workout/server-courses/digest';
@@ -54,6 +56,7 @@ import {
   migrationFileNames,
   grantOperations,
   grantSessionCompletions,
+  grantSupplementaryCore,
   grantRaces,
   grantRoutineCore,
   grantRecoveryCore,
@@ -261,6 +264,7 @@ beforeAll(async () => {
   await grantSessionCompletions(url(ownerRole), runtimeRole);
   // The configured identity runtime uses these same domain grants; no fixture-only SELECT.
   await grantRoutineCore(url(ownerRole), runtimeRole);
+  await grantSupplementaryCore(url(ownerRole), runtimeRole);
   await grantRecoveryCore(url(ownerRole), runtimeRole);
   await grantCheckIns(url(ownerRole), runtimeRole);
   await grantCourses(url(ownerRole), runtimeRole);
@@ -271,6 +275,10 @@ beforeAll(async () => {
   // Existing configured product role composition, not collector-only privilege fabrication.
   await grantGalleryMedia(url(ownerRole), runtimeRole);
   await grantGarminUnofficial(url(ownerRole), runtimeRole);
+  // Public Activity producer privileges also used by existing API lifecycle fixtures.
+  await owner.query(
+    `GRANT SELECT,INSERT,UPDATE,DELETE ON activity_canonical,activity_source_head,activity_source_revision,activity_overlay,activity_overlay_revision,activity_suppression,activity_import_receipt TO "${runtimeRole}"`,
+  );
   database = createDatabase({ connectionString: url(runtimeRole) });
   races = createRaceRepository(database);
 });
@@ -1736,6 +1744,239 @@ it('rejects5001 consumed routine timers by scalar preflight before transporting 
       query.sql.includes('paused_milliseconds::text AS paused_milliseconds'),
     ),
   ).toBe(false);
+});
+
+it('validates public frozen workout template and linked manual actual through the full readonly capture', async () => {
+  const athlete = await account(),
+    event = await create(athlete),
+    catalog = createSupplementaryRepository(database),
+    routines = createRoutineRepository(database),
+    activities = createActivityRepository(database);
+  const exercise = await catalog.saveExercise(athlete, {
+    definition: {
+      schemaVersion: 2,
+      exerciseId: randomUUID(),
+      versionId: randomUUID(),
+      name: 'Synthetic balance',
+      family: 'balance_stability',
+      equipment: ['bodyweight'],
+      tags: [],
+      countDefinitions: [],
+      mediaAssetIds: [],
+      resourceVersionIds: [],
+      reviewState: 'unreviewed',
+      description: 'User defined synthetic movement',
+      safetyNotes: '',
+      supportedMetrics: ['duration'],
+      createdAt: '2026-01-01T00:00:00Z',
+    },
+    expectedVersionId: null,
+    idempotencyKey: randomUUID(),
+    confirmed: true,
+  });
+  const versionId = randomUUID();
+  const saved = await catalog.saveRoutine(athlete, {
+    template: {
+      schemaVersion: 2,
+      routineId: randomUUID(),
+      versionId,
+      title: 'Synthetic workout template',
+      purpose: 'User selected practice',
+      requiredEquipment: ['bodyweight'],
+      spec: {
+        schemaVersion: 2,
+        kind: 'supplementary',
+        routineVersionId: versionId,
+        blocks: [
+          {
+            id: 'block',
+            mode: 'single',
+            rounds: 1,
+            sets: [
+              {
+                id: 'set',
+                exerciseVersionId: exercise.definition.versionId,
+                side: 'unspecified',
+                count: null,
+                durationSeconds: {
+                  min: 30,
+                  max: 30,
+                  unit: 's',
+                  basis: 'user_confirmed',
+                  evidenceIds: [],
+                },
+                externalResistance: { kind: 'no_added_load' },
+                restAfterSeconds: 0,
+                tempo: null,
+                effort: null,
+              },
+            ],
+            restBetweenRoundsSeconds: null,
+          },
+        ],
+      },
+      createdAt: '2026-01-01T00:00:00Z',
+    },
+    expectedVersionId: null,
+    idempotencyKey: randomUUID(),
+    confirmed: true,
+  });
+  const blueprint = bBlueprint({
+    kind: 'workout_template',
+    ref: { id: saved.template.routineId, versionId: saved.template.versionId },
+  });
+  await routines.saveBlueprint(athlete, {
+    blueprint,
+    expectedVersionId: null,
+    idempotencyKey: randomUUID(),
+    confirmed: true,
+  });
+  const activity = await activities.createManualActivity(athlete, {
+    confirmed: true,
+    idempotencyKey: randomUUID(),
+    activity: {
+      title: 'Synthetic user report',
+      kind: 'strength',
+      startedAt: '2026-01-01T00:00:00Z',
+      durationSeconds: null,
+      durationKind: 'unknown',
+      timezone: 'UTC',
+      distanceMeters: 0,
+    },
+    report: { sessionRpe: null, note: null, planLink: null },
+  });
+  const run = await routines.startRun(athlete, {
+    runId: randomUUID(),
+    blueprintVersionId: blueprint.versionId,
+    occurrenceId: null,
+    idempotencyKey: randomUUID(),
+    confirmed: true,
+  });
+  await routines.recordStep(athlete, {
+    runId: run.run.id,
+    stepId: 'step',
+    state: 'partial',
+    actualRefs: [
+      {
+        kind: 'activity',
+        id: activity.activityId,
+        revisionId: '1',
+        detailId: null,
+        allocationId: null,
+      },
+    ],
+    occurredAt: '2026-01-01T00:00:00Z',
+    reason: null,
+    expectedRevision: 0,
+    idempotencyKey: randomUUID(),
+    confirmed: true,
+  });
+  const scope = await database.tenant(athlete, (tx) =>
+    captureRacePlanImpactConsumedScope(tx, {
+      eventId: event.id,
+      expectedRevision: 1,
+      selection: { kind: 'keep_plan' },
+    }),
+  );
+  expect(scope.capture.workoutTemplateSources.templates).toEqual([saved.template]);
+  expect(scope.capture.workoutTemplateSources.exercises).toEqual([
+    { record: exercise.definition, version: 1 },
+  ]);
+  expect(scope.consumedScope).toMatchObject({
+    status: 'validated_read_scope',
+    approvalAuthority: 'none',
+    freshness: 'not_checked',
+  });
+  expect(scope.capture.coverage.missing).toHaveLength(5);
+  expect(scope.capture.routineActualManifest.actualRosters.activities).toHaveLength(1);
+});
+
+it('reads public manual Activity source hash separately from canonical digest without inventing workout catalog support', async () => {
+  const athlete = await account(),
+    event = await create(athlete),
+    activities = createActivityRepository(database);
+  const created = await activities.createManualActivity(athlete, {
+    confirmed: true,
+    idempotencyKey: randomUUID(),
+    activity: {
+      title: 'Synthetic manual actual',
+      kind: 'strength',
+      startedAt: '2026-01-01T00:00:00Z',
+      durationSeconds: null,
+      durationKind: 'unknown',
+      timezone: 'UTC',
+      distanceMeters: 0,
+    },
+    report: { sessionRpe: 0, note: null, planLink: null },
+  });
+  const blueprint = await bSeedBlueprint(
+    athlete,
+    bBlueprint({ kind: 'workout_template', ref: { id: randomUUID(), versionId: randomUUID() } }),
+  );
+  const requested = {
+    kind: 'activity',
+    id: created.activityId,
+    revisionId: '1',
+    detailId: null,
+    allocationId: null,
+  };
+  // Only the actual source producer is public in this test. The deliberately
+  // missing frozen workout catalog must keep the whole consumed scope blocked.
+  await bSeedRun(athlete, blueprint, [bProgress(requested)]);
+  const context = await capture(athlete, event.id);
+  expect(context.manualActivityReadFacts.facts[0]).toMatchObject({
+    requested,
+    state: 'current',
+    reason: null,
+    current: { revision: 1, deleted: false },
+    sourceEvidence: {
+      metadata: {
+        source: { kind: 'manual', suppressed: false, revisionRecord: { state: 'present' } },
+      },
+    },
+  });
+  expect(context.manualActivityReadFacts.facts[0]?.content?.original).toMatchObject({
+    distanceMeters: 0,
+    durationSeconds: null,
+  });
+  const scoped = await database.tenant(athlete, (tx) =>
+    captureRacePlanImpactConsumedScope(tx, {
+      eventId: event.id,
+      expectedRevision: 1,
+      selection: { kind: 'keep_plan' },
+    }),
+  );
+  expect(scoped.consumedScope.status).toBe('blocked');
+  if (scoped.consumedScope.status === 'blocked')
+    expect(
+      scoped.consumedScope.blockers.some(
+        (block) => block.reason === 'actual_permission_port_missing',
+      ),
+    ).toBe(false);
+  await activities.updateOverlay(athlete, created.activityId, {
+    expectedRevision: 1,
+    idempotencyKey: randomUUID(),
+    reason: 'Synthetic correction',
+    title: 'Changed manual title',
+  });
+  const historical = await capture(athlete, event.id);
+  expect(historical.manualActivityReadFacts.facts[0]).toMatchObject({
+    requested,
+    state: 'unavailable',
+    reason: 'requested_revision_unavailable',
+    content: null,
+  });
+  await activities.deleteActivity(athlete, created.activityId, { expectedRevision: 2 });
+  const deleted = await capture(athlete, event.id);
+  expect(deleted.manualActivityReadFacts.facts[0]).toMatchObject({
+    requested,
+    state: 'deleted',
+    content: null,
+    current: { revision: 3, deleted: true },
+    sourceEvidence: {
+      metadata: { overlay: { revision: 2 }, source: { kind: 'manual', suppressed: true } },
+    },
+  });
 });
 
 it('B preserves requested Activity revision after same-count correction/deletion without inventing historical canonical body', async () => {

@@ -15,6 +15,11 @@ import {
   manualIntakeReadFactsSchema,
   validateManualIntakeReadFacts,
 } from './race-plan-impact-intake-read-facts.js';
+import {
+  manualActivityReadFactsSchema,
+  manualActivityReadProjectionInputSchema,
+  validateManualActivityReadFacts,
+} from './race-plan-impact-manual-activity-read-facts.js';
 import { impactDependencyDigest as digest } from './race-plan-impact-dependencies.js';
 const uuid = z.uuid();
 const opaque = z.string().min(1).max(200);
@@ -185,6 +190,8 @@ export const routineReadSourcesProjectionSchema = z.strictObject({
   timerReads: z.array(routineRunReadSchema).max(1000).optional(),
   // Retained read correspondence only; the full capture checks athlete scope.
   intakeReadFacts: manualIntakeReadFactsSchema.optional(),
+  activityReadFacts: manualActivityReadFactsSchema.optional(),
+  activityMetadata: manualActivityReadProjectionInputSchema.shape.activityMetadata.optional(),
 });
 export type RoutineReadSourcesProjection = z.infer<typeof routineReadSourcesProjectionSchema>;
 export type RoutineReadBlocker = {
@@ -253,7 +260,9 @@ export function validateRoutineReadSources(input: unknown): {
     ) +
     m.occurrences.reduce((n, o) => n + o.record.stepBindings.length, 0) +
     (c.timerReads ?? []).reduce((n, r) => n + r.timers.length, 0) +
-    (c.intakeReadFacts?.facts.length ?? 0);
+    (c.intakeReadFacts?.facts.length ?? 0) +
+    (c.activityReadFacts?.facts.length ?? 0) +
+    (c.activityMetadata?.length ?? 0);
   if (
     visits +
       m.runs.length +
@@ -315,6 +324,35 @@ export function validateRoutineReadSources(input: unknown): {
       (f) => [JSON.stringify([f.requested.id, f.requested.revisionId.toLowerCase()]), f] as const,
     ),
   );
+  // The SQL capture may use the same actual in several steps/runs. Deduplicate
+  // only equal facts; divergent copies of the same reference remain blocked.
+  const consumedActivities = new Map<string, z.infer<typeof fact>>();
+  for (const row of m.runs)
+    for (const a of row.actuals) {
+      const ref = a.fact.requested;
+      if (ref.kind !== 'activity') continue;
+      const key = JSON.stringify([
+        ref.id.toLowerCase(),
+        ref.revisionId,
+        ref.detailId?.toLowerCase() ?? null,
+        ref.allocationId?.toLowerCase() ?? null,
+      ]);
+      const prior = consumedActivities.get(key);
+      if (prior && !equal(prior, a.fact)) block('activityReadFacts', 'actual_membership_mismatch');
+      else consumedActivities.set(key, a.fact);
+    }
+  const activityPortValid =
+    c.activityReadFacts !== undefined &&
+    c.activityMetadata !== undefined &&
+    validateManualActivityReadFacts(c.activityReadFacts, {
+      athleteId: c.activityReadFacts.athleteId,
+      refs: [...consumedActivities.values()].map((f) => f.requested),
+      actualFacts: [...consumedActivities.values()],
+      activityRosters: m.actualRosters.activities,
+      activityMetadata: c.activityMetadata,
+    }).status === 'validated_retained_read_facts';
+  if (c.activityReadFacts && !activityPortValid)
+    block('activityReadFacts', 'actual_membership_mismatch');
   for (const row of blueprints.values()) {
     if (
       !uuid.safeParse(row.record.routineId).success ||
@@ -498,7 +536,8 @@ export function validateRoutineReadSources(input: unknown): {
             f.current,
           ) &&
           retained.current.contentDigest === intake.get(retained.requested.id)?.contentDigest;
-        if (!matchesRetained) block(`${path}.${a.stepId}`, 'actual_permission_port_missing');
+        if (!matchesRetained && !(ref.kind === 'activity' && activityPortValid))
+          block(`${path}.${a.stepId}`, 'actual_permission_port_missing');
         if (ref.kind === 'activity') {
           const roster = activities.get(ref.id.toLowerCase()),
             body = activityContent.safeParse(f.content);

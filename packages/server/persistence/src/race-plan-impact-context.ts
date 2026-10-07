@@ -1,3 +1,8 @@
+import { captureWorkoutTemplateSources } from './race-plan-impact-workout-template-sources.js';
+import {
+  projectManualActivityReadFacts,
+  type ManualActivityReadFacts,
+} from './race-plan-impact-manual-activity-read-facts.js';
 import { captureManualIntakeReadFacts } from './race-plan-impact-intake-read-facts.js';
 import { captureCourseReadSources } from './race-plan-impact-course-sources.js';
 import {
@@ -623,6 +628,8 @@ export async function captureRacePlanImpactContext(tx: Transaction, input: unkno
   let recoveryNutritionSources: Awaited<ReturnType<typeof captureRecoveryNutritionSourceFacts>>;
   let routineTimerReads: Awaited<ReturnType<typeof captureRoutineTimerReads>>;
   let manualIntakeReadFacts: Awaited<ReturnType<typeof captureManualIntakeReadFacts>>;
+  let manualActivityReadFacts: ManualActivityReadFacts;
+  let workoutTemplateSources: Awaited<ReturnType<typeof captureWorkoutTemplateSources>>;
   let course: Awaited<ReturnType<typeof captureCourseReadSources>>;
   try {
     dependencyInventory = await captureIntegratedDependencyInventory(tx);
@@ -632,6 +639,15 @@ export async function captureRacePlanImpactContext(tx: Transaction, input: unkno
       sources: sources.sourceCount() + routineActualManifest.uniqueSourceCount,
     };
     course = await captureCourseReadSources(tx, event.course, sourceBudget);
+    workoutTemplateSources = await captureWorkoutTemplateSources(
+      tx,
+      routineActualManifest.blueprints.flatMap((blueprint) =>
+        blueprint.record.steps.flatMap((step) =>
+          step.content.kind === 'workout_template' ? [step.content] : [],
+        ),
+      ),
+      sourceBudget,
+    );
     manualIntakeReadFacts = await captureManualIntakeReadFacts(
       tx,
       routineActualManifest.runs.flatMap((run) =>
@@ -681,6 +697,20 @@ export async function captureRacePlanImpactContext(tx: Transaction, input: unkno
       baseBytes: sourceBudget.bytes,
       existingSourceCount: sourceBudget.sources,
     });
+    const activityFacts = routineActualManifest.runs.flatMap((run) =>
+      run.actuals.flatMap((actual) =>
+        actual.fact.requested.kind === 'activity' ? [actual.fact] : [],
+      ),
+    );
+    const projectedActivityFacts = projectManualActivityReadFacts({
+      athleteId: tx.athleteId,
+      refs: activityFacts.map((fact) => fact.requested),
+      actualFacts: activityFacts,
+      activityRosters: routineActualManifest.actualRosters.activities,
+      activityMetadata: sourcePermissionManifest.activityMediaPermissions.activities,
+    });
+    if (projectedActivityFacts.status !== 'projected_retained_read_facts') fail('INVALID_CONTEXT');
+    manualActivityReadFacts = projectedActivityFacts.facts;
   } catch (error) {
     if (error instanceof RaceImpactDependencyError)
       throw new RacePlanImpactContextError(
@@ -719,6 +749,8 @@ export async function captureRacePlanImpactContext(tx: Transaction, input: unkno
     recoveryNutritionSources,
     routineTimerReads,
     manualIntakeReadFacts,
+    manualActivityReadFacts,
+    workoutTemplateSources,
     routines,
     coreDependencies: core,
     dependencyInventory,
