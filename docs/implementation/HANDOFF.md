@@ -346,3 +346,9 @@ Native 병렬 작업은 SQL108의 exact copied-channel 처리, immutable V2 pin�
 - normal migration registry107·기본 export34를 유지한다. raw SQL108–113와 명시 read/writer/export35 시험을 configured 제품 활성화로 세지 않는다. full collector missing5/authority none/freshness not_checked, I/J/phase in_progress다. 전체 phase gates와 fresh context-less gpt-6-sol high 독립 phase 검토 전 main 병합 금지; push는 사용자 작업이다. main `1d557358` clean을 재확인했다.
 - 다음 native 병렬 작업은 manual Activity retained read exact correspondence 포트, workout template의 full immutable catalog source, purpose-bound 저장 체인의 missing gate 조사다. Root가 공통 capture/consumer/graph를 통합하고 실제 DB 수용을 수행한다. agent 단위 통과만으로 full source permission·semantic freshness/all-domain approval 완료를 선언하지 않는다.
 - PB chip/gun·거리 분류, FUT-09 원문과 기존 AWS recovery-v1 정확 실행 승인/새 로그인·iPhone 합성 측정 질문은 기존 대기 상태를 따른다. Docker 경로가 있으므로 새 macOS IPC 일괄 삭제는 현재 DB 검증에 필요하지 않다.
+
+## bounded manual Activity/workout source checkpoint · 2026-10-07
+
+- phase/m2-02 구현 HEAD는 `414ca07c`다. manual retained Activity와 frozen workout source/consumer를 실제 공개 producer·normal107에서 검증해 커밋했다. [I progress](progress/M2-02i.md)의 최신 검증·실패·한계를 따른다. unit455/455, full context PG65/65, 별도 앞선 context64+workout helper6의70/70은 겹치는 결과이며 합산하지 않는다. TS/API TS·변경 lint/format·diff와 테스트 DB/역할 잔존0을 실제 확인했다.
+- routine actual의 exact current/deleted manual source correspondence와 workout 원본·generated target·역사 head 분리를 검증한다. provider/역사 Activity 본문 부재·resource/media permission 누락을 포트 존재만으로 통과시키지 않는다. full capture missing5/none/not_checked, purpose 저장·전체 semantic freshness/atomic approval·archive/restore·운영/기기·full phase gates/독립 phase review는 미완료다. graph I/J/phase in_progress, registry107 및 main `1d557358`/push0을 유지한다.
+- 다음 병렬 준비는 workout resource/media retained-read 권한 경계 조사와 exact immutable candidate codec/storage inventory 조사다. 공통 파일·graph와 통합은 Root 소유다. PB chip/gun·거리 분류 질문과 FUT-09 원문, AWS recovery-v1 정확 실행 승인/로그인·iPhone 측정 대기는 기존 상태를 따른다. 대회 삭제 시 승인 영양은 연결 해제 및 재연결·재승인까지 대회 시각 사용 중단이라는 사용자 결정을 유지한다.
