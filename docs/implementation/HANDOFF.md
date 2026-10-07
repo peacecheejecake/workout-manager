@@ -152,7 +152,7 @@ APPROVE를 받았다. 당시 기록 갱신의 검토 refresh 후 main에 반영�
 
 최신 재개 기록(2026-10-08): `phase/m2-02` 검증 HEAD `b14c26ab`, main은 병합하지 않았다. atomic approval 원15건, 별도 routine version6건, 기존 integrated approval19건이 실제 합성PG에서 통과했다. full phase나 공개 HTTP/UI/복원/운영 출시 완료가 아니다. 정확 입력·초기실패·최종결과는 [I 기록](progress/M2-02i.md)을 따른다.
 
-현재 Root는 intent-only durable public receipt의 rawSQL122·공통 DTO/API/registry/profile 통합을 맡고, native agent는 NEW public service3파일·whole-source capture5파일·SQL119 all20 postimages/fixture를 비중복으로 병행한다. 새 public command 계약은 기존 intent 본문을 그대로 추출한 strict DTO이며 caller basis/recipe를 받지 않는다. 정상 registry107은 유지한다. PB chip/gun·거리 분류와 AWS 로그인 가능 여부를 다시 질문했으며 답변 전 확정하지 않는다.
+현재 Root는 공통 DTO/API/registry/profile·실제 DB 검증·결과 통합을 맡고, native agent는 NEW public service3파일·rawSQL122 1파일·전체 target loader 계획을 비중복으로 병행한다. whole-source capture5파일은 Root unit10/actualPG 복합1건 통과, SQL119/fixture는 all20 완료가 아닌14건 중간 입력 동결 상태로 Root actualPG 대기다. source116 캡처는 전체 restore/admission 완료가 아니며 정확 실패/결과는 I 기록을 따른다. 새 public command 계약은 기존 intent 본문을 그대로 추출한 strict DTO이며 caller basis/recipe를 받지 않는다. 정상 registry107은 유지한다. PB chip/gun·거리 분류와 AWS 로그인 가능 여부를 다시 질문했으며 답변 전 확정하지 않는다.
 
 앞선 실행 기준(2026-10-08): main `1d557358`, `phase/m2-02` 최신 검증 커밋 `dec6543e`. 이전 실행 기준 `2e56edd8`과 뒤에 이어지는 2026-09-27 기록은 역사적 스냅샷이며 최신 수용으로 승격하지 않는다. 이후 검증 커밋은 재개 시 `git log -1`로 확인한다.
 
