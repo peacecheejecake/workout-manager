@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -7,6 +7,7 @@ import {
   createSessionTransport,
   useAuthenticatedSession,
 } from '../src/authenticated-workspace.js';
+import type { AuthenticatedTransport } from '@workout/contracts/core';
 import { PRIVATE_BROWSER_ACCOUNT_SCOPE_KEY } from '../src/private-browser-storage.js';
 const session = {
   athleteId: 'athlete-a',
@@ -1325,4 +1326,145 @@ describe('exact template and manual race review transport routes', () => {
     ).rejects.toThrow();
     expect(fetchMock).not.toHaveBeenCalled();
   });
+});
+
+/** Mirrors the actual Host's explicit transport-identity reset boundary. */
+function TransportReferenceWorkspace({
+  observed,
+}: {
+  observed: (transport: AuthenticatedTransport) => void;
+}) {
+  const { transport } = useAuthenticatedSession();
+  const [identity, setIdentity] = useState(() => ({ transport, revision: 0 }));
+  useEffect(() => observed(transport), [transport, observed]);
+  if (identity.transport !== transport) {
+    setIdentity({ transport, revision: identity.revision + 1 });
+    return null;
+  }
+  return <PrivateWorkspace key={identity.revision} />;
+}
+
+describe('revalidation preserves exact session transport identity', () => {
+  it('retains the actual reset-on-reference consumer draft through focus, visibility and 60-second lookup', async () => {
+    vi.useFakeTimers();
+    const observed = vi.fn();
+    fetchMock.mockImplementation(async () => json({ ...session }));
+    render(
+      <AuthenticatedWorkspace>
+        <TransportReferenceWorkspace observed={observed} />
+      </AuthenticatedWorkspace>,
+    );
+    await act(async () => {});
+    fireEvent.change(screen.getByLabelText('Private draft'), { target: { value: '초안 유지' } });
+    const original = observed.mock.calls[0]?.[0];
+    for (const eventName of ['focus', 'visibilitychange']) {
+      await act(async () => window.dispatchEvent(new Event(eventName)));
+      expect(screen.getByLabelText('Private draft')).toHaveValue('초안 유지');
+      expect(observed).toHaveBeenCalledExactlyOnceWith(original);
+    }
+    await act(async () => vi.advanceTimersByTime(60_000));
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(screen.getByLabelText('Private draft')).toHaveValue('초안 유지');
+    expect(observed).toHaveBeenCalledExactlyOnceWith(original);
+  });
+  it.each([
+    { field: 'athleteId', next: { ...session, athleteId: 'athlete-b' } },
+    { field: 'sessionId', next: { ...session, sessionId: 'session-b' } },
+    { field: 'csrfToken', next: { ...session, csrfToken: 'r'.repeat(43) } },
+    {
+      field: 'expiresAt',
+      next: {
+        ...session,
+        expiresAt: new Date(Date.parse(session.expiresAt) + 60_000).toISOString(),
+      },
+    },
+  ])('resets on $field rotation and makes the old transport unavailable', async ({ next }) => {
+    const observed = vi.fn<(transport: AuthenticatedTransport) => void>();
+    fetchMock.mockResolvedValueOnce(json(session)).mockResolvedValueOnce(json(next));
+    render(
+      <AuthenticatedWorkspace>
+        <TransportReferenceWorkspace observed={observed} />
+      </AuthenticatedWorkspace>,
+    );
+    await screen.findByLabelText('Private draft');
+    fireEvent.change(screen.getByLabelText('Private draft'), {
+      target: { value: 'old private draft' },
+    });
+    const original = observed.mock.calls[0]?.[0];
+    if (!original) throw Error('Missing original transport');
+    await act(async () => window.dispatchEvent(new Event('focus')));
+    expect(screen.getByLabelText('Private draft')).toHaveValue('');
+    expect(observed).toHaveBeenCalledTimes(2);
+    const current = observed.mock.calls[1]?.[0];
+    expect(current).not.toBe(original);
+    await expect(
+      original.request({
+        path: '/bff/v1/plans/current',
+        method: 'PUT',
+        body: {},
+        idempotencyKey: 'old-command',
+      }),
+    ).rejects.toThrow('SESSION_UNAVAILABLE');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    if (!current) throw Error('Missing replacement transport');
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
+    await current.request({
+      path: '/bff/v1/plans/current',
+      method: 'PUT',
+      body: {},
+      idempotencyKey: 'new-command',
+    });
+    expect(fetchMock.mock.calls[2]?.[1]?.headers).toEqual(
+      expect.objectContaining({
+        'x-workout-session-id': next.sessionId,
+        'x-csrf-token': next.csrfToken,
+      }),
+    );
+  });
+  it('honors a changed shorter expiry instead of preserving the prior timer', async () => {
+    vi.useFakeTimers();
+    const observed = vi.fn();
+    const next = { ...session, expiresAt: new Date(Date.now() + 1000).toISOString() };
+    fetchMock
+      .mockResolvedValueOnce(json(session))
+      .mockResolvedValueOnce(json(next))
+      .mockReturnValue(new Promise(() => {}));
+    render(
+      <AuthenticatedWorkspace>
+        <TransportReferenceWorkspace observed={observed} />
+      </AuthenticatedWorkspace>,
+    );
+    await act(async () => {});
+    await act(async () => window.dispatchEvent(new Event('visibilitychange')));
+    expect(screen.getByLabelText('Private draft')).toBeInTheDocument();
+    await act(async () => vi.advanceTimersByTime(1001));
+    expect(screen.queryByLabelText('Private draft')).not.toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('로그인 상태');
+  });
+});
+
+it('keeps transport-reset consumer drafts across offline blocking and identical-session recovery', async () => {
+  const observed = vi.fn<(transport: AuthenticatedTransport) => void>();
+  fetchMock.mockResolvedValueOnce(json(session));
+  render(
+    <AuthenticatedWorkspace>
+      <TransportReferenceWorkspace observed={observed} />
+    </AuthenticatedWorkspace>,
+  );
+  await screen.findByLabelText('Private draft');
+  fireEvent.change(screen.getByLabelText('Private draft'), { target: { value: 'offline draft' } });
+  fetchMock.mockResolvedValueOnce(json({ error: { code: 'UNAVAILABLE' } }, 503));
+  await act(async () => window.dispatchEvent(new Event('focus')));
+  fireEvent.click(screen.getByRole('button', { name: 'Save private draft' }));
+  expect(await screen.findByText('SESSION_UNAVAILABLE')).toBeInTheDocument();
+  expect(fetchMock).toHaveBeenCalledTimes(2);
+  expect(screen.getByLabelText('Private draft')).toHaveValue('offline draft');
+  fetchMock.mockResolvedValueOnce(json({ ...session }));
+  fireEvent.click(screen.getByRole('button', { name: '다시 확인' }));
+  await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
+  expect(observed).toHaveBeenCalledTimes(1);
+  expect(screen.getByLabelText('Private draft')).toHaveValue('offline draft');
+  fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
+  fireEvent.click(screen.getByRole('button', { name: 'Save private draft' }));
+  expect(await screen.findByText('saved')).toBeInTheDocument();
 });

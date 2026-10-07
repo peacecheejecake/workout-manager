@@ -1,12 +1,18 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from '@tanstack/react-query';
+import { planReadSchema } from '@workout/contracts/planning';
+import { transportReplySchema } from '@workout/contracts/core';
+import { createRaceManualPublicApi } from './race-manual-public-api';
 import { raceEventSchema } from '@workout/contracts/races';
 import { RaceEventDetailWorkspace, type RaceEventDetailWorkspaceProps } from './race-detail';
 import { createCompetitionRelationApi } from './competition-relation-api';
 
-export type RaceEventDetailHostProps = Omit<RaceEventDetailWorkspaceProps, 'relations'>;
+export type RaceEventDetailHostProps = Omit<
+  RaceEventDetailWorkspaceProps,
+  'relations' | 'dateReview'
+>;
 export function RaceEventDetailHost(props: RaceEventDetailHostProps) {
   if (!props.athleteId || !props.sessionId)
     return <p role="status">로그인 후 대회 상세를 볼 수 있습니다.</p>;
@@ -61,7 +67,50 @@ function Status({
   );
 }
 function Content(props: RaceEventDetailHostProps & { athleteId: string }) {
+  const client = useQueryClient();
   const api = useMemo(() => createCompetitionRelationApi(props.transport), [props.transport]);
+  const manualApi = useMemo(() => createRaceManualPublicApi(props.transport), [props.transport]);
+  const capabilities = useQuery({
+    queryKey: ['competition-date-review', props.athleteId, props.sessionId, 'capabilities'],
+    queryFn: ({ signal }) => manualApi.capabilities(signal),
+  });
+  const loadCurrentPlan = useCallback(
+    async (signal: AbortSignal) => {
+      const reply = transportReplySchema.parse(
+        await props.transport.request({
+          path: '/bff/v1/plans/current',
+          method: 'GET',
+          body: null,
+          idempotencyKey: null,
+          signal,
+        }),
+      );
+      signal.throwIfAborted();
+      if (reply.status !== 200) throw Error('CURRENT_PLAN_UNAVAILABLE');
+      return planReadSchema.parse(reply.body);
+    },
+    [props.transport],
+  );
+  const refreshPlans = useCallback(() => {
+    void client.resetQueries({
+      queryKey: ['competition-relations', props.athleteId, props.sessionId, 'plans'],
+      exact: true,
+    });
+  }, [client, props.athleteId, props.sessionId]);
+  const dateReview = useMemo(
+    () => ({
+      api: manualApi,
+      support:
+        capabilities.isError || !capabilities.data
+          ? ('unknown' as const)
+          : capabilities.data.dateChangeReviews
+            ? ('supported' as const)
+            : ('unsupported' as const),
+      loadCurrentPlan,
+      onCommitted: refreshPlans,
+    }),
+    [manualApi, capabilities.isError, capabilities.data, loadCurrentPlan, refreshPlans],
+  );
   const scope = [props.athleteId, props.sessionId];
   const plans = useQuery({
     queryKey: ['competition-relations', ...scope, 'plans'],
@@ -99,7 +148,21 @@ function Content(props: RaceEventDetailHostProps & { athleteId: string }) {
           }}
         />
       </section>
-      <RaceEventDetailWorkspace {...props} relations={relations} />
+      {capabilities.isPending ? <p role="status">날짜 검토 지원을 확인하고 있습니다.</p> : null}
+      {capabilities.isError ? (
+        <div role="status">
+          날짜 검토 지원 조회 실패{' '}
+          <button
+            type="button"
+            onClick={() => {
+              void capabilities.refetch();
+            }}
+          >
+            날짜 검토 지원 다시 확인
+          </button>
+        </div>
+      ) : null}
+      <RaceEventDetailWorkspace {...props} relations={relations} dateReview={dateReview} />
     </>
   );
 }

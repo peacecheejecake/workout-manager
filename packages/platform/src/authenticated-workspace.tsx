@@ -441,7 +441,15 @@ export function AuthenticatedWorkspace({ children }: { children: ReactNode }) {
         if (!isCurrent()) return;
         if (Date.parse(next.expiresAt) > Date.now()) {
           bindPrivateBrowserStorageAccount(next.athleteId);
-          setSession(next);
+          setSession((current) =>
+            current !== null &&
+            current.athleteId === next.athleteId &&
+            current.sessionId === next.sessionId &&
+            current.csrfToken === next.csrfToken &&
+            current.expiresAt === next.expiresAt
+              ? current
+              : next,
+          );
         } else {
           clearPrivateBrowserStorage();
           setSession(null);
@@ -512,7 +520,12 @@ export function AuthenticatedWorkspace({ children }: { children: ReactNode }) {
         </div>
       ) : null}
       <SessionLifetime
-        key={`${session.athleteId}:${session.sessionId}`}
+        key={JSON.stringify([
+          session.athleteId,
+          session.sessionId,
+          session.csrfToken,
+          session.expiresAt,
+        ])}
         session={session}
         expired={expired}
         available={state === 'ready'}

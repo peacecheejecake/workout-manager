@@ -39,6 +39,7 @@ function reply(body: unknown, status = 200) {
   return transportReplySchema.parse({ body, status, traceId: null });
 }
 function body(path: string) {
+  if (path.endsWith('/capabilities')) return { schemaVersion: 1, dateChangeReviews: false };
   return path.includes('/plans')
     ? { head: null, history: [{ id: other, version: 3, createdAt: at, title: '가을 계획' }] }
     : path.includes('/courses')
@@ -66,9 +67,14 @@ it('starts detail and both actual catalogs in parallel and displays exact named 
     (input) => new Promise((resolve) => pending.push(() => resolve(reply(body(input.path))))),
   );
   render(view({ request }));
-  await waitFor(() => expect(request).toHaveBeenCalledTimes(3));
+  await waitFor(() => expect(request).toHaveBeenCalledTimes(4));
   expect(request.mock.calls.map(([input]) => input.path).sort()).toEqual(
-    ['/bff/v1/courses', '/bff/v1/plans/current', `/bff/v1/races/${id}`].sort(),
+    [
+      '/bff/v1/courses',
+      '/bff/v1/plans/current',
+      `/bff/v1/races/${id}`,
+      '/bff/v1/race-date-change-reviews/capabilities',
+    ].sort(),
   );
   await act(async () => {
     pending.forEach((resolve) => resolve());
@@ -150,7 +156,7 @@ it.each(['account', 'session'] as const)(
       ),
     );
     const rendered = render(view({ request: old }));
-    await waitFor(() => expect(old).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(old).toHaveBeenCalledTimes(4));
     rendered.rerender(
       view(
         { request: fresh },
@@ -202,4 +208,164 @@ it('detects an unsaved immutable course tuple selection before back and preserve
   await userEvent.click(screen.getByRole('button', { name: '계속 편집' }));
   expect(screen.getByLabelText('고정 버전 코스')).toHaveValue(other);
   expect(request.mock.calls.every(([input]) => input.method === 'GET')).toBe(true);
+});
+
+it('loads actual capabilities and strict current PlanRead only when date review is opened', async () => {
+  const request = vi.fn<AuthenticatedTransport['request']>(async (input) =>
+    reply(
+      input.path.endsWith('/capabilities')
+        ? { schemaVersion: 1, dateChangeReviews: true }
+        : input.path.includes('/plans')
+          ? { head: null, history: [] }
+          : input.path.includes('/courses')
+            ? { courses: [], total: 0 }
+            : { ...event, planVersionId: null },
+    ),
+  );
+  render(view({ request }));
+  await userEvent.click(await screen.findByRole('button', { name: '대회 날짜 변경 검토' }));
+  expect(
+    await screen.findByText('현재 훈련 계획 없음. 계획 유지 방식만 선택할 수 있습니다.'),
+  ).toBeVisible();
+  expect(request.mock.calls.filter(([r]) => r.path === '/bff/v1/plans/current')).toHaveLength(2);
+  expect(screen.getByRole('button', { name: '대회 편집' })).toBeDisabled();
+  expect(request.mock.calls.every(([r]) => r.method === 'GET')).toBe(true);
+});
+it('keeps unknown/malformed capabilities closed without constructing date writes', async () => {
+  const request = vi.fn<AuthenticatedTransport['request']>(async (input) =>
+    reply(
+      input.path.endsWith('/capabilities')
+        ? { schemaVersion: 1, dateChangeReviews: true, authority: true }
+        : body(input.path),
+    ),
+  );
+  render(view({ request }));
+  await userEvent.click(await screen.findByRole('button', { name: '대회 날짜 변경 검토' }));
+  expect(await screen.findByText('대회 날짜 변경 검토 지원을 확인할 수 없습니다.')).toBeVisible();
+  expect(screen.queryByLabelText('새 대회 날짜')).not.toBeInTheDocument();
+  expect(request.mock.calls.filter(([r]) => r.path.includes('/plans'))).toHaveLength(1);
+});
+it('rejects catalog-shaped current plans in the review loader instead of fabricating a PlanRead', async () => {
+  let reads = 0;
+  const request = vi.fn<AuthenticatedTransport['request']>(async (input) =>
+    reply(
+      input.path.endsWith('/capabilities')
+        ? { schemaVersion: 1, dateChangeReviews: true }
+        : input.path.includes('/plans')
+          ? ++reads === 1
+            ? { head: null, history: [] }
+            : { choices: [], total: 0 }
+          : input.path.includes('/courses')
+            ? { courses: [], total: 0 }
+            : event,
+    ),
+  );
+  render(view({ request }));
+  await userEvent.click(await screen.findByRole('button', { name: '대회 날짜 변경 검토' }));
+  expect(
+    await screen.findByText('현재 계획을 확인할 수 없어 검토를 시작하지 않습니다.'),
+  ).toBeVisible();
+  expect(screen.getByRole('button', { name: '전체 영향 검토' })).toBeDisabled();
+  expect(request.mock.calls.every(([r]) => r.method === 'GET')).toBe(true);
+});
+
+it('refreshes actual detail and relation plans only after explicit server commit', async () => {
+  const candidateId = '10000000-0000-4000-8000-000000000009';
+  const reference = {
+    schemaVersion: 1,
+    candidateId,
+    applicationDigest: 'a'.repeat(64),
+    chain: {
+      evidenceId: '10000000-0000-4000-8000-000000000003',
+      decisionId: '10000000-0000-4000-8000-000000000004',
+      proposalId: '10000000-0000-4000-8000-000000000005',
+      readonlyCandidateDigest: 'b'.repeat(64),
+    },
+    createdAt: at,
+  };
+  const before = {
+    title: event.title,
+    localDate: event.localDate,
+    localStartTime: null,
+    timezone: event.timezone,
+    distance: event.distance,
+    priority: null,
+    participation: event.participation,
+    targetSeconds: null,
+  };
+  let approved = false;
+  const request = vi.fn<AuthenticatedTransport['request']>(async (input) => {
+    if (input.path.endsWith('/capabilities'))
+      return reply({ schemaVersion: 1, dateChangeReviews: true });
+    if (input.path.endsWith('/approve')) {
+      approved = true;
+      return reply({
+        schemaVersion: 1,
+        status: 'committed',
+        candidateId,
+        approvalId: '10000000-0000-4000-8000-000000000006',
+        proposalId: reference.chain.proposalId,
+        approvedAt: at,
+        race: { eventId: id, revision: 2 },
+        versions: [],
+        occurrenceIds: [],
+        notices: [],
+      });
+    }
+    if (input.method === 'POST')
+      return reply({ status: 'reviewed', reference, bodyState: 'present' }, 201);
+    if (input.path === `/bff/v1/race-date-change-reviews/${candidateId}`)
+      return reply({
+        schemaVersion: 1,
+        status: 'present',
+        reference,
+        storedCandidateState: 'ready_for_explicit_approval',
+        beforeBasis: 'frozen_review',
+        afterBasis: 'hypothetical_on_approval',
+        freshness: 'not_checked_on_read',
+        scope: 'whole_affected',
+        race: {
+          eventId: id,
+          expectedRevision: 1,
+          before,
+          after: { ...before, localDate: '2026-10-11' },
+        },
+        training: { state: 'absent' },
+        nutrition: { state: 'absent' },
+        recovery: { state: 'absent' },
+        routines: { state: 'absent' },
+        retainedUnplanned: [],
+        affected: [],
+        notices: [],
+      });
+    if (input.path.includes('/plans')) return reply({ head: null, history: [] });
+    if (input.path.includes('/courses')) return reply({ courses: [], total: 0 });
+    return reply({
+      ...event,
+      planVersionId: null,
+      revision: approved ? 2 : 1,
+      localDate: approved ? '2026-10-11' : event.localDate,
+    });
+  });
+  render(view({ request }));
+  await userEvent.click(await screen.findByRole('button', { name: '대회 날짜 변경 검토' }));
+  await screen.findByText('현재 훈련 계획 없음. 계획 유지 방식만 선택할 수 있습니다.');
+  await userEvent.type(screen.getByLabelText('새 대회 날짜'), '2026-10-11');
+  await userEvent.selectOptions(screen.getByLabelText('계획 비교 방식'), 'keep_plan');
+  await userEvent.click(screen.getByRole('button', { name: '전체 영향 검토' }));
+  const confirm = await screen.findByRole('checkbox');
+  expect(request.mock.calls.filter(([r]) => r.path === `/bff/v1/races/${id}`)).toHaveLength(1);
+  expect(approved).toBe(false);
+  await userEvent.click(confirm);
+  await userEvent.click(screen.getByRole('button', { name: '계획 변경 승인' }));
+  await waitFor(() =>
+    expect(request.mock.calls.filter(([r]) => r.path === `/bff/v1/races/${id}`)).toHaveLength(2),
+  );
+  await waitFor(() =>
+    expect(
+      request.mock.calls.filter(([r]) => r.path === '/bff/v1/plans/current').length,
+    ).toBeGreaterThanOrEqual(3),
+  );
+  expect(screen.getByText(/^2026-10-11 · 출발 시간 미상/)).toBeVisible();
+  expect(request.mock.calls.some(([r]) => r.method === 'PATCH')).toBe(false);
 });

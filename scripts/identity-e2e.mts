@@ -26,6 +26,7 @@ import { identityApiPort } from './fixtures/identity-api-port.ts';
 import { coachingWorkerContextPath } from './fixtures/coaching-worker-context.ts';
 import { createOperationsRepository } from '../packages/server/persistence/src/operations.ts';
 import { createPlanningRepository } from '../packages/server/persistence/src/planning.ts';
+import { createRaceManualPublicRepository } from '../packages/server/persistence/src/race-manual-public.ts';
 import { createRaceRepository } from '../packages/server/persistence/src/races.ts';
 import { createRaceResultV2Repository } from '../packages/server/persistence/src/race-result-v2.ts';
 import { createNutritionRepository } from '../packages/server/persistence/src/nutrition-core.ts';
@@ -198,6 +199,10 @@ const checkInTemplateStage = process.env['IDENTITY_E2E_CHECK_IN_TEMPLATES'];
 if (checkInTemplateStage !== undefined && checkInTemplateStage !== 'staged-123')
   throw new Error('IDENTITY_CHECKIN_TEMPLATE_STAGE_INVALID');
 const stageCheckInTemplates = checkInTemplateStage === 'staged-123';
+const manualStage = process.env['IDENTITY_E2E_RACE_MANUAL_PUBLIC'];
+if (manualStage !== undefined && manualStage !== 'staged-manual')
+  throw new Error('IDENTITY_RACE_MANUAL_STAGE_INVALID');
+const stageRaceManualPublic = manualStage === 'staged-manual';
 const checkInTemplateStageSha = '6d3ad2f18cb7b1c99d63ccff582214b6ba8f0318a72c1238092140a5ffc9444c';
 // Explicit disposable acceptance profile; this does not register migrations or
 // activate configured production repositories. Pin every raw predecessor.
@@ -218,6 +223,91 @@ const raceResultStageFiles = [
     '111_race_result_preserved_proof_updates.sql',
     '69b7689c8579575eb899d2602e979db697039cb75b8a7b8f71ab54154b0d4576',
   ],
+] as const;
+// Exact raw acceptance profile only: no migration registry or production activation.
+const raceManualStageFiles = [
+  ...raceResultStageFiles,
+  [
+    '112_training_plan_aggregate_history.sql',
+    '4cff9ecaae439618e3ec2b24de5428fb377f4c8a843df983aba7a765171b3dfb',
+  ],
+  [
+    '113_race_media_cleanup_source.sql',
+    'b5e97aeb781d59c7b5fdef60962a6a05aed5f43336ebbc98debff455276e88b9',
+  ],
+  [
+    '114_manual_review_owned_source_bindings_v2.sql',
+    'a0673efde1a0d5ae89248438d4a62a68744b0783388c560400ddedc507d2dfdf',
+  ],
+  [
+    '115_manual_review_full_owned_source_bindings_v2.sql',
+    '5ee731099bf520290aabab179fcb94872b984b515cc2d556fda990eb228841b3',
+  ],
+  [
+    '116_manual_race_chain_v2.sql',
+    '2d1a9b5f7443de7f8b1d5a37e405d038513f86c39fb9c9d8fb9eb11c17e2c4ea',
+  ],
+  [
+    '118_race_manual_atomic_approval.sql',
+    '781f329238f379408f33726e6cb5faf55212918bf32fa353841a9bc42684b623',
+  ],
+  [
+    '120_manual_race_multi_owned_sources.sql',
+    'f95368d67ce3793561bc09a15e252df7f2eadc78dfde799a35a1cb733e3bac78',
+  ],
+  [
+    '121_routine_versioned_occurrences.sql',
+    '82eb2b4c597f5e8259de35af6a984b0613f6740e1bb36140673c05c4cae29cd8',
+  ],
+  [
+    '122_race_manual_public_receipts.sql',
+    '14d85313329b6d0d8ae4e209efc219e45046fb2cd760109841864a72013d9dda',
+  ],
+  [
+    '124_race_manual_public_preview_source.sql',
+    '6a339bd014f9f9240378202b70907fe28221440ab522281ca725d27d57666955',
+  ],
+] as const;
+const raceManualStageFunctions = [
+  'public.read_race_manual_public_receipt_v1(text,text,jsonb)',
+  'public.finish_race_manual_public_review_v1(text,jsonb,uuid)',
+  'public.read_race_manual_public_approval_v1(text,jsonb)',
+  'public.finish_race_manual_public_approval_v1(text,jsonb)',
+  'public.read_race_manual_public_candidate_v1(uuid)',
+  'public.read_race_manual_public_preview_source_v1(uuid)',
+  'public.observe_manual_review_full_owned_source_bindings_v2(jsonb)',
+  'public.observe_manual_review_multi_owned_source_bindings_v3(jsonb)',
+  'public.store_manual_race_multi_owned_chain_v3(uuid,uuid,uuid,text,jsonb,jsonb,jsonb,jsonb)',
+  'public.store_manual_race_chain_v2(uuid,uuid,uuid,text,jsonb,jsonb,jsonb,jsonb)',
+  'public.read_manual_race_chain_receipt_v2(text,jsonb)',
+  'public.read_manual_race_chain_v2(uuid)',
+  'public.read_nutrition_disconnection_origin(uuid,uuid,text)',
+  'public.commit_nutrition_plan_v4(uuid,uuid,jsonb,jsonb)',
+  'public.prepare_race_manual_application_v1(jsonb,jsonb,jsonb,jsonb)',
+  'public.read_race_manual_application_v1(uuid)',
+  'public.read_race_manual_application_receipt_v1(text,jsonb)',
+  'public.begin_race_manual_application_v1(jsonb,jsonb,jsonb,jsonb)',
+  'public.apply_race_manual_event_v1(uuid)',
+  'public.race_manual_nutrition_affected_items_v1(uuid,jsonb)',
+  'public.commit_race_manual_application_v1(uuid,jsonb)',
+  'public.race_manual_nutrition_preserved_items_v1(uuid,jsonb)',
+] as const;
+const raceManualPrivateTables = [
+  'manual_race_evidence_v2',
+  'manual_race_decision_v2',
+  'manual_race_proposal_v2',
+  'manual_race_chain_source_ref_v2',
+  'manual_race_chain_lifecycle_edge_v2',
+  'manual_race_chain_suppression_v2',
+  'manual_race_chain_receipt_v2',
+  'manual_race_chain_commit_v2',
+  'manual_race_v2_live_transition',
+  'race_manual_application_candidate_v1',
+  'race_manual_application_context_v1',
+  'race_manual_application_receipt_v1',
+  'race_manual_application_history_v1',
+  'race_manual_public_receipt_v1',
+  'race_result_proof_ref',
 ] as const;
 
 const detectedBin = [
@@ -539,6 +629,90 @@ try {
             )
           )
             throw new Error('IDENTITY_RACE_RESULT_STAGE_FUNCTION_INVALID');
+          await owner.query('COMMIT');
+        } catch (error) {
+          await owner.query('ROLLBACK');
+          throw error;
+        }
+      } finally {
+        await owner.end();
+      }
+    }
+    if (stageRaceManualPublic) {
+      const owner = new Pool({ connectionString: ownerUrl, max: 1 });
+      try {
+        const role = await owner.query(
+          'SELECT rolsuper,rolbypassrls FROM pg_roles WHERE rolname=current_user',
+        );
+        if (
+          role.rows.length !== 1 ||
+          role.rows[0]?.rolsuper !== false ||
+          role.rows[0]?.rolbypassrls !== false
+        )
+          throw new Error('IDENTITY_RACE_MANUAL_STAGE_OWNER_INVALID');
+        const before = await owner.query(
+          'SELECT version,checksum FROM schema_migrations ORDER BY version',
+        );
+        if (before.rows.length !== 107 || before.rows.at(-1)?.version !== 107)
+          throw new Error('IDENTITY_RACE_MANUAL_NORMAL_PROFILE_INVALID');
+        const nutritionInvariantSql =
+          "SELECT proowner::text,proacl::text,proconfig,prosecdef,pg_get_function_result(oid) AS result FROM pg_proc WHERE oid='public.commit_nutrition_plan_v4(uuid,uuid,jsonb,jsonb)'::regprocedure";
+        let nutritionBefore: unknown = null;
+        await owner.query('BEGIN');
+        try {
+          for (const [filename, expected] of raceManualStageFiles) {
+            const sql = await readFile(
+              new URL(`../packages/server/persistence/migrations/${filename}`, import.meta.url),
+            );
+            if (createHash('sha256').update(sql).digest('hex') !== expected)
+              throw new Error('IDENTITY_RACE_MANUAL_STAGE_SHA_MISMATCH');
+            // The independent result profile has already installed these exact pinned predecessors.
+            if (
+              stageRaceResults &&
+              raceResultStageFiles.some(([installed]) => installed === filename)
+            )
+              continue;
+            if (filename === '118_race_manual_atomic_approval.sql')
+              nutritionBefore = (await owner.query(nutritionInvariantSql)).rows;
+            await owner.query(sql.toString('utf8'));
+          }
+          const nutritionAfter = (await owner.query(nutritionInvariantSql)).rows;
+          if (
+            nutritionBefore === null ||
+            JSON.stringify(nutritionBefore) !== JSON.stringify(nutritionAfter)
+          )
+            throw new Error('IDENTITY_RACE_MANUAL_NUTRITION_FUNCTION_CHANGED');
+          const after = await owner.query(
+            'SELECT version,checksum FROM schema_migrations ORDER BY version',
+          );
+          if (JSON.stringify(before.rows) !== JSON.stringify(after.rows))
+            throw new Error('IDENTITY_RACE_MANUAL_NORMAL_PROFILE_CHANGED');
+          const tables = await owner.query(
+            `SELECT c.relrowsecurity,c.relforcerowsecurity,pg_get_userbyid(c.relowner)=current_user AS owned,
+            has_table_privilege('workout_runtime',c.oid,'SELECT,INSERT,UPDATE,DELETE') AS runtime_table
+            FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relname=ANY($1::text[])`,
+            [raceManualPrivateTables],
+          );
+          if (
+            tables.rows.length !== raceManualPrivateTables.length ||
+            tables.rows.some(
+              (row) =>
+                row.relrowsecurity !== true ||
+                row.relforcerowsecurity !== true ||
+                row.owned !== true ||
+                row.runtime_table !== false,
+            )
+          )
+            throw new Error('IDENTITY_RACE_MANUAL_STAGE_TABLE_INVALID');
+          for (const signature of raceManualStageFunctions) {
+            await owner.query(`GRANT EXECUTE ON FUNCTION ${signature} TO workout_runtime`);
+            const acl = await owner.query(
+              "SELECT has_function_privilege('workout_runtime',$1,'EXECUTE') AS allowed",
+              [signature],
+            );
+            if (acl.rows.length !== 1 || acl.rows[0]?.allowed !== true)
+              throw new Error('IDENTITY_RACE_MANUAL_STAGE_ACL_INVALID');
+          }
           await owner.query('COMMIT');
         } catch (error) {
           await owner.query('ROLLBACK');
@@ -957,6 +1131,9 @@ try {
     aiSettings: createAiSettingsService(createAiSettingsRepository(database)),
     planning: createPlanningRepository(database),
     races: createRaceRepository(database),
+    ...(stageRaceManualPublic
+      ? { raceManualPublic: createRaceManualPublicRepository(database) }
+      : {}),
     ...(stageRaceResults ? { raceResultsV2: createRaceResultV2Repository(database) } : {}),
     nutrition: createNutritionRepository(database),
     restoreGeneration: createRestoreGenerationRepository(database),

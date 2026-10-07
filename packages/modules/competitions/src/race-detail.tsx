@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { AuthenticatedTransport } from '@workout/contracts/core';
 import { raceEventSchema, type RaceEvent } from '@workout/contracts/races';
@@ -11,6 +11,7 @@ import {
 import { competitionRelationsSchema } from './competition-relations';
 import { createRaceApi, RaceRequestError } from './race-api';
 import { eventDraft, eventFields, parseEvent, type Draft } from './race-forms';
+import { RaceDateChangeReview, type RaceDateChangeReviewProps } from './race-date-change-review';
 import styles from './competitions.module.css';
 
 export interface RaceEventDetailWorkspaceProps {
@@ -20,6 +21,10 @@ export interface RaceEventDetailWorkspaceProps {
   raceId: string;
   relations?: CompetitionRelations;
   onBack?: () => void;
+  dateReview?: Pick<
+    RaceDateChangeReviewProps,
+    'api' | 'support' | 'loadCurrentPlan' | 'onCommitted'
+  >;
 }
 export function RaceEventDetailWorkspace(props: RaceEventDetailWorkspaceProps) {
   if (!props.athleteId || !props.sessionId)
@@ -116,6 +121,13 @@ function Detail(props: RaceEventDetailWorkspaceProps & { athleteId: string }) {
   const api = useMemo(() => createRaceApi(props.transport).events, [props.transport]);
   const key = ['competition-detail', props.athleteId, props.sessionId, props.raceId];
   const [deleted, setDeleted] = useState(false);
+  const [dateReviewOpen, setDateReviewOpen] = useState(false);
+  const [reviewCloseConfirmation, setReviewCloseConfirmation] = useState(false);
+  const [dateReviewState, setDateReviewState] = useState({ dirty: false, pending: false });
+  const reportReviewState = useCallback(
+    (next: { dirty: boolean; pending: boolean }) => setDateReviewState(next),
+    [],
+  );
   const query = useQuery({
     queryKey: key,
     enabled: !deleted,
@@ -154,7 +166,21 @@ function Detail(props: RaceEventDetailWorkspaceProps & { athleteId: string }) {
   const relationRead =
     props.relations === undefined ? null : competitionRelationsSchema.safeParse(props.relations);
   const relations = relationRead?.success ? relationRead.data : undefined;
+  useEffect(() => {
+    if (!dateReviewState.dirty && !dateReviewState.pending) return;
+    const guard = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', guard);
+    return () => window.removeEventListener('beforeunload', guard);
+  }, [dateReviewState.dirty, dateReviewState.pending]);
   function requestBack() {
+    if (dateReviewState.pending) return;
+    if (dateReviewState.dirty) {
+      setBackConfirmation(true);
+      return;
+    }
     if (editor && draftRef.current) {
       try {
         if (
@@ -212,7 +238,12 @@ function Detail(props: RaceEventDetailWorkspaceProps & { athleteId: string }) {
     <section className={styles.workspace} aria-label="대회 상세">
       <h1>대회 상세</h1>
       {props.onBack ? (
-        <button ref={backButton} type="button" disabled={saving || deleting} onClick={requestBack}>
+        <button
+          ref={backButton}
+          type="button"
+          disabled={saving || deleting || dateReviewState.pending}
+          onClick={requestBack}
+        >
           대회 목록으로
         </button>
       ) : null}
@@ -224,7 +255,7 @@ function Detail(props: RaceEventDetailWorkspaceProps & { athleteId: string }) {
           <button
             ref={continueButton}
             type="button"
-            disabled={saving || deleting}
+            disabled={saving || deleting || dateReviewState.pending}
             onClick={() => {
               setBackConfirmation(false);
               backButton.current?.focus();
@@ -234,7 +265,7 @@ function Detail(props: RaceEventDetailWorkspaceProps & { athleteId: string }) {
           </button>
           <button
             type="button"
-            disabled={saving || deleting}
+            disabled={saving || deleting || dateReviewState.pending}
             onClick={() => {
               setBackConfirmation(false);
               props.onBack?.();
@@ -247,7 +278,9 @@ function Detail(props: RaceEventDetailWorkspaceProps & { athleteId: string }) {
       {!deleted ? (
         <button
           type="button"
-          disabled={deleting || query.isFetching}
+          disabled={
+            deleting || query.isFetching || dateReviewState.dirty || dateReviewState.pending
+          }
           onClick={() => {
             void query.refetch();
           }}
@@ -285,7 +318,27 @@ function Detail(props: RaceEventDetailWorkspaceProps & { athleteId: string }) {
               <div className={styles.actions}>
                 <button
                   type="button"
-                  disabled={editor !== null || deleting || query.data.revision === 2147483647}
+                  disabled={
+                    editor !== null ||
+                    deleting ||
+                    dateReviewOpen ||
+                    query.data.revision === 2147483647
+                  }
+                  onClick={() => {
+                    setStatus('');
+                    setDateReviewOpen(true);
+                  }}
+                >
+                  대회 날짜 변경 검토
+                </button>
+                <button
+                  type="button"
+                  disabled={
+                    editor !== null ||
+                    deleting ||
+                    dateReviewOpen ||
+                    query.data.revision === 2147483647
+                  }
                   onClick={() => {
                     draftRef.current = query.data ? eventDraft(query.data) : null;
                     setEditor(query.data ?? null);
@@ -296,13 +349,72 @@ function Detail(props: RaceEventDetailWorkspaceProps & { athleteId: string }) {
                 </button>
                 <button
                   type="button"
-                  disabled={editor !== null || deleting}
+                  disabled={editor !== null || deleting || dateReviewOpen}
                   onClick={() => setDeleteTarget(query.data ?? null)}
                 >
                   대회 삭제
                 </button>
               </div>
             </div>
+          ) : null}
+          {dateReviewOpen && query.data ? (
+            <>
+              {props.dateReview ? (
+                <RaceDateChangeReview
+                  key={`${query.data.id}:${query.data.revision}`}
+                  {...props.dateReview}
+                  scopeKey={JSON.stringify([props.athleteId, props.sessionId])}
+                  event={query.data}
+                  onStateChange={reportReviewState}
+                  onCommitted={(result) => {
+                    if (!alive.current) return;
+                    setStatus('날짜와 영향받는 계획의 승인이 서버에 반영되었습니다.');
+                    setDateReviewOpen(false);
+                    setDateReviewState({ dirty: false, pending: false });
+                    setReviewCloseConfirmation(false);
+                    setBackConfirmation(false);
+                    void client.resetQueries({ queryKey: key, exact: true });
+                    props.dateReview?.onCommitted?.(result);
+                  }}
+                />
+              ) : (
+                <p role="status">날짜 변경 검토가 제공되지 않아 날짜를 저장하지 않습니다.</p>
+              )}
+              {reviewCloseConfirmation ? (
+                <section aria-label="날짜 검토 닫기 확인" className={styles.notice}>
+                  <p>
+                    검토 입력을 버리고 닫으시겠습니까? 저장된 검토는 승인 없이 적용되지 않습니다.
+                  </p>
+                  <button
+                    type="button"
+                    disabled={dateReviewState.pending}
+                    onClick={() => setReviewCloseConfirmation(false)}
+                  >
+                    검토 계속
+                  </button>
+                  <button
+                    type="button"
+                    disabled={dateReviewState.pending}
+                    onClick={() => {
+                      setReviewCloseConfirmation(false);
+                      setDateReviewOpen(false);
+                    }}
+                  >
+                    입력을 버리고 검토 닫기
+                  </button>
+                </section>
+              ) : null}
+              <button
+                type="button"
+                disabled={dateReviewState.pending}
+                onClick={() => {
+                  if (dateReviewState.dirty) setReviewCloseConfirmation(true);
+                  else setDateReviewOpen(false);
+                }}
+              >
+                날짜 검토 닫기
+              </button>
+            </>
           ) : null}
           {deleteTarget ? (
             <div className={styles.notice}>
@@ -327,16 +439,18 @@ function Detail(props: RaceEventDetailWorkspaceProps & { athleteId: string }) {
               title="대회"
               initial={eventDraft(editor)}
               fields={(draft) =>
-                eventFields(draft, relations).map((field) => ({
-                  ...field,
-                  apply: (before, next) => {
-                    const updated = field.apply
-                      ? field.apply(before, next)
-                      : { ...before, [field.key]: next };
-                    draftRef.current = updated;
-                    return updated;
-                  },
-                }))
+                eventFields(draft, relations)
+                  .filter((field) => field.key !== 'localDate')
+                  .map((field) => ({
+                    ...field,
+                    apply: (before, next) => {
+                      const updated = field.apply
+                        ? field.apply(before, next)
+                        : { ...before, [field.key]: next };
+                      draftRef.current = updated;
+                      return updated;
+                    },
+                  }))
               }
               parse={parseEvent}
               commandKey={() => crypto.randomUUID()}
@@ -349,6 +463,11 @@ function Detail(props: RaceEventDetailWorkspaceProps & { athleteId: string }) {
               }}
               revisionReview={
                 <div className={styles.notice}>
+                  <label>
+                    현지 날짜
+                    <input type="date" readOnly value={editor.localDate} />
+                  </label>
+                  <p>현지 날짜는 편집을 닫고 대회 날짜 변경 검토에서 비교·승인하세요.</p>
                   <p>
                     편집 기준 revision {editor.revision}. 최신 값을 읽어 비교한 뒤에만 기준을 바꿀
                     수 있습니다.
@@ -379,6 +498,8 @@ function Detail(props: RaceEventDetailWorkspaceProps & { athleteId: string }) {
                 </div>
               }
               commit={async (values, commandKey, signal) => {
+                if (values.localDate !== editor.localDate)
+                  throw new RaceRequestError(409, 'RACE_PLAN_IMPACT_REQUIRED');
                 setSaving(true);
                 try {
                   const result = await api.update(

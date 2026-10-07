@@ -1,0 +1,78 @@
+.review {
+  display: grid;
+  gap: var(--space-3, 0.75rem);
+  min-width: 0;
+  color: var(--color-text, #182131);
+  overflow-wrap: anywhere;
+}
+.review fieldset,
+.preview,
+.confirmation {
+  min-width: 0;
+  border: 1px solid var(--color-border, #ccd6d0);
+  border-radius: var(--radius-lg, 1rem);
+  padding: var(--space-3, 0.75rem);
+  background: var(--color-surface, #fff);
+}
+.review fieldset,
+.review label {
+  display: grid;
+  gap: var(--space-2, 0.5rem);
+}
+.review button,
+.review input,
+.review select {
+  font: inherit;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 44px;
+  box-sizing: border-box;
+  border: 1px solid var(--color-border, #ccd6d0);
+  border-radius: var(--radius-control, 0.75rem);
+  padding: var(--space-2, 0.5rem);
+  color: inherit;
+  background: var(--color-surface, #fff);
+}
+.review button {
+  cursor: pointer;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.review :focus-visible {
+  outline: 3px solid var(--color-focus, #176e46);
+  outline-offset: 3px;
+}
+.review input[type='checkbox'] {
+  justify-self: start;
+  width: 24px;
+}
+.preview {
+  max-height: 70vh;
+  overflow: auto;
+}
+.comparison {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr));
+  gap: var(--space-3, 0.75rem);
+}
+.comparison > div,
+.fields,
+.fields dd {
+  min-width: 0;
+}
+.fields {
+  margin: 0;
+}
+.fields > div {
+  border-bottom: 1px solid var(--color-border, #ccd6d0);
+  padding-block: var(--space-1, 0.25rem);
+}
+.fields dt {
+  font-weight: 600;
+}
+.fields dd {
+  margin: 0 0 0 var(--space-2, 0.5rem);
+}
+.fields ol {
+  padding-inline-start: var(--space-4, 1rem);
+}

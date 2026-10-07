@@ -174,23 +174,20 @@ it('preserves the draft on CAS failure, compares current GET, and explicitly ado
     expect(vi.mocked(api.request).mock.calls.filter(([r]) => r.method === 'GET')).toHaveLength(3),
   );
 });
-it('keeps PlanImpactRequired date drafts and saved relations without writing Plans', async () => {
-  const api = transport((input) =>
-    input.method === 'PATCH'
-      ? { status: 409, body: { error: { code: 'RACE_PLAN_IMPACT_REQUIRED' } } }
-      : good(),
-  );
+it('routes all date editing to explicit review and keeps metadata dates immutable', async () => {
+  const api = transport(good);
   render(view(api));
   await userEvent.click(await screen.findByRole('button', { name: '대회 편집' }));
-  await userEvent.clear(screen.getByLabelText('현지 날짜'));
-  await userEvent.type(screen.getByLabelText('현지 날짜'), '2026-10-11');
-  await userEvent.click(screen.getByRole('button', { name: '저장' }));
-  expect(await screen.findByRole('alert')).toHaveTextContent('별도 승인');
-  expect(screen.getByLabelText('현지 날짜')).toHaveValue('2026-10-11');
+  expect(screen.getByLabelText('현지 날짜')).toHaveAttribute('readonly');
+  expect(screen.getByLabelText('현지 날짜')).toHaveValue(event.localDate);
+  expect(screen.getByRole('button', { name: '대회 날짜 변경 검토' })).toBeDisabled();
   expect(screen.getByLabelText('연결 계획')).toBeDisabled();
+  await userEvent.click(screen.getByRole('button', { name: '편집 취소' }));
+  await userEvent.click(screen.getByRole('button', { name: '대회 날짜 변경 검토' }));
   expect(
-    vi.mocked(api.request).mock.calls.every(([r]) => r.path.startsWith('/bff/v1/races/')),
-  ).toBe(true);
+    screen.getByText('날짜 변경 검토가 제공되지 않아 날짜를 저장하지 않습니다.'),
+  ).toBeVisible();
+  expect(vi.mocked(api.request).mock.calls.every(([r]) => r.method === 'GET')).toBe(true);
 });
 it('keeps editing draft after latest review fails', async () => {
   let reads = 0;
@@ -495,3 +492,183 @@ it('keeps exact detail fields and unsaved draft when app consent blocks PATCH wi
     },
   });
 });
+
+it('guards review drafts and pending writes against back/delete/metadata while preserving explicit discard', async () => {
+  const onBack = vi.fn();
+  let reject: ((reason: Error) => void) | undefined;
+  const request = vi.fn<AuthenticatedTransport['request']>(async (input) => {
+    if (input.method === 'POST')
+      return new Promise((_resolve, fail) => {
+        reject = fail;
+      });
+    return transportReplySchema.parse({ status: 200, body: event, traceId: null });
+  });
+  const { createRaceManualPublicApi } = await import('../src/race-manual-public-api');
+  render(
+    <RaceEventDetailWorkspace
+      athleteId="alice"
+      sessionId="a"
+      raceId={id}
+      transport={{ request }}
+      onBack={onBack}
+      dateReview={{
+        api: createRaceManualPublicApi({ request }),
+        support: 'supported',
+        loadCurrentPlan: async () => ({ head: null, history: [] }),
+      }}
+    />,
+  );
+  await userEvent.click(await screen.findByRole('button', { name: '대회 날짜 변경 검토' }));
+  await screen.findByText('현재 훈련 계획 없음. 계획 유지 방식만 선택할 수 있습니다.');
+  await userEvent.type(screen.getByLabelText('새 대회 날짜'), '2026-10-11');
+  await userEvent.selectOptions(screen.getByLabelText('계획 비교 방식'), 'keep_plan');
+  await userEvent.click(screen.getByRole('button', { name: '대회 목록으로' }));
+  expect(onBack).not.toHaveBeenCalled();
+  expect(screen.getByRole('button', { name: '계속 편집' })).toHaveFocus();
+  await userEvent.click(screen.getByRole('button', { name: '계속 편집' }));
+  await userEvent.click(screen.getByRole('button', { name: '전체 영향 검토' }));
+  expect(screen.getByRole('button', { name: '대회 목록으로' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: '날짜 검토 닫기' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: '대회 삭제' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: '대회 편집' })).toBeDisabled();
+  const unload = new Event('beforeunload', { cancelable: true });
+  window.dispatchEvent(unload);
+  expect(unload.defaultPrevented).toBe(true);
+  await act(async () => reject?.(Error('OFFLINE')));
+  await waitFor(() => expect(screen.getByRole('button', { name: '날짜 검토 닫기' })).toBeEnabled());
+  await userEvent.click(screen.getByRole('button', { name: '날짜 검토 닫기' }));
+  expect(screen.getByRole('region', { name: '날짜 검토 닫기 확인' })).toBeVisible();
+  await userEvent.click(screen.getByRole('button', { name: '입력을 버리고 검토 닫기' }));
+  expect(screen.queryByLabelText('새 대회 날짜')).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: '대회 편집' })).toBeEnabled();
+  expect(onBack).not.toHaveBeenCalled();
+});
+
+it.each([false, true])(
+  'keeps the actual committed notice after revision refresh and closes the review (Host throws: %s)',
+  async (hostThrows) => {
+    const { createRaceManualPublicApi } = await import('../src/race-manual-public-api');
+    const candidateId = other;
+    const stamp = '2026-10-08T00:00:00.123456Z';
+    const reference = {
+      schemaVersion: 1,
+      candidateId,
+      applicationDigest: 'a'.repeat(64),
+      chain: {
+        evidenceId: id,
+        decisionId: other,
+        proposalId: id,
+        readonlyCandidateDigest: 'b'.repeat(64),
+      },
+      createdAt: stamp,
+    };
+    const before = {
+      title: event.title,
+      localDate: event.localDate,
+      localStartTime: event.localStartTime,
+      timezone: event.timezone,
+      distance: event.distance,
+      priority: event.priority,
+      participation: event.participation,
+      targetSeconds: event.targetSeconds,
+    };
+    const committed = {
+      schemaVersion: 1,
+      status: 'committed',
+      candidateId,
+      approvalId: other,
+      proposalId: id,
+      approvedAt: stamp,
+      race: { eventId: id, revision: 2 },
+      versions: [],
+      occurrenceIds: [],
+      notices: [],
+    };
+    let saved = false;
+    const request = transport((input) => {
+      if (input.path.endsWith('/approve')) {
+        saved = true;
+        return { status: 200, body: committed };
+      }
+      if (input.method === 'POST')
+        return { status: 201, body: { status: 'reviewed', reference, bodyState: 'present' } };
+      if (input.path.includes('/race-date-change-reviews/'))
+        return {
+          status: 200,
+          body: {
+            schemaVersion: 1,
+            status: 'present',
+            reference,
+            storedCandidateState: 'ready_for_explicit_approval',
+            beforeBasis: 'frozen_review',
+            afterBasis: 'hypothetical_on_approval',
+            freshness: 'not_checked_on_read',
+            scope: 'whole_affected',
+            race: {
+              eventId: id,
+              expectedRevision: 1,
+              before,
+              after: { ...before, localDate: '2026-10-11' },
+            },
+            training: { state: 'absent' },
+            nutrition: { state: 'absent' },
+            recovery: { state: 'absent' },
+            routines: { state: 'absent' },
+            retainedUnplanned: [],
+            affected: [],
+            notices: [],
+          },
+        };
+      return {
+        status: 200,
+        body: saved ? { ...event, revision: 2, localDate: '2026-10-11' } : event,
+      };
+    });
+    const onCommitted = vi.fn(() => {
+      if (hostThrows) throw Error('Host refresh failed');
+    });
+    const onBack = vi.fn();
+    render(
+      <RaceEventDetailWorkspace
+        athleteId="alice"
+        sessionId="a"
+        transport={request}
+        raceId={id}
+        onBack={onBack}
+        dateReview={{
+          api: createRaceManualPublicApi(request),
+          support: 'supported',
+          loadCurrentPlan: async () => ({ head: null, history: [] }),
+          onCommitted,
+        }}
+      />,
+    );
+    const user = userEvent.setup();
+    await screen.findByText('가을 대회');
+    await user.click(screen.getByRole('button', { name: '대회 날짜 변경 검토' }));
+    await screen.findByText('현재 훈련 계획 없음. 계획 유지 방식만 선택할 수 있습니다.');
+    await user.type(screen.getByLabelText('새 대회 날짜'), '2026-10-11');
+    await user.selectOptions(screen.getByLabelText('계획 비교 방식'), 'keep_plan');
+    await user.click(screen.getByRole('button', { name: '전체 영향 검토' }));
+    await user.click(await screen.findByRole('checkbox'));
+    expect(screen.queryByText('날짜와 영향받는 계획의 승인이 서버에 반영되었습니다.')).toBeNull();
+    await user.click(screen.getByRole('button', { name: '계획 변경 승인' }));
+    await screen.findByText('날짜와 영향받는 계획의 승인이 서버에 반영되었습니다.');
+    await waitFor(() => expect(screen.getByText('저장 버전 2')).toBeInTheDocument());
+    expect(
+      screen.getByText('날짜와 영향받는 계획의 승인이 서버에 반영되었습니다.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText('새 대회 날짜')).toBeNull();
+    expect(screen.queryByRole('button', { name: '계획 변경 승인' })).toBeNull();
+    expect(onCommitted).toHaveBeenCalledExactlyOnceWith(committed);
+    expect(
+      vi.mocked(request.request).mock.calls.filter(([r]) => r.path.endsWith('/approve')),
+    ).toHaveLength(1);
+    expect(screen.getByRole('button', { name: '대회 편집' })).toBeEnabled();
+    const unload = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(unload);
+    expect(unload.defaultPrevented).toBe(false);
+    await user.click(screen.getByRole('button', { name: '대회 목록으로' }));
+    expect(onBack).toHaveBeenCalledOnce();
+  },
+);

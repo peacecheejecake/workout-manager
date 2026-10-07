@@ -1398,3 +1398,117 @@ it('V2 form parsing validates HTTPS/ref bounds without storing copied proof meta
     ),
   ).toThrow();
 });
+
+it('keeps create dates editable but routes saved event dates to guarded explicit detail review', async () => {
+  const onRaceOpen = vi.fn();
+  const writes: TransportRequest[] = [];
+  let resolve: ((reply: { status: number; body: unknown }) => void) | undefined;
+  const api = transport((request) => {
+    if (request.method === 'GET') return lists(request);
+    writes.push(request);
+    return new Promise((done) => {
+      resolve = done;
+    });
+  });
+  render(
+    <CompetitionWorkspace
+      athleteId="athlete"
+      sessionId="session"
+      transport={api}
+      onRaceOpen={onRaceOpen}
+      newCommandKey={() => 'fixed_command_key'}
+    />,
+  );
+  const section = screen.getByRole('region', { name: '목표 대회' });
+  const open = await within(section).findByRole('button', { name: '대회 상세 · 날짜 변경 검토' });
+  await userEvent.click(open);
+  expect(onRaceOpen).toHaveBeenCalledExactlyOnceWith(id);
+  expect(writes).toHaveLength(0);
+  onRaceOpen.mockClear();
+  await userEvent.click(within(section).getByRole('button', { name: '새 목표 대회 등록' }));
+  expect(screen.getByLabelText('현지 날짜')).not.toHaveAttribute('readonly');
+  expect(open).toBeDisabled();
+  await userEvent.click(screen.getByRole('button', { name: '편집 취소' }));
+  await userEvent.click(within(section).getByRole('button', { name: '편집' }));
+  const date = screen.getByLabelText('현지 날짜');
+  expect(date).toHaveAttribute('readonly');
+  expect(date).toHaveValue(event.localDate);
+  await userEvent.clear(screen.getByLabelText('대회 이름'));
+  await userEvent.type(screen.getByLabelText('대회 이름'), '보존할 메타데이터');
+  await userEvent.click(open);
+  expect(onRaceOpen).not.toHaveBeenCalled();
+  expect(screen.getByLabelText('대회 이름')).toHaveValue('보존할 메타데이터');
+  await userEvent.click(screen.getByRole('button', { name: '저장' }));
+  expect(open).toBeDisabled();
+  expect(writes[0]?.body).toEqual(
+    expect.objectContaining({
+      values: expect.objectContaining({ localDate: event.localDate, title: '보존할 메타데이터' }),
+    }),
+  );
+  await act(async () => resolve?.({ status: 200, body: { id, revision: 2 } }));
+  await screen.findByText('저장이 서버에 반영되었습니다 (revision 2).');
+  await waitFor(() =>
+    expect(
+      within(section).getByRole('button', { name: '대회 상세 · 날짜 변경 검토' }),
+    ).toBeEnabled(),
+  );
+  expect(writes).toHaveLength(1);
+  expect(writes[0]?.method).toBe('PATCH');
+});
+it('keeps missing detail navigation finite and never substitutes a direct date mutation', async () => {
+  const requests: TransportRequest[] = [];
+  render(
+    view(
+      transport((request) => {
+        requests.push(request);
+        return lists(request);
+      }),
+    ),
+  );
+  await screen.findByText('가을 대회');
+  const section = screen.getByRole('region', { name: '목표 대회' });
+  expect(
+    within(section).getByText(
+      '이 화면에는 상세 이동이 제공되지 않아 기존 대회 날짜를 변경할 수 없습니다.',
+    ),
+  ).toBeVisible();
+  expect(
+    within(section).queryByRole('button', { name: '대회 상세 · 날짜 변경 검토' }),
+  ).not.toBeInTheDocument();
+  await userEvent.click(within(section).getByRole('button', { name: '편집' }));
+  expect(screen.getByLabelText('현지 날짜')).toHaveAttribute('readonly');
+  expect(requests.every((request) => request.method === 'GET')).toBe(true);
+});
+it('prevents detail navigation during an in-flight delete and permits it after failure', async () => {
+  let reject: ((error: Error) => void) | undefined;
+  const onRaceOpen = vi.fn();
+  const api = transport((request) =>
+    request.method === 'GET'
+      ? lists(request)
+      : new Promise((_resolve, fail) => {
+          reject = fail;
+        }),
+  );
+  render(
+    <CompetitionWorkspace
+      athleteId="athlete"
+      sessionId="session"
+      transport={api}
+      onRaceOpen={onRaceOpen}
+    />,
+  );
+  const section = screen.getByRole('region', { name: '목표 대회' });
+  await within(section).findByText('가을 대회');
+  await userEvent.click(within(section).getByRole('button', { name: '삭제' }));
+  await userEvent.click(screen.getByRole('button', { name: '삭제 확인' }));
+  expect(
+    within(section).getByRole('button', { name: '대회 상세 · 날짜 변경 검토' }),
+  ).toBeDisabled();
+  expect(onRaceOpen).not.toHaveBeenCalled();
+  await act(async () => reject?.(Error('OFFLINE')));
+  await waitFor(() =>
+    expect(
+      within(section).getByRole('button', { name: '대회 상세 · 날짜 변경 검토' }),
+    ).toBeEnabled(),
+  );
+});

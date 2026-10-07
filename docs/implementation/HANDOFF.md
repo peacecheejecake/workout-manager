@@ -577,3 +577,7 @@ Root routine unit36/actualPG6, public frozen whole preview unit37/actualPG R3 11
 ## 체크인 두 Host 실제 수용 완료 · 2026-10-08
 
 Aside 실제 확인으로 빠진 Host template 경로를 발견·교정했고 Root platform212/212, Next/Vite rebuildR2 및 actual Chromium focused R3 **2/2**를 확인했다. 실제 template→frozen blueprint→run→actual CheckIn0/null·stale revision 거절·명시연결/수행·count1·철회/retained read·계정삭제 경로다. R1두실패/R2실행전오류·수동 harness 실패를 [I 기록](progress/M2-02i.md)에 별도 보존했다. 입력SHA·cleanup0는 wm-checkin-identity-root-verified-r3-20261008.json에 있다. native IME/iPhone/공개HTTPS·copied lifecycle/최신restore·I/J전체/phase/main 완료로 세지 않는다. 날짜 상세검토 wiring과 실제 미해결 영향 diagnostics·unlinked date PATCH 차단을 native 병렬 진행한다. normalregistry107/main/push0·기존결정/외부 not_executed를 유지한다.
+
+## 날짜 변경 두 Host 수용·복원 identity SQL 후속 · 2026-10-08
+
+Root actual Chromium Next/Vite 날짜 검토 R3 **2/2** 및 RTL99/platform focused219를 통과했다. Aside에서 발견한 동일 세션 focus 재조회 초안 소실과 실제 승인 뒤 성공 안내 소실을 교정했고 R1/R2 실패는 [I 기록](progress/M2-02i.md)에 보존했다. direct date PATCH409·검토 전후 no-write·별도 명시승인·새 event revision·keep_plan head 보존·320/768/1280 reflow를 실제 확인했다. 실제 SQL125 fixed116 identity target 적용도 R2 **1/1**이고 CLOSED 유지/credential4 empty/logout replay deny 보존을 확인했으나 전체 restore/admission은 미완료다. normalregistry107/main/push0를 유지한다. 미해결 진단 서비스·해결 UI/ended 정책, allfour 승인 후 public nutrition V4 조회 및 consumer 지원을 병렬 진행한다. 전체phase/운영503/native/외부 not_executed는 유지한다.

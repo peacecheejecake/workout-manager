@@ -21,6 +21,8 @@ import {
 } from '@tanstack/react-query';
 import type { AuthenticatedTransport } from '@workout/contracts/core';
 import type { RaceListCursor, RaceListQueryInput } from '@workout/contracts/race-queries';
+import type { RaceEvent } from '@workout/contracts/races';
+import type { RaceEventValues } from '@workout/contracts/race-commands';
 import type { RaceCommandResult } from '@workout/contracts/race-commands';
 import { ZodError } from 'zod';
 import { createRaceApi, RaceRequestError, type RaceApi } from './race-api';
@@ -158,8 +160,8 @@ function WorkspaceContent(props: CompetitionWorkspaceProps & { athleteId: string
           기준은 아직 확정되지 않았습니다.
         </p>
         <p>
-          대회 날짜 변경의 연결 Plan 영향 미리보기와 별도 승인은 아직 제공되지 않습니다. 저장은
-          Plan을 적용하지 않습니다.
+          기존 대회 날짜는 대회 상세에서 전체 영향을 검토한 뒤 별도로 승인합니다. 날짜 외 정보
+          저장은 계획을 적용하지 않습니다.
         </p>
       </aside>
       <FamilyPanel
@@ -170,16 +172,13 @@ function WorkspaceContent(props: CompetitionWorkspaceProps & { athleteId: string
         scope={scope}
         commandKey={commandKey}
         makeDraft={eventDraft}
+        Editor={EventRecordEditor}
+        onOpen={props.onRaceOpen}
         fields={(draft) => eventFields(draft, relations)}
         parse={parseEvent}
         summary={(record) => (
           <>
             <h3>{record.title}</h3>
-            {props.onRaceOpen ? (
-              <button type="button" onClick={() => props.onRaceOpen?.(record.id)}>
-                대회 상세 보기
-              </button>
-            ) : null}
             <p>
               {record.localDate} · {record.localStartTime ?? '출발 시간 미상'} · {record.timezone} ·{' '}
               {record.locationName ?? '장소 미상'}
@@ -394,6 +393,7 @@ function FamilyPanel<R extends RecordHead, V>({
   summary,
   children,
   Editor = RecordEditor,
+  onOpen,
 }: {
   display: 'active' | 'inactive';
   title: string;
@@ -406,6 +406,7 @@ function FamilyPanel<R extends RecordHead, V>({
   parse: (draft: Draft) => V;
   summary: (record: R) => ReactNode;
   Editor?: ComponentType<RecordEditorProps<V> & { record?: R | undefined }>;
+  onOpen?: ((recordId: string) => void) | undefined;
   children?: (data: {
     records: readonly R[];
     state: 'pending' | 'error' | 'partial' | 'complete';
@@ -493,6 +494,11 @@ function FamilyPanel<R extends RecordHead, V>({
   return (
     <section className={styles.panel} aria-label={title} hidden={display === 'inactive'}>
       <h2>{title}</h2>
+      {family === 'race-event' && !onOpen ? (
+        <p role="status">
+          이 화면에는 상세 이동이 제공되지 않아 기존 대회 날짜를 변경할 수 없습니다.
+        </p>
+      ) : null}
       {children?.({ records, state: listingState })}
       <div className={styles.actions}>
         <button
@@ -525,6 +531,15 @@ function FamilyPanel<R extends RecordHead, V>({
             {summary(record)}
             <p className={styles.meta}>revision {record.revision}</p>
             <div className={styles.actions}>
+              {onOpen ? (
+                <button
+                  type="button"
+                  disabled={editor !== null || deleting !== null}
+                  onClick={() => onOpen(record.id)}
+                >
+                  대회 상세 · 날짜 변경 검토
+                </button>
+              ) : null}
               <button
                 type="button"
                 disabled={editor !== null}
@@ -839,6 +854,29 @@ type RecordEditorProps<V> = {
   commit: (values: V, key: string, signal: AbortSignal) => Promise<void>;
   children?: ReactNode;
 };
+function EventRecordEditor(
+  props: RecordEditorProps<RaceEventValues> & { record?: RaceEvent | undefined },
+) {
+  const record = props.record;
+  if (!record) return <RecordEditor {...props} />;
+  return (
+    <RecordEditor
+      {...props}
+      fields={(draft) => props.fields(draft).filter((field) => field.key !== 'localDate')}
+      commit={async (values, key, signal) => {
+        if (values.localDate !== record.localDate)
+          throw new RaceRequestError(409, 'RACE_PLAN_IMPACT_REQUIRED');
+        await props.commit(values, key, signal);
+      }}
+    >
+      <label>
+        현지 날짜
+        <input type="date" readOnly value={record.localDate} />
+      </label>
+      <p>날짜 변경은 편집을 저장하거나 취소한 뒤 대회 상세 · 날짜 변경 검토에서 진행하세요.</p>
+    </RecordEditor>
+  );
+}
 function RecordEditor<V>({
   title,
   initial,
