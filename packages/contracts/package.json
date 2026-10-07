@@ -288,6 +288,10 @@
     "./check-in-template-export": {
       "types": "./src/check-in-template-export.ts",
       "default": "./dist/check-in-template-export.js"
+    },
+    "./race-manual-personal-export": {
+      "types": "./src/race-manual-personal-export.ts",
+      "default": "./dist/race-manual-personal-export.js"
     }
   },
   "scripts": {
