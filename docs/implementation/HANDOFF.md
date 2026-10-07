@@ -331,4 +331,4 @@ V3 disconnected 계약과 계산은 V1/V2 strict 의미를 유지하면서 새 �
 
 Playwright 실제 identity 대회 화면 E2E는 Next/Vite 두 shell **2/2 통과·exit0**(`/private/tmp/wm-pb-ui-pg17-20261007-r4/actual.log`)했다. R1 fixture startup 실패, R2 Chromium 부재, R3 Bob app 동의 누락에 따른 정상409를 각각 별도 보존했다. Bob에게 명시 동의를 추가한 뒤 기존 foreign404 기대값을 유지했다. 브라우저와 정상 public107은 실제 실행했지만 IdP·운동 자료는 합성 fixture다. PB 순위 계산·인증 자료 진위 검토·iPhone 증거가 아니다. fixture DB/역할 정리0/0을 확인했다.
 
-V3 receipt 소비자와 replay-only API는 원 승인 tuple만 반환하며 receipt 없음을 새 저장으로 바꾸지 않는다. 집중 unit30 및 API10·타입 검사·lint/format은 통과했고 실제 receipt PG 수용은 별도 준비 중이다. Root는 graph·API·실행 자원을 소유하고 native agents는 receipt 실DB 시험과 exact copied-channel 설계를 분리해 계속 진행한다. main 병합·push0, I/J와 phase 상태는 진행 중이다.
+V3 receipt 소비자와 replay-only API는 원 승인 tuple만 반환하며 receipt 없음을 새 저장으로 바꾸지 않는다. 집중 unit30 및 API10·타입 검사·lint/format은 통과했다. 후속 실제 PG17 receipt/V3 조회6시험도 모두 통과했고 임시 DB·역할 잔존0이다. 첫5PASS/1FAIL과 숫자 표기·Unicode 시험 가정 수정은 I 기록에 별도 보존한다. Offline 역사 fixture를 공개 V2 승인 증거로 세지 않는다. Root는 graph·API·실행 자원을 소유하고 native agents는 receipt 실DB 시험과 exact copied-channel 설계를 분리해 계속 진행한다. main 병합·push0, I/J와 phase 상태는 진행 중이다.
