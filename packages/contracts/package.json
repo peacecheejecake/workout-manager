@@ -284,6 +284,10 @@
     "./nutrition-race-plan-public-v4": {
       "types": "./src/nutrition-race-plan-public-v4.ts",
       "default": "./dist/nutrition-race-plan-public-v4.js"
+    },
+    "./check-in-template-export": {
+      "types": "./src/check-in-template-export.ts",
+      "default": "./dist/check-in-template-export.js"
     }
   },
   "scripts": {
