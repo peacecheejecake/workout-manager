@@ -1,3 +1,7 @@
+import { createGalleryMediaRepository } from '../src/gallery-media.js';
+import { captureRaceManualMediaPurposeV2In } from '../src/race-manual-review-media-purpose-v2.js';
+import { captureMediaRetainedReadFacts } from '../src/race-plan-impact-media-read-facts.js';
+import { impactDependencyDigest } from '../src/race-plan-impact-dependencies.js';
 import { createGarminUnofficialStore } from '../src/garmin-unofficial.js';
 import { createActivityRepository } from '../src/activities.js';
 import { createActivityTrackRepository } from '../src/activity-tracks.js';
@@ -47,6 +51,7 @@ const admin = new Pool({ connectionString: adminUrl });
 const roles: string[] = [];
 let created = false;
 let db: Database;
+let without113: Awaited<ReturnType<typeof captureRaceManualMediaPurposeV2In>>;
 function url(role: string) {
   const u = new URL(adminUrl);
   u.pathname = `/${name}`;
@@ -112,6 +117,45 @@ beforeAll(async () => {
     await activityOwner.end();
   }
   db = createDatabase({ connectionString: url(runtimeRole), max: 4 });
+  const initial = await seed();
+  await createConsentRepository(db).setConsent(initial.athlete, {
+    kind: 'media',
+    granted: true,
+    expectedRevision: 0,
+    idempotencyKey: randomUUID(),
+  });
+  const initialMedia = await image(initial.athlete);
+  without113 = await snapshot(initial.athlete, async (tx) => {
+    const f = (
+      await captureMediaRetainedReadFacts(tx, [initialMedia.item.id], { bytes: 0n, sources: 0 })
+    ).facts[0];
+    if (!f?.record || !f.originalObjectIdentityDigest)
+      throw Error('FIXTURE_MEDIA_DESCRIPTOR_UNAVAILABLE');
+    return captureRaceManualMediaPurposeV2In(
+      tx,
+      {
+        mediaItemId: f.record.id,
+        expectedAccessRevision: f.record.accessRevision,
+        expectedDescriptorDigest: impactDependencyDigest(f.record),
+        expectedObjectIdentityDigest: f.originalObjectIdentityDigest,
+      },
+      { bytes: 0n, sources: 0 },
+    );
+  });
+  const cleanupOwner = new Pool({ connectionString: url(ownerRole) });
+  try {
+    await cleanupOwner.query(
+      await readFile(
+        new URL('../migrations/113_race_media_cleanup_source.sql', import.meta.url),
+        'utf8',
+      ),
+    );
+    await cleanupOwner.query(
+      `GRANT EXECUTE ON FUNCTION public.read_race_media_cleanup(uuid,integer) TO "${runtimeRole}"`,
+    );
+  } finally {
+    await cleanupOwner.end();
+  }
 });
 afterAll(async () => {
   await db?.close();
@@ -628,7 +672,7 @@ it('v7 all-version matching preserves composite source namespaces and opaque Uni
   }
 });
 
-async function catalogFixture(athlete: string) {
+async function catalogFixture(athlete: string, mediaAssetIds: string[] = []) {
   const resources = createPrivateTextResourceRepository(db),
     catalog = createSupplementaryRepository(db),
     routines = createRoutineRepository(db);
@@ -653,7 +697,7 @@ async function catalogFixture(athlete: string) {
       equipment: ['bodyweight'],
       tags: [],
       countDefinitions: [],
-      mediaAssetIds: [],
+      mediaAssetIds,
       resourceVersionIds: [resource.version.id],
       reviewState: 'unreviewed',
       description: 'User defined synthetic movement',
@@ -995,7 +1039,8 @@ it('rejects forged local source-purpose tuples although original copied bodies r
       facts: p.basis.consumedUses.facts.map((f) => ({
         ...f,
         sourcePurpose:
-          f.sourcePurpose === null || f.sourcePurpose.kind === 'own_media_descriptor'
+          f.sourcePurpose?.kind !== 'own_imported_activity' &&
+          f.sourcePurpose?.kind !== 'own_manual_lineage'
             ? f.sourcePurpose
             : {
                 ...f.sourcePurpose,
@@ -1261,4 +1306,343 @@ it('public FIT recorded-course lineage is unavailable for manual-purpose storage
       sourcePurpose: null,
     });
   expect(await count(f.athlete)).toEqual({ evidence: 0, decision: 0, proposal: 0 });
+});
+
+function key(athlete: string, media: string, upload: string, hash: string, extension: string) {
+  return `private/v1/tenants/${athlete}/gallery/${media}/objects/uploads/${upload}/sha256/${hash}.${extension}`;
+}
+async function image(athlete: string) {
+  const gallery = createGalleryMediaRepository(db),
+    hash = 'a'.repeat(64);
+  const reservation = await gallery.reserveCreate(
+    athlete,
+    {
+      mediaKind: 'image',
+      album: null,
+      caption: 'Synthetic metadata',
+      activityId: null,
+      capturedAt: null,
+      capturedLocalDate: null,
+    },
+    `media-${randomUUID()}`,
+  );
+  const storageRef = key(athlete, reservation.mediaItemId, reservation.uploadId, hash, 'png');
+  await gallery.prepareObject(athlete, reservation.uploadId, {
+    storageRef,
+    file: { originalFileName: 'synthetic.png', mediaType: 'image/png', byteSize: 2, sha256: hash },
+  });
+  await gallery.markStaged(athlete, reservation.uploadId);
+  const stored = await gallery.finalize(athlete, reservation.uploadId);
+  if (stored.status !== 'available') throw Error('synthetic media unavailable');
+  return { gallery, item: stored.item, storageRef };
+}
+async function preview(athlete: string, media: string, revision: number) {
+  const gallery = createGalleryMediaRepository(db),
+    hash = 'b'.repeat(64);
+  const reservation = await gallery.reservePreview(
+    athlete,
+    media,
+    { expectedAccessRevision: revision },
+    `preview-${randomUUID()}`,
+  );
+  const storageRef = key(athlete, media, reservation.uploadId, hash, 'jpg');
+  await gallery.prepareObject(athlete, reservation.uploadId, {
+    storageRef,
+    file: {
+      originalFileName: 'synthetic-preview.jpg',
+      mediaType: 'image/jpeg',
+      byteSize: 2,
+      sha256: hash,
+    },
+  });
+  await gallery.markStaged(athlete, reservation.uploadId);
+  await gallery.finalize(athlete, reservation.uploadId);
+  return storageRef;
+}
+
+async function mediaFixture() {
+  const f = await seed(),
+    consents = createConsentRepository(db);
+  await consents.setConsent(f.athlete, {
+    kind: 'media',
+    granted: true,
+    expectedRevision: 0,
+    idempotencyKey: randomUUID(),
+  });
+  await consents.setConsent(f.athlete, {
+    kind: 'ai',
+    granted: false,
+    expectedRevision: 0,
+    idempotencyKey: randomUUID(),
+  });
+  const media = await image(f.athlete);
+  await preview(f.athlete, media.item.id, media.item.accessRevision);
+  const current = await media.gallery.read(f.athlete, media.item.id);
+  if (current.status !== 'available') throw Error('FIXTURE_MEDIA_UNAVAILABLE');
+  const catalog = await catalogFixture(f.athlete, [media.item.id]);
+  const started = await catalog.routines.startRun(f.athlete, {
+    runId: randomUUID(),
+    blueprintVersionId: catalog.blueprint.versionId,
+    occurrenceId: null,
+    idempotencyKey: randomUUID(),
+    confirmed: true,
+  });
+  expect(started.run.blueprint.versionId).toBe(catalog.blueprint.versionId);
+  const p = await snapshot(f.athlete, (tx) => prepared(tx, f.intent));
+  assertMediaConsumed(p, current.item.id);
+  return { f, consents, media, current: current.item, p };
+}
+
+function assertMediaConsumed(p: Prepared, mediaId: string) {
+  if (p.payload.state !== 'present' || p.payload.payload === null)
+    throw Error('FIXTURE_MEDIA_PAYLOAD_MISSING');
+  const ref = p.payload.payload.inventory.refs.find(
+    (r) => r.identity.kind === 'gallery-descriptor' && r.identity.sourceId === mediaId,
+  );
+  expect(ref).toBeDefined();
+  expect(ref?.copiedLocations.length).toBeGreaterThan(0);
+  expect(
+    p.basis.consumedUses.facts.some(
+      (f) => f.identity.kind === 'gallery-descriptor' && f.identity.sourceId === mediaId,
+    ),
+  ).toBe(true);
+}
+async function storeMedia(tx: Transaction, p: Prepared, mediaId: string) {
+  assertMediaConsumed(p, mediaId);
+  return store(tx, p);
+}
+
+it('normal107 absent113 remains finite unavailable for media purpose', () => {
+  expect(without113).toMatchObject({
+    status: 'blocked',
+    reason: 'media_cleanup_capability_unavailable',
+    observation: null,
+    authority: 'none',
+    approvalAllowed: false,
+  });
+});
+
+it('staged113 own original+preview media with actual grant stores once and genuine gallery delete purges every copy', async () => {
+  const x = await mediaFixture();
+  expect(x.current.includeForCoach).toBe(false);
+  const mediaFact = x.p.basis.consumedUses.facts.find(
+    (f) => f.identity.kind === 'gallery-descriptor',
+  );
+  expect(mediaFact).toMatchObject({
+    use: 'core_manual',
+    sourcePurpose: {
+      kind: 'own_media_descriptor',
+      mediaConsent: { granted: true, revision: 1 },
+      accessRevision: 2,
+      cleanup: { state: 'absent' },
+    },
+  });
+  const result = await snapshot(x.f.athlete, (tx) => storeMedia(tx, x.p, x.current.id));
+  expect(await snapshot(x.f.athlete, (tx) => read(tx, result.evidenceId))).toMatchObject({
+    payload: x.p.payload,
+    result,
+  });
+  // Neither unreviewed exercise content nor AI:false prevents own manual retained descriptors.
+  const deleted = await x.media.gallery.softDelete(x.f.athlete, x.current.id, {
+    expectedAccessRevision: x.current.accessRevision,
+    idempotencyKey: randomUUID(),
+  });
+  const cleanup = await snapshot(
+    x.f.athlete,
+    async (tx) =>
+      (
+        await tx.query('SELECT source FROM public.read_race_media_cleanup($1::uuid,$2::integer)', [
+          x.current.id,
+          deleted.accessRevision,
+        ])
+      ).rows[0]?.['source'],
+  );
+  expect(cleanup).toMatchObject({
+    authority: 'db_cleanup_status_only',
+    deleted: true,
+    state: 'pending',
+    inventoryComplete: true,
+    refs: [
+      { reason: 'resource_deleted', state: 'pending' },
+      { reason: 'resource_deleted', state: 'pending' },
+    ],
+  });
+  expect(await snapshot(x.f.athlete, (tx) => read(tx, result.evidenceId))).toMatchObject({
+    payload: null,
+    result,
+  });
+  expect(await snapshot(x.f.athlete, (tx) => storeMedia(tx, x.p, x.current.id))).toEqual(result);
+  expect(await count(x.f.athlete)).toEqual({ evidence: 1, decision: 1, proposal: 1 });
+  await expect(snapshot(x.f.athlete, (tx) => prepared(tx, x.f.intent))).rejects.toThrow(
+    /ACTUAL_BASIS_BLOCKED|SOURCE_UNAVAILABLE/,
+  );
+  const owner = new Pool({ connectionString: url(ownerRole) }),
+    client = await owner.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query("SELECT set_config('app.athlete_id',$1,true)", [x.f.athlete]);
+    const audit = await client.query(
+      'SELECT e.payload,m.original_payload_sql_digest,s.kind FROM manual_race_evidence_v2 e JOIN manual_race_chain_suppression_v2 m ON m.athlete_id=e.athlete_id AND m.evidence_id=e.id JOIN restore_suppression_event s ON s.athlete_id=m.athlete_id AND s.event_id=m.event_id WHERE e.athlete_id=$1 AND e.id=$2',
+      [x.f.athlete, result.evidenceId],
+    );
+    expect(audit.rows).toHaveLength(1);
+    expect(audit.rows[0]).toMatchObject({ payload: null, kind: 'gallery_media_deleted' });
+    expect(JSON.stringify(audit.rows)).not.toContain(x.media.storageRef);
+    const auxiliary = await client.query(
+      `SELECT jsonb_build_object(
+      'receipt',(SELECT jsonb_agg(to_jsonb(r)) FROM manual_race_chain_receipt_v2 r WHERE athlete_id=$1),
+      'decision',(SELECT jsonb_agg(to_jsonb(r)) FROM manual_race_decision_v2 r WHERE athlete_id=$1),
+      'proposal',(SELECT jsonb_agg(to_jsonb(r)) FROM manual_race_proposal_v2 r WHERE athlete_id=$1),
+      'refs',(SELECT jsonb_agg(to_jsonb(r)) FROM manual_race_chain_source_ref_v2 r WHERE athlete_id=$1),
+      'edges',(SELECT jsonb_agg(to_jsonb(r)) FROM manual_race_chain_lifecycle_edge_v2 r WHERE athlete_id=$1),
+      'outbox',(SELECT jsonb_agg(to_jsonb(r)) FROM outbox r WHERE athlete_id=$1 AND topic='manual.race_chain_prepared')) AS value`,
+      [x.f.athlete],
+    );
+    const serialized = JSON.stringify(auxiliary.rows);
+    for (const forbidden of [
+      x.media.storageRef,
+      'expectedBasis',
+      'originalFileName',
+      'private/v1/',
+    ])
+      expect(serialized).not.toContain(forbidden);
+    await client.query('ROLLBACK');
+  } finally {
+    client.release();
+    await owner.end();
+  }
+});
+
+it('actual withdrawn or changed media consent rejects fresh storage while own gallery reader is unchanged', async () => {
+  const x = await mediaFixture();
+  await x.consents.setConsent(x.f.athlete, {
+    kind: 'media',
+    granted: false,
+    expectedRevision: 1,
+    idempotencyKey: randomUUID(),
+  });
+  await expect(snapshot(x.f.athlete, (tx) => storeMedia(tx, x.p, x.current.id))).rejects.toThrow(
+    'MANUAL_CHAIN_MEDIA_CONSENT_REQUIRED',
+  );
+  expect(await x.media.gallery.read(x.f.athlete, x.current.id)).toMatchObject({
+    status: 'available',
+  });
+  await x.consents.setConsent(x.f.athlete, {
+    kind: 'media',
+    granted: true,
+    expectedRevision: 2,
+    idempotencyKey: randomUUID(),
+  });
+  await expect(snapshot(x.f.athlete, (tx) => storeMedia(tx, x.p, x.current.id))).rejects.toThrow(
+    'MANUAL_CHAIN_SOURCE_USE_UNAVAILABLE',
+  );
+  expect(await count(x.f.athlete)).toEqual({ evidence: 0, decision: 0, proposal: 0 });
+});
+
+it('foreign, forged immutable ledger and cleanup tuple expectations cannot grant media storage', async () => {
+  const x = await mediaFixture(),
+    foreign = await seed();
+  await expect(
+    snapshot(foreign.athlete, (tx) => storeMedia(tx, x.p, x.current.id)),
+  ).rejects.toThrow('MANUAL_CHAIN_STALE_BASIS');
+  for (const changed of ['ledger', 'cleanup', 'object_identity', 'media_id'] as const) {
+    const basis = {
+      ...x.p.basis,
+      consumedUses: {
+        ...x.p.basis.consumedUses,
+        facts: x.p.basis.consumedUses.facts.map((f) => {
+          if (f.sourcePurpose?.kind !== 'own_media_descriptor') return f;
+          const m = f.sourcePurpose;
+          return {
+            ...f,
+            sourcePurpose:
+              changed === 'ledger'
+                ? { ...m, originalLedger: { ...m.originalLedger, sha256: 'c'.repeat(64) } }
+                : changed === 'cleanup'
+                  ? { ...m, cleanup: { ...m.cleanup, sourceDigest: 'd'.repeat(64) } }
+                  : changed === 'object_identity'
+                    ? { ...m, originalObjectIdentityDigest: '0'.repeat(64) }
+                    : { ...m, mediaItemId: randomUUID() },
+          };
+        }),
+      },
+    };
+    await expect(
+      snapshot(x.f.athlete, (tx) =>
+        storeMedia(
+          tx,
+          { ...x.p, basis, request: { ...x.p.request, expectedBasis: basis } },
+          x.current.id,
+        ),
+      ),
+    ).rejects.toThrow('MANUAL_CHAIN_SOURCE_USE_UNAVAILABLE');
+  }
+  expect(await count(x.f.athlete)).toEqual({ evidence: 0, decision: 0, proposal: 0 });
+  expect(await snapshot(x.f.athlete, (tx) => storeMedia(tx, x.p, x.current.id))).toMatchObject({
+    applicable: false,
+    approvalAllowed: false,
+  });
+});
+
+it('actual current access drift and live cleanup requests reject pre-captured media without source resurrection', async () => {
+  const x = await mediaFixture();
+  // The existing public queue port refuses a live-item privacy deletion request.
+  await expect(
+    db.tenant(x.f.athlete, (tx) =>
+      tx.query("SELECT public.enqueue_gallery_media_cleanup($1::uuid,'resource_deleted')", [
+        x.current.id,
+      ]),
+    ),
+  ).rejects.toThrow('INVALID_GALLERY_MEDIA_CLEANUP');
+  // A real public failed prepared upload queues its abandoned object. This known
+  // incomplete historical inventory must not be reinterpreted as absent cleanup.
+  const pending = await x.media.gallery.reservePreview(
+    x.f.athlete,
+    x.current.id,
+    { expectedAccessRevision: x.current.accessRevision },
+    `pending-${randomUUID()}`,
+  );
+  await x.media.gallery.prepareObject(x.f.athlete, pending.uploadId, {
+    storageRef: key(x.f.athlete, x.current.id, pending.uploadId, 'e'.repeat(64), 'jpg'),
+    file: {
+      originalFileName: 'pending.jpg',
+      mediaType: 'image/jpeg',
+      byteSize: 2,
+      sha256: 'e'.repeat(64),
+    },
+  });
+  await x.media.gallery.fail(x.f.athlete, pending.uploadId, 'UPLOAD_FAILED');
+  const incomplete = await snapshot(
+    x.f.athlete,
+    async (tx) =>
+      (
+        await tx.query('SELECT source FROM public.read_race_media_cleanup($1::uuid,$2::integer)', [
+          x.current.id,
+          x.current.accessRevision,
+        ])
+      ).rows[0]?.['source'],
+  );
+  expect(incomplete).toMatchObject({
+    authority: 'db_cleanup_status_only',
+    state: 'unavailable',
+    inventoryComplete: false,
+    reason: 'INVENTORY_UNAVAILABLE',
+  });
+
+  await expect(snapshot(x.f.athlete, (tx) => storeMedia(tx, x.p, x.current.id))).rejects.toThrow(
+    /MANUAL_CHAIN_/,
+  );
+  expect(await count(x.f.athlete)).toEqual({ evidence: 0, decision: 0, proposal: 0 });
+  const y = await mediaFixture();
+  await y.media.gallery.update(y.f.athlete, y.current.id, {
+    expectedAccessRevision: y.current.accessRevision,
+    idempotencyKey: randomUUID(),
+    caption: 'Explicit changed descriptor',
+    album: y.current.album,
+    activityId: y.current.activityId,
+  });
+  await expect(snapshot(y.f.athlete, (tx) => storeMedia(tx, y.p, y.current.id))).rejects.toThrow(
+    /MANUAL_CHAIN_/,
+  );
+  expect(await count(y.f.athlete)).toEqual({ evidence: 0, decision: 0, proposal: 0 });
 });

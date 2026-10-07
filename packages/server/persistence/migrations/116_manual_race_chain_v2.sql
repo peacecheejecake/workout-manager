@@ -246,11 +246,92 @@ LANGUAGE sql STABLE SECURITY INVOKER SET search_path=pg_catalog,pg_temp AS $$
  AND NOT EXISTS(SELECT 1 FROM public.garmin_activity_ledger_source z JOIN public.garmin_activity_ledger g ON g.athlete_id=z.athlete_id AND g.garmin_activity_id=z.garmin_activity_id WHERE z.athlete_id=h.athlete_id AND z.kind=h.kind AND z.source_id=h.source_id)
 $$;
 REVOKE ALL ON FUNCTION public.manual_race_v2_local_activity_state(uuid) FROM PUBLIC;
+-- Exact recorded descriptor only; immutable object ledger metadata is not binary proof.
+CREATE FUNCTION public.manual_race_v2_media_fact(v_identity jsonb) RETURNS jsonb
+LANGUAGE plpgsql SECURITY INVOKER SET search_path=pg_catalog,pg_temp SET TimeZone='UTC' AS $$
+DECLARE v_t text:=nullif(current_setting('app.athlete_id',true),''); v_id uuid:=(v_identity->>'sourceId')::uuid;
+ v_revision integer:=(v_identity->>'accessRevision')::integer; v_count bigint; v_bytes bigint; v_derivatives bigint;
+ v_record jsonb; v_original jsonb; v_preview jsonb; v_identity_digest text; v_cleanup jsonb;
+BEGIN
+ -- Missing staged113/caller EXECUTE is finite unavailable, never a swallowed SQL error.
+ IF to_regprocedure('public.read_race_media_cleanup(uuid,integer)') IS NULL
+  OR NOT has_function_privilege(session_user,to_regprocedure('public.read_race_media_cleanup(uuid,integer)'),'EXECUTE')
+ THEN RAISE EXCEPTION 'MANUAL_CHAIN_MEDIA_CAPABILITY_UNAVAILABLE'; END IF;
+ SELECT count(*),coalesce(sum(octet_length((jsonb_build_object('id',m.id,'mediaKind',m.media_kind,'visibility',m.visibility,'includeForCoach',m.include_for_coach,
+  'album',m.album,'caption',m.caption,'activityId',m.activity_id,
+  'capturedAt',to_char(m.captured_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+  'capturedLocalDate',to_char(m.captured_local_date,'YYYY-MM-DD'),
+  'file',jsonb_build_object('originalFileName',m.original_filename,'mediaType',m.media_type,'byteSize',m.size_bytes,'sha256',m.content_hash),
+  'preview',CASE WHEN d.media_item_id IS NULL THEN NULL ELSE jsonb_build_object('kind','preview','mediaType',d.media_type,'byteSize',d.size_bytes,'sha256',d.content_hash) END,
+  'accessRevision',m.access_revision,'createdAt',to_char(m.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+  'updatedAt',to_char(m.updated_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')))::text)),0),
+ coalesce(max((SELECT count(*) FROM public.gallery_media_derivative x WHERE x.athlete_id=m.athlete_id AND x.media_item_id=m.id)),0)
+ INTO v_count,v_bytes,v_derivatives
+ FROM public.gallery_media_item m LEFT JOIN public.gallery_media_derivative d ON d.athlete_id=m.athlete_id AND d.media_item_id=m.id AND d.kind='preview'
+ WHERE m.athlete_id=v_t AND m.id=v_id AND m.access_revision=v_revision AND m.deleted_at IS NULL;
+ IF v_count<>1 THEN RAISE EXCEPTION 'MANUAL_CHAIN_SOURCE_USE_UNAVAILABLE'; END IF;
+ IF v_bytes NOT BETWEEN 1 AND 16384 OR v_derivatives>1 THEN RAISE EXCEPTION 'MANUAL_CHAIN_SOURCE_BOUND'; END IF;
+ SELECT jsonb_build_object('id',m.id,'mediaKind',m.media_kind,'visibility',m.visibility,'includeForCoach',m.include_for_coach,
+  'album',m.album,'caption',m.caption,'activityId',m.activity_id,
+  'capturedAt',to_char(m.captured_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+  'capturedLocalDate',to_char(m.captured_local_date,'YYYY-MM-DD'),
+  'file',jsonb_build_object('originalFileName',m.original_filename,'mediaType',m.media_type,'byteSize',m.size_bytes,'sha256',m.content_hash),
+  'preview',CASE WHEN d.media_item_id IS NULL THEN NULL ELSE jsonb_build_object('kind','preview','mediaType',d.media_type,'byteSize',d.size_bytes,'sha256',d.content_hash) END,
+  'accessRevision',m.access_revision,'createdAt',to_char(m.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+  'updatedAt',to_char(m.updated_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),CASE WHEN o.storage_ref IS NULL THEN NULL ELSE jsonb_build_object('sha256',o.content_hash,'byteSize',o.size_bytes,'mediaType',o.media_type) END,CASE WHEN p.storage_ref IS NULL THEN NULL ELSE jsonb_build_object('sha256',p.content_hash,'byteSize',p.size_bytes,'mediaType',p.media_type) END,
+ --113 enforces the ASCII immutable locator namespace. This scalar JSON-string
+ -- checksum corresponds to Node JSON.stringify(locator), NOT113's prefixed ref hash.
+ encode(sha256(convert_to(to_jsonb(o.storage_ref)::text,'UTF8')),'hex')
+ INTO v_record,v_original,v_preview,v_identity_digest
+ FROM public.gallery_media_item m
+ LEFT JOIN public.gallery_media_derivative d ON d.athlete_id=m.athlete_id AND d.media_item_id=m.id AND d.kind='preview'
+ JOIN public.gallery_media_object o ON o.athlete_id=m.athlete_id AND o.storage_ref=m.storage_ref AND o.content_hash=m.content_hash AND o.size_bytes=m.size_bytes AND o.media_type=m.media_type
+ LEFT JOIN public.gallery_media_object p ON p.athlete_id=d.athlete_id AND p.storage_ref=d.storage_ref AND p.content_hash=d.content_hash AND p.size_bytes=d.size_bytes AND p.media_type=d.media_type
+ WHERE m.athlete_id=v_t AND m.id=v_id AND m.access_revision=v_revision AND m.deleted_at IS NULL;
+ IF v_record IS NULL OR v_original IS NULL OR (v_record->'preview'<>'null'::jsonb AND (v_preview IS NULL OR v_preview='null'::jsonb))
+ THEN RAISE EXCEPTION 'MANUAL_CHAIN_SOURCE_USE_UNAVAILABLE'; END IF;
+ EXECUTE 'SELECT source FROM public.read_race_media_cleanup($1::uuid,$2::integer)' INTO STRICT v_cleanup USING v_id,v_revision;
+ IF octet_length(v_cleanup::text)>16384 THEN RAISE EXCEPTION 'MANUAL_CHAIN_SOURCE_BOUND'; END IF;
+ IF v_cleanup->>'state' IS DISTINCT FROM 'absent' OR v_cleanup->'inventoryComplete' IS DISTINCT FROM 'true'::jsonb
+  OR v_cleanup->'deleted' IS DISTINCT FROM 'false'::jsonb OR v_cleanup->'reason' IS DISTINCT FROM 'null'::jsonb
+  OR v_cleanup->>'mediaItemId' IS DISTINCT FROM v_id::text OR v_cleanup->>'expectedAccessRevision' IS DISTINCT FROM v_revision::text
+  OR v_cleanup->>'observedAccessRevision' IS DISTINCT FROM v_revision::text
+ THEN RAISE EXCEPTION 'MANUAL_CHAIN_SOURCE_USE_UNAVAILABLE'; END IF;
+ RETURN jsonb_build_object('requestedId',v_id,'state','owned','reason',NULL,'record',v_record,
+ 'current',jsonb_build_object('mediaItemId',v_id,'accessRevision',v_revision,'deleted',false),
+ 'originalLedger',v_original,'originalObjectIdentityDigest',v_identity_digest,'previewLedger',v_preview,
+ 'cleanup',jsonb_build_object('status','available','source',v_cleanup));
+END $$;
+REVOKE ALL ON FUNCTION public.manual_race_v2_media_fact(jsonb) FROM PUBLIC;
+CREATE FUNCTION public.manual_race_v2_verify_media_purpose(v_identity jsonb,v_purpose jsonb) RETURNS void
+LANGUAGE plpgsql SECURITY INVOKER SET search_path=pg_catalog,pg_temp AS $$
+DECLARE v_fact jsonb; v_consent jsonb; v_cleanup jsonb;
+BEGIN
+ SELECT jsonb_build_object('kind',kind,'granted',granted,'revision',revision) INTO v_consent
+ FROM public.consent WHERE athlete_id=nullif(current_setting('app.athlete_id',true),'') AND kind='media' AND granted;
+ IF v_consent IS NULL THEN RAISE EXCEPTION 'MANUAL_CHAIN_MEDIA_CONSENT_REQUIRED'; END IF;
+ v_fact:=public.manual_race_v2_media_fact(v_identity); v_cleanup:=v_fact->'cleanup'->'source';
+ IF jsonb_typeof(v_purpose) IS DISTINCT FROM 'object' OR v_purpose-ARRAY['adapterVersion','kind','mediaItemId','accessRevision','mediaConsent','descriptorDigest','originalObjectIdentityDigest','originalLedger','previewLedger','cleanup']<>'{}'::jsonb
+ OR NOT(v_purpose ?& ARRAY['adapterVersion','kind','mediaItemId','accessRevision','mediaConsent','descriptorDigest','originalObjectIdentityDigest','originalLedger','previewLedger','cleanup'])
+ OR v_purpose->'adapterVersion' IS DISTINCT FROM '2'::jsonb OR v_purpose->>'kind' IS DISTINCT FROM 'own_media_descriptor'
+ OR v_purpose->'mediaItemId' IS DISTINCT FROM v_fact->'current'->'mediaItemId' OR v_purpose->'accessRevision' IS DISTINCT FROM v_fact->'current'->'accessRevision'
+ OR v_purpose->'mediaConsent' IS DISTINCT FROM v_consent
+ OR jsonb_typeof(v_purpose->'descriptorDigest') IS DISTINCT FROM 'string' OR v_purpose->>'descriptorDigest' !~ '^[a-f0-9]{64}$'
+ OR v_purpose->'originalObjectIdentityDigest' IS DISTINCT FROM v_fact->'originalObjectIdentityDigest'
+ OR v_purpose->'originalLedger' IS DISTINCT FROM v_fact->'originalLedger' OR v_purpose->'previewLedger' IS DISTINCT FROM v_fact->'previewLedger'
+ OR v_purpose->'cleanup' IS DISTINCT FROM jsonb_build_object('digestVersion',v_cleanup->'digestVersion','sourceDigest',v_cleanup->'sourceDigest','state',v_cleanup->'state','refs',v_cleanup->'refs')
+ THEN RAISE EXCEPTION 'MANUAL_CHAIN_SOURCE_USE_UNAVAILABLE'; END IF;
+ -- Actual descriptor/copied body equality is separately checked at every copied
+ -- location. A declared descriptor checksum is not DB-source authentication.
+END $$;
+REVOKE ALL ON FUNCTION public.manual_race_v2_verify_media_purpose(jsonb,jsonb) FROM PUBLIC;
+
 CREATE FUNCTION public.manual_race_v2_verify_source_purpose(identity jsonb,purpose jsonb,course_ref jsonb) RETURNS void
 LANGUAGE plpgsql SECURITY INVOKER SET search_path=pg_catalog,pg_temp AS $$
 DECLARE v_k text:=identity->>'kind'; v_t text:=nullif(current_setting('app.athlete_id',true),''); v_state jsonb; v_source jsonb; v_requested jsonb; v_actual jsonb;
  v_course_id uuid; v_revision integer; v_revision_id uuid; v_n bigint;
 BEGIN
+ IF v_k='gallery-descriptor' THEN PERFORM public.manual_race_v2_verify_media_purpose(identity,purpose); RETURN; END IF;
  IF v_k NOT IN ('activity-canonical-values','activity-overlay','course-revision','course-head-descriptor','activity-track-descriptor') THEN
   IF purpose IS DISTINCT FROM 'null'::jsonb THEN RAISE EXCEPTION 'MANUAL_CHAIN_SOURCE_USE_UNAVAILABLE'; END IF; RETURN;
  END IF;
@@ -299,6 +380,7 @@ LANGUAGE plpgsql SECURITY INVOKER SET search_path=pg_catalog,pg_temp SET TimeZon
 DECLARE t text:=nullif(current_setting('app.athlete_id',true),'');q text;n bigint;bytes bigint;body jsonb;
 BEGIN
  CASE i->>'kind'
+ WHEN 'gallery-descriptor' THEN RETURN public.manual_race_v2_media_fact(i);
  WHEN 'race-event' THEN q:=$query$SELECT values_json || jsonb_build_object('id',id,'revision',revision) AS body FROM public.race_event WHERE athlete_id=$1 AND id::text=$2->>'sourceId' AND revision=($2->>'revision')::int AND NOT deleted$query$;
  WHEN 'plan-snapshot' THEN q:=$query$SELECT jsonb_build_object('id',id,'version',version,'createdAt',to_char(created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),'draft',draft) AS body FROM public.plan_snapshot WHERE athlete_id=$1 AND id::text=$2->>'sourceId' AND version=($2->>'version')::int$query$;
  WHEN 'nutrition-plan-version' THEN q:=$query$SELECT record_json AS body FROM public.nutrition_plan_version WHERE athlete_id=$1 AND plan_id::text=$2->>'sourceId' AND version_id::text=$2->>'versionId'$query$;
