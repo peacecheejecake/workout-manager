@@ -1,6 +1,11 @@
 import { z } from 'zod';
 import {
   nutritionPlanItemCoreSchema,
+  nutritionPlanItemDraftSchema,
+  nutritionPlanDraftSchema,
+  saveNutritionPlanVersionRequestSchema,
+  validateNutritionPlanItemDraft,
+  validateNutritionPlanDraft,
   nutritionPlanReadSchema,
   nutritionPlansResponseSchema,
   nutritionPlanVersionSchema,
@@ -12,7 +17,11 @@ import {
   nutritionPlanVersionCompatibleSchema,
   nutritionPlanReadCompatibleSchema,
 } from './nutrition-race-plan-v2.js';
-import { nutritionRaceTimingRosterSchema } from './nutrition-race-timing.js';
+import {
+  nutritionRaceTimingRosterSchema,
+  expectedRaceHeadsSchema,
+  raceHeadExpectationRosterSchema,
+} from './nutrition-race-timing.js';
 
 /** Privacy representation only. Structural validation cannot authorize deletion,
  * reconnection, approval, or processing and contains no deleted source facts. */
@@ -106,3 +115,61 @@ export const nutritionPlansResponseV3Schema = z
       context.addIssue({ code: 'custom', message: 'Nutrition V3 list exceeds 4 MiB' });
   });
 export type NutritionPlansResponseV3 = z.infer<typeof nutritionPlansResponseV3Schema>;
+
+/** Update intent only: the server must match each retained disconnected item to
+ * the exact owned prior head and authenticated disconnection marker. Neither a
+ * submitted state nor confirmed=true proves source permission or approval.
+ */
+export const nutritionPlanItemDraftV3Schema = z
+  .strictObject({
+    ...nutritionPlanItemDraftSchema.shape,
+    anchor: z.union([nutritionAnchorSchema, disconnectedNutritionRaceAnchorSchema]),
+  })
+  .superRefine(validateNutritionPlanItemDraft);
+export const nutritionPlanDraftV3Schema = z
+  .strictObject({
+    ...nutritionPlanDraftSchema.shape,
+    items: z.array(nutritionPlanItemDraftV3Schema).max(5000),
+  })
+  .superRefine(validateNutritionPlanDraft);
+export const saveNutritionPlanV3IntentSchema = z
+  .strictObject({
+    schemaVersion: z.literal(3),
+    command: z.strictObject({
+      ...saveNutritionPlanVersionRequestSchema.options[1].shape,
+      draft: nutritionPlanDraftV3Schema,
+    }),
+    expectedRaceHeads: expectedRaceHeadsSchema,
+    reconnectItemIds: z.array(nutritionPlanItemDraftSchema.shape.id).max(5000),
+  })
+  .superRefine((intent, context) => {
+    const items = new Map(intent.command.draft.items.map((item) => [item.id, item]));
+    for (let index = 0; index < intent.reconnectItemIds.length; index++) {
+      const id = intent.reconnectItemIds[index];
+      const previous = intent.reconnectItemIds[index - 1];
+      const item = id === undefined ? undefined : items.get(id);
+      if (
+        (previous !== undefined && id !== undefined && previous >= id) ||
+        !item ||
+        item.anchor.kind !== 'relative' ||
+        item.anchor.entity !== 'race'
+      )
+        context.addIssue({
+          code: 'custom',
+          path: ['reconnectItemIds', index],
+          message: 'Reconnect IDs must strictly ascend and refer to explicit race anchors',
+        });
+    }
+    const roster = raceHeadExpectationRosterSchema.safeParse({
+      items: intent.command.draft.items.flatMap((item) =>
+        item.anchor.kind === 'disconnected' ? [] : [{ itemId: item.id, anchor: item.anchor }],
+      ),
+      expectedRaceHeads: intent.expectedRaceHeads,
+    });
+    if (!roster.success)
+      for (const issue of roster.error.issues)
+        context.addIssue({ code: 'custom', message: issue.message, path: issue.path });
+    bounded(intent, context);
+  });
+export type NutritionPlanDraftV3 = z.infer<typeof nutritionPlanDraftV3Schema>;
+export type SaveNutritionPlanV3Intent = z.infer<typeof saveNutritionPlanV3IntentSchema>;

@@ -115,20 +115,29 @@ export type NutritionPlanItemCore = z.infer<typeof nutritionPlanItemCoreSchema>;
 
 const { planVersionId: omittedPlanVersionId, ...planItemDraftFields } = planItemFields;
 void omittedPlanVersionId;
+export function validateNutritionPlanItemDraft(
+  item: {
+    targets: { metric: string; amount: { basis: string } }[];
+    foods: RecordedFoodPortion[];
+    instructions: string;
+  },
+  context: z.RefinementCtx,
+) {
+  validateNutritionPlanItem(item, context);
+  for (const [index, target] of item.targets.entries()) {
+    if (target.amount.basis !== 'user_confirmed') {
+      context.addIssue({
+        code: 'custom',
+        message: 'Manual plan targets must have user-confirmed provenance',
+        path: ['targets', index, 'amount', 'basis'],
+      });
+    }
+  }
+}
+
 export const nutritionPlanItemDraftSchema = z
   .strictObject({ ...planItemDraftFields, source: z.literal('user_confirmed') })
-  .superRefine((item, context) => {
-    validateNutritionPlanItem(item, context);
-    for (const [index, target] of item.targets.entries()) {
-      if (target.amount.basis !== 'user_confirmed') {
-        context.addIssue({
-          code: 'custom',
-          message: 'Manual plan targets must have user-confirmed provenance',
-          path: ['targets', index, 'amount', 'basis'],
-        });
-      }
-    }
-  });
+  .superRefine(validateNutritionPlanItemDraft);
 export type NutritionPlanItemDraft = z.infer<typeof nutritionPlanItemDraftSchema>;
 
 const planPeriodSchema = z
@@ -172,15 +181,21 @@ function validatePlanSize(plan: unknown, context: z.RefinementCtx) {
   }
 }
 
+/** Shared refinements; each version owns its strict anchor structure. */
+export function validateNutritionPlanDraft(
+  draft: { items: { id: string }[] },
+  context: z.RefinementCtx,
+) {
+  validateUniqueItems(draft.items, context);
+  validatePlanSize(draft, context);
+}
+
 export const nutritionPlanDraftSchema = z
   .strictObject({
     ...planSharedFields,
     items: z.array(nutritionPlanItemDraftSchema).max(5_000),
   })
-  .superRefine((draft, context) => {
-    validateUniqueItems(draft.items, context);
-    validatePlanSize(draft, context);
-  });
+  .superRefine(validateNutritionPlanDraft);
 export type NutritionPlanDraft = z.infer<typeof nutritionPlanDraftSchema>;
 
 /** Shared identity and envelope refinements; structural validation is not approval authority. */

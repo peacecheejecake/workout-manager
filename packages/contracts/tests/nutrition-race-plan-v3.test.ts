@@ -6,6 +6,7 @@ import {
 } from '../src/nutrition-race-plan-v2.js';
 import {
   disconnectedNutritionRaceAnchorSchema,
+  saveNutritionPlanV3IntentSchema,
   nutritionPlanVersionV3Schema,
   nutritionPlanVersionCompatibleV3Schema,
   nutritionPlanReadV3Schema,
@@ -393,4 +394,196 @@ it('preserves historical legacy and explicit V2 read bytes in the new compatible
   expect(nutritionPlanReadCompatibleV3Schema.parse(v2)).toEqual(v2);
   expect(nutritionPlanReadV3Schema.safeParse(v1).success).toBe(false);
   expect(nutritionPlanReadV3Schema.safeParse(v2).success).toBe(false);
+});
+
+function updateIntent() {
+  const { planVersionId: ignored, ...retained } = item;
+  void ignored;
+  return {
+    schemaVersion: 3,
+    command: {
+      kind: 'update',
+      planId,
+      expectedHeadVersionId: versionId,
+      idempotencyKey: 'reconnect-intent-test',
+      confirmed: true,
+      draft: {
+        period: record.period,
+        timezone: record.timezone,
+        purpose: record.purpose,
+        linkedTrainingPlanVersionId: null,
+        items: [
+          retained,
+          {
+            ...retained,
+            id: 'Reconnect',
+            anchor: {
+              kind: 'relative',
+              entity: 'race',
+              entityId: eventId,
+              point: 'start',
+              offsetMinutes: -30,
+            },
+          },
+        ],
+      },
+    },
+    expectedRaceHeads: [{ namespace: 'race-event', eventId, revision: 2 }],
+    reconnectItemIds: ['Reconnect'],
+  };
+}
+it('accepts explicit reconnect intent while preserving independent disconnected food/null/zero', () => {
+  const input = updateIntent();
+  expect(saveNutritionPlanV3IntentSchema.parse(input)).toEqual(input);
+});
+it('does not accept source pins, marker authority or approval facts from the client', () => {
+  for (const field of ['raceTimingPins', 'itemRaceTimingBindings', 'markerDigest', 'approvalId'])
+    expect(
+      saveNutritionPlanV3IntentSchema.safeParse({ ...updateIntent(), [field]: approvalId }).success,
+    ).toBe(false);
+});
+it('requires an update CAS and explicit confirmation; disconnected create is not a command', () => {
+  const input = updateIntent();
+  for (const command of [
+    { ...input.command, kind: 'create' },
+    { ...input.command, expectedHeadVersionId: null },
+    { ...input.command, confirmed: false },
+  ])
+    expect(saveNutritionPlanV3IntentSchema.safeParse({ ...input, command }).success).toBe(false);
+});
+it('reconnect intent cannot target an absent, disconnected or non-race item', () => {
+  const input = updateIntent();
+  for (const reconnectItemIds of [['Absent'], ['Meal'], ['Reconnect', 'Reconnect']])
+    expect(saveNutritionPlanV3IntentSchema.safeParse({ ...input, reconnectItemIds }).success).toBe(
+      false,
+    );
+  const edited = {
+    ...input,
+    command: {
+      ...input.command,
+      draft: {
+        ...input.command.draft,
+        items: input.command.draft.items.map((value) =>
+          value.id === 'Reconnect'
+            ? {
+                ...value,
+                anchor: { kind: 'absolute', date: '2026-10-07', localTime: null, timezone: 'UTC' },
+              }
+            : value,
+        ),
+      },
+    },
+  };
+  expect(saveNutritionPlanV3IntentSchema.safeParse(edited).success).toBe(false);
+});
+it('requires exact live race head expectations without requiring a fabricated disconnected source', () => {
+  const input = updateIntent();
+  expect(
+    saveNutritionPlanV3IntentSchema.safeParse({ ...input, expectedRaceHeads: [] }).success,
+  ).toBe(false);
+  expect(
+    saveNutritionPlanV3IntentSchema.safeParse({
+      ...input,
+      expectedRaceHeads: [
+        ...input.expectedRaceHeads,
+        { namespace: 'race-event', eventId: planId, revision: 1 },
+      ],
+    }).success,
+  ).toBe(false);
+  const preserve = {
+    ...input,
+    command: {
+      ...input.command,
+      draft: { ...input.command.draft, items: [input.command.draft.items[0]] },
+    },
+    reconnectItemIds: [],
+    expectedRaceHeads: [],
+  };
+  expect(saveNutritionPlanV3IntentSchema.safeParse(preserve).success).toBe(true);
+});
+it('retains manual draft refinement, duplicate item and complete intent byte bounds', () => {
+  const input = updateIntent();
+  expect(
+    saveNutritionPlanV3IntentSchema.safeParse({
+      ...input,
+      command: {
+        ...input.command,
+        draft: {
+          ...input.command.draft,
+          items: [...input.command.draft.items, ...input.command.draft.items],
+        },
+      },
+    }).success,
+  ).toBe(false);
+  const empty = {
+    ...input,
+    command: {
+      ...input.command,
+      draft: {
+        ...input.command.draft,
+        items: input.command.draft.items.map((value) => ({
+          ...value,
+          foods: [],
+          targets: [],
+          instructions: '',
+        })),
+      },
+    },
+  };
+  expect(saveNutritionPlanV3IntentSchema.safeParse(empty).success).toBe(false);
+  const huge = {
+    ...input,
+    command: {
+      ...input.command,
+      draft: {
+        ...input.command.draft,
+        items: input.command.draft.items.map((value) => ({
+          ...value,
+          title: '식사'.repeat(300000),
+        })),
+      },
+    },
+  };
+  expect(saveNutritionPlanV3IntentSchema.safeParse(huge).success).toBe(false);
+});
+
+it('does not convert reviewed targets into user approval or accept unsorted reconnect IDs', () => {
+  const input = updateIntent();
+  const target = {
+    metric: 'fluid',
+    amount: { min: 0, max: 500, unit: 'mL', basis: 'reviewed_rule', evidenceIds: [] },
+  };
+  expect(
+    saveNutritionPlanV3IntentSchema.safeParse({
+      ...input,
+      command: {
+        ...input.command,
+        draft: {
+          ...input.command.draft,
+          items: input.command.draft.items.map((value) => ({ ...value, targets: [target] })),
+        },
+      },
+    }).success,
+  ).toBe(false);
+  const item = input.command.draft.items.find((value) => value.id === 'Reconnect');
+  if (!item) throw new Error('Missing synthetic race item');
+  const two = {
+    ...input,
+    command: {
+      ...input.command,
+      draft: {
+        ...input.command.draft,
+        items: [
+          { ...item, id: 'A' },
+          { ...item, id: 'Z' },
+        ],
+      },
+    },
+  };
+  expect(
+    saveNutritionPlanV3IntentSchema.safeParse({ ...two, reconnectItemIds: ['A', 'Z'] }).success,
+  ).toBe(true);
+  expect(
+    saveNutritionPlanV3IntentSchema.safeParse({ ...two, reconnectItemIds: ['Z', 'A'] }).success,
+  ).toBe(false);
 });
