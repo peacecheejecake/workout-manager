@@ -2,8 +2,12 @@ import { createHash } from 'node:crypto';
 
 import type { Pool, PoolClient } from 'pg';
 
+import { suppressionRecordV7Schema } from './restore-suppression-records-v7.js';
 import type { SuppressionRecord } from './restore-suppression-records.js';
-import { decryptReplaySegment } from './restore-suppression-segment.js';
+import {
+  decryptReplaySegment,
+  validateLegacySuppressionReplayRecord,
+} from './restore-suppression-segment.js';
 
 const hash = /^[a-f0-9]{64}$/;
 const lsn = /^[0-9A-F]{1,8}\/[0-9A-F]{1,8}$/;
@@ -154,6 +158,139 @@ function groupCompoundRecords(records: readonly SupportedRecord[]): ReplayTransa
  * It rejects unsupported record kinds. Passing this check never writes to the
  * database and is not proof that a backup/tail fence or access gate exists.
  */
+function assertSupportedRecord(record: SuppressionRecord, now: number): SupportedRecord {
+  if (
+    record.kind !== 'race_event_deleted' &&
+    record.kind !== 'race_result_deleted' &&
+    record.kind !== 'training_best_deleted' &&
+    record.kind !== 'tenant_erased' &&
+    record.kind !== 'course_deleted' &&
+    record.kind !== 'activity_deleted' &&
+    record.kind !== 'resource_deleted' &&
+    record.kind !== 'gallery_media_deleted' &&
+    record.kind !== 'check_in_deleted' &&
+    record.kind !== 'resource_share_revoked' &&
+    record.kind !== 'healthkit_consent_transition' &&
+    record.kind !== 'ai_consent_transition' &&
+    record.kind !== 'app_consent_transition' &&
+    record.kind !== 'manual_review_source_suppressed' &&
+    record.kind !== 'course_share_revoked' &&
+    record.kind !== 'intake_entry_deleted' &&
+    record.kind !== 'recovery_action_deleted' &&
+    record.kind !== 'healthkit_workout_deregistration_pending' &&
+    record.kind !== 'healthkit_workout_deregistration_released'
+  )
+    return fail();
+  if (
+    !canonicalUuid.test(record.athleteId) ||
+    (record.kind !== 'tenant_erased' &&
+      record.kind !== 'healthkit_consent_transition' &&
+      record.kind !== 'ai_consent_transition' &&
+      record.kind !== 'app_consent_transition' &&
+      record.kind !== 'manual_review_source_suppressed' &&
+      !('targetId' in record && canonicalUuid.test(record.targetId))) ||
+    Date.parse(record.occurredAt) > now
+  )
+    return fail();
+  if (
+    (record.kind === 'healthkit_workout_deregistration_pending' ||
+      record.kind === 'healthkit_workout_deregistration_released') &&
+    (record.schemaVersion !== 3 ||
+      !canonicalUuid.test(record.healthKitClaimEpoch) ||
+      !canonicalUuid.test(record.healthKitOperationId) ||
+      record.healthKitObjectScopes.some((scope) => !canonicalUuid.test(scope.id)))
+  )
+    return fail();
+  if (
+    record.kind === 'activity_deleted' &&
+    (record.activityRevision < 2 ||
+      (record.sourceKind === 'healthkit' &&
+        (!canonicalUuid.test(record.sourceId) || record.sourceContentHash !== '0'.repeat(64))))
+  )
+    return fail();
+  if (record.kind === 'resource_deleted' && record.resourceAccessRevision > 2147483646)
+    return fail();
+  if (record.kind === 'gallery_media_deleted' && record.galleryAccessRevision > 2147483646)
+    return fail();
+  if (
+    record.kind === 'check_in_deleted' &&
+    (record.checkInRevision < 2 || record.checkInRevision > 2147483646)
+  )
+    return fail();
+  if (
+    record.kind === 'resource_share_revoked' &&
+    (!canonicalUuid.test(record.shareId) ||
+      record.shareGrantedAccessRevision < 1 ||
+      record.shareGrantedAccessRevision > 2147483645 ||
+      record.shareRevokedAccessRevision < 2 ||
+      record.shareRevokedAccessRevision > 2147483646 ||
+      record.shareRevokedAccessRevision <= record.shareGrantedAccessRevision)
+  )
+    return fail();
+  if (record.kind === 'course_share_revoked') {
+    if (
+      record.schemaVersion !== 2 ||
+      !canonicalUuid.test(record.courseShareId) ||
+      !canonicalUuid.test(record.courseShareAuditId ?? '') ||
+      record.courseShareRevokeReason === undefined ||
+      record.courseShareAuditOccurredAt === undefined ||
+      Date.parse(record.courseShareAuditOccurredAt) < Date.parse(record.occurredAt) ||
+      record.courseShareEpoch < 1 ||
+      record.courseShareEpoch > 2147483646 ||
+      record.courseShareCourseRevision < 1 ||
+      record.courseShareCourseRevision > 2147483646
+    )
+      return fail();
+  }
+  if (record.kind === 'intake_entry_deleted' || record.kind === 'recovery_action_deleted') {
+    if (
+      record.schemaVersion !== 2 ||
+      !canonicalUuid.test(record.actualPreviousRevisionId ?? '') ||
+      !canonicalUuid.test(record.actualDeletedRevisionId ?? '') ||
+      record.actualPreviousRevisionId === record.actualDeletedRevisionId ||
+      record.actualDeletionRevision < 2 ||
+      record.actualDeletionRevision > 2147483646
+    )
+      return fail();
+  }
+  if (
+    (record.kind === 'healthkit_consent_transition' ||
+      record.kind === 'ai_consent_transition' ||
+      record.kind === 'app_consent_transition') &&
+    (record.consentRevision < 1 ||
+      record.consentRevision > 2147483647 ||
+      (record.consentPreviousRevision === null) !== (record.consentPreviousGranted === null) ||
+      (record.consentPreviousRevision === null
+        ? record.consentRevision !== 1
+        : record.consentPreviousRevision < 1 ||
+          record.consentPreviousRevision > 2147483646 ||
+          record.consentRevision !== record.consentPreviousRevision + 1))
+  )
+    return fail();
+  return record;
+}
+
+/** Internal legacy semantic guard reused by the explicit V7 consumer; no authentication. */
+export function validateLegacySuppressionRecordsForV7(
+  records: readonly unknown[],
+  now = Date.now(),
+): void {
+  if (!Number.isSafeInteger(now) || Math.abs(now) > 8640000000000000 || records.length > 1000)
+    return fail();
+  const parsed = records.map((record) => {
+    const v7 = suppressionRecordV7Schema.safeParse(record);
+    return v7.success ? v7.data : validateLegacySuppressionReplayRecord(record);
+  });
+  const legacy = parsed.filter((record): record is SuppressionRecord => record.schemaVersion !== 7);
+  const supported = legacy.map((record) => assertSupportedRecord(record, now));
+  const group = groupCompoundRecords(supported);
+  for (const [parentId, children] of group.resourceChildren) {
+    const parentIndex = parsed.findIndex((record) => record.eventId === parentId);
+    for (const [offset, child] of children.entries())
+      if (parsed[parentIndex + offset + 1]?.eventId !== child.eventId) return fail();
+  }
+}
+
 function verifyChain(input: ReplayInput): VerifiedChain {
   const { anchor, segments } = input;
   if (
@@ -201,117 +338,7 @@ function verifyChain(input: ReplayInput): VerifiedChain {
         if (seen.has(record.eventId)) return fail();
         seen.add(record.eventId);
         eventCount++;
-        if (
-          record.kind !== 'race_event_deleted' &&
-          record.kind !== 'race_result_deleted' &&
-          record.kind !== 'training_best_deleted' &&
-          record.kind !== 'tenant_erased' &&
-          record.kind !== 'course_deleted' &&
-          record.kind !== 'activity_deleted' &&
-          record.kind !== 'resource_deleted' &&
-          record.kind !== 'gallery_media_deleted' &&
-          record.kind !== 'check_in_deleted' &&
-          record.kind !== 'resource_share_revoked' &&
-          record.kind !== 'healthkit_consent_transition' &&
-          record.kind !== 'ai_consent_transition' &&
-          record.kind !== 'app_consent_transition' &&
-          record.kind !== 'manual_review_source_suppressed' &&
-          record.kind !== 'course_share_revoked' &&
-          record.kind !== 'intake_entry_deleted' &&
-          record.kind !== 'recovery_action_deleted' &&
-          record.kind !== 'healthkit_workout_deregistration_pending' &&
-          record.kind !== 'healthkit_workout_deregistration_released'
-        )
-          return fail();
-        if (
-          !canonicalUuid.test(record.athleteId) ||
-          (record.kind !== 'tenant_erased' &&
-            record.kind !== 'healthkit_consent_transition' &&
-            record.kind !== 'ai_consent_transition' &&
-            record.kind !== 'app_consent_transition' &&
-            record.kind !== 'manual_review_source_suppressed' &&
-            !('targetId' in record && canonicalUuid.test(record.targetId))) ||
-          Date.parse(record.occurredAt) > now
-        )
-          return fail();
-        if (
-          (record.kind === 'healthkit_workout_deregistration_pending' ||
-            record.kind === 'healthkit_workout_deregistration_released') &&
-          (record.schemaVersion !== 3 ||
-            !canonicalUuid.test(record.healthKitClaimEpoch) ||
-            !canonicalUuid.test(record.healthKitOperationId) ||
-            record.healthKitObjectScopes.some((scope) => !canonicalUuid.test(scope.id)))
-        )
-          return fail();
-        if (
-          record.kind === 'activity_deleted' &&
-          (record.activityRevision < 2 ||
-            (record.sourceKind === 'healthkit' &&
-              (!canonicalUuid.test(record.sourceId) ||
-                record.sourceContentHash !== '0'.repeat(64))))
-        )
-          return fail();
-        if (record.kind === 'resource_deleted' && record.resourceAccessRevision > 2147483646)
-          return fail();
-        if (record.kind === 'gallery_media_deleted' && record.galleryAccessRevision > 2147483646)
-          return fail();
-        if (
-          record.kind === 'check_in_deleted' &&
-          (record.checkInRevision < 2 || record.checkInRevision > 2147483646)
-        )
-          return fail();
-        if (
-          record.kind === 'resource_share_revoked' &&
-          (!canonicalUuid.test(record.shareId) ||
-            record.shareGrantedAccessRevision < 1 ||
-            record.shareGrantedAccessRevision > 2147483645 ||
-            record.shareRevokedAccessRevision < 2 ||
-            record.shareRevokedAccessRevision > 2147483646 ||
-            record.shareRevokedAccessRevision <= record.shareGrantedAccessRevision)
-        )
-          return fail();
-        if (record.kind === 'course_share_revoked') {
-          if (
-            record.schemaVersion !== 2 ||
-            !canonicalUuid.test(record.courseShareId) ||
-            !canonicalUuid.test(record.courseShareAuditId ?? '') ||
-            record.courseShareRevokeReason === undefined ||
-            record.courseShareAuditOccurredAt === undefined ||
-            Date.parse(record.courseShareAuditOccurredAt) < Date.parse(record.occurredAt) ||
-            record.courseShareEpoch < 1 ||
-            record.courseShareEpoch > 2147483646 ||
-            record.courseShareCourseRevision < 1 ||
-            record.courseShareCourseRevision > 2147483646
-          )
-            return fail();
-        }
-        if (record.kind === 'intake_entry_deleted' || record.kind === 'recovery_action_deleted') {
-          if (
-            record.schemaVersion !== 2 ||
-            !canonicalUuid.test(record.actualPreviousRevisionId ?? '') ||
-            !canonicalUuid.test(record.actualDeletedRevisionId ?? '') ||
-            record.actualPreviousRevisionId === record.actualDeletedRevisionId ||
-            record.actualDeletionRevision < 2 ||
-            record.actualDeletionRevision > 2147483646
-          )
-            return fail();
-        }
-        if (
-          (record.kind === 'healthkit_consent_transition' ||
-            record.kind === 'ai_consent_transition' ||
-            record.kind === 'app_consent_transition') &&
-          (record.consentRevision < 1 ||
-            record.consentRevision > 2147483647 ||
-            (record.consentPreviousRevision === null) !==
-              (record.consentPreviousGranted === null) ||
-            (record.consentPreviousRevision === null
-              ? record.consentRevision !== 1
-              : record.consentPreviousRevision < 1 ||
-                record.consentPreviousRevision > 2147483646 ||
-                record.consentRevision !== record.consentPreviousRevision + 1))
-        )
-          return fail();
-        authenticated.push(record);
+        authenticated.push(assertSupportedRecord(record, now));
       }
       transactions.push(groupCompoundRecords(authenticated));
     }

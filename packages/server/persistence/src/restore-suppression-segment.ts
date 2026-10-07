@@ -2,9 +2,16 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:
 
 import { z } from 'zod';
 
-import { validateManualReviewSourceIdentity } from './restore-suppression-records.js';
+import {
+  validateManualReviewSourceIdentity,
+  type SuppressionRecord,
+} from './restore-suppression-records.js';
 
-import type { LocalReplayRecordEnvelope } from './restore-suppression-pgoutput.js';
+import {
+  decodeSuppressionPgoutputRecordsV7,
+  type LocalReplayRecordEnvelope,
+} from './restore-suppression-pgoutput.js';
+import { suppressionRecordV7Schema } from './restore-suppression-records-v7.js';
 
 // Only the encrypted bytes may be handed to a file or remote-store adapter.
 // This codec does not issue keys, acknowledge a slot, or prove ledger coverage.
@@ -340,6 +347,36 @@ const envelopeSchema = z
   })
   .strict();
 
+/** Exact source identity supplied by a separately trusted capture/registry manifest. */
+export const suppressionSourceBindingV7Schema = z.strictObject({
+  databaseName: z.string().regex(/^[A-Za-z0-9_][A-Za-z0-9_-]{0,62}$/),
+  databaseOid: z.number().int().min(1).max(4294967295),
+  slotName: z.string().regex(/^wm_suppression_[a-z0-9_]{1,40}$/),
+  publication: z.literal('workout_restore_suppression_events'),
+  relationProfile: z.literal('suppression-physical-v7'),
+  captureId: uuid,
+  registryFingerprint: hash,
+});
+export type SuppressionSourceBindingV7 = z.infer<typeof suppressionSourceBindingV7Schema>;
+const envelopeV7Schema = envelopeSchema
+  .extend({
+    localRecordVersion: z.literal(2),
+    source: suppressionSourceBindingV7Schema,
+    transactions: z
+      .array(
+        z.strictObject({
+          commitLsn: lsn,
+          endLsn: lsn,
+          records: z.array(z.union([record, suppressionRecordV7Schema])).max(1000),
+        }),
+      )
+      .min(1)
+      .max(1000),
+  })
+  .strict();
+export type LocalReplayRecordEnvelopeV7 = z.infer<typeof envelopeV7Schema>;
+const MAGIC_V7 = Buffer.from('WMLEDG02');
+
 const headerSchema = z
   .object({
     codecVersion: z.literal(1),
@@ -355,7 +392,14 @@ const headerSchema = z
   })
   .strict();
 
-type Header = z.infer<typeof headerSchema>;
+const headerV7Schema = headerSchema
+  .extend({
+    codecVersion: z.literal(2),
+    localRecordVersion: z.literal(2),
+    source: suppressionSourceBindingV7Schema,
+  })
+  .strict();
+type Header = z.infer<typeof headerSchema> | z.infer<typeof headerV7Schema>;
 
 function reject(): never {
   throw new Error('INVALID_ENCRYPTED_SEGMENT');
@@ -382,6 +426,24 @@ function lsnValue(value: string): bigint {
   return (BigInt(`0x${high}`) << 32n) | BigInt(`0x${low}`);
 }
 
+/** Internal strict DTO boundary; physical pgoutput decoding remains separate. */
+export function validateLegacySuppressionReplayRecord(value: unknown): SuppressionRecord {
+  const parsed = record.safeParse(value);
+  if (!parsed.success) return reject();
+  const item = parsed.data;
+  return item.kind === 'manual_review_source_suppressed'
+    ? {
+        ...item,
+        ...validateManualReviewSourceIdentity(
+          item.manualReviewSourceKind,
+          item.manualReviewSourceId,
+          item.manualReviewVersionScope,
+          item.manualReviewVersionKey,
+        ),
+      }
+    : item;
+}
+
 function checkedEnvelope(value: unknown): LocalReplayRecordEnvelope {
   const parsed = envelopeSchema.safeParse(value);
   if (!parsed.success) return reject();
@@ -405,21 +467,69 @@ function checkedEnvelope(value: unknown): LocalReplayRecordEnvelope {
     ...envelope,
     transactions: envelope.transactions.map((transaction) => ({
       ...transaction,
-      records: transaction.records.map((item) =>
-        item.kind === 'manual_review_source_suppressed'
-          ? {
-              ...item,
-              ...validateManualReviewSourceIdentity(
-                item.manualReviewSourceKind,
-                item.manualReviewSourceId,
-                item.manualReviewVersionScope,
-                item.manualReviewVersionKey,
-              ),
-            }
-          : item,
-      ),
+      records: transaction.records.map(validateLegacySuppressionReplayRecord),
     })),
   };
+}
+
+function checkedEnvelopeV7(value: unknown): LocalReplayRecordEnvelopeV7 {
+  let serialized: string | undefined;
+  try {
+    serialized = JSON.stringify(value);
+  } catch {
+    return reject();
+  }
+  if (serialized === undefined || Buffer.byteLength(serialized) > MAX_PLAINTEXT_BYTES)
+    return reject();
+  const parsed = envelopeV7Schema.safeParse(value);
+  if (!parsed.success) return reject();
+  const envelope = parsed.data;
+  const { sha256, ...body } = envelope;
+  if (createHash('sha256').update(JSON.stringify(body)).digest('hex') !== sha256) return reject();
+  let cursor = lsnValue(envelope.fromLsn);
+  const seen = new Set<string>();
+  for (const tx of envelope.transactions) {
+    const commit = lsnValue(tx.commitLsn),
+      end = lsnValue(tx.endLsn);
+    if (commit < cursor || end <= commit) return reject();
+    for (const item of tx.records) {
+      if (seen.has(item.eventId)) return reject();
+      seen.add(item.eventId);
+    }
+    cursor = end;
+  }
+  if (seen.size === 0 || cursor !== lsnValue(envelope.throughLsn)) return reject();
+  return envelope;
+}
+
+/** Uses only the explicit physical V7 relation profile, including legacy NULL successor fields. */
+export function makeLocalReplayRecordEnvelopeV7(input: {
+  clusterId: string;
+  fromLsn: string;
+  previousHash: string | null;
+  source: SuppressionSourceBindingV7;
+  messages: readonly Buffer[];
+}): LocalReplayRecordEnvelopeV7 {
+  const transactions = decodeSuppressionPgoutputRecordsV7(input.messages, input.fromLsn);
+  const last = transactions.at(-1);
+  if (!last) return reject();
+  const parsed = envelopeV7Schema.safeParse({
+    localRecordVersion: 2,
+    clusterId: input.clusterId,
+    fromLsn: input.fromLsn,
+    throughLsn: last.endLsn,
+    previousHash: input.previousHash,
+    transactions,
+    source: input.source,
+    sha256: '0'.repeat(64),
+  });
+  if (!parsed.success) return reject();
+  const { sha256: _placeholder, ...body } = parsed.data;
+  void _placeholder;
+  return checkedEnvelopeV7({
+    ...body,
+    sha256: createHash('sha256').update(JSON.stringify(body)).digest('hex'),
+  });
 }
 
 function keyBytes(key: Uint8Array): Buffer {
@@ -445,13 +555,36 @@ export function encryptReplaySegment(input: {
   key: Uint8Array;
   keyId: string;
 }): EncryptedReplaySegment {
-  const envelope = checkedEnvelope(input.envelope);
+  return encryptSegment(input, checkedEnvelope, headerSchema, MAGIC);
+}
+export function encryptReplaySegmentV7(input: {
+  envelope: LocalReplayRecordEnvelopeV7;
+  key: Uint8Array;
+  keyId: string;
+}): EncryptedReplaySegment {
+  return encryptSegment(input, checkedEnvelopeV7, headerV7Schema, MAGIC_V7);
+}
+type EnvelopeMetadata = {
+  localRecordVersion: 1 | 2;
+  clusterId: string;
+  fromLsn: string;
+  throughLsn: string;
+  previousHash: string | null;
+  source?: SuppressionSourceBindingV7;
+};
+function encryptSegment<T extends EnvelopeMetadata>(
+  input: { envelope: T; key: Uint8Array; keyId: string },
+  check: (value: unknown) => T,
+  schema: z.ZodType<Header>,
+  magic: Buffer,
+): EncryptedReplaySegment {
+  const envelope = check(input.envelope);
   const plaintext = Buffer.from(canonical(envelope), 'utf8');
   if (plaintext.length > MAX_PLAINTEXT_BYTES) return reject();
   const nonce = randomBytes(NONCE_BYTES);
   if (!Buffer.isBuffer(nonce) || nonce.length !== NONCE_BYTES) return reject();
-  const header = headerSchema.safeParse({
-    codecVersion: 1,
+  const header = schema.safeParse({
+    codecVersion: envelope.localRecordVersion,
     algorithm: 'AES-256-GCM',
     keyId: input.keyId,
     nonce: nonce.toString('base64'),
@@ -461,12 +594,13 @@ export function encryptReplaySegment(input: {
     throughLsn: envelope.throughLsn,
     previousHash: envelope.previousHash,
     plaintextBytes: plaintext.length,
+    ...(envelope.source ? { source: envelope.source } : {}),
   });
   if (!header.success) return reject();
   const serializedHeader = headerBytes(header.data);
-  const prefix = Buffer.alloc(MAGIC.length + 4);
-  MAGIC.copy(prefix);
-  prefix.writeUInt32BE(serializedHeader.length, MAGIC.length);
+  const prefix = Buffer.alloc(magic.length + 4);
+  magic.copy(prefix);
+  prefix.writeUInt32BE(serializedHeader.length, magic.length);
   const cipher = createCipheriv('aes-256-gcm', keyBytes(input.key), nonce);
   cipher.setAAD(Buffer.concat([prefix, serializedHeader]));
   const bytes = Buffer.concat([
@@ -489,8 +623,23 @@ export function decryptReplaySegment(input: {
   key: Uint8Array;
   expectedKeyId: string;
 }): LocalReplayRecordEnvelope {
+  return decryptSegment(input, checkedEnvelope, headerSchema, MAGIC);
+}
+export function decryptReplaySegmentV7(input: {
+  bytes: Uint8Array;
+  key: Uint8Array;
+  expectedKeyId: string;
+}): LocalReplayRecordEnvelopeV7 {
+  return decryptSegment(input, checkedEnvelopeV7, headerV7Schema, MAGIC_V7);
+}
+function decryptSegment<T extends EnvelopeMetadata>(
+  input: { bytes: Uint8Array; key: Uint8Array; expectedKeyId: string },
+  check: (value: unknown) => T,
+  schema: z.ZodType<Header>,
+  magic: Buffer,
+): T {
   const bytes = input.bytes;
-  const minimum = MAGIC.length + 4 + TAG_BYTES + 1;
+  const minimum = magic.length + 4 + TAG_BYTES + 1;
   if (
     !(bytes instanceof Uint8Array) ||
     bytes.length < minimum ||
@@ -498,19 +647,19 @@ export function decryptReplaySegment(input: {
   )
     return reject();
   const raw = Buffer.from(bytes);
-  if (!raw.subarray(0, MAGIC.length).equals(MAGIC)) return reject();
-  const headerLength = raw.readUInt32BE(MAGIC.length);
+  if (!raw.subarray(0, magic.length).equals(magic)) return reject();
+  const headerLength = raw.readUInt32BE(magic.length);
   if (headerLength < 1 || headerLength > MAX_HEADER_BYTES) return reject();
-  const headerEnd = MAGIC.length + 4 + headerLength;
+  const headerEnd = magic.length + 4 + headerLength;
   if (raw.length < headerEnd + TAG_BYTES + 1) return reject();
-  const serializedHeader = raw.subarray(MAGIC.length + 4, headerEnd);
+  const serializedHeader = raw.subarray(magic.length + 4, headerEnd);
   let headerValue: unknown;
   try {
     headerValue = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(serializedHeader));
   } catch {
     return reject();
   }
-  const parsedHeader = headerSchema.safeParse(headerValue);
+  const parsedHeader = schema.safeParse(headerValue);
   if (!parsedHeader.success || parsedHeader.data.keyId !== input.expectedKeyId) return reject();
   const header = parsedHeader.data;
   if (!serializedHeader.equals(headerBytes(header))) return reject();
@@ -533,14 +682,15 @@ export function decryptReplaySegment(input: {
   } catch {
     return reject();
   }
-  const envelope = checkedEnvelope(value);
+  const envelope = check(value);
   if (
     !plaintext.equals(Buffer.from(canonical(envelope), 'utf8')) ||
     envelope.localRecordVersion !== header.localRecordVersion ||
     envelope.clusterId !== header.clusterId ||
     envelope.fromLsn !== header.fromLsn ||
     envelope.throughLsn !== header.throughLsn ||
-    envelope.previousHash !== header.previousHash
+    envelope.previousHash !== header.previousHash ||
+    canonical(envelope.source ?? null) !== canonical('source' in header ? header.source : null)
   )
     return reject();
   return envelope;

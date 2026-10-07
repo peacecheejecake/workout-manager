@@ -8,7 +8,19 @@ import {
   makeLocalReplayRecordEnvelope,
   peekSuppressionPgoutput,
 } from './restore-suppression-pgoutput.js';
-import { encryptReplaySegment } from './restore-suppression-segment.js';
+import type { SuppressionRemoteStore } from './restore-suppression-coordinator.js';
+import {
+  encodeSuppressionHeadV7,
+  decodeSuppressionHeadV7,
+} from './restore-suppression-replay-v7.js';
+import {
+  decryptReplaySegmentV7,
+  encryptReplaySegment,
+  encryptReplaySegmentV7,
+  makeLocalReplayRecordEnvelopeV7,
+  suppressionSourceBindingV7Schema,
+  type SuppressionSourceBindingV7,
+} from './restore-suppression-segment.js';
 
 const LOCK_CLASS = 0x574d4c44; // WMLD; all cooperative exporters use this database-wide lock.
 const LOCK_OBJECT = 1;
@@ -121,6 +133,18 @@ export async function reconcileSuppressionSlot(input: {
   previousHash: string | null;
   localHash: string;
 }): Promise<void> {
+  return reconcileSlot(input);
+}
+export async function reconcileSuppressionSlotV7(
+  input: Parameters<typeof reconcileSuppressionSlot>[0] & { source: SuppressionSourceBindingV7 },
+): Promise<void> {
+  const source = suppressionSourceBindingV7Schema.parse(input.source);
+  if (source.slotName !== input.slotName) return fail();
+  return reconcileSlot({ ...input, source });
+}
+async function reconcileSlot(
+  input: Parameters<typeof reconcileSuppressionSlot>[0] & { source?: SuppressionSourceBindingV7 },
+): Promise<void> {
   if (
     !/^wm_suppression_[a-z0-9_]{1,40}$/.test(input.slotName) ||
     !/^[1-9]\d{0,19}$/.test(input.expectedClusterId) ||
@@ -146,6 +170,7 @@ export async function reconcileSuppressionSlot(input: {
     const fromLsn = normalizedLsn(input.fromLsn);
     const throughLsn = normalizedLsn(input.throughLsn);
     if (lsnValue(throughLsn) <= lsnValue(fromLsn)) return fail();
+    if (input.source) await assertSourceBinding(client, input.source);
     const before = await slotState(client, input.slotName);
     if (normalizedLsn(before.confirmed_flush_lsn ?? '') !== fromLsn) return fail();
     const peek = await client.query<{ data: Buffer }>(
@@ -158,12 +183,15 @@ export async function reconcileSuppressionSlot(input: {
     const messages = peek.rows.map((row) => row.data);
     if (messages.reduce((total, data) => total + data.length, 0) > MAX_PGOUTPUT_BYTES)
       return fail();
-    const envelope = makeLocalReplayRecordEnvelope({
+    const common = {
       clusterId: input.expectedClusterId,
       fromLsn,
       previousHash: input.previousHash,
       messages,
-    });
+    };
+    const envelope = input.source
+      ? makeLocalReplayRecordEnvelopeV7({ ...common, source: input.source })
+      : makeLocalReplayRecordEnvelope(common);
     if (envelope.throughLsn !== throughLsn || envelope.sha256 !== input.localHash) return fail();
     const afterPeek = await slotState(client, input.slotName);
     if (normalizedLsn(afterPeek.confirmed_flush_lsn ?? '') !== fromLsn) return fail();
@@ -194,6 +222,29 @@ export async function reconcileSuppressionSlot(input: {
       }
     } else client.release();
   }
+}
+
+async function assertSourceBinding(
+  client: PoolClient,
+  source: SuppressionSourceBindingV7,
+): Promise<void> {
+  const actual = await client.query<{
+    database_name: string;
+    database_oid: number;
+    registry_fingerprint: string;
+  }>(
+    `SELECT current_database() AS database_name,(SELECT oid FROM pg_database WHERE datname=current_database()) AS database_oid,
+         encode(sha256(convert_to((SELECT jsonb_agg(jsonb_build_object('version',version,'checksum',checksum) ORDER BY version)::text FROM public.schema_migrations),'UTF8')),'hex') AS registry_fingerprint`,
+  );
+  const row = actual.rows[0];
+  if (
+    actual.rows.length !== 1 ||
+    !row ||
+    row.database_name !== source.databaseName ||
+    row.database_oid !== source.databaseOid ||
+    row.registry_fingerprint !== source.registryFingerprint
+  )
+    return fail();
 }
 
 function verifiedRemote(value: unknown, sha256: string, byteLength: number): VerifiedRemoteSegment {
@@ -234,6 +285,23 @@ export async function exportSuppressionSegment(input: {
   keyId: string;
   storeVerifiedCiphertext: (bytes: Buffer) => Promise<unknown>;
 }): Promise<ExportedSuppressionSegment> {
+  return exportSegment(input);
+}
+export async function exportSuppressionSegmentV7(
+  input: Parameters<typeof exportSuppressionSegment>[0] & {
+    source: SuppressionSourceBindingV7;
+  },
+): Promise<ExportedSuppressionSegment & { source: SuppressionSourceBindingV7 }> {
+  const source = suppressionSourceBindingV7Schema.parse(input.source);
+  if (source.slotName !== input.slotName) return fail();
+  const exported = await exportSegment({ ...input, source });
+  return { ...exported, source };
+}
+async function exportSegment(
+  input: Parameters<typeof exportSuppressionSegment>[0] & {
+    source?: SuppressionSourceBindingV7;
+  },
+): Promise<ExportedSuppressionSegment> {
   if (
     !/^wm_suppression_[a-z0-9_]{1,40}$/.test(input.slotName) ||
     !/^[1-9]\d{0,19}$/.test(input.expectedClusterId) ||
@@ -256,18 +324,25 @@ export async function exportSuppressionSegment(input: {
       'SELECT system_identifier::text FROM pg_control_system()',
     );
     if (identity.rows[0]?.system_identifier !== input.expectedClusterId) return fail();
+    if (input.source) await assertSourceBinding(client, input.source);
     const before = await slotState(client, input.slotName);
     const fromLsn = normalizedLsn(input.expectedFromLsn);
     if (normalizedLsn(before.confirmed_flush_lsn ?? '') !== fromLsn) return fail();
 
     const messages = await peekSuppressionPgoutput(client, input.slotName);
-    const envelope = makeLocalReplayRecordEnvelope({
+    const common = {
       clusterId: input.expectedClusterId,
       fromLsn,
       previousHash: input.previousHash,
       messages,
-    });
-    const segment = encryptReplaySegment({ envelope, key: input.key, keyId: input.keyId });
+    };
+    const envelope = input.source
+      ? makeLocalReplayRecordEnvelopeV7({ ...common, source: input.source })
+      : makeLocalReplayRecordEnvelope(common);
+    const segment =
+      envelope.localRecordVersion === 2
+        ? encryptReplaySegmentV7({ envelope, key: input.key, keyId: input.keyId })
+        : encryptReplaySegment({ envelope, key: input.key, keyId: input.keyId });
     const outbound = Buffer.from(segment.bytes);
     const remote = verifiedRemote(
       await input.storeVerifiedCiphertext(outbound),
@@ -326,4 +401,148 @@ export async function exportSuppressionSegment(input: {
       client.release();
     }
   }
+}
+
+/** Publish authenticated V7 head before ACK. Local crypto does not certify a remote witness. */
+export async function exportAuthenticatedSuppressionSegmentV7(input: {
+  pool: Pool;
+  source: SuppressionSourceBindingV7;
+  expectedClusterId: string;
+  encryptionKey: Uint8Array;
+  keyId: string;
+  headAuthenticationKey: Uint8Array;
+  store: SuppressionRemoteStore;
+  expectedHeadVersionId: string;
+  expectedHeadSha256: string;
+}): Promise<ExportedSuppressionSegment & { source: SuppressionSourceBindingV7 }> {
+  const source = suppressionSourceBindingV7Schema.parse(input.source);
+  if (
+    !(input.encryptionKey instanceof Uint8Array) ||
+    input.encryptionKey.byteLength !== 32 ||
+    !(input.headAuthenticationKey instanceof Uint8Array) ||
+    input.headAuthenticationKey.byteLength !== 32 ||
+    Buffer.from(input.encryptionKey).equals(Buffer.from(input.headAuthenticationKey)) ||
+    !digest.test(input.expectedHeadSha256) ||
+    input.expectedHeadVersionId.length < 1 ||
+    input.expectedHeadVersionId.length > 1000
+  )
+    return fail();
+  const encryptionKey = Buffer.from(input.encryptionKey);
+  const headAuthenticationKey = Buffer.from(input.headAuthenticationKey);
+  const object = await input.store.readHead();
+  if (
+    !object ||
+    object.versionId !== input.expectedHeadVersionId ||
+    !(object.bytes instanceof Uint8Array) ||
+    object.bytes.length > 128 * 1024 ||
+    createHash('sha256').update(object.bytes).digest('hex') !== input.expectedHeadSha256
+  )
+    return fail();
+  const head = decodeSuppressionHeadV7(object.bytes, headAuthenticationKey);
+  if (
+    JSON.stringify(head.source) !== JSON.stringify(source) ||
+    head.clusterId !== input.expectedClusterId
+  )
+    return fail();
+  const position = await readSuppressionSlotPosition({
+    pool: input.pool,
+    slotName: source.slotName,
+  });
+  if (position.clusterId !== head.clusterId) return fail();
+  if (position.throughLsn !== head.throughLsn) {
+    const last = head.segments.at(-1);
+    if (!last || position.throughLsn !== last.fromLsn) return fail();
+    const stored = await input.store.readSegment(last.segmentId, last.versionId);
+    if (
+      !stored ||
+      stored.versionId !== last.versionId ||
+      stored.bytes.length !== last.byteLength ||
+      createHash('sha256').update(stored.bytes).digest('hex') !== last.sha256
+    )
+      return fail();
+    const envelope = decryptReplaySegmentV7({
+      bytes: stored.bytes,
+      key: encryptionKey,
+      expectedKeyId: input.keyId,
+    });
+    if (
+      envelope.sha256 !== last.localHash ||
+      JSON.stringify(envelope.source) !== JSON.stringify(source) ||
+      envelope.clusterId !== head.clusterId ||
+      envelope.fromLsn !== last.fromLsn ||
+      envelope.throughLsn !== last.throughLsn ||
+      envelope.previousHash !== last.previousHash
+    )
+      return fail();
+    await reconcileSuppressionSlotV7({
+      pool: input.pool,
+      slotName: source.slotName,
+      expectedClusterId: head.clusterId,
+      fromLsn: last.fromLsn,
+      throughLsn: last.throughLsn,
+      previousHash: last.previousHash,
+      localHash: last.localHash,
+      source,
+    });
+  }
+  return exportSuppressionSegmentV7({
+    pool: input.pool,
+    source,
+    slotName: source.slotName,
+    expectedClusterId: head.clusterId,
+    expectedFromLsn: head.throughLsn,
+    previousHash: head.finalLocalHash,
+    key: encryptionKey,
+    keyId: input.keyId,
+    storeVerifiedCiphertext: async (bytes) => {
+      const envelope = decryptReplaySegmentV7({
+        bytes,
+        key: encryptionKey,
+        expectedKeyId: input.keyId,
+      });
+      const stored = await input.store.putImmutableSegment(bytes);
+      const remote = verifiedRemote(
+        {
+          ...stored,
+          byteLength: bytes.length,
+          sha256: createHash('sha256').update(bytes).digest('hex'),
+        },
+        createHash('sha256').update(bytes).digest('hex'),
+        bytes.length,
+      );
+      const readback = await input.store.readSegment(remote.segmentId, remote.versionId);
+      if (!readback || readback.versionId !== remote.versionId || !readback.bytes.equals(bytes))
+        return fail();
+      const next = encodeSuppressionHeadV7(
+        {
+          ...head,
+          throughLsn: envelope.throughLsn,
+          finalLocalHash: envelope.sha256,
+          segments: [
+            ...head.segments,
+            {
+              ...remote,
+              fromLsn: envelope.fromLsn,
+              throughLsn: envelope.throughLsn,
+              previousHash: envelope.previousHash,
+              localHash: envelope.sha256,
+            },
+          ],
+        },
+        headAuthenticationKey,
+      );
+      const changed = await input.store.compareAndSetHead(object.versionId, next);
+      const after = await input.store.readHead();
+      if (
+        typeof changed.versionId !== 'string' ||
+        changed.versionId.length < 1 ||
+        changed.versionId.length > 1000 ||
+        !after ||
+        after.versionId !== changed.versionId ||
+        !after.bytes.equals(next)
+      )
+        return fail();
+      return remote;
+    },
+  });
 }
