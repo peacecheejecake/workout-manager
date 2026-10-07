@@ -46,3 +46,11 @@
 후속 실제 PG는 lineage15/15·standalone writer11/11·legacy 운영 조회8/8·legacy race read6/6·export35 3/3이며 겹치는 집중 단위 수를 총수로 합산하지 않는다. PB 안내 identity2/2는 실제 합성 API/DB, 운영 안내 identity2/2는 실제 인증·계정 경로와 strictV5 integratedGET mock을 구분한다. 전체 race-date atomic 승인·private authenticated archive/restore·정식 migration registry/owner retarget·공개 V2/V4 transport/첨부·재연결/PB 화면은 완료되지 않았다. I/J 및 부모 phase in_progress, 전체 gate·독립 phase 검토·main 병합·push는 미실행이다.
 
 남은 working tree는 AI identity fixture의 외부 일회용PG 연결/수명 관리 후속 및 compatible preview PG 시험 준비다. 이들은 이 상태 기록 커밋에 포함하지 않는다. 별도 stash `ae34d998accb9819d6d9d1e929d9ce620fd55598`도 보존한다.
+
+### 외부 일회용 PG17 identity fixture 정리
+
+앞서 보존한 AI fixture5파일은 opt-in localhost PG17의 무작위 시험 DB만 생성하고 실제 DB/owner/admin OID·direct maintenance admin capability·정상 migration checksum과 run 수명을 검증한다. 삭제는 현재 run에서 생성한 exact OID의 DB/roles만 수행하며 외부 PG service는 중단하지 않는다. URL parse 오류와 연결 실패는 자격 증명을 포함하지 않는 안정된 오류로 정제하고 pool을 닫는다. 기본 canonical fixture 경로는 유지한다.
+
+Root 최신 동결 입력 unit **47/47**, 실제 정상 auth/planner2Host **2/2**, AI settings catalog 저장/재조회/CAS/철회2Host **2/2**, 별도 spec-only freshDB lifecycle **1/1·exit0**를 확인했다. 로그는 `/private/tmp/wm-external-pg17-root-{unit-r1,identity-r1,ai-settings-r1,ai-lifecycle-r2}-20261007.log`다. lifecycle 첫 회차는 SPEC_ONLY 실행 설정 누락으로 LIFECYCLE_NOT_ISOLATED 거절·exit1이었으며 guard를 약화하지 않고 올바른 dedicated 단일 spec 명령으로 재실행했다. 그 실패는 `...ai-lifecycle-r1...`에 보존한다. Root TS·scoped lint/format은 exit0이나 별도 script consumer TS는 기존 oidc-provider 선언 누락 TS7016로 exit2인 사실도 보존한다.
+
+완료 후 실제 identity DB 잔존0 및 기본 owner/runtime roles 잔존0을 읽기 전용으로 확인했다. 정상 role/grants와 restore admission을 우회하지 않는다. 이는 합성 fixture와 lifecycle 경로의 결과이며 운영 복원·공개 HTTPS·기기 수용 또는 M2-02 전체 phase gate의 통과가 아니다.

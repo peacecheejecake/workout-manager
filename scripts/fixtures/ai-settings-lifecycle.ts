@@ -2,7 +2,11 @@ import assert from 'node:assert/strict';
 import { randomUUID, createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { Pool } from 'pg';
-import { readAiSettingsFixtureContext, readAiSettingsFixtureFacts } from './ai-settings-context';
+import {
+  readAiSettingsFixtureContext,
+  readAiSettingsFixtureFacts,
+  verifyAiSettingsExternalDatabase,
+} from './ai-settings-context';
 
 function uuid(value: unknown): string {
   assert.ok(
@@ -91,13 +95,26 @@ async function ownerPool() {
   const context = await readAiSettingsFixtureContext();
   assert.notEqual(context.harnessPid, process.pid, 'LIFECYCLE_HARNESS_REQUIRED');
   process.kill(context.harnessPid, 0); // Liveness query only; never a signal.
-  return new Pool({ connectionString: context.ownerUrl, max: 1, connectionTimeoutMillis: 5000 });
+  const pool = new Pool({
+    connectionString: context.ownerUrl,
+    max: 1,
+    connectionTimeoutMillis: 5000,
+    ...(context.schemaVersion === 2 ? { statement_timeout: 10000, query_timeout: 12000 } : {}),
+  });
+  try {
+    if (context.schemaVersion === 2)
+      await verifyAiSettingsExternalDatabase(pool, context.externalProof, 'owner');
+    return { pool, context };
+  } catch (error) {
+    await pool.end();
+    throw error;
+  }
 }
 /** Destructive control close on a disposable, spec-only harness. Never reopens.
  * Owner exclusive global lock first; not Database.tenant/shared-lock upgrade.
  */
 export async function closeAiSettingsFixtureRestoreTarget() {
-  const pool = await ownerPool();
+  const { pool, context } = await ownerPool();
   const client = await pool.connect().catch(async (error: unknown) => {
     await pool.end();
     throw error;
@@ -105,30 +122,42 @@ export async function closeAiSettingsFixtureRestoreTarget() {
   try {
     await client.query('BEGIN');
     await client.query('SELECT pg_advisory_xact_lock(77210,1)');
-    const identity =
-      await client.query(`SELECT current_user=session_user AND session_user='workout_owner' AND NOT rolsuper AND NOT rolbypassrls AND current_database()='workout_identity'
+    if (context.schemaVersion === 2) {
+      await verifyAiSettingsExternalDatabase(client, context.externalProof, 'owner');
+    } else {
+      const identity =
+        await client.query(`SELECT current_user=session_user AND session_user='workout_owner' AND NOT rolsuper AND NOT rolbypassrls AND current_database()='workout_identity'
       AND pg_get_userbyid((SELECT relowner FROM pg_class WHERE oid='public.restore_processing_admission'::regclass))=session_user
       AND pg_get_userbyid((SELECT proowner FROM pg_proc WHERE oid='public.close_restore_processing_exact(bigint,uuid,uuid,uuid)'::regprocedure))=session_user AS valid FROM pg_roles WHERE rolname=session_user`);
-    assert.deepEqual(identity.rows, [{ valid: true }], 'LIFECYCLE_OWNER_REQUIRED');
+      assert.deepEqual(identity.rows, [{ valid: true }], 'LIFECYCLE_OWNER_REQUIRED');
+    }
     const migrations = await client.query(
       'SELECT version,checksum FROM schema_migrations ORDER BY version',
     );
-    assert.deepEqual(
-      migrations.rows.map((row) => row['version']),
-      Array.from({ length: 105 }, (_, index) => index + 1),
-      'LIFECYCLE_NORMAL105_REQUIRED',
-    );
-    const expectedHash = createHash('sha256')
-      .update(
-        await readFile(
-          new URL(
-            '../../packages/server/persistence/migrations/105_tenant_reconcile_bounds.sql',
-            import.meta.url,
+    if (context.schemaVersion === 2) {
+      assert.deepEqual(
+        migrations.rows,
+        context.externalProof.normalMigrations,
+        'LIFECYCLE_EXTERNAL_NORMAL_MIGRATIONS_REQUIRED',
+      );
+    } else {
+      assert.deepEqual(
+        migrations.rows.map((row) => row['version']),
+        Array.from({ length: 105 }, (_, index) => index + 1),
+        'LIFECYCLE_NORMAL105_REQUIRED',
+      );
+      const expectedHash = createHash('sha256')
+        .update(
+          await readFile(
+            new URL(
+              '../../packages/server/persistence/migrations/105_tenant_reconcile_bounds.sql',
+              import.meta.url,
+            ),
           ),
-        ),
-      )
-      .digest('hex');
-    assert.equal(migrations.rows.at(-1)?.['checksum'], expectedHash, 'LIFECYCLE_SCHEMA105_DRIFT');
+        )
+        .digest('hex');
+      assert.equal(migrations.rows.at(-1)?.['checksum'], expectedHash, 'LIFECYCLE_SCHEMA105_DRIFT');
+    }
     const initial = state(
       (await client.query('SELECT read_restore_processing_admission() AS state')).rows[0]?.[
         'state'
@@ -215,7 +244,7 @@ export async function closeAiSettingsFixtureRestoreTarget() {
 /** Own aggregate counts only; no keys, request bodies, URLs or secrets returned. */
 export async function readAiSettingsLifecycleFacts(athleteId: string) {
   uuid(athleteId);
-  const pool = await ownerPool();
+  const { pool } = await ownerPool();
   try {
     const facts = await readAiSettingsFixtureFacts(athleteId);
     const client = await pool.connect();

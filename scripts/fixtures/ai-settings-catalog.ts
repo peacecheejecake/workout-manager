@@ -1,6 +1,12 @@
 import { Pool } from 'pg';
 import assert from 'node:assert/strict';
 import {
+  readAiSettingsFixtureContext,
+  validateAiSettingsExternalUrl,
+  verifyAiSettingsExternalDatabase,
+  type DisposableAiSettingsPg17Proof,
+} from './ai-settings-context.js';
+import {
   aiExecutionCatalogV1Schema,
   type AiExecutionCatalogV1,
 } from '../../packages/contracts/src/ai-settings.js';
@@ -56,11 +62,20 @@ function catalog(revision: number, selectable: boolean): AiExecutionCatalogV1 {
 }
 export async function publishAiSettingsFixtureCatalog(
   ownerUrl: string,
-  options: { selectable: boolean; initial?: boolean },
+  options: {
+    selectable: boolean;
+    initial?: boolean;
+    externalProof?: DisposableAiSettingsPg17Proof;
+  },
 ): Promise<AiExecutionCatalogV1> {
-  const url = new URL(ownerUrl);
+  let url: URL;
+  try {
+    url = new URL(ownerUrl);
+  } catch {
+    throw new Error('INVALID_AI_SETTINGS_FIXTURE_OWNER');
+  }
   const socket = url.searchParams.get('host');
-  if (
+  const native = !(
     url.protocol !== 'postgresql:' ||
     url.username !== 'workout_owner' ||
     url.password !== '' ||
@@ -69,15 +84,29 @@ export async function publishAiSettingsFixtureCatalog(
     !socket ||
     !socket.startsWith('/') ||
     (!socket.includes('/tmp') && !socket.includes('/var/folders/'))
-  )
-    throw new Error('INVALID_AI_SETTINGS_FIXTURE_OWNER');
+  );
+  let externalProof = options.externalProof;
+  if (!native) {
+    if (externalProof === undefined) {
+      const context = await readAiSettingsFixtureContext();
+      if (context.schemaVersion !== 2 || context.ownerUrl !== ownerUrl)
+        throw new Error('INVALID_AI_SETTINGS_FIXTURE_OWNER');
+      externalProof = context.externalProof;
+    }
+    validateAiSettingsExternalUrl(ownerUrl, 'owner', externalProof);
+  } else if (externalProof !== undefined) throw new Error('INVALID_AI_SETTINGS_FIXTURE_OWNER');
   const pool = new Pool({ connectionString: ownerUrl, max: 1, connectionTimeoutMillis: 5000 });
-  const client = await pool.connect();
+  const client = await pool.connect().catch(async () => {
+    await pool.end();
+    throw new Error('AI_SETTINGS_FIXTURE_CONNECTION_FAILED');
+  });
   try {
     await client.query('BEGIN');
     await client.query(
       "SELECT set_config('lock_timeout','3000',true),set_config('statement_timeout','5000',true)",
     );
+    if (externalProof !== undefined)
+      await verifyAiSettingsExternalDatabase(client, externalProof, 'owner');
     await client.query('SELECT pg_advisory_xact_lock_shared(77210,1)');
     await client.query(
       "SELECT pg_advisory_xact_lock(hashtextextended('ai-settings-catalog',77212))",
@@ -127,6 +156,13 @@ export async function publishAiSettingsFixtureCatalog(
     await pool.end();
   }
 }
-export function publishInitialAiSettingsCatalog(ownerUrl: string) {
-  return publishAiSettingsFixtureCatalog(ownerUrl, { selectable: true, initial: true });
+export function publishInitialAiSettingsCatalog(
+  ownerUrl: string,
+  externalProof?: DisposableAiSettingsPg17Proof,
+) {
+  return publishAiSettingsFixtureCatalog(ownerUrl, {
+    selectable: true,
+    initial: true,
+    ...(externalProof === undefined ? {} : { externalProof }),
+  });
 }

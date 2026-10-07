@@ -66,6 +66,7 @@ import { createConfiguredWalkingRoutes } from '../apps/api/src/routing-deploymen
 import { createConfiguredRoutingAdmission } from '../apps/api/src/routing-admission.ts';
 import { createBoundedTrackParser } from '../packages/server/track-storage/src/parse-host.ts';
 import { spawnSync } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -75,7 +76,14 @@ import { createApi } from '../apps/api/src/app.ts';
 import { createAiSettingsService } from '../apps/api/src/ai-settings-service.ts';
 import { createAiSettingsRepository } from '../packages/server/persistence/src/ai-settings.ts';
 import { publishInitialAiSettingsCatalog } from './fixtures/ai-settings-catalog.ts';
-import { writeAiSettingsFixtureContext } from './fixtures/ai-settings-context.ts';
+import {
+  writeAiSettingsFixtureContext,
+  parseDisposableAiSettingsPg17Proof,
+  aiSettingsEphemeralCredentialDigest,
+  validateAiSettingsDisposableAdminIdentity,
+  type DisposableAiSettingsPg17Proof,
+} from './fixtures/ai-settings-context.ts';
+import { identityE2eRunId } from './fixtures/identity-e2e-run.ts';
 import { createDatabase, type Database } from '../packages/server/persistence/src/database.ts';
 import { createRestoreGenerationRepository } from '../packages/server/persistence/src/restore-generation.ts';
 import { createConsentRepository } from '../packages/server/persistence/src/repositories.ts';
@@ -142,7 +150,45 @@ import {
 import { createGarminCipher } from '../packages/server/identity/src/garmin-crypto.ts';
 import { createGarminProvider } from '../packages/server/identity/src/garmin-provider.ts';
 
-// Never read inherited database URLs: this harness creates and destroys its own cluster.
+// Ordinary inherited database URLs remain ignored. This explicit disposable-only
+// maintenance URL creates new run-owned resources; seeded app data never uses it.
+function disposablePg17AdminUrl(value: unknown): URL | null {
+  if (value === undefined) return null;
+  if (
+    typeof value !== 'string' ||
+    value.length === 0 ||
+    value.length > 2048 ||
+    value.trim() !== value
+  )
+    throw new Error('IDENTITY_DISPOSABLE_PG_URL_INVALID');
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error('IDENTITY_DISPOSABLE_PG_URL_INVALID');
+  }
+  if (
+    parsed.protocol !== 'postgresql:' ||
+    !['localhost', '127.0.0.1'].includes(parsed.hostname) ||
+    !/^[1-9][0-9]{3,4}$/.test(parsed.port) ||
+    Number(parsed.port) > 65535 ||
+    Number(parsed.port) < 1024 ||
+    parsed.pathname !== '/postgres' ||
+    parsed.username.length === 0 ||
+    parsed.search !== '' ||
+    parsed.hash !== ''
+  )
+    throw new Error('IDENTITY_DISPOSABLE_PG_URL_INVALID');
+  try {
+    decodeURIComponent(parsed.username);
+    decodeURIComponent(parsed.password);
+  } catch {
+    throw new Error('IDENTITY_DISPOSABLE_PG_URL_INVALID');
+  }
+  return parsed;
+}
+const externalPg = disposablePg17AdminUrl(process.env['IDENTITY_E2E_DISPOSABLE_PG17_ADMIN_URL']);
+
 const detectedBin = [
   process.env['PG_BIN'],
   '/opt/homebrew/opt/postgresql@14/bin',
@@ -151,9 +197,9 @@ const detectedBin = [
   '/usr/lib/postgresql/17/bin',
   '/usr/lib/postgresql/16/bin',
 ].find((value) => value !== undefined && existsSync(join(value, 'initdb')));
-if (detectedBin === undefined)
+if (externalPg === null && detectedBin === undefined)
   throw new Error('Identity E2E requires local PostgreSQL binaries (PG_BIN).');
-const bin = detectedBin;
+const bin = detectedBin ?? '';
 // Hand-off files of harnesses that were killed (SIGKILL skips the closers below). Only files
 // whose writer is gone are removed; a concurrently running harness keeps its own.
 const swept = await sweepStaleHandoffFiles();
@@ -188,8 +234,51 @@ async function identityWalkingRoutes(database: Database) {
 let started = false;
 const closers: Array<() => Promise<void>> = [];
 let shutdown: Promise<void> | undefined;
+// A signal during external provisioning waits for startup success/error before
+// cleanup. Provision/catalog pools have bounded server/client deadlines; a lost
+// CREATE acknowledgement remains unverified and is never permission to drop.
+let finishStartup: () => void = () => undefined;
+const startupSettled = new Promise<void>((resolve) => {
+  finishStartup = resolve;
+});
+const externalDatabaseName = `workout_identity_${randomUUID().replaceAll('-', '')}`;
+const externalRolePassword = randomUUID();
+const fixedRoles = [
+  'workout_owner',
+  'workout_runtime',
+  'workout_coaching_worker',
+  'workout_garmin_worker',
+  'workout_course_thumbnail_worker',
+] as const;
+const createdExternalRoles: string[] = [];
+let createdExternalDatabase = false;
+let externalDatabaseOid: number | undefined;
+let externalServerVersion: number | undefined;
+let aiSettingsExternalProof: DisposableAiSettingsPg17Proof | undefined;
+const externalRoleOids = new Map<string, number>();
+async function createFixtureRole(pool: Pool, role: (typeof fixedRoles)[number]) {
+  // Fixed finite names preserve production worker validation. No existing role is
+  // altered/reused. Track only CREATE success, including partial setup failures.
+  try {
+    await pool.query(
+      `CREATE ROLE "${role}" LOGIN ${externalPg === null ? '' : `PASSWORD '${externalRolePassword}'`} NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE`,
+    );
+  } catch (error) {
+    if (externalPg === null) throw error;
+    throw new Error('IDENTITY_FIXTURE_ROLE_CREATE_FAILED');
+  }
+  if (externalPg !== null) {
+    createdExternalRoles.push(role);
+    const found = await pool.query('SELECT oid FROM pg_roles WHERE rolname=$1', [role]);
+    const oid: unknown = found.rows[0]?.oid;
+    if (found.rows.length !== 1 || typeof oid !== 'number' || !Number.isInteger(oid) || oid <= 0)
+      throw new Error('IDENTITY_DISPOSABLE_PG_OWNERSHIP_UNVERIFIED');
+    externalRoleOids.set(role, oid);
+  }
+}
 function close() {
   shutdown ??= (async () => {
+    if (externalPg !== null) await startupSettled;
     let failed = false;
     for (const closer of closers.reverse()) {
       try {
@@ -216,50 +305,148 @@ for (const signal of ['SIGTERM', 'SIGINT'] as const) {
   });
 }
 try {
-  run(join(bin, 'initdb'), [
-    '-D',
-    data,
-    '-U',
-    'workout_admin',
-    '-A',
-    'trust',
-    '--no-locale',
-    '--encoding=UTF8',
-  ]);
-  run(join(bin, 'pg_ctl'), [
-    '-D',
-    data,
-    '-l',
-    join(directory, 'postgres.log'),
-    '-o',
-    `-k ${directory} -h ''`,
-    '-w',
-    'start',
-  ]);
-  started = true;
-  // Administration/fixture inspection stays superuser; migrations/definers have
-  // a separate plain owner. Never install latest owner-guarded SQL as admin.
+  if (externalPg === null) {
+    run(join(bin, 'initdb'), [
+      '-D',
+      data,
+      '-U',
+      'workout_admin',
+      '-A',
+      'trust',
+      '--no-locale',
+      '--encoding=UTF8',
+    ]);
+    run(join(bin, 'pg_ctl'), [
+      '-D',
+      data,
+      '-l',
+      join(directory, 'postgres.log'),
+      '-o',
+      `-k ${directory} -h ''`,
+      '-w',
+      'start',
+    ]);
+    started = true;
+  }
+  // Administration/fixture inspection stays admin; migrations/definers retain
+  // a separate plain owner in both modes. The external service is never stopped.
   const management = new Pool({
-    connectionString: `postgresql://workout_admin@localhost/postgres?host=${encodeURIComponent(directory)}`,
+    connectionString:
+      externalPg?.toString() ??
+      `postgresql://workout_admin@localhost/postgres?host=${encodeURIComponent(directory)}`,
+    ...(externalPg === null
+      ? {}
+      : {
+          connectionTimeoutMillis: 5000,
+          statement_timeout: 10000,
+          query_timeout: 12000,
+          max: 1,
+        }),
   });
+  if (externalPg !== null) {
+    // Registered first: reverse-order closers shut app/worker pools before DROP.
+    closers.push(async () => {
+      try {
+        if (createdExternalDatabase) {
+          const found = await management.query(
+            'SELECT oid,datdba FROM pg_database WHERE datname=$1',
+            [externalDatabaseName],
+          );
+          if (
+            externalDatabaseOid === undefined ||
+            found.rows.length !== 1 ||
+            found.rows[0]?.oid !== externalDatabaseOid ||
+            found.rows[0]?.datdba !== externalRoleOids.get('workout_owner')
+          )
+            throw new Error('IDENTITY_DISPOSABLE_PG_OWNERSHIP_UNVERIFIED');
+          await management.query(`DROP DATABASE "${externalDatabaseName}" WITH (FORCE)`);
+          createdExternalDatabase = false;
+        }
+        for (const role of [...createdExternalRoles].reverse()) {
+          const found = await management.query('SELECT oid FROM pg_roles WHERE rolname=$1', [role]);
+          if (
+            externalRoleOids.get(role) === undefined ||
+            found.rows.length !== 1 ||
+            found.rows[0]?.oid !== externalRoleOids.get(role)
+          )
+            throw new Error('IDENTITY_DISPOSABLE_PG_OWNERSHIP_UNVERIFIED');
+          await management.query(`DROP ROLE "${role}"`);
+          createdExternalRoles.splice(createdExternalRoles.indexOf(role), 1);
+        }
+      } finally {
+        await management.end();
+      }
+    });
+  }
   try {
+    if (externalPg !== null) {
+      const identity = await management.query(`SELECT current_database() AS database_name,
+        current_user AS role_name,current_user=session_user AS direct_role,
+        r.rolsuper,r.rolbypassrls,r.rolcreatedb,r.rolcreaterole,
+        current_setting('server_version_num')::integer AS server_version
+        FROM pg_roles r WHERE r.rolname=current_user`);
+      if (identity.rows.length !== 1) throw new Error('IDENTITY_DISPOSABLE_PG_ADMIN_INVALID');
+      externalServerVersion = validateAiSettingsDisposableAdminIdentity(
+        identity.rows[0],
+        decodeURIComponent(externalPg.username),
+      );
+      const collisions = await management.query(
+        'SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname=ANY($1)) AS roles, EXISTS(SELECT 1 FROM pg_database WHERE datname=$2) AS database',
+        [[...fixedRoles], externalDatabaseName],
+      );
+      if (
+        collisions.rows.length !== 1 ||
+        collisions.rows[0]?.roles !== false ||
+        collisions.rows[0]?.database !== false
+      )
+        throw new Error('IDENTITY_DISPOSABLE_PG_RESOURCE_COLLISION');
+    }
+    await createFixtureRole(management, 'workout_owner');
     await management.query(
-      'CREATE ROLE workout_owner LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE',
+      externalPg === null
+        ? 'CREATE DATABASE workout_identity OWNER workout_owner'
+        : `CREATE DATABASE "${externalDatabaseName}" OWNER workout_owner`,
     );
-    await management.query('CREATE DATABASE workout_identity OWNER workout_owner');
+    if (externalPg !== null) {
+      createdExternalDatabase = true;
+      const found = await management.query('SELECT oid FROM pg_database WHERE datname=$1', [
+        externalDatabaseName,
+      ]);
+      const oid: unknown = found.rows[0]?.oid;
+      if (found.rows.length !== 1 || typeof oid !== 'number' || !Number.isInteger(oid) || oid <= 0)
+        throw new Error('IDENTITY_DISPOSABLE_PG_OWNERSHIP_UNVERIFIED');
+      externalDatabaseOid = oid;
+    }
   } finally {
-    await management.end();
+    if (externalPg === null) await management.end();
   }
   const endpoint = `localhost/workout_identity?host=${encodeURIComponent(directory)}`;
-  const adminUrl = `postgresql://workout_admin@${endpoint}`;
-  const ownerUrl = `postgresql://workout_owner@${endpoint}`;
-  const runtimeUrl = `postgresql://workout_runtime@${endpoint}`;
-  const workerUrl = `postgresql://workout_coaching_worker@${endpoint}`;
-  const admin = new Pool({ connectionString: adminUrl });
+  function fixtureUrl(role: string) {
+    if (externalPg === null) return `postgresql://${role}@${endpoint}`;
+    const url = new URL(externalPg.toString());
+    url.pathname = `/${externalDatabaseName}`;
+    if (role !== 'admin') {
+      url.username = role;
+      url.password = externalRolePassword;
+    }
+    return url.toString();
+  }
+  const adminUrl = externalPg === null ? fixtureUrl('workout_admin') : fixtureUrl('admin');
+  const ownerUrl = fixtureUrl('workout_owner');
+  const runtimeUrl = fixtureUrl('workout_runtime');
+  const workerUrl = fixtureUrl('workout_coaching_worker');
+  const admin = new Pool({
+    connectionString: adminUrl,
+    ...(externalPg === null
+      ? {}
+      : {
+          connectionTimeoutMillis: 5000,
+          statement_timeout: 10000,
+          query_timeout: 12000,
+        }),
+  });
   try {
-    await admin.query(
-      'CREATE ROLE workout_runtime LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE',
-    );
+    await createFixtureRole(admin, 'workout_runtime');
     await admin.query('ALTER SCHEMA public OWNER TO workout_owner');
     await migrate(ownerUrl);
     const owners = await admin.query(`SELECT pg_get_userbyid(relowner) AS owner FROM pg_class
@@ -275,7 +462,30 @@ try {
     await grantIdentityFunctions(adminUrl, 'workout_runtime');
     await grantAiSettings(ownerUrl, 'workout_runtime');
     // Only synthetic unavailable catalog entries; no provider key, consent or activation.
-    await publishInitialAiSettingsCatalog(ownerUrl);
+    if (externalPg !== null) {
+      const inspector = await admin.query(
+        'SELECT oid,rolname FROM pg_roles WHERE rolname=current_user',
+      );
+      const normal = await admin.query(
+        'SELECT version,checksum FROM public.schema_migrations ORDER BY version LIMIT 129',
+      );
+      aiSettingsExternalProof = parseDisposableAiSettingsPg17Proof({
+        kind: 'disposable-pg17',
+        runId: identityE2eRunId,
+        harnessPid: process.pid,
+        hostname: externalPg.hostname,
+        port: Number(externalPg.port),
+        databaseName: externalDatabaseName,
+        databaseOid: externalDatabaseOid,
+        ownerRoleOid: externalRoleOids.get('workout_owner'),
+        adminRole: inspector.rows[0]?.rolname,
+        adminRoleOid: inspector.rows[0]?.oid,
+        serverVersionNum: externalServerVersion,
+        credentialDigest: aiSettingsEphemeralCredentialDigest(externalRolePassword),
+        normalMigrations: normal.rows,
+      });
+    }
+    await publishInitialAiSettingsCatalog(ownerUrl, aiSettingsExternalProof);
     await grantOperations(adminUrl, 'workout_runtime');
     await grantNutritionCore(adminUrl, 'workout_runtime');
     await grantSupplementaryCore(adminUrl, 'workout_runtime');
@@ -299,21 +509,15 @@ try {
     await grantRaces(adminUrl, 'workout_runtime');
     // This isolated, nonproduction fixture creates its own untrusted v3 analysis output.
     await admin.query('GRANT INSERT ON coaching_analysis_output TO workout_runtime');
-    await admin.query(
-      'CREATE ROLE workout_coaching_worker LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE',
-    );
+    await createFixtureRole(admin, 'workout_coaching_worker');
     await grantCoachingRunWorker(adminUrl, 'workout_coaching_worker');
     await grantGarmin(adminUrl, 'workout_runtime');
     await grantGarminUnofficial(adminUrl, 'workout_runtime');
-    await admin.query(
-      'CREATE ROLE workout_garmin_worker LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE',
-    );
+    await createFixtureRole(admin, 'workout_garmin_worker');
     await grantGarminWorker(adminUrl, 'workout_garmin_worker');
     // The course thumbnail renderer (M2-01l) runs as its own role with EXECUTE on eight
     // bounded functions and no table privileges, exactly as it would in production.
-    await admin.query(
-      'CREATE ROLE workout_course_thumbnail_worker LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE',
-    );
+    await createFixtureRole(admin, 'workout_course_thumbnail_worker');
     await grantCourseThumbnailWorker(adminUrl, 'workout_course_thumbnail_worker');
     await admin.query('GRANT USAGE ON SCHEMA public TO workout_course_thumbnail_worker');
     await admin.query('GRANT USAGE ON SCHEMA public TO workout_runtime');
@@ -336,7 +540,13 @@ try {
     { mode: 0o600 },
   );
   closers.push(() => rm(coachingWorkerContextPath, { force: true }));
-  closers.push(await writeAiSettingsFixtureContext({ ownerUrl, adminUrl }));
+  closers.push(
+    await writeAiSettingsFixtureContext({
+      ownerUrl,
+      adminUrl,
+      ...(aiSettingsExternalProof === undefined ? {} : { externalProof: aiSettingsExternalProof }),
+    }),
+  );
   // IDENTITY_E2E_OIDC=certified (opt-in, M2-01u) swaps the hand-written fixture for a
   // locally hosted OpenID Certified OP on the same issuer. Only
   // tests/identity/oidc-certified.spec.ts runs in that mode; every other spec signs in
@@ -430,7 +640,7 @@ try {
     keys: { fixture: Buffer.alloc(32, 7).toString('base64') },
   });
   const revocations = createGarminRevocationStore({
-    connectionString: `postgresql://workout_garmin_worker@${endpoint}`,
+    connectionString: fixtureUrl('workout_garmin_worker'),
   });
   closers.push(() => revocations.close());
   let workerRun: Promise<unknown> | undefined;
@@ -456,7 +666,7 @@ try {
   // Nothing about the screen knows this is running: it shows the drawn line until a stored
   // picture exists, which is the fallback this node is required to keep working.
   const thumbnailRenderer = createCourseThumbnailWorkerRepository({
-    connectionString: `postgresql://workout_course_thumbnail_worker@${endpoint}`,
+    connectionString: fixtureUrl('workout_course_thumbnail_worker'),
   });
   closers.push(() => thumbnailRenderer.close());
   let renderRun: Promise<unknown> | undefined;
@@ -657,10 +867,12 @@ try {
   });
   closers.push(() => api.close());
   await api.listen({ host: '127.0.0.1', port: identityApiPort });
+  finishStartup();
   console.log(
     `Identity E2E ready: API ${identityApiPort}, OIDC fixture ${identityOidcPort}, Garmin fixture ${identityGarminPort}, private PostgreSQL.`,
   );
 } catch (error) {
+  finishStartup();
   await close();
   throw error;
 }
