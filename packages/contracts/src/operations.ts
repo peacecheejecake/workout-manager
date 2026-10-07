@@ -4,6 +4,10 @@ import {
   genericRecoveryExportFields34,
   validateGenericRecoveryExportTuples34,
 } from './generic-recovery-export.js';
+import {
+  raceNutritionExportFields35,
+  validateRaceNutritionExportTuples35,
+} from './race-nutrition-export.js';
 
 const count = z.number().int().nonnegative();
 const rows = z.array(z.record(z.string(), z.json())).max(1000);
@@ -539,6 +543,19 @@ const accountExportV34Schema = z.strictObject({
     })
     .superRefine(validateGenericRecoveryExportTuples34),
 });
+/** Current retained facts, with strict race/nutrition tuples. Export validation
+ * does not authenticate an operational archive or authorize restored processing. */
+export const accountExportV35Schema = z.strictObject({
+  ...accountExportV34Schema.shape,
+  schemaVersion: z.literal(35),
+  data: z
+    .strictObject({
+      ...accountExportV34Schema.shape.data.shape,
+      ...raceNutritionExportFields35,
+    })
+    .superRefine(validateGenericRecoveryExportTuples34)
+    .superRefine(validateRaceNutritionExportTuples35),
+});
 // Read historical artifacts unchanged; never manufacture absent collections.
 export const accountExportSchema = z.discriminatedUnion('schemaVersion', [
   accountExportV2Schema,
@@ -574,6 +591,7 @@ export const accountExportSchema = z.discriminatedUnion('schemaVersion', [
   accountExportV32Schema,
   accountExportV33Schema,
   accountExportV34Schema,
+  accountExportV35Schema,
 ]);
 export const operationsStatusSchema = z.strictObject({
   checkedAt: z.iso.datetime({ offset: true }),
