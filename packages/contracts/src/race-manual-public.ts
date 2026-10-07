@@ -28,7 +28,7 @@ export const raceManualProjectionIntentSchema = z.strictObject({
         .array(
           z.strictObject({
             planVersionId: z.uuid(),
-            itemId: id,
+            itemId: nutritionPlanItemCoreSchema.shape.id,
             action: z.literal('replace_anchor'),
             anchor: nutritionPlanItemCoreSchema.shape.anchor,
           }),

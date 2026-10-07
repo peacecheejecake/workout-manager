@@ -1,4 +1,5 @@
 import { expect, it } from 'vitest';
+import { nutritionPlanItemCoreSchema } from '../src/nutrition-core.js';
 import {
   raceManualProjectionIntentSchema,
   raceManualPublicPrepareSchema,
@@ -64,5 +65,35 @@ it.each(['expectedBasis', 'chain', 'expectation', 'raceChange', 'writes', 'athle
         [field]: {},
       }).success,
     ).toBe(false);
+  },
+);
+
+it.each(['x'.repeat(201), '한글항목'.repeat(60)])(
+  'accepts exact canonical nutrition item identity: %s',
+  (itemId) => {
+    expect(nutritionPlanItemCoreSchema.shape.id.safeParse(itemId).success).toBe(true);
+    const raw = {
+      ...intent,
+      resolutions: {
+        nutrition: [
+          {
+            planVersionId: intent.expectedEvent.id,
+            itemId,
+            action: 'replace_anchor',
+            anchor: {
+              kind: 'relative',
+              entity: 'session',
+              entityId: 'session-1',
+              point: 'end',
+              offsetMinutes: 30,
+            },
+          },
+        ],
+        routines: [],
+      },
+    };
+    expect(raceManualProjectionIntentSchema.parse(raw).resolutions.nutrition[0]?.itemId).toBe(
+      itemId,
+    );
   },
 );
