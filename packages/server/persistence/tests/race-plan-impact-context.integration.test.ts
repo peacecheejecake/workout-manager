@@ -2234,7 +2234,16 @@ it('separates exact planned session membership from current association and abse
     c.query('UPDATE plan_head SET version_id=$2 WHERE athlete_id=$1', [athlete, next]),
   );
   const old = await permissionFacts(athlete, [], [requested]);
-  expect(old.planned).toMatchObject([{ state: 'historical', currentHead: { version_id: next } }]);
+  // Normal107 has no immutable SQL112 historical aggregate mapping. The current
+  // head can identify its own snapshot, never certify an older snapshot's aggregate.
+  expect(old.planned).toMatchObject([
+    {
+      state: 'unavailable',
+      reason: 'aggregate_identity_unavailable',
+      content: null,
+      currentHead: { version_id: next },
+    },
+  ]);
   await owned(athlete, (c) => c.query('DELETE FROM plan_head WHERE athlete_id=$1', [athlete]));
   const absent = await permissionFacts(athlete, [], [requested]);
   expect(absent.planned).toMatchObject([

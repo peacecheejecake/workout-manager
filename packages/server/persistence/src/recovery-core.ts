@@ -143,8 +143,9 @@ async function observationState(tx: Transaction, ref: RecoveryObservationRef) {
 async function planState(tx: Transaction, ref: RecoveryPlanRef) {
   if (ref.kind === 'training') {
     const row = await tx.query(
-      `SELECT version_id FROM plan_head WHERE athlete_id=$1
-       AND EXISTS (SELECT 1 FROM plan_snapshot WHERE athlete_id=$1 AND id=$2)`,
+      `SELECT h.version_id FROM plan_head h
+       JOIN plan_snapshot s ON s.athlete_id=h.athlete_id AND s.id=h.version_id
+       WHERE h.athlete_id=$1 AND h.aggregate_id=$2::uuid`,
       [tx.athleteId, ref.aggregateId],
     );
     if (!row.rows[0]) return 'deleted' as const;

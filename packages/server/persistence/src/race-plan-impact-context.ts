@@ -6,6 +6,7 @@ import {
 import { currentRestoreGeneration } from './restore-generation.js';
 import { captureRaceManualBasis } from './race-plan-impact-manual-basis.js';
 import { captureRaceImpactSourcePermissions } from './race-plan-impact-source-permissions.js';
+import { captureRecoverySourceFacts } from './race-plan-impact-recovery-sources.js';
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { raceEventSchema, type RaceEvent } from '@workout/contracts/races';
@@ -522,12 +523,8 @@ export async function captureRacePlanImpactContext(tx: Transaction, input: unkno
     for (const ref of record.draft.planRefs) {
       if (ref.kind === 'training') {
         await sources.plan(ref.headVersionId);
-        const ownedAggregate = await tx.query(
-          'SELECT aggregate_id FROM plan_head WHERE athlete_id=$1 AND aggregate_id=$2',
-          [tx.athleteId, ref.aggregateId],
-        );
-        if (!ownedAggregate.rows[0] && ref.aggregateId !== ref.headVersionId)
-          fail('SOURCE_UNAVAILABLE');
+        // Aggregate identity is checked against the immutable association port
+        // below. A version ID is never used as a guessed aggregate ID.
       } else {
         const found = await tx.query(
           'SELECT version_id FROM nutrition_plan_version WHERE athlete_id=$1 AND plan_id=$2 AND version_id=$3',
@@ -615,9 +612,19 @@ export async function captureRacePlanImpactContext(tx: Transaction, input: unkno
   let routineActualManifest: Awaited<ReturnType<typeof captureRoutineActualManifest>>;
   let supplementaryManifest!: Awaited<ReturnType<typeof captureSupplementaryReferenceManifest>>;
   let sourcePermissionManifest: Awaited<ReturnType<typeof captureRaceImpactSourcePermissions>>;
+  let recoverySources: Awaited<ReturnType<typeof captureRecoverySourceFacts>>;
   try {
     dependencyInventory = await captureIntegratedDependencyInventory(tx);
     routineActualManifest = await captureRoutineActualManifest(tx, sources);
+    const sourceBudget = {
+      bytes: baseBytes,
+      sources: sources.sourceCount() + routineActualManifest.uniqueSourceCount,
+    };
+    recoverySources = await captureRecoverySourceFacts(
+      tx,
+      recovery.map((row) => row.record),
+      sourceBudget,
+    );
     sourcePermissionManifest = await captureRaceImpactSourcePermissions(tx, {
       plannedRefs: routineActualManifest.occurrences.flatMap((row) =>
         row.record.stepBindings.map((binding) => binding.plannedRef),
@@ -633,11 +640,14 @@ export async function captureRacePlanImpactContext(tx: Transaction, input: unkno
         );
         return supplementaryManifest;
       },
-      catalogRefs: routineActualManifest.blueprints.flatMap((row) =>
-        row.record.steps.map((step) => step.content),
-      ),
-      baseBytes,
-      existingSourceCount: sources.sourceCount() + routineActualManifest.uniqueSourceCount,
+      catalogRefs: [
+        ...routineActualManifest.blueprints.flatMap((row) =>
+          row.record.steps.map((step) => step.content),
+        ),
+        ...recoverySources.methodCatalogRequests,
+      ],
+      baseBytes: sourceBudget.bytes,
+      existingSourceCount: sourceBudget.sources,
     });
   } catch (error) {
     if (error instanceof RaceImpactDependencyError)
@@ -673,6 +683,7 @@ export async function captureRacePlanImpactContext(tx: Transaction, input: unkno
     rosters,
     nutrition,
     recovery,
+    recoverySources,
     routines,
     coreDependencies: core,
     dependencyInventory,

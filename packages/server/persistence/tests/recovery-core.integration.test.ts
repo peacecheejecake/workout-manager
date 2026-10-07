@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { Pool } from 'pg';
@@ -7,7 +8,16 @@ import type {
   RecoveryStrategyDraft,
 } from '@workout/contracts/recovery-core';
 import { createDatabase, type Database } from '../src/database.js';
-import { migrate } from '../src/migrate.js';
+import {
+  migrate,
+  grantNutritionCore,
+  grantSupplementaryCore,
+  grantOperations,
+  grantCorePlanning,
+} from '../src/migrate.js';
+import { createPlanningRepository } from '../src/planning.js';
+import { planDraftSchema } from '@workout/contracts/planning';
+import { recoveryStrategyVersionSchema } from '@workout/contracts/recovery-core';
 import { createRecoveryRepository, RecoveryReferenceError } from '../src/recovery-core.js';
 
 const adminUrl = process.env['TEST_DATABASE_ADMIN_URL'];
@@ -57,6 +67,12 @@ beforeAll(async () => {
   await admin.query(
     'GRANT EXECUTE ON FUNCTION public.current_restore_generation() TO workout_runtime',
   );
+  await grantOperations(adminUrl, 'workout_runtime');
+  await grantNutritionCore(adminUrl, 'workout_runtime');
+  await grantSupplementaryCore(adminUrl, 'workout_runtime');
+  // Use the actual public planning composition; private association ledger is
+  // never granted. The composer grants only its narrow reader when installed.
+  await grantCorePlanning(adminUrl, 'workout_runtime');
   database = createDatabase({ connectionString: runtimeUrl, max: 4 });
   restoreGeneration = (await admin.query('SELECT public.current_restore_generation() AS id'))
     .rows[0]?.id as string;
@@ -374,4 +390,174 @@ it('keeps rest selection separate from actuals and enforces tenant ownership, re
       )
     ).rows,
   ).toEqual([{ event_id: deletionEvents.rows[0]?.event_id }]);
+});
+
+const trainingDraft = planDraftSchema.parse({
+  title: 'Recovery linked training',
+  timezone: 'UTC',
+  periods: [
+    {
+      id: 'season',
+      parentId: null,
+      level: 'season',
+      title: 'Season',
+      startDate: '2026-09-18',
+      endDateExclusive: '2026-09-21',
+      timezone: 'UTC',
+      intent: '',
+      isPartial: false,
+    },
+  ],
+  sessions: [],
+});
+async function planFixture() {
+  const athleteId = randomUUID();
+  await grantAppPurpose(athleteId);
+  const planning = createPlanningRepository(database);
+  const snapshot = await planning.save(athleteId, {
+    source: 'manual',
+    confirmed: true,
+    expectedVersionId: null,
+    idempotencyKey: randomUUID(),
+    draft: trainingDraft,
+  });
+  const head = await database.tenant(athleteId, (tx) =>
+    tx.query('SELECT aggregate_id,version_id FROM plan_head WHERE athlete_id=$1', [athleteId]),
+  );
+  const row = z.strictObject({ aggregate_id: z.uuid(), version_id: z.uuid() }).parse(head.rows[0]);
+  expect(row.version_id).toBe(snapshot.id);
+  expect(row.aggregate_id).not.toBe(snapshot.id);
+  const recovery = createRecoveryRepository(database);
+  const method = await recovery.createMethod(athleteId, {
+    title: 'Rest record',
+    category: 'rest',
+    intendedUse: 'User record',
+    applicability: [],
+    cautions: [],
+    sourceDescription: '',
+    evidenceLimitations: 'Unreviewed',
+    idempotencyKey: randomUUID(),
+  });
+  const prepared = draft(randomUUID(), method.versionId);
+  prepared.observations = [];
+  prepared.planRefs = [
+    { kind: 'training', aggregateId: row.aggregate_id, headVersionId: snapshot.id },
+  ];
+  return { athleteId, planning, snapshot, aggregateId: row.aggregate_id, recovery, prepared };
+}
+it('accepts actual public aggregate identity and distinguishes current from historical training version', async () => {
+  const f = await planFixture();
+  const saved = await f.recovery.createStrategy(f.athleteId, {
+    draft: f.prepared,
+    idempotencyKey: randomUUID(),
+  });
+  expect(saved.draft.planRefs).toEqual(f.prepared.planRefs);
+  const latest = await f.planning.save(f.athleteId, {
+    source: 'manual',
+    confirmed: true,
+    expectedVersionId: f.snapshot.id,
+    idempotencyKey: randomUUID(),
+    draft: { ...trainingDraft, title: 'Next revision' },
+  });
+  await expect(
+    f.recovery.createStrategy(f.athleteId, { draft: f.prepared, idempotencyKey: randomUUID() }),
+  ).rejects.toMatchObject({ code: 'REVISION_CONFLICT' });
+  expect((await f.recovery.workspace(f.athleteId)).planRefs).toContainEqual({
+    reference: f.prepared.planRefs[0],
+    state: 'changed',
+  });
+  expect((await f.recovery.readStrategy(f.athleteId, saved.strategyId))?.draft.planRefs).toEqual(
+    f.prepared.planRefs,
+  );
+  const canonical = {
+    ...f.prepared,
+    planRefs: [{ kind: 'training' as const, aggregateId: f.aggregateId, headVersionId: latest.id }],
+  };
+  await expect(
+    f.recovery.createStrategy(f.athleteId, { draft: canonical, idempotencyKey: randomUUID() }),
+  ).resolves.toMatchObject({ draft: { planRefs: canonical.planRefs } });
+});
+it('keeps separate tenant aggregates and rejects foreign aggregate paired with owned snapshot', async () => {
+  const own = await planFixture(),
+    foreign = await planFixture();
+  expect(own.aggregateId).not.toBe(foreign.aggregateId);
+  await expect(
+    own.recovery.createStrategy(own.athleteId, {
+      draft: own.prepared,
+      idempotencyKey: randomUUID(),
+    }),
+  ).resolves.toMatchObject({ draft: { planRefs: own.prepared.planRefs } });
+  await expect(
+    foreign.recovery.createStrategy(foreign.athleteId, {
+      draft: foreign.prepared,
+      idempotencyKey: randomUUID(),
+    }),
+  ).resolves.toMatchObject({ draft: { planRefs: foreign.prepared.planRefs } });
+  await expect(
+    own.recovery.createStrategy(own.athleteId, {
+      draft: {
+        ...own.prepared,
+        planRefs: [
+          { kind: 'training', aggregateId: foreign.aggregateId, headVersionId: own.snapshot.id },
+        ],
+      },
+      idempotencyKey: randomUUID(),
+    }),
+  ).rejects.toMatchObject({ code: 'PLAN_NOT_FOUND' });
+  await expect(
+    own.recovery.createStrategy(own.athleteId, {
+      draft: {
+        ...own.prepared,
+        planRefs: [
+          { kind: 'training', aggregateId: own.aggregateId, headVersionId: foreign.snapshot.id },
+        ],
+      },
+      idempotencyKey: randomUUID(),
+    }),
+  ).rejects.toMatchObject({ code: 'REVISION_CONFLICT' });
+});
+it('rejects snapshot-as-aggregate on new public writes without altering existing legacy read bytes', async () => {
+  const f = await planFixture();
+  const legacyDraft = {
+    ...f.prepared,
+    planRefs: [
+      { kind: 'training' as const, aggregateId: f.snapshot.id, headVersionId: f.snapshot.id },
+    ],
+  };
+  await expect(
+    f.recovery.createStrategy(f.athleteId, { draft: legacyDraft, idempotencyKey: randomUUID() }),
+  ).rejects.toMatchObject({ code: 'PLAN_NOT_FOUND' });
+  // Explicit owner-offline historical compatibility fixture. It is not a new
+  // public command or an approval witness; no production guard is disabled.
+  const legacy = recoveryStrategyVersionSchema.parse({
+    schemaVersion: 1,
+    strategyId: randomUUID(),
+    versionId: randomUUID(),
+    version: 1,
+    previousVersionId: null,
+    status: 'draft',
+    selectedOptionId: null,
+    createdAt: '2026-09-19T00:00:00.000Z',
+    draft: legacyDraft,
+  });
+  const client = await maintenanceOwner.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query("SELECT set_config('app.athlete_id',$1,true)", [f.athleteId]);
+    await client.query(
+      'INSERT INTO recovery_strategy_version(athlete_id,strategy_id,version_id,version,previous_version,previous_version_id,record_json) VALUES($1,$2,$3,1,NULL,NULL,$4::jsonb)',
+      [f.athleteId, legacy.strategyId, legacy.versionId, JSON.stringify(legacy)],
+    );
+    await client.query(
+      'INSERT INTO recovery_strategy_head(athlete_id,strategy_id,version,version_id) VALUES($1,$2,1,$3)',
+      [f.athleteId, legacy.strategyId, legacy.versionId],
+    );
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+  expect(await f.recovery.readStrategy(f.athleteId, legacy.strategyId)).toEqual(legacy);
 });

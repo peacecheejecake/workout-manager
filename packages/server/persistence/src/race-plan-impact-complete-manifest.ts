@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import { raceEventSchema } from '@workout/contracts/races';
 import { planSnapshotSchema } from '@workout/contracts/planning';
+import { foodDefinitionVersionSchema } from '@workout/contracts/nutrition-core';
+import { nutritionAnchorSchema } from '@workout/contracts/nutrition';
 import { nutritionPlanVersionCompatibleV4Schema } from '@workout/contracts/nutrition-race-plan-v4';
 import { coreEvidenceDependencyManifestSchema } from '@workout/contracts/evidence-dependencies';
 import {
@@ -15,6 +17,13 @@ import {
   decodeIntegratedDependencyInventory,
   impactDependencyDigest,
 } from './race-plan-impact-dependencies.js';
+
+import { recoverySourceFactsSchema } from './race-plan-impact-recovery-sources.js';
+import {
+  recoveryReadSourcesProjectionSchema,
+  validateRecoveryReadSources,
+  type RecoveryReadSourceBlocker,
+} from './race-plan-impact-recovery-manifest.js';
 
 const hash = z.string().regex(/^[a-f0-9]{64}$/),
   uuid = z.uuid();
@@ -227,12 +236,74 @@ const planned = z.strictObject({
   aggregateIdentity: z.enum(['current_head_association_only', 'immutable_version']).optional(),
   exactOwnedVersion: z.strictObject({ aggregateId: uuid, versionId: uuid }).nullable().optional(),
 });
+// Internal facts from the owned source producer, not a public approval codec.
+const foodProvenance = z
+  .strictObject({
+    kind: foodDefinitionVersionSchema.shape.provenance.shape.kind,
+    reviewState: foodDefinitionVersionSchema.shape.provenance.shape.reviewState,
+    capturedAt: foodDefinitionVersionSchema.shape.provenance.shape.capturedAt,
+    reference: z.discriminatedUnion('state', [
+      z.strictObject({ state: z.literal('absent') }),
+      z.strictObject({ state: z.literal('present'), digest: hash }),
+    ]),
+  })
+  .superRefine((value, ctx) => {
+    if (value.kind !== 'user_entered' && value.reference.state === 'absent')
+      ctx.addIssue({
+        code: 'custom',
+        message: 'External provenance requires its frozen reference',
+      });
+  });
+const nestedFood = z.strictObject({
+  requestedVersionId: uuid,
+  state: z.enum(['current', 'historical', 'unavailable']),
+  content: z
+    .strictObject({
+      foodId: foodDefinitionVersionSchema.shape.foodId,
+      versionId: uuid,
+      digest: hash,
+      provenance: foodProvenance,
+      record: foodDefinitionVersionSchema,
+    })
+    .nullable(),
+  currentHead: z
+    .union([
+      z.strictObject({ state: z.literal('absent') }),
+      z.strictObject({ versionId: uuid, provenance: foodProvenance.nullable() }),
+    ])
+    .nullable(),
+});
+const linkedNutritionPlan = z.discriminatedUnion('state', [
+  z.strictObject({ state: z.literal('absent') }),
+  z.strictObject({
+    state: z.enum(['current', 'historical', 'unavailable']),
+    requestedVersionId: uuid,
+    content: z.strictObject({ digest: hash }).nullable(),
+    currentHead: z.strictObject({ aggregate_id: uuid, version_id: uuid }).nullable(),
+  }),
+]);
+const nestedAnchor = z.strictObject({
+  itemId: z.string().min(1),
+  anchor: nutritionAnchorSchema.options[1],
+  source: z.union([
+    z.strictObject({ state: z.literal('owned'), planVersionId: uuid }),
+    z.strictObject({ state: z.literal('unavailable'), content: z.null() }),
+    z.strictObject({ requestedId: uuid, state: z.literal('unavailable'), content: z.null() }),
+    z.strictObject({ requestedId: uuid, state: z.literal('deleted'), revision, content: z.null() }),
+    z.strictObject({
+      requestedId: uuid,
+      state: z.literal('current'),
+      revision,
+      content: z.strictObject({ digest: hash }).nullable(),
+    }),
+  ]),
+});
 const nestedNutrition = z.strictObject({
   versionId: uuid,
   recordDigest: hash.optional(),
-  foods: jsonRows,
-  anchors: jsonRows,
-  linkedPlan: z.json(),
+  foods: z.array(nestedFood).max(5000),
+  anchors: z.array(nestedAnchor).max(5000),
+  linkedPlan: linkedNutritionPlan,
 });
 const optionalRegistry = z.discriminatedUnion('state', [
   z.strictObject({ state: z.literal('absent') }),
@@ -374,6 +445,14 @@ const catalog = z.strictObject({
   content: z.strictObject({ digest: hash }).nullable(),
   currentHead: z.strictObject({ aggregate_id: uuid, version_id: uuid }).nullable(),
   exercises: jsonRows.optional(),
+  provenance: z
+    .strictObject({
+      source: z.literal('user_recorded'),
+      reviewState: z.literal('unreviewed'),
+      reviewedAt: z.null(),
+    })
+    .nullable()
+    .optional(),
 });
 const permissions = z.strictObject({
   complete: z.literal(false),
@@ -418,7 +497,8 @@ const captureSchema = z.strictObject({
     routine: z.array(tuple).max(1000),
   }),
   nutrition: z.array(nutrition).max(1000),
-  recovery: jsonRows,
+  recovery: recoveryReadSourcesProjectionSchema.shape.recovery,
+  recoverySources: recoverySourceFactsSchema.optional(),
   routines: z.array(routine).max(1000),
   coreDependencies: coreEvidenceDependencyManifestSchema,
   dependencyInventory: z.array(z.json()).length(12),
@@ -447,7 +527,8 @@ export type RaceImpactManifestBlocker = {
     | 'unsupported_consumed_channel'
     | 'source_membership_mismatch'
     | 'permission_port_missing'
-    | 'bounds_exceeded';
+    | 'bounds_exceeded'
+    | RecoveryReadSourceBlocker['reason'];
 };
 export type RaceImpactConsumedManifestResult =
   | { readonly status: 'blocked'; readonly blockers: readonly RaceImpactManifestBlocker[] }
@@ -601,7 +682,7 @@ export function validateRaceImpactConsumedManifest(
   const races = new Map(c.consumedSources.races.map((r) => [r.id.toLowerCase(), r]));
   if (!equal(races.get(c.event.id.toLowerCase()), c.event))
     block('consumedSources.races.event', 'missing_source');
-  if (races.size !== 1) block('consumedSources.races', 'unsupported_consumed_channel');
+
   if (races.size !== c.consumedSources.races.length)
     block('consumedSources.races', 'source_identity_mismatch');
   if (
@@ -617,16 +698,128 @@ export function validateRaceImpactConsumedManifest(
     [
       c.currentTraining?.snapshot.id,
       c.linkedPlan?.id,
+      ...c.nutrition.flatMap((n) =>
+        n.record.linkedTrainingPlanVersionId === null ? [] : [n.record.linkedTrainingPlanVersionId],
+      ),
       ...refs.filter((ref) => ref.domain === 'training').map((ref) => ref.versionId),
+      ...c.recovery.flatMap((row) =>
+        row.record.draft.planRefs
+          .filter((ref) => ref.kind === 'training')
+          .map((ref) => ref.headVersionId),
+      ),
     ]
       .filter((value) => value !== undefined)
       .map((value) => value.toLowerCase()),
   );
   if ([...plans.keys()].some((key) => !usedPlans.has(key)))
     block('consumedSources.plans', 'unsupported_consumed_channel');
+  const recoveryResult = validateRecoveryReadSources({
+    roster: c.rosters.recovery,
+    recovery: c.recovery,
+    plans: c.consumedSources.plans,
+    nutrition: c.nutrition.map(({ aggregateId, versionId, record }) => ({
+      aggregateId,
+      versionId,
+      record,
+    })),
+    methodCatalog: c.sourcePermissionManifest.catalog
+      .filter((row) => row.requested.kind === 'recovery_method')
+      .map(({ requested, state, reason, content, currentHead, provenance }) => ({
+        requested,
+        state,
+        reason,
+        content,
+        currentHead,
+        provenance,
+      })),
+    ...(c.recoverySources
+      ? {
+          methodSources: c.recoverySources.methods,
+          trainingAssociations: c.recoverySources.trainingAssociations,
+        }
+      : {}),
+  });
+  for (const finding of recoveryResult.blockers)
+    block(
+      `recovery:${finding.strategyVersionId ?? 'inventory'}:${finding.sourceVersionId ?? 'source'}`,
+      finding.reason,
+    );
+  if (c.recoverySources) {
+    const rs = c.recoverySources;
+    const methodVersions = new Set(
+      c.recovery.flatMap((row) =>
+        row.record.draft.options.flatMap((option) =>
+          option.methodVersionId === null ? [] : [option.methodVersionId.toLowerCase()],
+        ),
+      ),
+    );
+    const tupleKey = (row: { aggregateId: string; versionId: string }) =>
+      JSON.stringify([row.aggregateId.toLowerCase(), row.versionId.toLowerCase()]);
+    const trainingTuples = new Set(
+      c.recovery.flatMap((row) =>
+        row.record.draft.planRefs
+          .filter((ref) => ref.kind === 'training')
+          .map((ref) => tupleKey({ aggregateId: ref.aggregateId, versionId: ref.headVersionId })),
+      ),
+    );
+    const nutritionTuples = new Set(
+      c.recovery.flatMap((row) =>
+        row.record.draft.planRefs
+          .filter((ref) => ref.kind === 'nutrition')
+          .map((ref) => tupleKey({ aggregateId: ref.aggregateId, versionId: ref.headVersionId })),
+      ),
+    );
+    const missingMethods = rs.unavailable.filter((row) => row.kind === 'method');
+    const missingTraining = rs.unavailable.filter((row) => row.kind === 'training');
+    const actualMethodVersions = [
+      ...rs.methods.map((row) => row.versionId.toLowerCase()),
+      ...missingMethods.map((row) => row.requestedVersionId.toLowerCase()),
+    ];
+    const actualTrainingTuples = [
+      ...rs.trainingAssociations.map(tupleKey),
+      ...missingTraining.map((row) => tupleKey(row.requested)),
+    ];
+    if (
+      new Set(actualMethodVersions).size !== actualMethodVersions.length ||
+      actualMethodVersions.length !== methodVersions.size ||
+      actualMethodVersions.some((v) => !methodVersions.has(v)) ||
+      new Set(actualTrainingTuples).size !== actualTrainingTuples.length ||
+      actualTrainingTuples.length !== trainingTuples.size ||
+      actualTrainingTuples.some((v) => !trainingTuples.has(v)) ||
+      rs.nutritionReferences.length !== nutritionTuples.size ||
+      new Set(rs.nutritionReferences.map(tupleKey)).size !== rs.nutritionReferences.length ||
+      rs.nutritionReferences.some((v) => !nutritionTuples.has(tupleKey(v)))
+    )
+      block('recoverySources', 'source_identity_mismatch');
+    const requests = rs.methods.map((row) => ({
+      kind: 'recovery_method',
+      ref: { id: row.methodId, versionId: row.versionId },
+    }));
+    const identities = (rows: readonly unknown[]) => rows.map(impactDependencyDigest).sort();
+    if (
+      !equal(identities(requests), identities(rs.methodCatalogRequests)) ||
+      !equal(
+        identities(rs.methodFacts.map((row) => row.requested)),
+        identities(rs.methodCatalogRequests),
+      )
+    )
+      block('recoverySources.methodCatalogRequests', 'source_identity_mismatch');
+    for (const fact of rs.methodFacts) {
+      const actual = c.sourcePermissionManifest.catalog.find((row) =>
+        equal(row.requested, fact.requested),
+      );
+      if (!equal(actual, fact)) block('recoverySources.methodFacts', 'source_identity_mismatch');
+    }
+    for (const unavailable of rs.unavailable)
+      block(
+        unavailable.kind === 'method'
+          ? `recoverySources.method:${unavailable.requestedVersionId}`
+          : `recoverySources.training:${unavailable.requested.versionId}`,
+        unavailable.kind === 'method' ? 'method_unavailable' : 'training_association_missing',
+      );
+  }
   // Unimplemented codecs cannot be admitted merely because their arrays are JSON.
   for (const [path, rows] of [
-    ['recovery', c.recovery],
     ['completions', c.completions],
     ['routineActualManifest.runs', c.routineActualManifest.runs],
     ['sourcePermissionManifest.resources', c.sourcePermissionManifest.resources],
@@ -641,7 +834,6 @@ export function validateRaceImpactConsumedManifest(
       c.rosters.nutrition,
       c.nutrition.map((n) => ({ aggregateId: n.aggregateId, versionId: n.versionId })),
     ) ||
-    c.rosters.recovery.length ||
     !equal(
       c.rosters.routine,
       c.routines.map((r) => ({ aggregateId: r.aggregateId, versionId: r.versionId })),
@@ -667,31 +859,156 @@ export function validateRaceImpactConsumedManifest(
     const source = nested.get(n.versionId.toLowerCase());
     if (
       !source ||
-      ('schemaVersion' in n.record && source.recordDigest !== impactDependencyDigest(n.record))
+      (('schemaVersion' in n.record || source.recordDigest !== undefined) &&
+        source.recordDigest !== impactDependencyDigest(n.record))
     )
       block(path + '.nested', 'digest_mismatch');
-    if (
-      n.relativeItems.length ||
-      n.record.items.some(
-        (item) => item.anchor.kind === 'relative' || item.anchor.kind === 'disconnected',
-      ) ||
-      source?.anchors.length
-    )
-      block(path + '.anchors', 'unsupported_consumed_channel');
-    if (
-      n.record.linkedTrainingPlanVersionId !== null ||
-      n.sourceRelation !== 'absent' ||
-      !equal(source?.linkedPlan, { state: 'absent' })
-    )
-      block(path + '.linkedPlan', 'unsupported_consumed_channel');
+    if (!source) continue;
+    const linkedId = n.record.linkedTrainingPlanVersionId;
+    const linked = linkedId === null ? undefined : plans.get(linkedId.toLowerCase());
+    const linkedFacts = source.linkedPlan;
+    if (linkedId === null) {
+      if (n.sourceRelation !== 'absent' || linkedFacts.state !== 'absent')
+        block(path + '.linkedPlan', 'source_identity_mismatch');
+    } else {
+      const current = c.currentTraining;
+      const relation = current && sameId(current.snapshot.id, linkedId) ? 'current' : 'historical';
+      if (
+        !linked ||
+        linkedFacts.state === 'absent' ||
+        linkedFacts.state === 'unavailable' ||
+        !sameId(linkedFacts.requestedVersionId, linkedId) ||
+        linkedFacts.content?.digest !== impactDependencyDigest(linked) ||
+        n.sourceRelation !== relation ||
+        linkedFacts.state !== relation ||
+        (current
+          ? linkedFacts.currentHead === null ||
+            !sameId(linkedFacts.currentHead.aggregate_id, current.aggregateId) ||
+            !sameId(linkedFacts.currentHead.version_id, current.snapshot.id)
+          : linkedFacts.currentHead !== null)
+      )
+        block(path + '.linkedPlan', 'source_membership_mismatch');
+    }
     const expectedFoods = new Set(
-      n.record.items.flatMap((i) =>
-        i.foods.flatMap((f) => (f.foodVersionId === null ? [] : [f.foodVersionId.toLowerCase()])),
+      n.record.items.flatMap((item) =>
+        item.foods.flatMap((food) =>
+          food.foodVersionId === null ? [] : [food.foodVersionId.toLowerCase()],
+        ),
       ),
     );
-    if (expectedFoods.size || source?.foods.length)
-      block(path + '.foods', 'unsupported_consumed_channel');
+    const foods = new Map(
+      source.foods.map((food) => [food.requestedVersionId.toLowerCase(), food]),
+    );
+    if (
+      foods.size !== source.foods.length ||
+      foods.size !== expectedFoods.size ||
+      [...foods.keys()].some((key) => !expectedFoods.has(key))
+    )
+      block(path + '.foods', 'source_membership_mismatch');
+    for (const key of expectedFoods) {
+      const food = foods.get(key);
+      if (
+        !food ||
+        food.state === 'unavailable' ||
+        food.content === null ||
+        food.currentHead === null ||
+        !sameId(food.content.versionId, key) ||
+        !sameId(food.content.record.versionId, key) ||
+        food.content.foodId !== food.content.record.foodId ||
+        food.content.digest !== impactDependencyDigest(food.content.record) ||
+        !equal(food.content.provenance, {
+          kind: food.content.record.provenance.kind,
+          reviewState: food.content.record.provenance.reviewState,
+          capturedAt: food.content.record.provenance.capturedAt,
+          reference:
+            food.content.record.provenance.reference === null
+              ? { state: 'absent' }
+              : {
+                  state: 'present',
+                  digest: impactDependencyDigest(food.content.record.provenance.reference),
+                },
+        }) ||
+        (food.currentHead && 'versionId' in food.currentHead
+          ? food.currentHead.provenance === null ||
+            (food.state === 'current'
+              ? !sameId(food.currentHead.versionId, key) ||
+                !equal(food.currentHead.provenance, food.content.provenance)
+              : sameId(food.currentHead.versionId, key))
+          : food.state !== 'historical')
+      )
+        block(path + '.foods', 'source_membership_mismatch');
+    }
+    const active = n.record.items.filter((item) => item.anchor.kind === 'relative');
+    const anchors = new Map(source.anchors.map((anchor) => [anchor.itemId, anchor]));
+    const relatives = new Map(n.relativeItems.map((item) => [item.itemId, item]));
+    if (
+      anchors.size !== source.anchors.length ||
+      relatives.size !== n.relativeItems.length ||
+      anchors.size !== active.length ||
+      relatives.size !== active.length
+    )
+      block(path + '.anchors', 'source_membership_mismatch');
+    for (const item of active) {
+      const anchor = item.anchor;
+      if (anchor.kind !== 'relative') continue;
+      const captured = anchors.get(item.id),
+        relative = relatives.get(item.id);
+      if (
+        !captured ||
+        !relative ||
+        !equal(captured.anchor, anchor) ||
+        relative.entity !== anchor.entity ||
+        (anchor.entity === 'race'
+          ? !sameId(relative.entityId, anchor.entityId)
+          : relative.entityId !== anchor.entityId) ||
+        relative.point !== anchor.point
+      ) {
+        block(path + '.anchors', 'source_membership_mismatch');
+        continue;
+      }
+      if (anchor.entity === 'session') {
+        if (
+          !linked ||
+          !linked.draft.sessions.some((session) => session.id === anchor.entityId) ||
+          captured.source.state !== 'owned' ||
+          !sameId(captured.source.planVersionId, linked.id) ||
+          relative.sourceVersionId === null ||
+          !sameId(relative.sourceVersionId, linked.id) ||
+          relative.sourceRaceRevision !== undefined ||
+          relative.sourceRaceDigest !== undefined ||
+          (relative.affected && n.sourceRelation !== 'current')
+        )
+          block(path + '.anchors', 'source_membership_mismatch');
+      } else {
+        const live = races.get(anchor.entityId.toLowerCase());
+        // These are current source-permission facts, never the saved before pin.
+        if (
+          !live ||
+          captured.source.state !== 'current' ||
+          !sameId(captured.source.requestedId, live.id) ||
+          captured.source.revision !== live.revision ||
+          captured.source.content?.digest !== impactDependencyDigest(live) ||
+          relative.sourceVersionId !== null ||
+          relative.sourceRaceRevision !== live.revision ||
+          relative.sourceRaceDigest !== impactDependencyDigest(live) ||
+          relative.affected !== sameId(live.id, c.event.id)
+        )
+          block(path + '.anchors', 'source_membership_mismatch');
+      }
+    }
   }
+  const usedRaces = new Set([
+    c.event.id.toLowerCase(),
+    ...c.nutrition.flatMap((n) =>
+      n.record.items.flatMap((item) =>
+        item.anchor.kind === 'relative' && item.anchor.entity === 'race'
+          ? [item.anchor.entityId.toLowerCase()]
+          : [],
+      ),
+    ),
+  ]);
+  if ([...races.keys()].some((key) => !usedRaces.has(key)))
+    block('consumedSources.races', 'unsupported_consumed_channel');
   const plannedByKey = new Map(
     c.sourcePermissionManifest.planned.map((p) => [impactDependencyDigest(p.requested), p]),
   );
@@ -770,13 +1087,16 @@ export function validateRaceImpactConsumedManifest(
       )
     )
       block(`blueprint:${b.record.versionId}`, 'unsupported_consumed_channel');
-  const catalogRequests = new Map(
-    [...blueprints.values()].flatMap((b) =>
+  const catalogRequests = new Map([
+    ...[...blueprints.values()].flatMap((b) =>
       b.record.steps
         .filter((step) => step.content.kind !== 'checklist')
-        .map((step) => [impactDependencyDigest(step.content), step.content]),
+        .map((step) => [impactDependencyDigest(step.content), step.content] as const),
     ),
-  );
+    ...(c.recoverySources?.methodCatalogRequests ?? []).map(
+      (request) => [impactDependencyDigest(request), request] as const,
+    ),
+  ]);
   const catalogRows = new Map(
     c.sourcePermissionManifest.catalog.map((row) => [impactDependencyDigest(row.requested), row]),
   );
@@ -787,6 +1107,11 @@ export function validateRaceImpactConsumedManifest(
     block('sourcePermissionManifest.catalog', 'missing_source');
   for (const [key, requested] of catalogRequests) {
     const row = catalogRows.get(key);
+    if (
+      requested.kind === 'recovery_method' &&
+      c.recoverySources?.methodCatalogRequests.some((ref) => equal(ref, requested))
+    )
+      continue;
     if (requested.kind !== 'nutrition_template') {
       block('sourcePermissionManifest.catalog', 'unsupported_consumed_channel');
       continue;
@@ -970,8 +1295,7 @@ export function validateRaceImpactConsumedManifest(
   const am = c.sourcePermissionManifest.activityMediaPermissions;
   // Tenant-wide head/provider/consent inventories are metadata, not consumed
   // actual bodies or source permission. Keep their bytes in the read digest.
-  // This closed subset has no actual-body consumer: completion/run/relative
-  // anchor channels are blocked at those specific rows above. A media row is
+  // Completion/run channels remain blocked at their specific rows above. A media row is
   // different: captureActivityAndMediaPermissions emits it only for requested
   // media IDs from the consumed catalog/copy inventory.
   if (
@@ -980,8 +1304,19 @@ export function validateRaceImpactConsumedManifest(
   )
     block('activityMediaPermissions.metadata', 'source_identity_mismatch');
   if (am.media.length) block('activityMediaPermissions.media', 'permission_port_missing');
-  if (c.affected.nutrition.length || c.affected.routine.length)
-    block('affected', 'unsupported_consumed_channel');
+  const affectedNutrition = c.nutrition
+    .filter((row) => row.relativeItems.some((item) => item.affected))
+    .map((row) => row.aggregateId.toLowerCase());
+  if (
+    new Set(c.affected.nutrition.map((value) => value.toLowerCase())).size !==
+      c.affected.nutrition.length ||
+    !equal(
+      c.affected.nutrition.map((value) => value.toLowerCase()).sort(),
+      affectedNutrition.sort(),
+    )
+  )
+    block('affected.nutrition', 'source_identity_mismatch');
+  if (c.affected.routine.length) block('affected.routine', 'unsupported_consumed_channel');
   const visits =
     refs.length +
     c.consumedSources.plans.length +

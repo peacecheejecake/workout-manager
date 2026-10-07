@@ -3,6 +3,11 @@ import { Pool } from 'pg';
 import { z } from 'zod';
 import { beforeAll, afterAll, it, expect } from 'vitest';
 import { planDraftSchema } from '@workout/contracts/planning';
+import {
+  foodDefinitionVersionSchema,
+  saveFoodDefinitionVersionRequestSchema,
+} from '@workout/contracts/nutrition-core';
+import { impactDependencyDigest } from '../src/race-plan-impact-dependencies.js';
 import { createDatabase, type Database } from '../src/database.js';
 import { createRaceRepository } from '../src/races.js';
 import { createPlanningRepository } from '../src/planning.js';
@@ -328,7 +333,7 @@ it('populated foreign event and client capture/digest/ready fields cannot become
       ),
     ).rejects.toMatchObject({ code: 'INVALID_CONTEXT' });
 });
-it('actual public session-relative nutrition consumed channel remains unsupported and cannot silently claim complete scope', async () => {
+it('actual public session-relative nutrition validates exact readonly sources without claiming complete capture or approval', async () => {
   const athlete = randomUUID(),
     saved = await event(athlete);
   const training = await createPlanningRepository(db).save(athlete, {
@@ -338,7 +343,7 @@ it('actual public session-relative nutrition consumed channel remains unsupporte
     idempotencyKey: randomUUID(),
     draft: draft(),
   });
-  await createNutritionRepository(db).savePlan(athlete, {
+  const nutrition = await createNutritionRepository(db).savePlan(athlete, {
     kind: 'create',
     confirmed: true,
     idempotencyKey: randomUUID(),
@@ -373,10 +378,196 @@ it('actual public session-relative nutrition consumed channel remains unsupporte
   );
   expect(result.capture.nutrition).toHaveLength(1);
   expect(result.capture.coverage.complete).toBe(false);
+  expect(result.capture.coverage.missing).toHaveLength(5);
+  expect(result.capture.nutrition[0]?.record).toEqual(nutrition);
+  expect(result.capture.nutrition[0]?.relativeItems).toEqual([
+    {
+      itemId: 'race-meal',
+      entity: 'session',
+      entityId: 'session',
+      sourceVersionId: training.id,
+      affected: false,
+      point: 'start',
+      timing: 'not_resolved',
+    },
+  ]);
+  expect(result.capture.consumedSources.plans).toEqual([training]);
   expect(result.consumedScope).toMatchObject({
-    status: 'blocked',
-    blockers: expect.arrayContaining([
-      expect.objectContaining({ reason: 'unsupported_consumed_channel' }),
-    ]),
+    status: 'validated_read_scope',
+    approvalAuthority: 'none',
+    freshness: 'not_checked',
+    nutritionVersions: [{ planId: nutrition.planId, versionId: nutrition.versionId }],
+    capturedReadSetDigest: result.capture.readSetDigest,
   });
+  if (result.consumedScope.status === 'validated_read_scope')
+    expect(result.consumedScope.remaining).toHaveLength(5);
+});
+
+it('public food save, approved plan and later food head retain the exact historical definition/digest and zero/null portions', async () => {
+  const athlete = randomUUID(),
+    saved = await event(athlete),
+    repository = createNutritionRepository(db);
+  const datum = (unit: string, value: number | null) => ({
+    value,
+    unit,
+    status: value === null ? 'unknown' : 'reported',
+    evidenceIds: [],
+  });
+  const request = saveFoodDefinitionVersionRequestSchema.parse({
+    idempotencyKey: randomUUID(),
+    confirmed: true,
+    expectedVersionId: null,
+    definition: {
+      foodId: 'synthetic-food',
+      name: 'Original saved food',
+      basis: { kind: 'per_100g' },
+      nutrients: {
+        energy: datum('kcal', 0),
+        carbohydrate: datum('g', null),
+        protein: datum('g', null),
+        fat: datum('g', null),
+        fluid: datum('mL', null),
+        sodium: datum('mg', null),
+      },
+      provenance: {
+        kind: 'user_entered',
+        reference: null,
+        capturedAt: '2026-10-06T00:00:00Z',
+        reviewState: 'unreviewed',
+      },
+    },
+  });
+  const original = await repository.saveFood(athlete, request);
+  const nutrition = await repository.savePlan(athlete, {
+    kind: 'create',
+    confirmed: true,
+    idempotencyKey: randomUUID(),
+    draft: {
+      period: { from: '2026-10-01', toInclusive: '2026-10-31' },
+      timezone: 'Asia/Seoul',
+      purpose: 'Preserve historical food',
+      linkedTrainingPlanVersionId: null,
+      items: [
+        {
+          id: 'meal',
+          category: 'meal',
+          title: 'Original portions',
+          anchor: { kind: 'absolute', date: '2026-10-06', localTime: null, timezone: 'Asia/Seoul' },
+          foods: [
+            {
+              foodVersionId: original.versionId,
+              description: 'Reported zero',
+              quantity: 0,
+              unit: 'g',
+              sourceBasis: 'per_100g',
+            },
+            {
+              foodVersionId: null,
+              description: 'Unknown amount',
+              quantity: null,
+              unit: 'unspecified',
+              sourceBasis: 'unknown',
+            },
+          ],
+          targets: [],
+          instructions: '',
+          evidenceIds: [],
+          source: 'user_confirmed',
+        },
+      ],
+    },
+  });
+  const captured = async () =>
+    db.tenant(athlete, async (tx) => {
+      const counts = async () =>
+        (
+          await tx.query(
+            `SELECT
+      (SELECT count(*)::int FROM command_receipt WHERE athlete_id=$1) AS receipts,
+      (SELECT count(*)::int FROM nutrition_plan_version WHERE athlete_id=$1) AS versions,
+      (SELECT count(*)::int FROM nutrition_plan_history WHERE athlete_id=$1) AS history,
+      (SELECT count(*)::int FROM outbox WHERE athlete_id=$1) AS outbox,
+      (SELECT count(*)::int FROM intake_entry WHERE athlete_id=$1) AS intake`,
+            [athlete],
+          )
+        ).rows;
+      const before = await counts();
+      const result = await captureRacePlanImpactConsumedScope(tx, intent(saved.id));
+      expect(await counts()).toEqual(before);
+      expect(result.capture.coverage.complete).toBe(false);
+      expect(result.capture.coverage.missing).toHaveLength(5);
+      expect(result.consumedScope).toMatchObject({
+        status: 'validated_read_scope',
+        approvalAuthority: 'none',
+        freshness: 'not_checked',
+      });
+      if (result.consumedScope.status === 'validated_read_scope')
+        expect(result.consumedScope.remaining).toHaveLength(5);
+      expect(result.capture.nutrition[0]?.record).toEqual(nutrition);
+      return result;
+    });
+  const foodFact = (result: Awaited<ReturnType<typeof captured>>) => {
+    expect(result.capture.sourcePermissionManifest.nestedNutritionSources).toHaveLength(1);
+    const nested = result.capture.sourcePermissionManifest.nestedNutritionSources[0];
+    expect(nested?.foods).toHaveLength(1);
+    return z
+      .strictObject({
+        requestedVersionId: z.uuid(),
+        state: z.enum(['current', 'historical']),
+        content: z.strictObject({
+          foodId: z.string(),
+          versionId: z.uuid(),
+          digest: z.string(),
+          record: foodDefinitionVersionSchema,
+          provenance: z.json(),
+        }),
+        currentHead: z.strictObject({ versionId: z.uuid(), provenance: z.json() }),
+      })
+      .parse(nested?.foods[0]);
+  };
+  const before = await captured(),
+    first = foodFact(before);
+  expect(first.state).toBe('current');
+  expect(first.currentHead.versionId).toBe(original.versionId);
+  expect(first.content.record).toEqual(original);
+  expect(first.content.digest).toBe(impactDependencyDigest(original));
+  const updated = await repository.saveFood(athlete, {
+    ...request,
+    idempotencyKey: randomUUID(),
+    expectedVersionId: original.versionId,
+    definition: {
+      ...request.definition,
+      name: 'New current food',
+      nutrients: {
+        ...request.definition.nutrients,
+        energy: { value: 200, unit: 'kcal', status: 'reported', evidenceIds: [] },
+      },
+      provenance: { ...request.definition.provenance, capturedAt: '2026-10-06T01:00:00Z' },
+    },
+  });
+  expect(updated.version).toBe(2);
+  expect(updated.previousVersionId).toBe(original.versionId);
+  expect(await repository.readFood(athlete, original.foodId)).toEqual(updated);
+  const after = await captured(),
+    historical = foodFact(after);
+  expect(historical.state).toBe('historical');
+  expect(historical.requestedVersionId).toBe(original.versionId);
+  expect(historical.content.foodId).toBe(original.foodId);
+  expect(historical.content.versionId).toBe(original.versionId);
+  expect(historical.content.record).toEqual(original);
+  expect(historical.content.digest).toBe(impactDependencyDigest(original));
+  expect(historical.currentHead.versionId).toBe(updated.versionId);
+  expect(historical.content.provenance).toEqual(first.content.provenance);
+  expect(historical.currentHead.provenance).toMatchObject({
+    capturedAt: updated.provenance.capturedAt,
+  });
+  expect(historical.currentHead.provenance).not.toEqual(historical.content.provenance);
+  expect(historical.content.record.nutrients.energy.value).toBe(0);
+  expect(historical.content.record.nutrients.protein.value).toBeNull();
+  expect(after.capture.nutrition[0]?.record.items[0]?.foods.map((food) => food.quantity)).toEqual([
+    0,
+    null,
+  ]);
+  expect((await repository.readPlan(athlete, nutrition.planId))?.head).toEqual(nutrition);
+  expect(after.capture.readSetDigest).not.toBe(before.capture.readSetDigest);
 });

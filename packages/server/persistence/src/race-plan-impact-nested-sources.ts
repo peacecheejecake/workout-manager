@@ -108,6 +108,7 @@ export async function captureNestedNutritionSources(
           foodId: record.foodId,
           versionId: record.versionId,
           digest: digest(record),
+          record,
           provenance: foodProvenanceFacts(record.provenance),
         },
         currentHead: row.current_version_id

@@ -19,6 +19,12 @@ export interface Database {
     athleteId: string,
     operation: (transaction: Transaction) => Promise<T>,
   ): Promise<T>;
+  /** Coherent as-of read, not latest-state/approval freshness. Optional for
+   * injected test adapters; services requiring it must not fall back to RC. */
+  snapshotTenant?<T>(
+    athleteId: string,
+    operation: (transaction: Transaction) => Promise<T>,
+  ): Promise<T>;
   close(): Promise<void>;
 }
 export class TenantErasedError extends Error {
@@ -33,13 +39,14 @@ export function createDatabase(options: { connectionString: string; max?: number
     athleteId: string,
     operation: (transaction: Transaction) => Promise<T>,
     exclusive: boolean,
+    snapshot = false,
   ): Promise<T> {
     athleteIdSchema.parse(athleteId);
     const client = await pool.connect();
     let discard = false;
     let active = true;
     try {
-      await client.query('BEGIN');
+      await client.query(snapshot ? 'BEGIN ISOLATION LEVEL REPEATABLE READ READ WRITE' : 'BEGIN');
       await client.query(
         "SELECT set_config('statement_timeout', '5000', true), set_config('lock_timeout', '3000', true), set_config('search_path', 'pg_catalog,public', true)",
       );
@@ -96,6 +103,7 @@ export function createDatabase(options: { connectionString: string; max?: number
   return {
     tenant: (athleteId, operation) => transact(athleteId, operation, false),
     exclusiveTenant: (athleteId, operation) => transact(athleteId, operation, true),
+    snapshotTenant: (athleteId, operation) => transact(athleteId, operation, false, true),
     close: () => pool.end(),
   };
 }

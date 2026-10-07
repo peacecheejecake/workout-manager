@@ -1,8 +1,14 @@
+import { recoverySourceFactsSchema } from '../src/race-plan-impact-recovery-sources.js';
+import {
+  recoveryMethodVersionSchema,
+  recoveryStrategyVersionSchema,
+} from '@workout/contracts/recovery-core';
 import { expect, it } from 'vitest';
 import { z } from 'zod';
 import { raceEventSchema } from '@workout/contracts/races';
 import { planSnapshotSchema } from '@workout/contracts/planning';
 import { coreEvidenceDependencyManifestSchema } from '@workout/contracts/evidence-dependencies';
+import { foodDefinitionVersionSchema } from '@workout/contracts/nutrition-core';
 import { nutritionPlanVersionCompatibleV4Schema } from '@workout/contracts/nutrition-race-plan-v4';
 import {
   routineBlueprintVersionSchema,
@@ -551,7 +557,7 @@ it('rejects unknown top-level fields and unsupported producer payloads', () => {
     'blocked',
   );
   c.recovery.push({ planId: plan });
-  blocked(c, 'unsupported_consumed_channel', 'recovery');
+  blocked(c, 'invalid_capture', 'capture');
 });
 it.each(['athlete', 'generation', 'revision', 'policy'] as const)(
   'binds expected %s independently',
@@ -1127,4 +1133,837 @@ it.each([
         ? 'unsupported_consumed_channel'
         : 'source_membership_mismatch',
   );
+});
+
+// Actual internal producer shapes. No fixture is evidence of storage approval.
+function nutritionSourcesFixture() {
+  const c = fixture(),
+    base = withNutritionRef();
+  c.nutrition = structuredClone(base.nutrition);
+  c.rosters.nutrition = structuredClone(base.rosters.nutrition);
+  c.sourcePermissionManifest.nestedNutritionSources = structuredClone(
+    base.sourcePermissionManifest.nestedNutritionSources,
+  );
+  const row = c.nutrition[0],
+    nested = c.sourcePermissionManifest.nestedNutritionSources[0];
+  if (!row || !nested) throw Error('nutrition fixture');
+  return { c, row, nested };
+}
+function updateNutritionDigest(f: ReturnType<typeof nutritionSourcesFixture>) {
+  if ('schemaVersion' in f.row.record) f.nested.recordDigest = impactDependencyDigest(f.row.record);
+}
+function foodSourceFixture(historical = false, absentHead = false) {
+  const f = nutritionSourcesFixture();
+  const datum = (unit: string, value: number | null) => ({
+    value,
+    unit,
+    status: value === null ? 'unknown' : 'reported',
+    evidenceIds: [],
+  });
+  const record = foodDefinitionVersionSchema.parse({
+    foodId: '식품-ID',
+    name: 'Saved food',
+    basis: { kind: 'per_100g' },
+    versionId: blueprintVersion,
+    version: 1,
+    previousVersionId: null,
+    createdAt: now,
+    nutrients: {
+      energy: datum('kcal', 0),
+      carbohydrate: datum('g', null),
+      protein: datum('g', null),
+      fat: datum('g', null),
+      fluid: datum('mL', null),
+      sodium: datum('mg', null),
+    },
+    provenance: {
+      kind: 'package_label',
+      reference: 'Synthetic label',
+      capturedAt: now,
+      reviewState: 'unreviewed',
+    },
+  });
+  const provenance = {
+    kind: record.provenance.kind,
+    reviewState: record.provenance.reviewState,
+    capturedAt: record.provenance.capturedAt,
+    reference: {
+      state: 'present' as const,
+      digest: impactDependencyDigest(record.provenance.reference),
+    },
+  };
+  const food = {
+    requestedVersionId: record.versionId,
+    state: historical ? 'historical' : 'current',
+    content: {
+      foodId: record.foodId,
+      versionId: record.versionId,
+      record,
+      digest: impactDependencyDigest(record),
+      provenance,
+    },
+    currentHead: absentHead
+      ? { state: 'absent' as const }
+      : { versionId: historical ? generation : record.versionId, provenance },
+  };
+  const item = f.row.record.items[0];
+  if (!item) throw Error('item');
+  f.row.record = nutritionPlanVersionCompatibleV4Schema.parse({
+    ...f.row.record,
+    items: [
+      {
+        ...item,
+        foods: [
+          {
+            foodVersionId: record.versionId,
+            description: 'Zero',
+            quantity: 0,
+            unit: 'g',
+            sourceBasis: 'per_100g',
+          },
+          {
+            foodVersionId: null,
+            description: 'Unknown',
+            quantity: null,
+            unit: 'unspecified',
+            sourceBasis: 'unknown',
+          },
+        ],
+      },
+    ],
+  });
+  f.nested.foods = [food];
+  return { ...f, food };
+}
+it.each([
+  [false, false],
+  [true, false],
+  [true, true],
+])(
+  'validates exact food body/digest and distinct current head historical=%s absent=%s',
+  (historical, absentHead) => {
+    const f = foodSourceFixture(historical, absentHead),
+      before = structuredClone(f.row.record);
+    expect(inspect(f.c).status).toBe('validated_read_scope');
+    expect(f.row.record).toEqual(before);
+    expect(f.row.record.items[0]?.foods.map((food) => food.quantity)).toEqual([0, null]);
+  },
+);
+it.each([
+  'version',
+  'food_id',
+  'body',
+  'digest',
+  'provenance',
+  'current_state',
+  'missing',
+  'duplicate',
+  'extra',
+  'descriptor_only',
+  'unknown_key',
+])('rejects food source %s forgery without recalculating saved portions', (kind) => {
+  const f = foodSourceFixture();
+  if (kind === 'version') f.food.content.versionId = generation;
+  if (kind === 'food_id') f.food.content.foodId = 'wrong';
+  if (kind === 'body') f.food.content.record.name = 'mutated';
+  if (kind === 'digest') f.food.content.digest = '2'.repeat(64);
+  if (kind === 'provenance') f.food.content.provenance.reviewState = 'reviewed';
+  if (kind === 'current_state') f.food.state = 'historical';
+  if (kind === 'missing') f.nested.foods = [];
+  else if (kind === 'duplicate') f.nested.foods = [f.food, f.food];
+  else if (kind === 'extra')
+    f.nested.foods = [f.food, { ...f.food, requestedVersionId: generation }];
+  else if (kind === 'descriptor_only') {
+    const { record: omitted, ...content } = f.food.content;
+    void omitted;
+    f.nested.foods = [{ ...f.food, content }];
+  } else if (kind === 'unknown_key') f.nested.foods = [{ ...f.food, inventedAuthority: true }];
+  else f.nested.foods = [f.food];
+  expect(inspect(f.c).status).toBe('blocked');
+});
+function linkedNutritionFixture(historical = false, session = false) {
+  const f = nutritionSourcesFixture(),
+    snapshot = withSupplementary().currentTraining?.snapshot;
+  if (!snapshot) throw Error('training snapshot');
+  const linked = planSnapshotSchema.parse({ ...snapshot, id: scheduleVersion });
+  const current = historical
+    ? planSnapshotSchema.parse({ ...linked, id: generation, version: 2 })
+    : linked;
+  f.c.currentTraining = { aggregateId: blueprintId, snapshot: current };
+  f.c.coreDependencies.trainingPlan = { kind: 'exists', versionId: current.id };
+  f.c.consumedSources.plans = historical ? [linked, current] : [linked];
+  f.c.supplementaryManifest.sessions = f.c.consumedSources.plans.flatMap((p) =>
+    p.draft.sessions
+      .filter((s) => s.sport === 'strength')
+      .map((s) => ({ planVersionId: p.id, plannedSessionId: s.id, state: 'absent' as const })),
+  );
+  f.row.record = nutritionPlanVersionCompatibleV4Schema.parse({
+    ...f.row.record,
+    linkedTrainingPlanVersionId: linked.id,
+    items: f.row.record.items.map((item) => ({
+      ...item,
+      ...(session
+        ? {
+            anchor: {
+              kind: 'relative',
+              entity: 'session',
+              entityId: 'strength',
+              point: 'end',
+              offsetMinutes: 20,
+            },
+          }
+        : {}),
+    })),
+  });
+  f.row.sourceRelation = historical ? 'historical' : 'current';
+  f.nested.linkedPlan = {
+    state: f.row.sourceRelation,
+    requestedVersionId: linked.id,
+    content: { digest: impactDependencyDigest(linked) },
+    currentHead: { aggregate_id: blueprintId, version_id: current.id },
+  };
+  if (session) {
+    const item = f.row.record.items[0];
+    if (!item) throw Error('item');
+    f.nested.anchors = [
+      {
+        itemId: item.id,
+        anchor: item.anchor,
+        source: { state: 'owned', planVersionId: linked.id },
+      },
+    ];
+    f.row.relativeItems = [
+      {
+        itemId: item.id,
+        entity: 'session',
+        entityId: 'strength',
+        sourceVersionId: linked.id,
+        affected: false,
+        point: 'end',
+        timing: 'not_resolved',
+      },
+    ];
+  }
+  return { ...f, linked };
+}
+it.each([
+  [false, false],
+  [true, false],
+  [false, true],
+  [true, true],
+])('validates exact consumed linked plan historical=%s session=%s', (historical, session) => {
+  const f = linkedNutritionFixture(historical, session),
+    before = structuredClone(f.row.record),
+    result = inspect(f.c);
+  expect(result.status).toBe('validated_read_scope');
+  expect(f.row.record).toEqual(before);
+  if (result.status === 'validated_read_scope') {
+    expect(result.approvalAuthority).toBe('none');
+    expect(result.freshness).toBe('not_checked');
+    expect(result.remaining).toHaveLength(5);
+  }
+});
+it.each([
+  'missing_body',
+  'body_digest',
+  'wrong_head',
+  'wrong_relation',
+  'session_id',
+  'anchor_offset',
+  'source_plan',
+  'extra_anchor',
+  'extra_relative',
+])('rejects linked/session source %s mismatch', (kind) => {
+  const f = linkedNutritionFixture(true, true),
+    item = f.row.record.items[0];
+  if (!item) throw Error('item');
+  if (kind === 'missing_body')
+    f.c.consumedSources.plans = f.c.consumedSources.plans.filter((p) => p.id !== f.linked.id);
+  if (kind === 'body_digest')
+    f.nested.linkedPlan = {
+      state: 'historical',
+      requestedVersionId: f.linked.id,
+      content: { digest: hash },
+      currentHead: { aggregate_id: blueprintId, version_id: generation },
+    };
+  if (kind === 'wrong_head')
+    f.nested.linkedPlan = {
+      state: 'historical',
+      requestedVersionId: f.linked.id,
+      content: { digest: impactDependencyDigest(f.linked) },
+      currentHead: { aggregate_id: plan, version_id: generation },
+    };
+  if (kind === 'wrong_relation') f.row.sourceRelation = 'current';
+  if (kind === 'session_id')
+    f.row.relativeItems = [
+      {
+        itemId: item.id,
+        entity: 'session',
+        entityId: 'wrong',
+        sourceVersionId: f.linked.id,
+        affected: false,
+        point: 'end',
+        timing: 'not_resolved',
+      },
+    ];
+  if (kind === 'anchor_offset' && item.anchor.kind === 'relative')
+    f.nested.anchors = [
+      {
+        itemId: item.id,
+        anchor: { ...item.anchor, offsetMinutes: 21 },
+        source: { state: 'owned', planVersionId: f.linked.id },
+      },
+    ];
+  if (kind === 'source_plan')
+    f.nested.anchors = [
+      {
+        itemId: item.id,
+        anchor: item.anchor,
+        source: { state: 'owned', planVersionId: generation },
+      },
+    ];
+  if (kind === 'extra_anchor') f.nested.anchors.push(...structuredClone(f.nested.anchors));
+  if (kind === 'extra_relative') f.row.relativeItems.push(...structuredClone(f.row.relativeItems));
+  expect(inspect(f.c).status).toBe('blocked');
+});
+function raceNutritionFixture(
+  schemaVersion: 1 | 2 | 3 | 4,
+  otherRace = false,
+  disconnected = false,
+) {
+  const f = nutritionSourcesFixture(),
+    item = f.row.record.items[0];
+  if (!item) throw Error('item');
+  const live = otherRace
+    ? raceEventSchema.parse({ ...f.c.event, id: scheduleId, revision: 7 })
+    : f.c.event;
+  f.c.consumedSources.races = otherRace ? [f.c.event, live] : [live];
+  const pin = {
+    pinVersion: 1,
+    namespace: 'race-event-revision',
+    eventId: live.id,
+    eventRevision: 3,
+    sourceDigestVersion: 'race-event-values-canonical-v1',
+    sourceDigest: hash,
+    localDate: '2026-10-07',
+    localStartTime: null,
+    timezone: 'Asia/Seoul',
+    start: { state: 'unknown', reason: 'start_time_not_recorded' },
+    end: { state: 'unknown', reason: 'race_end_not_recorded' },
+  };
+  f.row.record = nutritionPlanVersionCompatibleV4Schema.parse({
+    ...f.row.record,
+    ...(schemaVersion === 1
+      ? {}
+      : {
+          schemaVersion,
+          raceTimingPins: disconnected ? [] : [pin],
+          itemRaceTimingBindings: disconnected
+            ? []
+            : [
+                {
+                  itemId: item.id,
+                  binding: { state: 'captured', eventId: live.id, eventRevision: 3 },
+                },
+              ],
+        }),
+    items: [
+      {
+        ...item,
+        anchor: disconnected
+          ? { kind: 'disconnected', entity: 'race' }
+          : {
+              kind: 'relative',
+              entity: 'race',
+              entityId: live.id,
+              point: 'start',
+              offsetMinutes: -30,
+            },
+        foods: [
+          {
+            foodVersionId: null,
+            description: 'Zero',
+            quantity: 0,
+            unit: 'g',
+            sourceBasis: 'manual_total',
+          },
+          {
+            foodVersionId: null,
+            description: 'Unknown',
+            quantity: null,
+            unit: 'unspecified',
+            sourceBasis: 'unknown',
+          },
+        ],
+      },
+    ],
+  });
+  updateNutritionDigest(f);
+  if (disconnected) f.c.consumedSources.races = [f.c.event];
+  else {
+    const active = f.row.record.items[0];
+    if (!active) throw Error('item');
+    f.nested.anchors = [
+      {
+        itemId: active.id,
+        anchor: active.anchor,
+        source: {
+          requestedId: live.id,
+          state: 'current',
+          revision: live.revision,
+          content: { digest: impactDependencyDigest(live) },
+        },
+      },
+    ];
+    f.row.relativeItems = [
+      {
+        itemId: active.id,
+        entity: 'race',
+        entityId: live.id,
+        sourceVersionId: null,
+        affected: !otherRace,
+        point: 'start',
+        timing: 'not_resolved',
+        sourceRaceRevision: live.revision,
+        sourceRaceDigest: impactDependencyDigest(live),
+      },
+    ];
+    f.c.affected.nutrition = otherRace ? [] : [plan];
+  }
+  return f;
+}
+it.each([1, 2, 3, 4] as const)(
+  'validates V%s affected unresolved race source without blending historical pin/current facts',
+  (v) => {
+    const f = raceNutritionFixture(v),
+      body = structuredClone(f.row.record),
+      result = inspect(f.c);
+    expect(result.status).toBe('validated_read_scope');
+    expect(f.row.record).toEqual(body);
+    expect(f.row.relativeItems[0]).toMatchObject({
+      timing: 'not_resolved',
+      affected: true,
+      sourceRaceRevision: 1,
+    });
+    if ('raceTimingPins' in f.row.record)
+      expect(f.row.record.raceTimingPins[0]?.eventRevision).toBe(3);
+    if (result.status === 'validated_read_scope') {
+      expect(result.approvalAuthority).toBe('none');
+      expect(result.freshness).toBe('not_checked');
+    }
+  },
+);
+it('validates unrelated owned live race source and preserves frozen source revision', () => {
+  expect(inspect(raceNutritionFixture(4, true).c).status).toBe('validated_read_scope');
+});
+it.each([3, 4] as const)(
+  'validates disconnected V%s with no consumed deleted source/timing restore and retains zero/null',
+  (v) => {
+    const f = raceNutritionFixture(v, false, true),
+      body = structuredClone(f.row.record);
+    expect(inspect(f.c).status).toBe('validated_read_scope');
+    expect(f.row.record).toEqual(body);
+    expect(f.nested.anchors).toEqual([]);
+    expect(f.row.relativeItems).toEqual([]);
+    expect(f.row.record.items[0]?.foods.map((food) => food.quantity)).toEqual([0, null]);
+  },
+);
+it.each([
+  'live_digest',
+  'saved_as_current',
+  'affected_roster',
+  'missing_anchor',
+  'deleted',
+  'extra_source',
+  'disconnected_source',
+])('rejects race source %s mismatch', (kind) => {
+  const f = raceNutritionFixture(4, false, kind === 'disconnected_source');
+  const item = f.row.record.items[0];
+  if (!item) throw Error('item');
+  if (kind === 'live_digest')
+    f.row.relativeItems = [
+      {
+        itemId: item.id,
+        entity: 'race',
+        entityId: race,
+        sourceVersionId: null,
+        affected: true,
+        point: 'start',
+        timing: 'not_resolved',
+        sourceRaceRevision: 1,
+        sourceRaceDigest: hash,
+      },
+    ];
+  if (kind === 'saved_as_current')
+    f.nested.anchors = [
+      {
+        itemId: item.id,
+        anchor: item.anchor,
+        source: { requestedId: race, state: 'current', revision: 3, content: { digest: hash } },
+      },
+    ];
+  if (kind === 'affected_roster') f.c.affected.nutrition = [];
+  if (kind === 'missing_anchor') f.nested.anchors = [];
+  if (kind === 'deleted')
+    f.nested.anchors = [
+      {
+        itemId: item.id,
+        anchor: item.anchor,
+        source: { requestedId: race, state: 'deleted', revision: 2, content: null },
+      },
+    ];
+  if (kind === 'extra_source')
+    f.c.consumedSources.races.push(raceEventSchema.parse({ ...f.c.event, id: generation }));
+  if (kind === 'disconnected_source')
+    f.nested.anchors = [
+      {
+        itemId: item.id,
+        anchor: {
+          kind: 'relative',
+          entity: 'race',
+          entityId: race,
+          point: 'start',
+          offsetMinutes: -30,
+        },
+        source: {
+          requestedId: race,
+          state: 'current',
+          revision: 1,
+          content: { digest: impactDependencyDigest(f.c.event) },
+        },
+      },
+    ];
+  expect(inspect(f.c).status).toBe('blocked');
+});
+
+it.each([2, 4] as const)(
+  'retains explicit V%s legacy-unpinned source without fabricating a before pin',
+  (schemaVersion) => {
+    const f = raceNutritionFixture(schemaVersion),
+      item = f.row.record.items[0];
+    if (!item || item.anchor.kind !== 'relative') throw Error('relative item');
+    f.row.record = nutritionPlanVersionCompatibleV4Schema.parse({
+      ...f.row.record,
+      raceTimingPins: [],
+      itemRaceTimingBindings: [
+        {
+          itemId: item.id,
+          binding: {
+            state: 'legacy_unpinned',
+            priorNutritionVersionId: generation,
+            priorItemId: item.id,
+            priorAnchorDigest: impactDependencyDigest(item.anchor),
+          },
+        },
+      ],
+    });
+    updateNutritionDigest(f);
+    const body = structuredClone(f.row.record),
+      result = inspect(f.c);
+    expect(result.status).toBe('validated_read_scope');
+    expect(f.row.record).toEqual(body);
+    expect(f.row.relativeItems[0]).toMatchObject({ timing: 'not_resolved', affected: true });
+    if (result.status === 'validated_read_scope') expect(result.approvalAuthority).toBe('none');
+  },
+);
+it.each(['extra_nested', 'nested_digest', 'unknown_anchor_key', 'disconnected_unknown_source'])(
+  'rejects nested source %s while keeping the original food/timing body',
+  (kind) => {
+    const f = raceNutritionFixture(4, false, kind === 'disconnected_unknown_source');
+    const body = structuredClone(f.row.record);
+    if (kind === 'extra_nested')
+      f.c.sourcePermissionManifest.nestedNutritionSources.push({
+        ...f.nested,
+        versionId: generation,
+      });
+    if (kind === 'nested_digest') f.nested.recordDigest = '2'.repeat(64);
+    if (kind === 'unknown_anchor_key') {
+      const item = f.row.record.items[0];
+      if (!item) throw Error('item');
+      f.nested.anchors = [
+        {
+          itemId: item.id,
+          anchor: item.anchor,
+          source: {
+            requestedId: race,
+            state: 'current',
+            revision: 1,
+            content: { digest: impactDependencyDigest(f.c.event) },
+            approved: true,
+          },
+        },
+      ];
+    }
+    if (kind === 'disconnected_unknown_source')
+      f.row.relativeItems = [
+        {
+          itemId: 'item-영양',
+          entity: 'race',
+          entityId: race,
+          sourceVersionId: null,
+          affected: false,
+          point: 'start',
+          timing: 'not_resolved',
+          sourceRaceRevision: 1,
+          sourceRaceDigest: impactDependencyDigest(f.c.event),
+        },
+      ];
+    expect(inspect(f.c).status).toBe('blocked');
+    expect(f.row.record).toEqual(body);
+  },
+);
+
+it('rejects an explicitly supplied wrong legacy V1 record digest without requiring a fabricated V1 digest', () => {
+  const f = nutritionSourcesFixture();
+  expect(inspect(f.c).status).toBe('validated_read_scope');
+  f.nested.recordDigest = '2'.repeat(64);
+  blocked(f.c, 'digest_mismatch');
+});
+
+function withRecovery(methodUsed = true) {
+  const c = fixture();
+  const method = recoveryMethodVersionSchema.parse({
+    schemaVersion: 1,
+    methodId: plan,
+    versionId: version,
+    version: 1,
+    title: 'Synthetic method',
+    category: 'relaxation',
+    intendedUse: 'User action',
+    applicability: [],
+    cautions: [],
+    sourceDescription: '',
+    evidenceLimitations: 'Unreviewed',
+    reviewState: 'unreviewed',
+    reviewedAt: null,
+    source: 'user_recorded',
+    createdAt: now,
+  });
+  const record = recoveryStrategyVersionSchema.parse({
+    schemaVersion: 1,
+    strategyId: scheduleId,
+    versionId: scheduleVersion,
+    version: 1,
+    previousVersionId: null,
+    status: 'user_confirmed',
+    selectedOptionId: race,
+    createdAt: now,
+    draft: {
+      title: 'Recovery',
+      goal: '',
+      startDate: '2026-10-07',
+      endDateExclusive: '2026-10-08',
+      timezone: 'UTC',
+      knownFacts: [],
+      missingInformation: [],
+      priority: 'normal',
+      observations: [],
+      planRefs: [],
+      options: [
+        {
+          id: race,
+          title: 'Rest',
+          kind: methodUsed ? 'nonexercise_action' : 'full_rest',
+          methodVersionId: methodUsed ? version : null,
+          explanation: '',
+        },
+      ],
+      reassessment: [
+        {
+          id: blueprintId,
+          trigger: 'plan_changed',
+          plannedAt: null,
+          description: 'Review change',
+          policyVersion: null,
+        },
+      ],
+    },
+  });
+  c.rosters.recovery.push({ aggregateId: record.strategyId, versionId: record.versionId });
+  c.recovery.push({ aggregateId: record.strategyId, versionId: record.versionId, record });
+  const request = {
+    kind: 'recovery_method',
+    ref: { id: method.methodId, versionId: method.versionId },
+  };
+  const facts = recoverySourceFactsSchema.parse({
+    methodCatalogRequests: methodUsed ? [request] : [],
+    methods: methodUsed ? [method] : [],
+    methodFacts: methodUsed
+      ? [
+          {
+            requested: request,
+            state: 'current',
+            reason: null,
+            content: { digest: impactDependencyDigest(method) },
+            currentHead: { aggregate_id: method.methodId, version_id: method.versionId },
+            provenance: {
+              source: method.source,
+              reviewState: method.reviewState,
+              reviewedAt: null,
+            },
+          },
+        ]
+      : [],
+    trainingAssociations: [],
+    nutritionReferences: [],
+    unavailable: [],
+    authority: 'none',
+    freshness: 'not_checked',
+  });
+  c.sourcePermissionManifest.catalog.push(...structuredClone(facts.methodFacts));
+  return { ...c, recoverySources: facts };
+}
+it('admits actual closed recovery read scope with exact method body/catalog and retains complete:false', () => {
+  const c = withRecovery();
+  const result = inspect(c);
+  expect(result.status).toBe('validated_read_scope');
+  expect(c.coverage.complete).toBe(false);
+  if (result.status === 'validated_read_scope') {
+    expect(result.approvalAuthority).toBe('none');
+    expect(result.freshness).toBe('not_checked');
+    expect(result.remaining.length).toBeGreaterThan(0);
+  }
+});
+it('admits old capture with full-rest recovery and no consumed method port', () => {
+  const c = withRecovery(false);
+  const { recoverySources, ...legacy } = c;
+  void recoverySources;
+  expect(inspect(legacy).status).toBe('validated_read_scope');
+});
+it('blocks legacy capture with consumed method rather than blanket rejecting recovery', () => {
+  const c = withRecovery();
+  const { recoverySources, ...legacy } = c;
+  void recoverySources;
+  blocked(legacy, 'method_source_missing');
+});
+it('preserves explicit missing owned method diagnostic without invented method id', () => {
+  const c = withRecovery();
+  c.recoverySources.methods = [];
+  c.recoverySources.methodFacts = [];
+  c.recoverySources.methodCatalogRequests = [];
+  c.sourcePermissionManifest.catalog = [];
+  c.recoverySources.unavailable = [
+    { kind: 'method', requestedVersionId: version, reason: 'owned_method_unavailable' },
+  ];
+  blocked(c, 'method_unavailable', `recoverySources.method:${version}`);
+});
+it('rejects actual method DTO digest mismatch even with matching catalog request roster', () => {
+  const c = withRecovery();
+  const method = c.recoverySources.methods[0];
+  if (!method) throw Error('fixture');
+  method.title = 'Changed';
+  blocked(c, 'method_source_mismatch');
+});
+it('preserves historical exact method despite absent current head', () => {
+  const c = withRecovery();
+  const fact = c.recoverySources.methodFacts[0];
+  if (!fact) throw Error('fixture');
+  fact.state = 'historical';
+  fact.currentHead = null;
+  c.sourcePermissionManifest.catalog = [structuredClone(fact)];
+  expect(inspect(c).status).toBe('validated_read_scope');
+});
+it('rejects methodFacts copy divergence from main permission manifest', () => {
+  const c = withRecovery();
+  const fact = c.recoverySources.methodFacts[0];
+  if (!fact) throw Error('fixture');
+  fact.content.digest = '0'.repeat(64);
+  blocked(c, 'source_identity_mismatch', 'recoverySources.methodFacts');
+});
+it('rejects duplicated method catalog requests rather than silently deduplicating source evidence', () => {
+  const c = withRecovery();
+  const request = c.recoverySources.methodCatalogRequests[0];
+  if (!request) throw Error('fixture');
+  c.recoverySources.methodCatalogRequests.push(structuredClone(request));
+  blocked(c, 'source_identity_mismatch', 'recoverySources.methodCatalogRequests');
+});
+it('rejects fabricated extra method source provenance in empty consumed recovery', () => {
+  const c = withRecovery(false),
+    extra = withRecovery();
+  c.recoverySources.methods = extra.recoverySources.methods;
+  blocked(c, 'source_identity_mismatch', 'recoverySources');
+});
+it('does not close actual recovery observations with method evidence alone', () => {
+  const c = withRecovery();
+  const row = c.recovery[0];
+  const decoded = z
+    .strictObject({
+      aggregateId: z.uuid(),
+      versionId: z.uuid(),
+      record: recoveryStrategyVersionSchema,
+    })
+    .parse(row);
+  decoded.record.draft.observations = [{ kind: 'activity', id: 'actual-source', revision: 1 }];
+  c.recovery = [decoded];
+  blocked(c, 'observation_source_port_missing');
+});
+it('rejects unknown recoverySources authority claims', () => {
+  const c = withRecovery();
+  expect(
+    validateRaceImpactConsumedManifest(
+      { ...c, recoverySources: { ...c.recoverySources, approved: true } },
+      sign(c),
+    ).status,
+  ).toBe('blocked');
+});
+it('requires exact recovery roster membership instead of rejecting every roster', () => {
+  const c = withRecovery();
+  c.rosters.recovery = [{ aggregateId: race, versionId: scheduleVersion }];
+  blocked(c, 'inventory_mismatch');
+});
+
+function recoveryPlanRef(kind: 'training' | 'nutrition') {
+  const r = withRecovery(false),
+    base = kind === 'training' ? withSupplementary() : withNutritionRef();
+  const c = { ...base, recoverySources: r.recoverySources };
+  c.recovery = r.recovery;
+  c.rosters.recovery = r.rosters.recovery;
+  const row = z
+    .strictObject({
+      aggregateId: z.uuid(),
+      versionId: z.uuid(),
+      record: recoveryStrategyVersionSchema,
+    })
+    .parse(c.recovery[0]);
+  const versionId = kind === 'training' ? c.currentTraining?.snapshot.id : version;
+  if (!versionId) throw Error('fixture');
+  row.record.draft.planRefs = [{ kind, aggregateId: plan, headVersionId: versionId }];
+  c.recovery = [row];
+  if (kind === 'training')
+    c.recoverySources.trainingAssociations = [{ aggregateId: plan, versionId }];
+  else c.recoverySources.nutritionReferences = [{ aggregateId: plan, versionId }];
+  return c;
+}
+it('admits recovery-linked training only with actual immutable association and consumed body', () => {
+  expect(inspect(recoveryPlanRef('training')).status).toBe('validated_read_scope');
+});
+it('blocks explicit unavailable training source diagnostics without current-head inference', () => {
+  const c = recoveryPlanRef('training');
+  const assoc = c.recoverySources.trainingAssociations[0];
+  if (!assoc) throw Error('fixture');
+  c.recoverySources.trainingAssociations = [];
+  c.recoverySources.unavailable = [
+    { kind: 'training', requested: assoc, reason: 'aggregate_identity_unavailable' },
+  ];
+  blocked(c, 'training_association_missing');
+});
+it('admits current recovery nutrition tuple and blocks a missing historical nutrition body specifically', () => {
+  const c = recoveryPlanRef('nutrition');
+  expect(inspect(c).status).toBe('validated_read_scope');
+  const row = z
+    .strictObject({
+      aggregateId: z.uuid(),
+      versionId: z.uuid(),
+      record: recoveryStrategyVersionSchema,
+    })
+    .parse(c.recovery[0]);
+  row.record.draft.planRefs = [{ kind: 'nutrition', aggregateId: plan, headVersionId: race }];
+  c.recovery = [row];
+  c.recoverySources.nutritionReferences = [{ aggregateId: plan, versionId: race }];
+  blocked(c, 'nutrition_source_missing');
+});
+it('rejects copied nutrition ref metadata unrelated to actual consumed recovery tuples', () => {
+  const c = withRecovery(false);
+  c.recoverySources.nutritionReferences = [{ aggregateId: plan, versionId: race }];
+  blocked(c, 'source_identity_mismatch', 'recoverySources');
 });
