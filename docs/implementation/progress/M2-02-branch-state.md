@@ -54,3 +54,9 @@
 Root 최신 동결 입력 unit **47/47**, 실제 정상 auth/planner2Host **2/2**, AI settings catalog 저장/재조회/CAS/철회2Host **2/2**, 별도 spec-only freshDB lifecycle **1/1·exit0**를 확인했다. 로그는 `/private/tmp/wm-external-pg17-root-{unit-r1,identity-r1,ai-settings-r1,ai-lifecycle-r2}-20261007.log`다. lifecycle 첫 회차는 SPEC_ONLY 실행 설정 누락으로 LIFECYCLE_NOT_ISOLATED 거절·exit1이었으며 guard를 약화하지 않고 올바른 dedicated 단일 spec 명령으로 재실행했다. 그 실패는 `...ai-lifecycle-r1...`에 보존한다. Root TS·scoped lint/format은 exit0이나 별도 script consumer TS는 기존 oidc-provider 선언 누락 TS7016로 exit2인 사실도 보존한다.
 
 완료 후 실제 identity DB 잔존0 및 기본 owner/runtime roles 잔존0을 읽기 전용으로 확인했다. 정상 role/grants와 restore admission을 우회하지 않는다. 이는 합성 fixture와 lifecycle 경로의 결과이며 운영 복원·공개 HTTPS·기기 수용 또는 M2-02 전체 phase gate의 통과가 아니다.
+
+### 최신 실행 checkpoint
+
+구현 입력 `8e42d124`: 앞선 `867914c4`는 disposable identity PG17 fixture 실제unit47·catalog2Host2·scope2Host2·isolated lifecycle1 수용, `2aa010bd`는 legacy PATCH 증빙 보존 실제PG7·unit41·후속 identity2Host2, `8e42d124`는 consumed read-scope unit51·실제PG5의 결과다. Context는 기존 blocked/complete:false를 유지한다. 후속 compatible preview actualPG3와 모든 실패·fixture 수정 및 외부 한계는 I/J progress에 기록했다.
+
+Root의 최신 AWS non-root workout-admin STS 조회는 SSO token expired/refresh failed·exit255다. 운영 쓰기는 실행하지 않았고 pending 로그인/정확 recovery script 승인은 재사용하지 않는다. main은 `1d557358`을 유지한다. Graph 부모/I/J는 in_progress이며 full manifest/원자 승인, registry/private restore, PB/첨부·재연결 화면, 전체 phase gate/독립 검토 및 운영/기기 수용은 계속 남아 있다.
