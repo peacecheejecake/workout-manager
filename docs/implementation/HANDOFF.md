@@ -150,7 +150,9 @@ APPROVE를 받았다. 당시 기록 갱신의 검토 refresh 후 main에 반영�
 
 ## 다음 작업 순서
 
-최신 재개 기록(2026-10-08): `phase/m2-02` 검증 HEAD `b14c26ab`, main은 병합하지 않았다. atomic approval 원15건, 별도 routine version6건, 기존 integrated approval19건이 실제 합성PG에서 통과했다. full phase나 공개 HTTP/UI/복원/운영 출시 완료가 아니다. 정확 입력·초기실패·최종결과는 [I 기록](progress/M2-02i.md)을 따른다.
+2026-10-08 추가 진행: source116 인증 수신기 unit36/실제PG 복합1, 공개 최신성 추가 실제PG10, 새 preview/template contracts unit40 및 contracts 전체 TS/build를 Root가 검증·phase 커밋했다. 이전 setup 실패·skip는 별도 보존했다. SQL123/template consumer·공개 frozen before/after mapper는 native subagent 병렬 작업 중이며 Root만 공유파일/실제PG를 통합한다. source116222 profile은 그대로이고123 포함 새 profile·export/복원/이미 적용된 erasure postimage는 별도 미완료다. AWS STS는 SSO 만료로 실패하여 서버/503/배포 검증은 갱신하지 않았다. 상세 SHA/실제 결과·한계는 [I 기록](progress/M2-02i.md)을 따른다.
+
+최신 재개 기록(2026-10-08): `phase/m2-02` 검증 HEAD `7c66810c`, main은 병합하지 않았다. atomic approval 검증 당시 HEAD는 `b14c26ab`이었다. atomic approval 원15건, 별도 routine version6건, 기존 integrated approval19건이 실제 합성PG에서 통과했다. full phase나 공개 HTTP/UI/복원/운영 출시 완료가 아니다. 정확 입력·초기실패·최종결과는 [I 기록](progress/M2-02i.md)을 따른다.
 
 현재 Root는 공통 DTO/API/registry/profile·실제 DB 검증·결과 통합을 맡고, native agent는 NEW 공개 whole-preview 계약2파일·추가 public freshness PG fixture1파일·whole source receiver2파일을 비중복으로 병행한다. public service/122와119의 검증된 slice는 phase에만 기록한다. whole-source capture5파일은 Root unit10/actualPG 복합1건 통과, public service3/SQL122는 Root unit16·actualPG9 통과이며 whole preview/API/UI 연결은 남았다. SQL119/fixture는 Root R2 actual14통과/1skip이며 genuine consumed CheckIn public port 부재를 별도 not_executed로 유지한다. 이전R1 11통과/3실패는 보존한다. source116 캡처는 전체 restore/admission 완료가 아니며 정확 실패/결과는 I 기록을 따른다. 새 public command 계약은 기존 intent 본문을 그대로 추출한 strict DTO이며 caller basis/recipe를 받지 않는다. 정상 registry107은 유지한다. PB chip/gun·거리 분류와 AWS 로그인 가능 여부를 다시 질문했으며 답변 전 확정하지 않는다.
 
