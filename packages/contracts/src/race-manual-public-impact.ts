@@ -243,7 +243,10 @@ const routine = z
       side.expansion.occurrences.some((o) => o.timingStatus === 'unresolved');
     if (m.state !== 'affected' && (!same(m.before, m.after) || m.resolution !== 'absent'))
       c.addIssue({ code: 'custom', message: 'Frozen routine must remain unchanged' });
-    if ((m.state === 'retained_ended') !== (m.before.schedule.state === 'ended'))
+    if (
+      (m.state === 'retained_ended' && m.before.schedule.state !== 'ended') ||
+      (m.state === 'affected' && m.before.schedule.state === 'ended')
+    )
       c.addIssue({ code: 'custom', message: 'Ended classification required' });
     const required =
       m.state === 'affected' &&
@@ -259,16 +262,7 @@ const routine = z
               o.schedule.versionId === m.before.schedule.versionId &&
               o.timingStatus === 'unresolved',
           )));
-    const expected =
-      m.state === 'retained_ended' &&
-      m.storedOccurrences.some(
-        (o) =>
-          o.schedule.versionId === m.before.schedule.versionId && o.timingStatus === 'unresolved',
-      )
-        ? 'retained_ended_unresolved'
-        : required
-          ? 'resolve_before_review'
-          : 'none';
+    const expected = required ? 'resolve_before_review' : 'none';
     if (m.requirement !== expected)
       c.addIssue({ code: 'custom', message: 'Exact routine requirement required' });
     unique(
@@ -524,7 +518,7 @@ const projected = z
               : 'replace_rule',
         });
       if (
-        m.state === 'unchanged' &&
+        m.state !== 'affected' &&
         m.storedOccurrences.some(
           (o) =>
             o.schedule.versionId === m.before.schedule.versionId && o.timingStatus === 'unresolved',
@@ -536,7 +530,7 @@ const projected = z
           itemId: null,
           code: 'UNCHANGED_UNRESOLVED',
         });
-      if (m.state === 'retained_ended')
+      if (m.before.schedule.state === 'ended')
         expectedNotices.push({
           domain: 'routine_schedule',
           aggregateId: m.aggregateId,

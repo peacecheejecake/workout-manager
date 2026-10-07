@@ -235,7 +235,7 @@ it.each([true, false])('reads explicit capability %s with no write key', async (
   const { api, request } = setup({ schemaVersion: 1, dateChangeReviews: supported });
   expect(await api.capabilities()).toEqual({ schemaVersion: 1, dateChangeReviews: supported });
   expect(request).toHaveBeenCalledExactlyOnceWith({
-    path: '/bff/v1/race-date-change-reviews/capabilities',
+    path: '/bff/v1/race-date-change-reviews/capabilities?maxSchemaVersion=2',
     method: 'GET',
     body: null,
     idempotencyKey: null,
@@ -256,4 +256,118 @@ it('does not infer capability from missing endpoint or send an aborted read', as
   abort.abort();
   await expect(api.capabilities(abort.signal)).rejects.toBeDefined();
   expect(request).toHaveBeenCalledTimes(1);
+});
+
+function impactFixture() {
+  const before = {
+    title: 'Race',
+    localDate: '2026-10-08',
+    localStartTime: null,
+    timezone: 'UTC',
+    distance: { kind: 'standard', class: '5k' },
+    priority: null,
+    participation: 'registered',
+    targetSeconds: 0,
+  };
+  return {
+    schemaVersion: 1,
+    status: 'projected',
+    approvalAllowed: false,
+    persistence: 'not_stored',
+    freshness: 'not_checked',
+    expectedEvent: body.intent.expectedEvent,
+    intent: { ...body.intent, resolutions: { nutrition: [], routines: [] } },
+    beforeBasis: 'captured_snapshot',
+    afterBasis: 'hypothetical',
+    race: {
+      eventId: race,
+      expectedRevision: 1,
+      before,
+      after: { ...before, localDate: body.intent.newLocalDate },
+    },
+    training: { state: 'absent' },
+    nutrition: { state: 'absent' },
+    recovery: { state: 'absent' },
+    routines: { state: 'absent' },
+    retainedUnplanned: [],
+    affected: [],
+    resolutionRequirements: [],
+    notices: [],
+  };
+}
+it('posts strict transient impact without generating a review key or candidate and keeps blocked diagnostics', async () => {
+  const { api, request } = setup(impactFixture());
+  expect(await api.impact(race.toUpperCase(), body)).toEqual(impactFixture());
+  expect(request).toHaveBeenCalledExactlyOnceWith({
+    path: `/bff/v1/races/${race}/date-change-impact`,
+    method: 'POST',
+    body: { ...body, intent: { ...body.intent, resolutions: { nutrition: [], routines: [] } } },
+    idempotencyKey: null,
+  });
+  const blocked = {
+    schemaVersion: 1,
+    status: 'blocked',
+    approvalAllowed: false,
+    persistence: 'not_stored',
+    freshness: 'not_checked',
+    reason: 'unsupported_source',
+    domains: ['nutrition'],
+  };
+  request.mockResolvedValue(reply(blocked));
+  expect(await api.impact(race, body)).toEqual(blocked);
+  request.mockResolvedValue(reply(blocked, 409));
+  await expect(api.impact(race, body)).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
+});
+it('rejects private impact input and mismatched event/date/selection responses', async () => {
+  const { api, request } = setup(impactFixture());
+  for (const input of [
+    { ...body, candidateId: id },
+    { ...body, idempotencyKey: key },
+    { ...body, intent: { ...body.intent, expectedEvent: { id, revision: 1 } } },
+  ])
+    await expect(api.impact(race, input)).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+  expect(request).not.toHaveBeenCalled();
+  const impact = impactFixture();
+  for (const result of [
+    { ...impact, approvalAllowed: true },
+    { ...impact, rawSource: 'private' },
+    {
+      ...impact,
+      expectedEvent: { id: race, revision: 2 },
+      intent: { ...impact.intent, expectedEvent: { id: race, revision: 2 } },
+      race: { ...impact.race, expectedRevision: 2 },
+    },
+    {
+      ...impact,
+      intent: { ...impact.intent, newLocalDate: '2026-10-10' },
+      race: { ...impact.race, after: { ...impact.race.after, localDate: '2026-10-10' } },
+    },
+    { ...impact, raw: 'x'.repeat(4194305) },
+  ]) {
+    request.mockResolvedValue(reply(result));
+    await expect(api.impact(race, body)).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
+  }
+});
+it.each([
+  ['EVENT_UNAVAILABLE', 404],
+  ['REVISION_CONFLICT', 409],
+  ['CONTEXT_LIMIT', 422],
+  ['PUBLIC_PORT_UNAVAILABLE', 503],
+] as const)('preserves finite impact error %s', async (code, status) => {
+  const { api } = setup({ error: { code } }, status);
+  await expect(api.impact(race, body)).rejects.toMatchObject({ code, status });
+});
+it('cancels transient impact before and after transport without a write retry identity', async () => {
+  const { api, request } = setup(impactFixture());
+  const before = new AbortController();
+  before.abort();
+  await expect(api.impact(race, body, before.signal)).rejects.toThrow();
+  expect(request).not.toHaveBeenCalled();
+  const after = new AbortController();
+  request.mockImplementation(async () => {
+    after.abort();
+    return reply(impactFixture());
+  });
+  await expect(api.impact(race, body, after.signal)).rejects.toThrow();
+  expect(request).toHaveBeenCalledOnce();
 });

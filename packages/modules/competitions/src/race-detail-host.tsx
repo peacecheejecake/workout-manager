@@ -106,6 +106,12 @@ function Content(props: RaceEventDetailHostProps & { athleteId: string }) {
           : capabilities.data.dateChangeReviews
             ? ('supported' as const)
             : ('unsupported' as const),
+      impactSupport:
+        capabilities.isError || !capabilities.data
+          ? ('unknown' as const)
+          : capabilities.data.schemaVersion === 2 && capabilities.data.dateChangeImpact
+            ? ('supported' as const)
+            : ('unsupported' as const),
       loadCurrentPlan,
       onCommitted: refreshPlans,
     }),

@@ -8,6 +8,7 @@ import { Button } from '@workout/ui-foundation/button';
 import { createNutritionApi } from './nutrition-api';
 import { FoodEditor } from './food-editor';
 import { IntakeEditor } from './intake-editor';
+import { nutritionAnchorLabel } from './plan-readonly-detail';
 import { PlanEditor } from './plan-editor';
 import {
   coverageLabel,
@@ -124,7 +125,7 @@ function Overview({
 }) {
   const window = intakeUtcWindow(clock.day);
   const plans = useQuery({
-    queryKey: [...scope, 'plans', clock.day],
+    queryKey: [...scope, 'plans', 'read-v4', clock.day],
     queryFn: ({ signal }) => api.listPlans(clock.day, clock.day, signal),
   });
   const intakes = useQuery({
@@ -197,10 +198,7 @@ function Overview({
                     )
                     .map((item) => (
                       <li key={item.id}>
-                        {item.title} · {item.category} ·{' '}
-                        {item.anchor.kind === 'relative'
-                          ? `${item.anchor.entity} ${item.anchor.point} ${item.anchor.offsetMinutes}분 (연결 시각 미해결 가능)`
-                          : (item.anchor.localTime ?? '시각 미지정')}
+                        {item.title} · {item.category} · {nutritionAnchorLabel(item.anchor)}
                       </li>
                     ))}
                 </ul>

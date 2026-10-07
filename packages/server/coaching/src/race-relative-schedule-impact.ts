@@ -94,6 +94,39 @@ const routineContext = z.strictObject({
   occurrences: z.array(routineOccurrenceSchema).max(1000),
   runs: z.array(routineRunSchema).max(1000),
 });
+/** Frozen historical schedule source: never expanded, resolved or written. */
+export const raceRetainedHistoricalRoutineSchema = routineContext
+  .extend({
+    currentHead: z.strictObject({
+      state: z.literal('present'),
+      versionId: routineScheduleVersionSchema.shape.versionId,
+      notificationMuted: z.boolean().nullable(),
+    }),
+  })
+  .superRefine((row, ctx) => {
+    if (
+      row.currentHead.versionId === row.record.versionId ||
+      row.record.blueprint.id !== row.blueprint.routineId ||
+      row.record.blueprint.versionId !== row.blueprint.versionId ||
+      row.occurrences.some(
+        (o) =>
+          o.schedule.id !== row.record.id ||
+          o.schedule.versionId !== row.record.versionId ||
+          o.blueprint.id !== row.blueprint.routineId ||
+          o.blueprint.versionId !== row.blueprint.versionId,
+      ) ||
+      row.runs.some(
+        (r) =>
+          r.origin.kind !== 'planned' ||
+          !row.occurrences.some(
+            (o) => r.origin.kind === 'planned' && o.id === r.origin.occurrenceId,
+          ) ||
+          r.blueprint.id !== row.blueprint.routineId ||
+          r.blueprint.versionId !== row.blueprint.versionId,
+      )
+    )
+      ctx.addIssue({ code: 'custom', message: 'Historical frozen source mismatch' });
+  });
 // This is an internal projection input, never an HTTP command, signed review or approval DTO.
 const inputSchema = z.strictObject({
   event: raceEventSchema,
@@ -167,12 +200,29 @@ export const raceRelativeScheduleImpactInputCompatibleV4Schema = inputSchema
       )
       .max(1000),
     retainedUnplannedRuns: z.array(raceRetainedUnplannedRunSchema).max(1000).optional(),
+    retainedHistoricalRoutines: z.array(raceRetainedHistoricalRoutineSchema).max(1000).optional(),
   })
   .superRefine((value, ctx) => {
-    if (value.retainedUnplannedRuns === undefined) return;
+    const historical = value.retainedHistoricalRoutines ?? [];
+    const versions = [...value.routines, ...historical].map((row) => row.record.versionId);
+    if (
+      new Set(versions).size !== versions.length ||
+      historical.some(
+        (row) =>
+          !value.routines.some(
+            (current) =>
+              current.record.id === row.record.id &&
+              current.record.versionId === row.currentHead.versionId,
+          ),
+      ) ||
+      historical.some((row) =>
+        value.resolutions.routines.some((r) => r.scheduleVersionId === row.record.versionId),
+      )
+    )
+      ctx.addIssue({ code: 'custom', message: 'Historical/current roster or resolution mismatch' });
     const ids = new Set<string>();
     const blueprints = new Map<string, unknown>();
-    for (const row of [...value.routines, ...value.retainedUnplannedRuns]) {
+    for (const row of [...value.routines, ...historical, ...(value.retainedUnplannedRuns ?? [])]) {
       const identity = JSON.stringify([row.blueprint.routineId, row.blueprint.versionId]);
       const previous = blueprints.get(identity);
       if (previous !== undefined && !same(previous, row.blueprint))
@@ -180,18 +230,28 @@ export const raceRelativeScheduleImpactInputCompatibleV4Schema = inputSchema
       blueprints.set(identity, row.blueprint);
     }
     let visits = 0;
-    for (const row of value.routines)
+    for (const row of [...value.routines, ...historical])
       for (const run of row.runs) {
         if (run.origin.kind !== 'planned' || ids.has(run.id))
           ctx.addIssue({ code: 'custom', message: 'Scheduled run origin/roster mismatch' });
         ids.add(run.id);
       }
-    for (const row of value.retainedUnplannedRuns) {
+    for (const row of value.retainedUnplannedRuns ?? []) {
       if (ids.has(row.run.id)) ctx.addIssue({ code: 'custom', message: 'Duplicate retained run' });
       ids.add(row.run.id);
       visits += 1 + row.blueprint.steps.length + row.run.progress.length;
       for (const progress of row.run.progress) visits += progress.actualRefs.length;
     }
+    for (const row of historical)
+      visits +=
+        1 +
+        row.blueprint.steps.length +
+        row.occurrences.length +
+        row.runs.reduce(
+          (n, r) =>
+            n + 1 + r.progress.length + r.progress.reduce((a, p) => a + p.actualRefs.length, 0),
+          0,
+        );
     if (visits > 5000) ctx.addIssue({ code: 'custom', message: 'Retained run visit bound' });
   });
 export type RaceRelativeScheduleImpactInputCompatibleV4 = z.infer<
@@ -551,8 +611,10 @@ function projectRaceRelativeScheduleImpactInternal(
           blueprint,
           occurrences: context.occurrences,
           runs: context.runs,
+          // A frozen ended schedule has no hypothetical write. Preserve its
+          // existing unknown timing without requiring an unsupported edit.
           notice: context.occurrences.some((occurrence) => occurrence.timingStatus === 'unresolved')
-            ? ('affected_unresolved_requires_resolution' as const)
+            ? ('existing_unresolved_preserved' as const)
             : ('ended_schedule_preserved' as const),
           projection: null,
         });
@@ -657,8 +719,25 @@ function projectRaceRelativeScheduleImpactInternal(
         nutrition.some((context) =>
           context.items.some((item) => item.notice === 'affected_unresolved_requires_resolution'),
         ) ||
-        routines.some((context) => context.notice === 'affected_unresolved_requires_resolution'),
+        routines.some(
+          (context) =>
+            context.state === 'affected' &&
+            context.notice === 'affected_unresolved_requires_resolution',
+        ),
       completionReports: input.completionReports,
+      ...(input.retainedHistoricalRoutines === undefined
+        ? {}
+        : {
+            retainedHistoricalRoutines: [...input.retainedHistoricalRoutines]
+              .sort((a, b) =>
+                a.record.versionId < b.record.versionId
+                  ? -1
+                  : a.record.versionId > b.record.versionId
+                    ? 1
+                    : 0,
+              )
+              .map((row) => ({ state: 'retained_historical' as const, ...row })),
+          }),
       ...(input.retainedUnplannedRuns === undefined
         ? {}
         : {

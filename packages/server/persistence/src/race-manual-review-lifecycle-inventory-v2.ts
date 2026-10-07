@@ -328,7 +328,7 @@ const sourceDefinitions = {
   ],
   'checklist-confirmation': [
     'routine_checklist_confirmation',
-    "id=$2->>'sourceId' AND revision_id::text=$2->>'revisionId' AND run_id::text=$2->>'runId' AND step_id=$2->>'stepId'",
+    "id::text=$2->>'sourceId' AND revision_id::text=$2->>'revisionId' AND run_id::text=$2->>'runId' AND step_id=$2->>'stepId'",
   ],
   'course-revision': [
     'course_revision',

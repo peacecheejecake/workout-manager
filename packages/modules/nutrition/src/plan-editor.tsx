@@ -2,10 +2,13 @@ import { useRef, useState, type FormEvent } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   nutritionPlanDraftSchema,
+  nutritionPlanVersionSchema,
   type NutritionPlanDraft,
   type NutritionPlanItemDraft,
   type NutritionPlanVersion,
 } from '@workout/contracts/nutrition-core';
+import type { NutritionPlanVersionCompatibleV4 } from '@workout/contracts/nutrition-race-plan-v4';
+import { PlanReadonlyDetail } from './plan-readonly-detail';
 import { Button } from '@workout/ui-foundation/button';
 import { TextAreaField, TextField } from '@workout/ui-foundation/text-field';
 import { NutritionRequestError } from './nutrition-api';
@@ -101,7 +104,7 @@ export function PlanEditor({
   navigate: ((path: string) => void) | undefined;
 }) {
   const plan = useQuery({
-    queryKey: [...scope, 'plan', planId],
+    queryKey: [...scope, 'plan', 'read-v4', planId],
     queryFn: ({ signal }) => {
       if (planId === null) throw new Error('PLAN_ID_REQUIRED');
       return api.readPlan(planId, signal);
@@ -130,6 +133,7 @@ export function PlanEditor({
       api={api}
       scope={scope}
       clock={clock}
+      history={plan.data?.history ?? []}
       initialHead={planId === null ? null : (plan.data?.head ?? null)}
       latestHead={planId === null ? null : (plan.data?.head ?? null)}
       requestedPlanId={planId}
@@ -148,6 +152,7 @@ function PlanLoaded({
   scope,
   clock,
   initialHead,
+  history,
   latestHead,
   requestedPlanId,
   refetchFailed,
@@ -158,16 +163,29 @@ function PlanLoaded({
   api: NutritionApi;
   scope: NutritionScope;
   clock: NutritionClock;
-  initialHead: NutritionPlanVersion | null;
-  latestHead: NutritionPlanVersion | null;
+  initialHead: NutritionPlanVersionCompatibleV4 | null;
+  history: { versionId: string; version: number; approvedAt: string }[];
+  latestHead: NutritionPlanVersionCompatibleV4 | null;
   requestedPlanId: string | null;
   refetchFailed: boolean;
   refreshing: boolean;
   onRefresh: () => void;
   navigate: ((path: string) => void) | undefined;
 }) {
-  const [baselineHead] = useState(initialHead);
+  const [loadedHead] = useState(initialHead);
+  const parsedHead = nutritionPlanVersionSchema.safeParse(loadedHead);
+  const baselineHead = parsedHead.success ? parsedHead.data : null;
   const [cloneDraft, setCloneDraft] = useState<NutritionPlanDraft | null>(null);
+  if (loadedHead !== null && !parsedHead.success)
+    return (
+      <PlanReadonlyDetail
+        record={latestHead ?? loadedHead}
+        history={history}
+        refreshing={refreshing}
+        onRefresh={onRefresh}
+        refreshFailed={refetchFailed}
+      />
+    );
   if (requestedPlanId !== null && baselineHead === null)
     return <p role="alert">계획을 찾을 수 없습니다.</p>;
   const originalDraft = baselineHead ? existingDraft(baselineHead) : blankDraft(clock);

@@ -13,8 +13,6 @@ import {
   foodDefinitionVersionSchema,
   intakeEntriesResponseSchema,
   intakeEntryRecordSchema,
-  nutritionPlanReadSchema,
-  nutritionPlansResponseSchema,
   nutritionPlanVersionSchema,
   saveFoodDefinitionVersionRequestSchema,
   saveNutritionPlanVersionRequestSchema,
@@ -24,6 +22,11 @@ import {
   type SaveFoodDefinitionVersionRequest,
   type SaveNutritionPlanVersionRequest,
 } from '@workout/contracts/nutrition-core';
+
+import {
+  nutritionPlanReadV4Schema,
+  nutritionPlansResponseV4Schema,
+} from '@workout/contracts/nutrition-race-plan-v4';
 
 const foodsResponseSchema = z.strictObject({
   foods: z.array(foodDefinitionVersionSchema).max(100),
@@ -82,16 +85,27 @@ export function createNutritionApi(transport: AuthenticatedTransport) {
     },
     listPlans(from: string, toInclusive: string, signal?: AbortSignal) {
       return request(
-        `/bff/v1/nutrition/plans?${new URLSearchParams({ from, toInclusive, limit: '100' })}`,
+        `/bff/v1/nutrition/plans?${new URLSearchParams({ from, toInclusive, limit: '100', maxSchemaVersion: '4' })}`,
         'GET',
-        nutritionPlansResponseSchema,
+        nutritionPlansResponseV4Schema,
         null,
         null,
         signal,
       );
     },
     readPlan(planId: string, signal?: AbortSignal) {
-      return request(planPath(planId), 'GET', nutritionPlanReadSchema, null, null, signal);
+      const id = z.uuid().parse(planId).toLowerCase();
+      return request(
+        `${planPath(id)}?maxSchemaVersion=4`,
+        'GET',
+        nutritionPlanReadV4Schema,
+        null,
+        null,
+        signal,
+      ).then((read) => {
+        if (read.planId !== id) throw new NutritionRequestError(502, 'INVALID_PLAN_RESPONSE');
+        return read;
+      });
     },
     currentTrainingPlan(signal?: AbortSignal) {
       return request('/bff/v1/plans/current', 'GET', planReadSchema, null, null, signal);

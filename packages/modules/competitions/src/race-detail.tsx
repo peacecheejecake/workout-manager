@@ -23,7 +23,7 @@ export interface RaceEventDetailWorkspaceProps {
   onBack?: () => void;
   dateReview?: Pick<
     RaceDateChangeReviewProps,
-    'api' | 'support' | 'loadCurrentPlan' | 'onCommitted'
+    'api' | 'support' | 'impactSupport' | 'loadCurrentPlan' | 'onCommitted'
   >;
 }
 export function RaceEventDetailWorkspace(props: RaceEventDetailWorkspaceProps) {

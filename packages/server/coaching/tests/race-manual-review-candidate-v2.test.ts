@@ -244,7 +244,7 @@ it('retains disconnected state and zero/null source facts without new timing', (
   expect(result.body.projectionInput.event.targetSeconds).toBe(0);
   expect(result.body.projectionInput.event.locationName).toBeNull();
 });
-it('accepts long saved IDs while keeping explicit resolution max200', () => {
+it('accepts long saved IDs and explicit resolutions under the aggregate body bound', () => {
   const value = input(4, true);
   expect(assembled(value).body.pinTransitions[0]?.itemId).toHaveLength(1000);
   value.projectionInput.resolutions.nutrition = [
@@ -255,10 +255,11 @@ it('accepts long saved IDs while keeping explicit resolution max200', () => {
       anchor: { kind: 'absolute', date: '2026-03-09', localTime: null, timezone: 'UTC' },
     },
   ];
-  expect(assembleRaceManualReviewCandidateCompatibleV4(value, ports())).toMatchObject({
-    status: 'rejected',
-    reason: 'invalid_input',
-  });
+  const resolved = assembleRaceManualReviewCandidateCompatibleV4(value, ports());
+  expect(resolved.status).toBe('assembled_readonly');
+  if (resolved.status !== 'assembled_readonly') throw Error('fixture');
+  expect(resolved.body.projectionInput.resolutions.nutrition[0]?.itemId).toBe('a'.repeat(1000));
+  // 1000 is a sample, not a scalar maximum; the whole JSON bound remains enforced.
 });
 it('normalizes declared set rosters without sorting original item arrays', () => {
   const a = input(),

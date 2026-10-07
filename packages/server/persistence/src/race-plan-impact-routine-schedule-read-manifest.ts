@@ -304,15 +304,20 @@ export function validateRoutineScheduleReadManifest(
       scheduleVersionId: s.versionId,
       before,
       after,
-      notice: affected
-        ? unresolved(before) || (after !== null && unresolved(after))
-          ? 'affected_unresolved_requires_resolution'
-          : s.record.state === 'ended'
-            ? 'ended_schedule_preserved'
-            : null
-        : unresolved(before)
-          ? 'existing_unresolved_preserved'
-          : null,
+      // Ended schedules remain frozen even when their source period moved.
+      // Their existing unresolved time is retained, not a mutable target.
+      notice:
+        s.record.state === 'ended'
+          ? unresolved(before)
+            ? 'existing_unresolved_preserved'
+            : 'ended_schedule_preserved'
+          : affected
+            ? unresolved(before) || (after !== null && unresolved(after))
+              ? 'affected_unresolved_requires_resolution'
+              : null
+            : unresolved(before)
+              ? 'existing_unresolved_preserved'
+              : null,
     });
   }
   for (const r of c.routines) {

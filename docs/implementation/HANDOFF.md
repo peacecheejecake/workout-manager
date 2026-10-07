@@ -593,3 +593,11 @@ Root actual allfour R16 Next/Vite **2/2**·V2 boundary unit355/355를 확인했�
 ## fixed116 archive 행 대응 검증 갱신 · 2026-10-08
 
 Root가 신규 correspondence verifier의 단위19/19와 실제 PG composite1/1(skip0)을 통과했다. authenticated snapshot archive를 별도 일회용 DB에 실제 복원하고222 물리 관계의 행·배열 layout·float bit를 대조했다. 같은 count의 public 수정·target/key 불일치는 거절했고 정리 잔존0이다. [I 기록](progress/M2-02i.md)의 한정 fixed116 증거이며 최신 profile·tail/sequence·admission·전체 복원·공개 release는 미완료다. main/push0이다.
+
+## PB 기본 비교 결정 갱신 · 2026-10-08
+
+사용자는 Chip 우선·Chip 없는 기록은 Gun 비교를 선택했다. 직접 입력도 PB 후보이며 비교한 시간 기준을 표시하고 원값을 보존한다. M2-02j의 chip/gun 기본 선택 대기를 해소하고 구현·실제 두 Host 수용을 이어간다. 이 결정만으로 J 완료를 표시하지 않는다.
+
+## 날짜 영향 통합 실제 수용 갱신 · 2026-10-08
+
+SQL127의 실제DB5/5 및 current/historical routine 분리 후 ended PG3/3·public/CheckIn copied17/17·Next/Vitecombined6/6(skip0)을 통과했다. 긴 영양ID 해결과 미해결 routine dates/window 입력부터 명시승인까지 실제두Host를 검증했다. [I 기록](progress/M2-02i.md)에 원실패/입력SHA/정리0·type/format후속차이를 보존한다. 다음 ready는 사용자 확정Chip우선 PB기본정책 및 공개 영양 V4재연결/재승인 preview/API/UI이며 nativeagent별 분리소유한다. 최신fullrestore·wholephase/독립review/main·운영/native gate는 미완료다.

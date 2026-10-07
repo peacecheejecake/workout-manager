@@ -39,7 +39,8 @@ function reply(body: unknown, status = 200) {
   return transportReplySchema.parse({ body, status, traceId: null });
 }
 function body(path: string) {
-  if (path.endsWith('/capabilities')) return { schemaVersion: 1, dateChangeReviews: false };
+  if (path === '/bff/v1/race-date-change-reviews/capabilities?maxSchemaVersion=2')
+    return { schemaVersion: 1, dateChangeReviews: false };
   return path.includes('/plans')
     ? { head: null, history: [{ id: other, version: 3, createdAt: at, title: '가을 계획' }] }
     : path.includes('/courses')
@@ -73,7 +74,7 @@ it('starts detail and both actual catalogs in parallel and displays exact named 
       '/bff/v1/courses',
       '/bff/v1/plans/current',
       `/bff/v1/races/${id}`,
-      '/bff/v1/race-date-change-reviews/capabilities',
+      '/bff/v1/race-date-change-reviews/capabilities?maxSchemaVersion=2',
     ].sort(),
   );
   await act(async () => {
@@ -213,7 +214,7 @@ it('detects an unsaved immutable course tuple selection before back and preserve
 it('loads actual capabilities and strict current PlanRead only when date review is opened', async () => {
   const request = vi.fn<AuthenticatedTransport['request']>(async (input) =>
     reply(
-      input.path.endsWith('/capabilities')
+      input.path.includes('/capabilities')
         ? { schemaVersion: 1, dateChangeReviews: true }
         : input.path.includes('/plans')
           ? { head: null, history: [] }
@@ -234,7 +235,7 @@ it('loads actual capabilities and strict current PlanRead only when date review 
 it('keeps unknown/malformed capabilities closed without constructing date writes', async () => {
   const request = vi.fn<AuthenticatedTransport['request']>(async (input) =>
     reply(
-      input.path.endsWith('/capabilities')
+      input.path.includes('/capabilities')
         ? { schemaVersion: 1, dateChangeReviews: true, authority: true }
         : body(input.path),
     ),
@@ -249,7 +250,7 @@ it('rejects catalog-shaped current plans in the review loader instead of fabrica
   let reads = 0;
   const request = vi.fn<AuthenticatedTransport['request']>(async (input) =>
     reply(
-      input.path.endsWith('/capabilities')
+      input.path.includes('/capabilities')
         ? { schemaVersion: 1, dateChangeReviews: true }
         : input.path.includes('/plans')
           ? ++reads === 1
@@ -295,7 +296,7 @@ it('refreshes actual detail and relation plans only after explicit server commit
   };
   let approved = false;
   const request = vi.fn<AuthenticatedTransport['request']>(async (input) => {
-    if (input.path.endsWith('/capabilities'))
+    if (input.path.includes('/capabilities'))
       return reply({ schemaVersion: 1, dateChangeReviews: true });
     if (input.path.endsWith('/approve')) {
       approved = true;

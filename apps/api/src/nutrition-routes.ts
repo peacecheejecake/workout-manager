@@ -23,6 +23,7 @@ import {
   NutritionReadLimitError,
   NutritionValidationError,
   type NutritionRepository,
+  type NutritionPlanV4Reader,
 } from '@workout/server-persistence/nutrition-core';
 import { nutritionPlanReadV2Schema } from '@workout/contracts/nutrition-race-plan-v2';
 import {
@@ -30,6 +31,10 @@ import {
   nutritionPlansResponseV3Schema,
   nutritionPlanVersionCompatibleV3Schema,
 } from '@workout/contracts/nutrition-race-plan-v3';
+import {
+  nutritionPlanReadV4Schema,
+  nutritionPlansResponseV4Schema,
+} from '@workout/contracts/nutrition-race-plan-v4';
 import type { Principal } from './ports.js';
 import { command, emptyQuery, input, ProductRequestError } from './product-boundary.js';
 
@@ -45,7 +50,7 @@ const listQuerySchema = z.strictObject({
   limit: z.coerce.number().int().min(1).max(100).default(50),
   cursor: z.string().max(512).optional(),
 });
-const version = z.coerce.number().int().min(1).max(3).optional();
+const version = z.coerce.number().int().min(1).max(4).optional();
 const nutritionPlanReadQuerySchema = z.strictObject({ maxSchemaVersion: version });
 const nutritionPlanListQuerySchema = listQuerySchema.extend({
   maxSchemaVersion: version,
@@ -100,10 +105,17 @@ export function registerNutritionRoutes(
   routes: FastifyInstance,
   nutrition: NutritionRepository,
   principal: (request: FastifyRequest) => Principal,
+  reader?: NutritionPlanV4Reader,
 ) {
   routes.get('/nutrition/plans', async (request) => {
     const { maxSchemaVersion = 1, ...query } = input(nutritionPlanListQuerySchema, request.query);
     const inputQuery = input(nutritionPlansQuerySchema, { ...query, cursor: query.cursor ?? null });
+    if (maxSchemaVersion === 4) {
+      if (!reader) throw new ProductRequestError(409, 'NUTRITION_READ_VERSION_UNSUPPORTED');
+      return nutritionPlansResponseV4Schema.parse(
+        await nutritionCommand(() => reader.listPlansV4(principal(request).athleteId, inputQuery)),
+      );
+    }
     if (maxSchemaVersion === 2)
       throw new ProductRequestError(409, 'NUTRITION_READ_VERSION_UNSUPPORTED');
     if (maxSchemaVersion === 3)
@@ -119,6 +131,15 @@ export function registerNutritionRoutes(
   routes.get('/nutrition/plans/:planId', async (request) => {
     const { maxSchemaVersion = 1 } = input(nutritionPlanReadQuerySchema, request.query);
     const { planId } = input(planPathSchema, request.params);
+    if (maxSchemaVersion === 4) {
+      if (!reader) throw new ProductRequestError(409, 'NUTRITION_READ_VERSION_UNSUPPORTED');
+      const result = await nutritionCommand(() =>
+        reader.readPlanV4(principal(request).athleteId, planId),
+      );
+      if (result === null) throw new ProductRequestError(404, 'NUTRITION_PLAN_NOT_FOUND');
+      if (result.planId !== planId) throw new ProductRequestError(500, 'INTERNAL_ERROR');
+      return nutritionPlanReadV4Schema.parse(result);
+    }
     if (maxSchemaVersion === 3) {
       const result = await nutritionCommand(() =>
         nutrition.readPlanV3(principal(request).athleteId, planId),

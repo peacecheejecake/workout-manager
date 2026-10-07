@@ -10,6 +10,7 @@ import {
   raceManualPublicPreviewSchema,
   raceManualPublicPreviewReferenceSchema,
 } from '@workout/contracts/race-manual-public-preview';
+import { raceManualPublicImpactSchema } from '@workout/contracts/race-manual-public-impact';
 import { raceManualApprovalResultSchema } from '@workout/contracts/race-manual-approval';
 
 const uuid = z.uuid().transform((value) => value.toLowerCase());
@@ -38,6 +39,14 @@ const errorBody = z.strictObject({
       'STALE_BASIS',
       'UNRESOLVED_AFFECTED',
       'INTERNAL_ERROR',
+      'PUBLIC_PORT_UNAVAILABLE',
+      'INVALID_INTENT',
+      'EVENT_UNAVAILABLE',
+      'SOURCE_UNAVAILABLE',
+      'REVISION_CONFLICT',
+      'CONTEXT_LIMIT',
+      'CONTEXT_UNAVAILABLE',
+      'INVALID_CONTEXT',
     ]),
   }),
 });
@@ -156,7 +165,7 @@ export function createRaceManualPublicApi(transport: AuthenticatedTransport) {
   return {
     async capabilities(signal?: AbortSignal) {
       return request(
-        '/bff/v1/race-date-change-reviews/capabilities',
+        '/bff/v1/race-date-change-reviews/capabilities?maxSchemaVersion=2',
         'GET',
         null,
         null,
@@ -164,6 +173,34 @@ export function createRaceManualPublicApi(transport: AuthenticatedTransport) {
         () => 200,
         signal,
       );
+    },
+    async impact(raceId: unknown, body: unknown, signal?: AbortSignal) {
+      const id = parse(uuid, raceId, true);
+      const command = parse(raceManualPublicPrepareSchema, body, true);
+      if (command.intent.expectedEvent.id.toLowerCase() !== id)
+        throw new RaceManualPublicRequestError(400, 'INVALID_INPUT');
+      const result = await request(
+        `/bff/v1/races/${id}/date-change-impact`,
+        'POST',
+        {
+          ...command,
+          intent: { ...command.intent, expectedEvent: { ...command.intent.expectedEvent, id } },
+        },
+        null,
+        raceManualPublicImpactSchema,
+        () => 200,
+        signal,
+      );
+      if (
+        result.status === 'projected' &&
+        (result.expectedEvent.id !== id ||
+          result.expectedEvent.revision !== command.intent.expectedEvent.revision ||
+          result.intent.newLocalDate !== command.intent.newLocalDate ||
+          JSON.stringify(result.intent.selection) !== JSON.stringify(command.intent.selection) ||
+          JSON.stringify(result.intent.resolutions) !== JSON.stringify(command.intent.resolutions))
+      )
+        throw new RaceManualPublicRequestError(502, 'INVALID_RESPONSE');
+      return result;
     },
     async review(raceId: unknown, body: unknown, idempotencyKey: unknown, signal?: AbortSignal) {
       const id = parse(uuid, raceId, true);

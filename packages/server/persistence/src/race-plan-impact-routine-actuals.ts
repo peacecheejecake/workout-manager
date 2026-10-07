@@ -175,7 +175,19 @@ export async function captureRoutineActualManifest(tx: Transaction, sources: Rou
         fail('SOURCE_UNAVAILABLE');
       byStarted.set(occurrence.id, run);
     }
-  const scheduleIds = [...new Set(occurrences.map((record) => record.schedule.versionId))].sort();
+  const currentScheduleHeads = (
+    await rows(
+      tx,
+      'SELECT schedule_id,version_id FROM routine_schedule_head WHERE athlete_id=$1 ORDER BY schedule_id LIMIT 1001',
+      [tx.athleteId],
+    )
+  ).map((row) => parse(z.strictObject({ schedule_id: uuid, version_id: uuid }), row));
+  const scheduleIds = [
+    ...new Set([
+      ...occurrences.map((record) => record.schedule.versionId),
+      ...currentScheduleHeads.map((row) => row.version_id),
+    ]),
+  ].sort();
   const scheduleRows = (
     await rows(
       tx,

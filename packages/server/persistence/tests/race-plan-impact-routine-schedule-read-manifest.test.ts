@@ -534,3 +534,35 @@ it('stops derived expansion above5000 without returning an oversized timing rost
   expect(r.blockers).toContainEqual({ path: 'timings', reason: 'projection_limit' });
   expect(r.timings).toEqual([]);
 });
+
+for (const affected of [false, true])
+  it(`preserves ended unresolved source with notice only for ${affected ? 'moved' : 'unchanged'} calendar`, () => {
+    const c = fixture(),
+      { plan, schedule, routine, intent } = row(c);
+    const session = plan.draft.sessions[0];
+    if (!session) throw Error('SYNTHETIC_SESSION_MISSING');
+    session.durationSeconds = null;
+    c.currentTraining = { aggregateId: planId, snapshot: structuredClone(plan) };
+    schedule.record.state = 'ended';
+    routine.record = structuredClone(schedule.record);
+    if (!affected) {
+      intent.selection = { kind: 'keep_plan' };
+      routine.affected = false;
+      c.affectedRoutineIds = [];
+    }
+    const original = structuredClone(c),
+      result = validateRoutineScheduleReadManifest(c);
+    expect(result.status).toBe('validated_read_scope');
+    expect(result.timings[0]).toMatchObject({
+      scheduleVersionId: schedule.versionId,
+      after: null,
+      notice: 'existing_unresolved_preserved',
+      before: {
+        state: 'expanded',
+        occurrences: [{ scheduledAt: null, timingStatus: 'unresolved' }],
+      },
+    });
+    expect(result.authority).toBe('none');
+    expect(result.freshness).toBe('not_checked');
+    expect(c).toEqual(original);
+  });

@@ -634,3 +634,57 @@ it.each(['x'.repeat(201), '한글항목'.repeat(60)])(
     });
   },
 );
+
+for (const movedSource of [false, true])
+  it(`retains ended unresolved bodies with notice only when source ${movedSource ? 'moves' : 'stays'}`, () => {
+    const input = movedSource ? moved() : fixture(),
+      context = routine(),
+      calculations = ports();
+    input.nutrition = []; // Isolate the ended branch from unrelated nutrition resolution requirements.
+    context.record.state = 'ended';
+    const occurrence = required(context.occurrences[0]);
+    occurrence.scheduledAt = null;
+    occurrence.timingStatus = 'unresolved';
+    input.routines = [context];
+    const original = structuredClone(context),
+      result = projected(input, calculations);
+    expect(result.routines[0]).toMatchObject({
+      state: movedSource ? 'retained_ended' : 'unchanged',
+      record: original.record,
+      blueprint: original.blueprint,
+      occurrences: original.occurrences,
+      runs: original.runs,
+      projection: null,
+      notice: 'existing_unresolved_preserved',
+    });
+    expect(result.requiresResolution).toBe(false);
+    expect(context).toEqual(original);
+    expect(calculations.expandRoutine).not.toHaveBeenCalled();
+    expect(result.approval.status).toBe('blocked'); // This pure projector still grants no authority.
+  });
+it('explicit ended rule resolution remains unsupported and never retimes its unresolved occurrence', () => {
+  const input = moved(),
+    context = routine(),
+    calculations = ports();
+  input.nutrition = [];
+  context.record.state = 'ended';
+  required(context.occurrences[0]).scheduledAt = null;
+  required(context.occurrences[0]).timingStatus = 'unresolved';
+  input.routines = [context];
+  input.resolutions.routines = [
+    {
+      scheduleVersionId: context.record.versionId,
+      action: 'replace_rule',
+      rule: context.record.rule,
+      window: context.record.window,
+      sourcePlanVersionId: planId,
+    },
+  ];
+  const original = structuredClone(context);
+  expect(projectRaceRelativeScheduleImpact(input, calculations)).toMatchObject({
+    status: 'rejected',
+    reason: 'unsupported_resolution',
+  });
+  expect(context).toEqual(original);
+  expect(calculations.expandRoutine).not.toHaveBeenCalled();
+});

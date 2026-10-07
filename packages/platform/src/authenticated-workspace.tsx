@@ -218,6 +218,7 @@ const templateVersionPath = new RegExp(
   `^/bff/v1/check-in-templates/${routeUuid}(?:/versions/${routeUuid})?$`,
   'i',
 );
+const raceImpactPath = new RegExp(`^/bff/v1/races/${routeUuid}/date-change-impact$`, 'i');
 const raceReviewPreparePath = new RegExp(`^/bff/v1/races/${routeUuid}/date-change-reviews$`, 'i');
 const raceReviewReadPath = new RegExp(`^/bff/v1/race-date-change-reviews/${routeUuid}$`, 'i');
 const raceReviewApprovePath = new RegExp(
@@ -264,9 +265,12 @@ export function createSessionTransport(
       const raceManualPublicPathAllowed =
         (input.method === 'GET' &&
           (path === '/bff/v1/race-date-change-reviews/capabilities' ||
+            path === '/bff/v1/race-date-change-reviews/capabilities?maxSchemaVersion=2' ||
             raceReviewReadPath.test(path))) ||
         (input.method === 'POST' &&
-          (raceReviewPreparePath.test(path) || raceReviewApprovePath.test(path)));
+          (raceImpactPath.test(path) ||
+            raceReviewPreparePath.test(path) ||
+            raceReviewApprovePath.test(path)));
 
       const raceCapabilitiesAllowed =
         input.method === 'GET' && path === '/bff/v1/race-results/capabilities';

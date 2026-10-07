@@ -77,8 +77,12 @@ export const raceManualPublicReviewResultSchema = z.discriminatedUnion('status',
 export type RaceManualPublicReviewResult = z.infer<typeof raceManualPublicReviewResultSchema>;
 
 /** Injected protocol support only; not installed storage, consent or approval authority. */
-export const raceManualPublicCapabilitiesSchema = z.strictObject({
-  schemaVersion: z.literal(1),
-  dateChangeReviews: z.boolean(),
-});
+export const raceManualPublicCapabilitiesSchema = z.discriminatedUnion('schemaVersion', [
+  z.strictObject({ schemaVersion: z.literal(1), dateChangeReviews: z.boolean() }),
+  z.strictObject({
+    schemaVersion: z.literal(2),
+    dateChangeReviews: z.boolean(),
+    dateChangeImpact: z.boolean(),
+  }),
+]);
 export type RaceManualPublicCapabilities = z.infer<typeof raceManualPublicCapabilitiesSchema>;

@@ -5,6 +5,7 @@ import { recoveryStrategyVersionSchema } from '@workout/contracts/recovery-core'
 import {
   routineBlueprintVersionSchema,
   routineScheduleVersionSchema,
+  routineRunSchema,
 } from '@workout/contracts/routines';
 import { describe, expect, it } from 'vitest';
 import { raceImpactConsumedCaptureSchema } from '../src/race-plan-impact-complete-manifest.js';
@@ -584,4 +585,143 @@ describe('actual pure projection to public impact', () => {
       }).success,
     ).toBe(false);
   });
+});
+
+for (const movedSource of [false, true])
+  it(`maps ended unresolved as frozen notice only for ${movedSource ? 'moved' : 'kept'} plan`, () => {
+    const f = allDomains(),
+      c = f.context;
+    const row = c.routines[0],
+      source = c.routineActualManifest.schedules[0];
+    if (!row || !source || !c.currentTraining || !c.calendarIntent) throw Error('fixture');
+    row.record.state = 'ended';
+    source.record = row.record;
+    const occurrence = expandRoutineSchedule(row.record, c.currentTraining.snapshot.draft)[0];
+    if (!occurrence) throw Error('fixture');
+    c.routineActualManifest.occurrences = [
+      {
+        record: occurrence,
+        currentSchedule: { state: 'present', versionId: row.versionId },
+        startedRun: { state: 'absent' },
+      },
+    ];
+    if (!movedSource) c.calendarIntent.selection = { kind: 'keep_plan' };
+    const input = pin(c),
+      before = structuredClone(input),
+      result = projectRaceManualPublicImpact(input);
+    if (result.status !== 'projected' || result.routines.state !== 'present')
+      throw Error(
+        `Expected projected ended diagnostic, received ${result.status === 'blocked' ? result.reason : 'absent routine'}`,
+      );
+    const member = result.routines.members.find((r) => r.aggregateId === row.aggregateId);
+    if (!member) throw Error('fixture');
+    expect(member.state).toBe(movedSource ? 'retained_ended' : 'unchanged');
+    expect(member.requirement).toBe('none');
+    expect(member.resolution).toBe('absent');
+    expect(member.after).toEqual(member.before);
+    expect(member.before.schedule).toEqual(row.record);
+    expect(member.storedOccurrences[0]).toMatchObject({
+      occurrenceId: occurrence.id,
+      scheduledAt: null,
+      timingStatus: 'unresolved',
+      unresolvedReason: null,
+    });
+    expect(
+      result.resolutionRequirements.some(
+        (r) => r.domain === 'routine_schedule' && r.aggregateId === row.aggregateId,
+      ),
+    ).toBe(false);
+    expect(result.affected).not.toContainEqual({
+      domain: 'routine_schedule',
+      aggregateId: row.aggregateId,
+    });
+    for (const code of ['ENDED_SCHEDULE_RETAINED', 'UNCHANGED_UNRESOLVED'])
+      expect(result.notices).toContainEqual({
+        domain: 'routine_schedule',
+        aggregateId: row.aggregateId,
+        itemId: null,
+        code,
+      });
+    expect(input).toEqual(before);
+    const resolutionInput = structuredClone(input);
+    if (!resolutionInput.context.calendarIntent) throw Error('fixture');
+    resolutionInput.context.calendarIntent.resolutions.routines = [
+      {
+        scheduleVersionId: row.versionId,
+        action: 'replace_rule',
+        rule: row.record.rule,
+        window: row.record.window,
+        sourcePlanVersionId: source.sourcePlanVersionId,
+      },
+    ];
+    const unsupported = projectRaceManualPublicImpact(pin(resolutionInput.context));
+    expect(unsupported.status).toBe('blocked');
+  });
+
+it('maps only current ended member while preserving historical unresolved stored occurrence source', () => {
+  const f = allDomains(),
+    c = f.context,
+    current = c.routines[0],
+    original = c.routineActualManifest.schedules[0];
+  if (!current || !original || !c.currentTraining) throw Error('fixture');
+  const old = structuredClone(original),
+    newVersion = id(25);
+  const occurrence = expandRoutineSchedule(old.record, c.currentTraining.snapshot.draft)[0];
+  if (!occurrence) throw Error('fixture');
+  current.versionId = newVersion;
+  current.record = { ...current.record, versionId: newVersion, state: 'ended' };
+  c.rosters.routine = [{ aggregateId: current.aggregateId, versionId: newVersion }];
+  old.currentHead = { state: 'present', versionId: newVersion, notificationMuted: false };
+  c.routineActualManifest.schedules = [
+    old,
+    { ...structuredClone(old), versionId: newVersion, record: structuredClone(current.record) },
+  ];
+  c.routineActualManifest.occurrences = [
+    {
+      record: { ...occurrence, scheduledAt: null, timingStatus: 'unresolved' },
+      currentSchedule: { state: 'present', versionId: newVersion },
+      startedRun: { state: 'absent' },
+    },
+  ];
+  const run = routineRunSchema.parse({
+    id: id(26),
+    revision: 0,
+    blueprint: occurrence.blueprint,
+    origin: { kind: 'planned', occurrenceId: occurrence.id },
+    state: 'in_progress',
+    progress: [],
+    selectedChoices: {},
+    startedAt: now,
+    endedAt: null,
+  });
+  c.routineActualManifest.runs = [
+    { record: run, historyDigest: impactDependencyDigest(run), actuals: [] },
+  ];
+  const existing = c.routineActualManifest.occurrences[0];
+  if (!existing) throw Error('fixture');
+  existing.startedRun = { state: 'present', runId: run.id, revision: run.revision };
+  const before = structuredClone(c.routineActualManifest),
+    p = projectRaceManualPublicImpact(pin(c));
+  expect(p.status).toBe('projected');
+  if (p.status !== 'projected' || p.routines.state !== 'present') throw Error('fixture');
+  expect(p.routines.members).toHaveLength(1);
+  const member = p.routines.members[0];
+  expect(member).toMatchObject({
+    state: 'retained_ended',
+    requirement: 'none',
+    resolution: 'absent',
+  });
+  expect(member?.before.schedule).toEqual(current.record);
+  expect(member?.after).toEqual(member?.before);
+  expect(member?.storedOccurrences[0]).toMatchObject({
+    schedule: occurrence.schedule,
+    scheduledAt: null,
+    timingStatus: 'unresolved',
+    sourcePlanVersionId: old.sourcePlanVersionId,
+  });
+  expect(p.affected).not.toContainEqual({
+    domain: 'routine_schedule',
+    aggregateId: current.aggregateId,
+  });
+  expect(c.routineActualManifest).toEqual(before);
 });

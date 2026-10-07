@@ -5,6 +5,9 @@ import {
   raceManualPublicApproveSchema,
   raceManualPublicReviewResultSchema,
 } from '@workout/contracts/race-manual-public';
+import { raceManualPublicImpactSchema } from '@workout/contracts/race-manual-public-impact';
+import { RaceManualPublicError } from '@workout/server-persistence/race-manual-public';
+import { RacePlanImpactPreviewError } from '@workout/server-persistence/race-plan-impact-preview';
 import { raceManualPublicPreviewSchema } from '@workout/contracts/race-manual-public-preview';
 import { raceManualApprovalResultSchema } from '@workout/contracts/race-manual-approval';
 import type { Principal } from './ports.js';
@@ -13,6 +16,7 @@ import { command, emptyQuery, input, ProductRequestError } from './product-bound
 /** Exact public factory surface. Unknown repository responses are decoded before
  * transport; this port accepts no browser source/basis/recipe authority. */
 export interface RaceManualPublicRoutesRepository {
+  impact?(athleteId: string, command: unknown): Promise<unknown>;
   review(athleteId: string, command: unknown): Promise<unknown>;
   approve(athleteId: string, command: unknown): Promise<unknown>;
   readPreview(athleteId: string, candidateId: unknown): Promise<unknown>;
@@ -62,6 +66,38 @@ function translate(error: unknown): ProductRequestError | undefined {
       return new ProductRequestError(500, 'INTERNAL_ERROR');
   }
 }
+function translateImpact(error: unknown): ProductRequestError | undefined {
+  if (error instanceof RaceManualPublicError) {
+    switch (error.code) {
+      case 'PUBLIC_RESPONSE_LIMIT':
+        return new ProductRequestError(413, error.code);
+      case 'PUBLIC_PORT_UNAVAILABLE':
+        return new ProductRequestError(503, error.code);
+      case 'PUBLIC_REFERENCE_UNAVAILABLE':
+        return new ProductRequestError(404, error.code);
+      case 'PUBLIC_APPLICATION_UNAVAILABLE':
+        return new ProductRequestError(409, error.code);
+      case 'PUBLIC_INVALID_RESPONSE':
+        return new ProductRequestError(500, 'INTERNAL_ERROR');
+    }
+  }
+  if (!(error instanceof RacePlanImpactPreviewError)) return undefined;
+  switch (error.code) {
+    case 'INVALID_INTENT':
+      return new ProductRequestError(400, error.code);
+    case 'EVENT_UNAVAILABLE':
+    case 'SOURCE_UNAVAILABLE':
+      return new ProductRequestError(404, error.code);
+    case 'REVISION_CONFLICT':
+    case 'APP_CONSENT_REQUIRED':
+      return new ProductRequestError(409, error.code);
+    case 'CONTEXT_LIMIT':
+      return new ProductRequestError(422, error.code);
+    case 'INVALID_CONTEXT':
+    case 'CONTEXT_UNAVAILABLE':
+      return new ProductRequestError(503, 'PUBLIC_PORT_UNAVAILABLE');
+  }
+}
 function response<T>(schema: z.ZodType<T>, value: unknown): T {
   const checked = schema.safeParse(value);
   if (!checked.success) throw new ProductRequestError(500, 'INTERNAL_ERROR');
@@ -79,6 +115,40 @@ export function registerRaceManualPublicRoutes(
   routes.register(async (api) => {
     api.addHook('onRequest', async (_request, reply) => {
       reply.header('cache-control', 'private, no-store');
+    });
+    api.post('/races/:raceId/date-change-impact', { bodyLimit: 4194304 }, async (request) => {
+      const athlete = principal(request).athleteId;
+      input(emptyQuery, request.query);
+      const { raceId } = input(reviewParams, request.params);
+      const body = input(raceManualPublicPrepareSchema, request.body);
+      if (
+        request.headers['idempotency-key'] !== undefined ||
+        body.intent.expectedEvent.id.toLowerCase() !== raceId
+      )
+        throw new ProductRequestError(400, 'INVALID_REQUEST');
+      const impact = repository.impact;
+      if (!impact) throw new ProductRequestError(503, 'PUBLIC_PORT_UNAVAILABLE');
+      const result = response(
+        raceManualPublicImpactSchema,
+        await command(
+          () =>
+            impact(athlete, {
+              ...body,
+              intent: {
+                ...body.intent,
+                expectedEvent: { ...body.intent.expectedEvent, id: raceId },
+              },
+            }),
+          translateImpact,
+        ),
+      );
+      if (
+        result.status === 'projected' &&
+        (result.expectedEvent.id !== raceId ||
+          result.expectedEvent.revision !== body.intent.expectedEvent.revision)
+      )
+        throw new ProductRequestError(500, 'INTERNAL_ERROR');
+      return result;
     });
     api.post(
       '/races/:raceId/date-change-reviews',

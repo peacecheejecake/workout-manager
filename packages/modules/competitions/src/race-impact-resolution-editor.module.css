@@ -1,0 +1,19 @@
+.editor {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.editor fieldset {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.editor label {
+  display: grid;
+  gap: var(--space-1);
+}
+.editor input {
+  max-width: 100%;
+  min-width: 0;
+}

@@ -48,6 +48,18 @@ function canonicalProjection(
     [...rows].sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0));
   return {
     ...projection,
+    ...(projection.retainedHistoricalRoutines === undefined
+      ? {}
+      : {
+          retainedHistoricalRoutines: sort(
+            projection.retainedHistoricalRoutines,
+            (row) => row.record.versionId,
+          ).map((row) => ({
+            ...row,
+            occurrences: sort(row.occurrences, (o) => o.id),
+            runs: sort(row.runs, (r) => r.id),
+          })),
+        }),
     ...(projection.retainedUnplannedRuns === undefined
       ? {}
       : {

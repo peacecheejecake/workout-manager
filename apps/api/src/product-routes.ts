@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { raceManualPublicCapabilitiesSchema } from '@workout/contracts/race-manual-public';
 import { raceResultCapabilitiesSchema } from '@workout/contracts/race-result-capabilities';
 import type { RaceRepository } from '@workout/server-persistence/races';
@@ -36,7 +37,10 @@ import type { IntegratedFixtureV4Repository } from '@workout/server-persistence/
 import { registerIntegratedFixtureV4Routes } from './integrated-fixture-v4-routes.js';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { PlanningRepository } from '@workout/server-persistence/planning';
-import type { NutritionRepository } from '@workout/server-persistence/nutrition-core';
+import type {
+  NutritionRepository,
+  NutritionPlanV4Reader,
+} from '@workout/server-persistence/nutrition-core';
 import type { SupplementaryRepository } from '@workout/server-persistence/supplementary-core';
 import type { StretchingRepository } from '@workout/server-persistence/stretching';
 import type { RoutineRepository } from '@workout/server-persistence/routine-core';
@@ -110,6 +114,7 @@ export interface ProductRepositories {
   restoreGeneration?: RestoreGenerationRepository;
   planning?: PlanningRepository;
   nutrition?: NutritionRepository;
+  nutritionV4?: NutritionPlanV4Reader;
   supplementary?: SupplementaryRepository;
   stretching?: StretchingRepository;
   routines?: RoutineRepository;
@@ -226,7 +231,8 @@ export function registerProductRoutes(
   if (repositories.activityContext)
     registerActivityContextRoutes(routes, repositories.activityContext, principal);
   if (repositories.planning) registerPlanningRoutes(routes, repositories.planning, principal);
-  if (repositories.nutrition) registerNutritionRoutes(routes, repositories.nutrition, principal);
+  if (repositories.nutrition)
+    registerNutritionRoutes(routes, repositories.nutrition, principal, repositories.nutritionV4);
   if (repositories.supplementary)
     registerSupplementaryRoutes(routes, repositories.supplementary, principal);
   if (repositories.stretching) registerStretchingRoutes(routes, repositories.stretching, principal);
@@ -237,12 +243,18 @@ export function registerProductRoutes(
     '/race-date-change-reviews/capabilities',
     { exposeHeadRoute: false },
     async (request, reply) => {
-      input(emptyQuery, request.query);
+      const query = input(
+        z.strictObject({ maxSchemaVersion: z.coerce.number().int().min(1).max(2).optional() }),
+        request.query,
+      );
       principal(request);
       return reply.header('cache-control', 'private, no-store').send(
         raceManualPublicCapabilitiesSchema.parse({
-          schemaVersion: 1,
+          schemaVersion: query.maxSchemaVersion === 2 ? 2 : 1,
           dateChangeReviews: repositories.raceManualPublic !== undefined,
+          ...(query.maxSchemaVersion === 2
+            ? { dateChangeImpact: typeof repositories.raceManualPublic?.impact === 'function' }
+            : {}),
         }),
       );
     },

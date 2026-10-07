@@ -3,6 +3,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { transportReplySchema, type AuthenticatedTransport } from '@workout/contracts/core';
+import { raceManualPublicPrepareSchema } from '@workout/contracts/race-manual-public';
 import { raceEventSchema } from '@workout/contracts/races';
 import { raceManualPublicPreviewSchema } from '@workout/contracts/race-manual-public-preview';
 import { createRaceManualPublicApi } from '../src/race-manual-public-api';
@@ -608,4 +609,213 @@ it('clears dirty/pending only after the strict committed result, not preview suc
   await waitFor(() =>
     expect(onStateChange).toHaveBeenLastCalledWith({ dirty: false, pending: false }),
   );
+});
+
+it('uses explicit transient impact without creating a review and invalidates it when intent changes', async () => {
+  const { request } = setup(undefined, { impactSupport: 'supported' });
+  request.mockImplementation(async () =>
+    transportReplySchema.parse({
+      status: 200,
+      traceId: null,
+      body: {
+        schemaVersion: 1,
+        status: 'projected',
+        approvalAllowed: false,
+        persistence: 'not_stored',
+        freshness: 'not_checked',
+        expectedEvent: { id, revision: 1 },
+        intent: {
+          expectedEvent: { id, revision: 1 },
+          newLocalDate: '2026-10-09',
+          selection: { kind: 'keep_plan' },
+          resolutions: { nutrition: [], routines: [] },
+        },
+        beforeBasis: 'captured_snapshot',
+        afterBasis: 'hypothetical',
+        race: basePreview().race,
+        training: { state: 'absent' },
+        nutrition: { state: 'absent' },
+        recovery: { state: 'absent' },
+        routines: { state: 'absent' },
+        retainedUnplanned: [],
+        affected: [],
+        resolutionRequirements: [],
+        notices: [],
+      },
+    }),
+  );
+  await screen.findByText('현재 훈련 계획 없음. 계획 유지 방식만 선택할 수 있습니다.');
+  fireEvent.change(screen.getByLabelText('새 대회 날짜'), { target: { value: '2026-10-09' } });
+  await userEvent.setup().selectOptions(screen.getByLabelText('계획 비교 방식'), 'keep_plan');
+  await userEvent.setup().click(screen.getByRole('button', { name: '미저장 영향 보기' }));
+  await screen.findByRole('heading', { name: '미저장 영향 · 고정된 변경 전과 가정한 변경 후' });
+  expect(request).toHaveBeenCalledTimes(1);
+  expect(request.mock.calls[0]?.[0].path).toContain('/date-change-impact');
+  expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText('새 대회 날짜'), { target: { value: '2026-10-10' } });
+  expect(
+    screen.queryByRole('heading', { name: '미저장 영향 · 고정된 변경 전과 가정한 변경 후' }),
+  ).not.toBeInTheDocument();
+  expect(screen.getByLabelText('계획 비교 방식')).toHaveValue('keep_plan');
+});
+
+it('keeps diagnostic support separate and handles blocked diagnostics without a reference or auto-review', async () => {
+  const { request } = setup(undefined, { impactSupport: 'supported' });
+  request.mockResolvedValue(
+    transportReplySchema.parse({
+      status: 200,
+      traceId: null,
+      body: {
+        schemaVersion: 1,
+        status: 'blocked',
+        reason: 'source_unavailable',
+        domains: ['nutrition'],
+        approvalAllowed: false,
+        persistence: 'not_stored',
+        freshness: 'not_checked',
+      },
+    }),
+  );
+  await screen.findByText('현재 훈련 계획 없음. 계획 유지 방식만 선택할 수 있습니다.');
+  fireEvent.change(screen.getByLabelText('새 대회 날짜'), { target: { value: '2026-10-09' } });
+  await userEvent.setup().selectOptions(screen.getByLabelText('계획 비교 방식'), 'keep_plan');
+  await userEvent.setup().click(screen.getByRole('button', { name: '미저장 영향 보기' }));
+  await screen.findByText(/영향 진단 차단: source_unavailable/);
+  expect(request).toHaveBeenCalledTimes(1);
+  expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+  expect(screen.getByLabelText('새 대회 날짜')).toHaveValue('2026-10-09');
+});
+it('does not infer diagnostic capability from review support', async () => {
+  const { request } = setup();
+  await screen.findByText('현재 훈련 계획 없음. 계획 유지 방식만 선택할 수 있습니다.');
+  expect(screen.queryByRole('button', { name: '미저장 영향 보기' })).not.toBeInTheDocument();
+  expect(screen.getByText('미저장 영향 진단 지원을 확인할 수 없습니다.')).toBeInTheDocument();
+  expect(request).not.toHaveBeenCalled();
+});
+it('rediagnoses exact nutrition replacement before separate stored review with a new stable key', async () => {
+  const { request } = setup(undefined, { impactSupport: 'supported' });
+  const versionId = 'abcdefab-abcd-4abc-8abc-000000000009';
+  const itemId = '식사-' + 'x'.repeat(201);
+  const item = {
+    id: itemId,
+    category: 'before',
+    title: '보존할 식사',
+    anchor: { kind: 'absolute', date: '2026-10-09', localTime: null, timezone: 'UTC' },
+    foods: [
+      {
+        foodVersionId: null,
+        description: '영 수량',
+        quantity: 0,
+        unit: 'g',
+        sourceBasis: 'manual_total',
+      },
+    ],
+    targets: [],
+    instructions: '보존',
+  };
+  const nutritionPlan = {
+    period: { from: '2026-10-08', toInclusive: '2026-10-11' },
+    purpose: '식사',
+    timezone: 'UTC',
+    items: [item],
+  };
+  request.mockImplementation(async (input) => {
+    if (!input.path.endsWith('/date-change-impact'))
+      return transportReplySchema.parse({
+        status: 409,
+        traceId: null,
+        body: { status: 'blocked', stage: 'semantic' },
+      });
+    const body = input.body;
+    const parsed = raceManualPublicPrepareSchema.parse(body);
+    const r = parsed.intent.resolutions.nutrition[0];
+    const unresolved = { state: 'unresolved', reason: 'missing_session_time' };
+    return transportReplySchema.parse({
+      status: 200,
+      traceId: null,
+      body: {
+        schemaVersion: 1,
+        status: 'projected',
+        approvalAllowed: false,
+        persistence: 'not_stored',
+        freshness: 'not_checked',
+        expectedEvent: { id, revision: 1 },
+        intent: parsed.intent,
+        beforeBasis: 'captured_snapshot',
+        afterBasis: 'hypothetical',
+        race: basePreview().race,
+        training: { state: 'absent' },
+        recovery: { state: 'absent' },
+        routines: { state: 'absent' },
+        retainedUnplanned: [],
+        affected: [{ domain: 'nutrition', aggregateId: versionId }],
+        resolutionRequirements: r
+          ? []
+          : [
+              {
+                domain: 'nutrition',
+                aggregateId: versionId,
+                planVersionId: versionId,
+                itemId,
+                reason: 'affected_timing_unresolved',
+                editor: 'replace_anchor',
+              },
+            ],
+        notices: [],
+        nutrition: {
+          state: 'present',
+          members: [
+            {
+              aggregateId: versionId,
+              before: {
+                ref: { versionId, version: 1 },
+                plan: nutritionPlan,
+                linkedTraining: { kind: 'absent' },
+              },
+              after: {
+                plan: r
+                  ? { ...nutritionPlan, items: [{ ...item, anchor: r.anchor }] }
+                  : nutritionPlan,
+                linkedTraining: { kind: 'absent' },
+              },
+              timings: [
+                {
+                  itemId,
+                  state: 'affected',
+                  before: unresolved,
+                  after: r
+                    ? { state: 'resolved', date: '2026-10-09', localTime: '08:30', timezone: 'UTC' }
+                    : unresolved,
+                  resolution: r ? 'explicit_replacement' : 'absent',
+                  requirement: r ? 'none' : 'resolve_before_review',
+                },
+              ],
+            },
+          ],
+        },
+      },
+    });
+  });
+  await screen.findByText('현재 훈련 계획 없음. 계획 유지 방식만 선택할 수 있습니다.');
+  fireEvent.change(screen.getByLabelText('새 대회 날짜'), { target: { value: '2026-10-09' } });
+  const user = userEvent.setup();
+  await user.selectOptions(screen.getByLabelText('계획 비교 방식'), 'keep_plan');
+  await user.click(screen.getByRole('button', { name: '미저장 영향 보기' }));
+  await screen.findByLabelText(`영양 ${itemId} 날짜`);
+  expect(screen.getByRole('button', { name: '전체 영향 검토' })).toBeDisabled();
+  for (const [label, value] of [
+    ['날짜', '2026-10-09'],
+    ['시각', '08:30'],
+    ['시간대', 'UTC'],
+  ])
+    fireEvent.change(screen.getByLabelText(`영양 ${itemId} ${label}`), { target: { value } });
+  await user.click(screen.getByRole('button', { name: '해결 입력으로 다시 진단' }));
+  await screen.findByText('영향받는 미해결 항목 없음. 저장 검토와 승인은 별도 동작입니다.');
+  expect(request).toHaveBeenCalledTimes(2);
+  expect(screen.getByRole('button', { name: '전체 영향 검토' })).toBeEnabled();
+  await user.click(screen.getByRole('button', { name: '전체 영향 검토' }));
+  await waitFor(() => expect(request).toHaveBeenCalledTimes(3));
+  expect(request.mock.calls[2]?.[0].body).toEqual(request.mock.calls[1]?.[0].body);
+  expect(request.mock.calls[2]?.[0].idempotencyKey).toBe('stable_request_0001');
+  await screen.findByText(/검토를 준비할 수 없습니다 \(semantic\)/);
 });

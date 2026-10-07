@@ -2,6 +2,8 @@ import { Writable } from 'node:stream';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RaceManualPublicRoutesRepository } from '../src/race-manual-public-routes.js';
 import { AppConsentRequiredError } from '@workout/server-persistence/app-admission';
+import { RaceManualPublicError } from '@workout/server-persistence/race-manual-public';
+import { RacePlanImpactPreviewError } from '@workout/server-persistence/race-plan-impact-preview';
 import { PersistenceConflict } from '@workout/server-persistence/repositories';
 // Actual product registration and createApi auth/CSRF; repository remains mocked.
 import { createApi } from '../src/app.js';
@@ -391,7 +393,10 @@ it.each([true, false])(
       headers,
     });
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({ schemaVersion: 1, dateChangeReviews: enabled });
+    expect(response.json()).toEqual({
+      schemaVersion: 1,
+      dateChangeReviews: enabled,
+    });
     expect(response.headers['cache-control']).toBe('private, no-store');
     for (const fn of Object.values(repo)) expect(fn).not.toHaveBeenCalled();
   },
@@ -418,4 +423,263 @@ it('capability requires authentication and rejects unknown query', async () => {
     ).statusCode,
   ).toBe(400);
   for (const fn of Object.values(present.repo)) expect(fn).not.toHaveBeenCalled();
+});
+
+const impactUrl = `/bff/v1/races/${race}/date-change-impact`;
+const { 'idempotency-key': unusedImpactKey, ...impactHeaders } = headers;
+void unusedImpactKey;
+const raceBody = {
+  title: '가을 대회',
+  localDate: '2026-10-08',
+  localStartTime: null,
+  timezone: 'UTC',
+  distance: { kind: 'standard', class: '5k' },
+  priority: null,
+  participation: 'registered',
+  targetSeconds: 0,
+};
+function projectedImpact() {
+  return {
+    schemaVersion: 1,
+    status: 'projected',
+    approvalAllowed: false,
+    persistence: 'not_stored',
+    freshness: 'not_checked',
+    expectedEvent: prepare.intent.expectedEvent,
+    intent: { ...prepare.intent, resolutions: { nutrition: [], routines: [] } },
+    beforeBasis: 'captured_snapshot',
+    afterBasis: 'hypothetical',
+    race: {
+      eventId: race,
+      expectedRevision: 1,
+      before: raceBody,
+      after: { ...raceBody, localDate: prepare.intent.newLocalDate },
+    },
+    training: { state: 'absent' },
+    nutrition: { state: 'absent' },
+    recovery: { state: 'absent' },
+    routines: { state: 'absent' },
+    retainedUnplanned: [],
+    affected: [],
+    resolutionRequirements: [],
+    notices: [],
+  };
+}
+it('projects transient impact for the authenticated owner with no storage or approval calls', async () => {
+  const { app, repo } = setup();
+  const impact = vi.fn().mockResolvedValue(projectedImpact());
+  repo.impact = impact;
+  const reply = await app.inject({
+    method: 'POST',
+    url: impactUrl.replace(race, race.toUpperCase()),
+    headers: impactHeaders,
+    payload: prepare,
+  });
+  expect(reply.statusCode).toBe(200);
+  expect(reply.json()).toEqual(projectedImpact());
+  expect(reply.headers['cache-control']).toBe('private, no-store');
+  expect(impact).toHaveBeenCalledExactlyOnceWith(athlete, {
+    ...prepare,
+    intent: { ...prepare.intent, resolutions: { nutrition: [], routines: [] } },
+  });
+  expect(repo.review).not.toHaveBeenCalled();
+  expect(repo.approve).not.toHaveBeenCalled();
+  expect(repo.readPreview).not.toHaveBeenCalled();
+});
+it('preserves blocked impact diagnostics without turning them into approval or stored review', async () => {
+  const { app, repo } = setup();
+  const blocked = {
+    schemaVersion: 1,
+    status: 'blocked',
+    approvalAllowed: false,
+    persistence: 'not_stored',
+    freshness: 'not_checked',
+    reason: 'unsupported_source',
+    domains: ['nutrition'],
+  };
+  repo.impact = vi.fn().mockResolvedValue(blocked);
+  const reply = await app.inject({
+    method: 'POST',
+    url: impactUrl,
+    headers: impactHeaders,
+    payload: prepare,
+  });
+  expect(reply.statusCode).toBe(200);
+  expect(reply.json()).toEqual(blocked);
+  expect(repo.review).not.toHaveBeenCalled();
+  expect(repo.approve).not.toHaveBeenCalled();
+});
+it('requires authentication and CSRF and rejects private/receipt fields, query and path mismatches before impact', async () => {
+  const { app, repo } = setup();
+  const impact = vi.fn().mockResolvedValue(projectedImpact());
+  repo.impact = impact;
+  for (const payload of [
+    { ...prepare, idempotencyKey: 'forged_key' },
+    { ...prepare, candidateId: id },
+    { ...prepare, receipt: {} },
+    { ...prepare, athleteId: athlete },
+    { ...prepare, intent: { ...prepare.intent, expectedEvent: { id, revision: 1 } } },
+  ])
+    expect(
+      (await app.inject({ method: 'POST', url: impactUrl, headers: impactHeaders, payload }))
+        .statusCode,
+    ).toBe(400);
+  for (const url of [impactUrl + '?candidateId=' + id, impactUrl.replace(race, 'not-a-uuid')])
+    expect(
+      (await app.inject({ method: 'POST', url, headers: impactHeaders, payload: prepare }))
+        .statusCode,
+    ).toBe(400);
+  expect(
+    (await app.inject({ method: 'POST', url: impactUrl, headers, payload: prepare })).statusCode,
+  ).toBe(400);
+  expect(
+    (
+      await app.inject({
+        method: 'POST',
+        url: impactUrl,
+        headers: { ...impactHeaders, 'x-csrf-token': 'bad' },
+        payload: prepare,
+      })
+    ).statusCode,
+  ).toBe(403);
+  expect(impact).not.toHaveBeenCalled();
+  const anonymous = setup(false);
+  anonymous.repo.impact = vi.fn();
+  expect(
+    (
+      await anonymous.app.inject({
+        method: 'POST',
+        url: impactUrl,
+        headers: impactHeaders,
+        payload: prepare,
+      })
+    ).statusCode,
+  ).toBe(401);
+  expect(anonymous.repo.impact).not.toHaveBeenCalled();
+});
+it('returns a finite unavailable error when the processing port is not injected', async () => {
+  const { app, repo } = setup();
+  const reply = await app.inject({
+    method: 'POST',
+    url: impactUrl,
+    headers: impactHeaders,
+    payload: prepare,
+  });
+  expect(reply.statusCode).toBe(503);
+  expect(reply.json().error.code).toBe('PUBLIC_PORT_UNAVAILABLE');
+  expect(repo.review).not.toHaveBeenCalled();
+});
+it.each([
+  ['INVALID_INTENT', 400],
+  ['EVENT_UNAVAILABLE', 404],
+  ['SOURCE_UNAVAILABLE', 404],
+  ['REVISION_CONFLICT', 409],
+  ['APP_CONSENT_REQUIRED', 409],
+  ['CONTEXT_LIMIT', 422],
+  ['INVALID_CONTEXT', 503],
+  ['CONTEXT_UNAVAILABLE', 503],
+] as const)('sanitizes actual preview error %s', async (code, status) => {
+  const { app, repo } = setup();
+  repo.impact = vi.fn().mockRejectedValue(new RacePlanImpactPreviewError(code));
+  const reply = await app.inject({
+    method: 'POST',
+    url: impactUrl,
+    headers: impactHeaders,
+    payload: prepare,
+  });
+  expect(reply.statusCode).toBe(status);
+  expect(reply.json().error.code).toBe(status === 503 ? 'PUBLIC_PORT_UNAVAILABLE' : code);
+  expect(reply.body).not.toContain('record_json');
+});
+it('does not trust arbitrary error codes or malformed/oversized impact authority claims', async () => {
+  const { app, repo } = setup();
+  const impact = vi.fn();
+  repo.impact = impact;
+  impact.mockRejectedValue(
+    Object.assign(Error('secret_private_body'), { code: 'REVISION_CONFLICT' }),
+  );
+  const reply = await app.inject({
+    method: 'POST',
+    url: impactUrl,
+    headers: impactHeaders,
+    payload: prepare,
+  });
+  expect(reply.statusCode).toBe(500);
+  expect(reply.json().error.code).toBe('INTERNAL_ERROR');
+  expect(reply.body).not.toContain('secret_private_body');
+  const projected = projectedImpact();
+  for (const body of [
+    { ...projected, approvalAllowed: true },
+    { ...projected, candidateId: id },
+    { ...projected, rawSource: 'secret_private_body' },
+    {
+      ...projected,
+      expectedEvent: { id: race, revision: 2 },
+      intent: { ...projected.intent, expectedEvent: { id: race, revision: 2 } },
+      race: { ...projected.race, expectedRevision: 2 },
+    },
+    { ...projected, notices: Array.from({ length: 5001 }, () => ({})) },
+    { ...projected, rawSource: 'x'.repeat(4194305) },
+  ]) {
+    impact.mockResolvedValue(body);
+    const invalid = await app.inject({
+      method: 'POST',
+      url: impactUrl,
+      headers: impactHeaders,
+      payload: prepare,
+    });
+    expect(invalid.statusCode).toBe(500);
+    expect(invalid.body).not.toContain('secret_private_body');
+  }
+  impact.mockClear();
+  expect(
+    (
+      await app.inject({
+        method: 'POST',
+        url: impactUrl,
+        headers: impactHeaders,
+        payload: { ...prepare, raw: 'x'.repeat(4194305) },
+      })
+    ).statusCode,
+  ).toBe(413);
+  expect(impact).not.toHaveBeenCalled();
+});
+
+it.each([
+  ['PUBLIC_RESPONSE_LIMIT', 413],
+  ['PUBLIC_PORT_UNAVAILABLE', 503],
+  ['PUBLIC_REFERENCE_UNAVAILABLE', 404],
+  ['PUBLIC_APPLICATION_UNAVAILABLE', 409],
+  ['PUBLIC_INVALID_RESPONSE', 500],
+] as const)(
+  'maps genuine public impact factory error %s without trusting arbitrary codes',
+  async (code, status) => {
+    const { app, repo } = setup();
+    repo.impact = vi.fn().mockRejectedValue(new RaceManualPublicError(code));
+    const reply = await app.inject({
+      method: 'POST',
+      url: impactUrl,
+      headers: impactHeaders,
+      payload: prepare,
+    });
+    expect(reply.statusCode).toBe(status);
+    expect(reply.json().error.code).toBe(status === 500 ? 'INTERNAL_ERROR' : code);
+  },
+);
+
+it('advertises impact support only when the separate processing method is injected', async () => {
+  const { app, repo } = setup();
+  repo.impact = vi.fn();
+  const reply = await app.inject({
+    method: 'GET',
+    url: '/bff/v1/race-date-change-reviews/capabilities?maxSchemaVersion=2',
+    headers,
+  });
+  expect(reply.statusCode).toBe(200);
+  expect(reply.json()).toEqual({
+    schemaVersion: 2,
+    dateChangeReviews: true,
+    dateChangeImpact: true,
+  });
+  expect(repo.impact).not.toHaveBeenCalled();
 });

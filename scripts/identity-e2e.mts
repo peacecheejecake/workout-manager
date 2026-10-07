@@ -29,7 +29,10 @@ import { createPlanningRepository } from '../packages/server/persistence/src/pla
 import { createRaceManualPublicRepository } from '../packages/server/persistence/src/race-manual-public.ts';
 import { createRaceRepository } from '../packages/server/persistence/src/races.ts';
 import { createRaceResultV2Repository } from '../packages/server/persistence/src/race-result-v2.ts';
-import { createNutritionRepository } from '../packages/server/persistence/src/nutrition-core.ts';
+import {
+  createNutritionRepository,
+  createNutritionPlanV4Reader,
+} from '../packages/server/persistence/src/nutrition-core.ts';
 import { createSupplementaryRepository } from '../packages/server/persistence/src/supplementary-core.ts';
 import { createStretchingRepository } from '../packages/server/persistence/src/stretching.ts';
 import { createRoutineRepository } from '../packages/server/persistence/src/routine-core.ts';
@@ -112,6 +115,7 @@ import {
   grantActivityTracks,
   grantCourses,
   grantRaces,
+  grantCorePlanning,
   grantCourseThumbnailWorker,
   grantResources,
   grantResourceRetrieval,
@@ -266,6 +270,14 @@ const raceManualStageFiles = [
   [
     '124_race_manual_public_preview_source.sql',
     '6a339bd014f9f9240378202b70907fe28221440ab522281ca725d27d57666955',
+  ],
+  [
+    '126_manual_race_checklist_uuid_comparison.sql',
+    'eaf7019d29b27ec2696881e406b22b86bb55bdc8b86d1cc322adb28817bc6b0c',
+  ],
+  [
+    '127_manual_race_nutrition_resolution_id.sql',
+    'caff05ddaed839a61a049b0ab72d46b2ee339dacca8b1b91c59ff1acbe0c54b4',
   ],
 ] as const;
 const raceManualStageFunctions = [
@@ -856,6 +868,18 @@ try {
     await grantActivityTracks(adminUrl, 'workout_runtime');
     await grantCourses(adminUrl, 'workout_runtime');
     await grantRaces(adminUrl, 'workout_runtime');
+    await grantCorePlanning(adminUrl, 'workout_runtime');
+    if (stageRaceManualPublic) {
+      const acl = await admin.query(`SELECT
+        has_function_privilege('workout_runtime','public.read_training_plan_aggregate(uuid)','EXECUTE') AS narrow_execute,
+        has_table_privilege('workout_runtime','public.plan_snapshot_aggregate','SELECT,INSERT,UPDATE,DELETE') AS private_table`);
+      if (
+        acl.rows.length !== 1 ||
+        acl.rows[0]?.narrow_execute !== true ||
+        acl.rows[0]?.private_table !== false
+      )
+        throw new Error('IDENTITY_TRAINING_AGGREGATE_STAGE_ACL_INVALID');
+    }
     if (stageRaceResults) {
       const acl = await admin.query(`SELECT
         has_function_privilege('workout_runtime','public.race_result_proof_source_suppressed(text,text,uuid)','EXECUTE') AS narrow_execute,
@@ -964,6 +988,7 @@ try {
   const store = createIdentityRepository({ connectionString: runtimeUrl });
   closers.push(() => store.close());
   const database = createDatabase({ connectionString: runtimeUrl });
+
   closers.push(() => database.close());
   const sharingMode = process.env['IDENTITY_E2E_COURSE_SHARING'] ?? 'off';
   if (sharingMode !== 'on' && sharingMode !== 'off')
@@ -1136,6 +1161,7 @@ try {
       : {}),
     ...(stageRaceResults ? { raceResultsV2: createRaceResultV2Repository(database) } : {}),
     nutrition: createNutritionRepository(database),
+    nutritionV4: createNutritionPlanV4Reader(database),
     restoreGeneration: createRestoreGenerationRepository(database),
     supplementary: createSupplementaryRepository(database),
     stretching: createStretchingRepository(database),

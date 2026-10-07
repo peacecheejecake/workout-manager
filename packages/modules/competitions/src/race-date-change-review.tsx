@@ -26,12 +26,19 @@ import {
   type createRaceManualPublicApi,
 } from './race-manual-public-api';
 import styles from './race-date-change-review.module.css';
+import {
+  raceManualPublicImpactSchema,
+  type RaceManualPublicImpact,
+} from '@workout/contracts/race-manual-public-impact';
+import { RaceImpactResolutionEditor } from './race-impact-resolution-editor';
 
 type PublicApi = ReturnType<typeof createRaceManualPublicApi>;
 export interface RaceDateChangeReviewProps {
   /** Authenticated private lifetime identifier, never sent as authority. */
   scopeKey: string;
   support: 'supported' | 'unsupported' | 'unknown';
+  /** Independent protocol capability, not admission or approval permission. */
+  impactSupport?: 'supported' | 'unsupported' | 'unknown';
   event: unknown;
   api: PublicApi;
   loadCurrentPlan: ((signal: AbortSignal) => Promise<unknown>) | null;
@@ -123,6 +130,13 @@ function Review(props: RaceDateChangeReviewProps) {
     | 'committed'
   >('draft');
   const [notice, setNotice] = useState('');
+  const [diagnostic, setDiagnostic] = useState<{
+    body: RaceManualPublicPrepare;
+    value: RaceManualPublicImpact;
+  } | null>(null);
+  const [impactPending, setImpactPending] = useState(false);
+  const [resolutionDirty, setResolutionDirty] = useState(false);
+  const [replacement, setReplacement] = useState<RaceManualPublicPrepare | null>(null);
   const [confirmed, setConfirmed] = useState(false);
   const reviewAttempt = useRef<{ body: RaceManualPublicPrepare; key: string } | null>(null);
   const approvalKey = useRef<string | null>(null);
@@ -168,12 +182,16 @@ function Review(props: RaceDateChangeReviewProps) {
       newStart !== '' ||
       scope !== '' ||
       reference !== null);
-  const pending = phase === 'reviewing' || phase === 'approving' || phase === 'approve_uncertain';
+  const pending =
+    impactPending ||
+    phase === 'reviewing' ||
+    phase === 'approving' ||
+    phase === 'approve_uncertain';
   useEffect(() => {
     onStateChange?.({ dirty, pending });
   }, [onStateChange, dirty, pending]);
   useEffect(() => () => onStateChange?.({ dirty: false, pending: false }), [onStateChange]);
-  const locked = phase !== 'draft';
+  const locked = phase !== 'draft' || impactPending;
   const head = plan.data?.head ?? null;
   const previewPresent = preview.data?.status === 'present';
   useEffect(() => {
@@ -190,9 +208,88 @@ function Review(props: RaceDateChangeReviewProps) {
     setPhase('draft');
     setNotice('');
   }
+  function buildPrepare(): RaceManualPublicPrepare | null {
+    if (!selection || !date || date === event.localDate) {
+      setNotice('새 날짜와 비교 방식을 직접 선택하세요.');
+      return null;
+    }
+    const body = raceManualPublicPrepareSchema.safeParse({
+      schemaVersion: 1,
+      intent: {
+        expectedEvent: { id: event.id, revision: event.revision },
+        newLocalDate: date,
+        selection:
+          selection === 'keep_plan'
+            ? { kind: 'keep_plan' }
+            : {
+                kind: 'move_period',
+                expectedCurrentPlanVersionId: head?.id,
+                periodId,
+                newStartDate: newStart,
+                scope,
+              },
+      },
+    });
+    if (!body.success) {
+      setNotice('날짜와 기간 이동 입력을 확인하세요.');
+      return null;
+    }
+    return body.data;
+  }
+  function invalidateDiagnostic() {
+    setDiagnostic(null);
+    setReplacement(null);
+    setResolutionDirty(false);
+    reset();
+  }
+  async function diagnose(bodyOverride?: RaceManualPublicPrepare) {
+    if (
+      composing.current ||
+      pending ||
+      plan.isPending ||
+      plan.isError ||
+      props.impactSupport !== 'supported'
+    )
+      return;
+    const body = bodyOverride ?? replacement ?? buildPrepare();
+    if (!body) return;
+    reset();
+    setDiagnostic(null);
+    setImpactPending(true);
+    const request = new AbortController();
+    controller.current = request;
+    try {
+      const value = raceManualPublicImpactSchema.parse(
+        await props.api.impact(event.id, body, request.signal),
+      );
+      if (!alive.current) return;
+      if (
+        value.status === 'projected' &&
+        (value.expectedEvent.id !== event.id ||
+          value.expectedEvent.revision !== event.revision ||
+          JSON.stringify(value.intent) !== JSON.stringify(body.intent))
+      )
+        throw Error('Impact identity mismatch');
+      setDiagnostic({ body, value });
+      setReplacement(body);
+      setResolutionDirty(false);
+    } catch (error) {
+      if (alive.current) setNotice(message(error));
+    } finally {
+      if (alive.current) setImpactPending(false);
+    }
+  }
   async function review(eventSubmit?: FormEvent) {
     eventSubmit?.preventDefault();
-    if (composing.current || plan.isPending || plan.isError || !plan.data || phase === 'reviewing')
+    if (
+      composing.current ||
+      plan.isPending ||
+      plan.isError ||
+      !plan.data ||
+      phase === 'reviewing' ||
+      impactPending ||
+      resolutionDirty
+    )
       return;
     let attempt = reviewAttempt.current;
     if (!attempt) {
@@ -207,28 +304,9 @@ function Review(props: RaceDateChangeReviewProps) {
         setNotice('현재 계획의 실제 기간과 이동 범위를 선택하세요.');
         return;
       }
-      const body = raceManualPublicPrepareSchema.safeParse({
-        schemaVersion: 1,
-        intent: {
-          expectedEvent: { id: event.id, revision: event.revision },
-          newLocalDate: date,
-          selection:
-            selection === 'keep_plan'
-              ? { kind: 'keep_plan' }
-              : {
-                  kind: 'move_period',
-                  expectedCurrentPlanVersionId: head?.id,
-                  periodId,
-                  newStartDate: newStart,
-                  scope,
-                },
-        },
-      });
-      if (!body.success) {
-        setNotice('날짜와 기간 이동 입력을 확인하세요.');
-        return;
-      }
-      attempt = { body: body.data, key: (props.commandKey ?? (() => crypto.randomUUID()))() };
+      const body = replacement ?? buildPrepare();
+      if (!body) return;
+      attempt = { body, key: (props.commandKey ?? (() => crypto.randomUUID()))() };
       reviewAttempt.current = attempt;
     }
     const request = new AbortController();
@@ -348,7 +426,14 @@ function Review(props: RaceDateChangeReviewProps) {
           <legend>변경 의도</legend>
           <label>
             새 대회 날짜
-            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            <input
+              type="date"
+              value={date}
+              onChange={(e) => {
+                invalidateDiagnostic();
+                setDate(e.target.value);
+              }}
+            />
           </label>
           <label>
             계획 비교 방식
@@ -359,8 +444,10 @@ function Review(props: RaceDateChangeReviewProps) {
                   e.target.value === '' ||
                   e.target.value === 'keep_plan' ||
                   e.target.value === 'move_period'
-                )
+                ) {
+                  invalidateDiagnostic();
                   setSelection(e.target.value);
+                }
               }}
             >
               <option value="">직접 선택</option>
@@ -374,7 +461,13 @@ function Review(props: RaceDateChangeReviewProps) {
             <>
               <label>
                 현재 계획의 기간
-                <select value={periodId} onChange={(e) => setPeriodId(e.target.value)}>
+                <select
+                  value={periodId}
+                  onChange={(e) => {
+                    invalidateDiagnostic();
+                    setPeriodId(e.target.value);
+                  }}
+                >
                   <option value="">기간 선택</option>
                   {head.draft.periods.map((p) => (
                     <option key={p.id} value={p.id}>
@@ -385,7 +478,14 @@ function Review(props: RaceDateChangeReviewProps) {
               </label>
               <label>
                 기간의 새 시작 날짜
-                <input type="date" value={newStart} onChange={(e) => setNewStart(e.target.value)} />
+                <input
+                  type="date"
+                  value={newStart}
+                  onChange={(e) => {
+                    invalidateDiagnostic();
+                    setNewStart(e.target.value);
+                  }}
+                />
               </label>
               <label>
                 이동 범위
@@ -396,8 +496,10 @@ function Review(props: RaceDateChangeReviewProps) {
                       e.target.value === '' ||
                       e.target.value === 'period_only' ||
                       e.target.value === 'descendants_and_sessions'
-                    )
+                    ) {
+                      invalidateDiagnostic();
                       setScope(e.target.value);
+                    }
                   }}
                 >
                   <option value="">범위 선택</option>
@@ -409,11 +511,63 @@ function Review(props: RaceDateChangeReviewProps) {
           ) : null}
         </fieldset>
         {phase === 'draft' ? (
-          <button type="submit" disabled={plan.isPending || plan.isError || !selection || !date}>
+          <button
+            type="submit"
+            disabled={
+              plan.isPending ||
+              plan.isError ||
+              !selection ||
+              !date ||
+              impactPending ||
+              resolutionDirty ||
+              (diagnostic?.value.status === 'projected' &&
+                diagnostic.value.resolutionRequirements.length > 0)
+            }
+          >
             전체 영향 검토
           </button>
         ) : null}
       </form>
+      {props.impactSupport === 'supported' && phase === 'draft' ? (
+        <button
+          type="button"
+          disabled={pending || plan.isPending || plan.isError || !selection || !date}
+          onClick={() => {
+            void diagnose();
+          }}
+        >
+          미저장 영향 보기
+        </button>
+      ) : null}
+      {props.impactSupport !== 'supported' ? (
+        <p>미저장 영향 진단 지원을 확인할 수 없습니다.</p>
+      ) : null}
+      {impactPending ? <p role="status">미저장 영향을 확인하는 중입니다.</p> : null}
+      {resolutionDirty ? (
+        <p role="status">
+          해결 입력이 변경되었습니다. 다시 진단하기 전 저장 검토를 진행하지 않습니다.
+        </p>
+      ) : null}
+      {diagnostic ? <ImpactView value={diagnostic.value} /> : null}
+      {diagnostic?.value.status === 'projected' && phase === 'draft' ? (
+        <RaceImpactResolutionEditor
+          key={JSON.stringify(diagnostic.body)}
+          impact={diagnostic.value}
+          prepare={diagnostic.body}
+          disabled={pending}
+          onDirty={() => {
+            setResolutionDirty(true);
+            reviewAttempt.current = null;
+            approvalKey.current = null;
+            setReference(null);
+            setConfirmed(false);
+          }}
+          onPrepared={(body) => {
+            setReplacement(body);
+            void diagnose(body);
+          }}
+        />
+      ) : null}
       {phase === 'reviewing' ? <p role="status">검토 요청을 확인하는 중입니다.</p> : null}
       {phase === 'review_uncertain' ? (
         <button
@@ -529,6 +683,11 @@ const labels: Readonly<Record<string, string>> = {
   selectedOptionId: '선택한 항목',
   planLinks: '고정 계획 연결',
   ref: '고정 버전',
+  before: '고정된 변경 전',
+  after: '가정한 변경 후 · 아직 적용하지 않음',
+  storedOccurrences: '고정된 저장 일정 시각',
+  retainedStarted: '시작된 실행 보존',
+  requirement: '검토 전 해결 필요',
   state: '상태',
   status: '상태',
 };
@@ -751,6 +910,35 @@ function Preview({ value }: { value: RaceManualPublicPreview }) {
           </section>
         ) : null}
       </div>
+    </section>
+  );
+}
+
+function ImpactView({ value }: { value: RaceManualPublicImpact }) {
+  if (value.status === 'blocked')
+    return (
+      <section aria-label="미저장 영향 진단">
+        <p role="status">영향 진단 차단: {value.reason}. 저장·승인은 수행하지 않았습니다.</p>
+      </section>
+    );
+  return (
+    <section aria-label="미저장 전체 영향 진단" className={styles.preview}>
+      <h3>미저장 영향 · 고정된 변경 전과 가정한 변경 후</h3>
+      <p>현재 승인 권한·최신성은 확인하지 않았습니다. 계획이나 실제 기록을 저장하지 않았습니다.</p>
+      <h4>대회</h4>
+      <BeforeAfter before={value.race.before} after={value.race.after} />
+      <h4>훈련</h4>
+      <PlannedFields value={value.training} />
+      <h4>영양</h4>
+      <PlannedFields value={value.nutrition} />
+      <h4>회복</h4>
+      <PlannedFields value={value.recovery} />
+      <h4>루틴</h4>
+      <PlannedFields value={value.routines} />
+      <h4>계획 밖 실행 보존</h4>
+      <PlannedFields value={value.retainedUnplanned} />
+      <h4>보존 안내</h4>
+      <PlannedFields value={value.notices} />
     </section>
   );
 }

@@ -380,6 +380,10 @@ export function enumerateRaceManualReviewCopiedSourcesV2(
       body.projection.retainedUnplannedRuns ?? [],
       'body.projection.retainedUnplannedRuns',
     );
+    for (const [i, context] of (p.retainedHistoricalRoutines ?? []).entries())
+      routine(context, `body.projectionInput.retainedHistoricalRoutines[${i}]`);
+    for (const [i, context] of (body.projection.retainedHistoricalRoutines ?? []).entries())
+      routine(context, `body.projection.retainedHistoricalRoutines[${i}]`);
     for (const [i, context] of p.routines.entries())
       routine(context, `body.projectionInput.routines[${i}]`);
     for (const [i, context] of body.projection.routines.entries()) {

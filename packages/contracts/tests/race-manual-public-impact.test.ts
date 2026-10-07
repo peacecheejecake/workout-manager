@@ -181,19 +181,11 @@ function routineFixture() {
             },
           ],
           resolution: 'absent',
-          requirement: 'retained_ended_unresolved',
+          requirement: 'none',
         },
       ],
     },
-    resolutionRequirements: [
-      {
-        domain: 'routine_schedule',
-        aggregateId: id(4),
-        scheduleVersionId: 'schedule-old',
-        reason: 'retained_ended_unresolved',
-        editor: 'unavailable_frozen_ended',
-      },
-    ],
+    resolutionRequirements: [],
     notices: [
       ...fixture().notices,
       {
@@ -201,6 +193,12 @@ function routineFixture() {
         aggregateId: id(4),
         itemId: null,
         code: 'ENDED_SCHEDULE_RETAINED',
+      },
+      {
+        domain: 'routine_schedule',
+        aggregateId: id(4),
+        itemId: null,
+        code: 'UNCHANGED_UNRESOLVED',
       },
     ],
   };
@@ -348,12 +346,12 @@ describe('transient public impact', () => {
       raceManualPublicImpactSchema.safeParse({ ...b, domains: ['nutrition', 'nutrition'] }).success,
     ).toBe(false);
   });
-  it('keeps ended unresolved noneditable without silently declaring ready', () => {
+  it('keeps ended unresolved frozen with notice only and no approval authority', () => {
     const p = routineFixture();
     expect(raceManualPublicImpactSchema.safeParse(p).success).toBe(true);
     const m = p.routines.members[0];
     if (!m) throw Error('fixture');
-    m.requirement = 'none';
+    m.requirement = 'retained_ended_unresolved';
     expect(raceManualPublicImpactSchema.safeParse(p).success).toBe(false);
   });
   it('rejects dirty routine parent and preserved run aliases', () => {
@@ -617,4 +615,39 @@ describe('transient public impact', () => {
       }).success,
     ).toBe(false);
   });
+});
+
+it('accepts unchanged ended frozen diagnostic and rejects an affected ended target', () => {
+  const p = routineFixture(),
+    member = first(p.routines.members);
+  member.state = 'unchanged';
+  expect(raceManualPublicImpactSchema.safeParse(p).success).toBe(true);
+  member.state = 'affected';
+  expect(raceManualPublicImpactSchema.safeParse(p).success).toBe(false);
+});
+it('requires exact ended and unresolved notices without fabricating a frozen editor', () => {
+  const p = routineFixture();
+  expect(
+    raceManualPublicImpactSchema.safeParse({
+      ...p,
+      notices: p.notices.filter((n) => n.code !== 'UNCHANGED_UNRESOLVED'),
+    }).success,
+  ).toBe(false);
+  expect(
+    raceManualPublicImpactSchema.safeParse({
+      ...p,
+      resolutionRequirements: [
+        {
+          domain: 'routine_schedule',
+          aggregateId: id(4),
+          scheduleVersionId: 'schedule-old',
+          reason: 'retained_ended_unresolved',
+          editor: 'unavailable_frozen_ended',
+        },
+      ],
+    }).success,
+  ).toBe(false);
+  const m = first(p.routines.members);
+  m.after.schedule.window.endDateExclusive = '2026-10-13';
+  expect(raceManualPublicImpactSchema.safeParse(p).success).toBe(false);
 });

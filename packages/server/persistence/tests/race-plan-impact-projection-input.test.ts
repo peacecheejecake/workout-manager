@@ -695,3 +695,49 @@ it('blocks missing frozen blueprint for independent unplanned run', () => {
     ]),
   });
 });
+it('partitions current ended head and historical active schedule without repinning original run', () => {
+  const c = withRoutine(),
+    old = c.routineActualManifest.schedules[0];
+  if (!old) throw Error('fixture');
+  const current = {
+    ...structuredClone(old.record),
+    versionId: 'schedule-v2',
+    state: 'ended' as const,
+  };
+  old.currentHead = { state: 'present', versionId: current.versionId, notificationMuted: false };
+  c.routineActualManifest.schedules.push({
+    ...structuredClone(old),
+    versionId: current.versionId,
+    record: current,
+  });
+  c.routines = [
+    {
+      aggregateId: current.id,
+      versionId: current.versionId,
+      record: current,
+      sourceVersionId: planId,
+      sourceRelation: 'current',
+      affected: true,
+    },
+  ];
+  const original = structuredClone(old),
+    result = buildRacePlanImpactProjectionInput(c, intent(c, true));
+  expect(result.status).toBe('projected');
+  if (result.status !== 'projected') throw Error('fixture');
+  expect(result.projection.routines).toHaveLength(1);
+  expect(result.projection.routines[0]).toMatchObject({ state: 'retained_ended', record: current });
+  expect(result.input.retainedHistoricalRoutines?.[0]).toMatchObject({
+    record: original.record,
+    runs: c.routineActualManifest.runs.map((r) => r.record),
+  });
+  expect(result.projection.retainedHistoricalRoutines?.[0]?.record).toEqual(original.record);
+  expect(old).toEqual(original);
+  const omitted = structuredClone(c);
+  omitted.routineActualManifest.schedules.pop();
+  expect(buildRacePlanImpactProjectionInput(omitted, intent(omitted, true)).status).toBe('blocked');
+  const wrong = structuredClone(c);
+  const head = wrong.routines?.[0];
+  if (!head) throw Error('fixture');
+  head.record = { ...head.record, state: 'paused' };
+  expect(buildRacePlanImpactProjectionInput(wrong, intent(wrong, true)).status).toBe('blocked');
+});

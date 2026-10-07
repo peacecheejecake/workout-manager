@@ -12,6 +12,7 @@ import {
 import { sessionCompletionSchema } from '@workout/contracts/session-completion';
 import {
   raceRetainedUnplannedRunSchema,
+  raceRetainedHistoricalRoutineSchema,
   raceScheduleTimingSchema,
   raceRoutineExpansionSchema,
 } from './race-relative-schedule-impact.js';
@@ -130,7 +131,7 @@ const routine = z
     z.strictObject({
       ...routineFields,
       state: z.literal('retained_ended'),
-      notice: z.enum(['affected_unresolved_requires_resolution', 'ended_schedule_preserved']),
+      notice: z.enum(['existing_unresolved_preserved', 'ended_schedule_preserved']),
       projection: z.null(),
     }),
     z.strictObject({
@@ -200,7 +201,7 @@ const routine = z
         record.state !== 'ended' ||
         value.notice !==
           (value.occurrences.some((row) => row.timingStatus === 'unresolved')
-            ? 'affected_unresolved_requires_resolution'
+            ? 'existing_unresolved_preserved'
             : 'ended_schedule_preserved')
       )
         fail('Ended routine mismatch');
@@ -262,6 +263,14 @@ export const raceRelativeScheduleImpactResultCompatibleV4BodySchema = z.discrimi
         calendar: racePlanImpactProjectedSchema,
         nutrition: z.array(nutrition).max(1000),
         routines: z.array(routine).max(1000),
+        retainedHistoricalRoutines: z
+          .array(
+            raceRetainedHistoricalRoutineSchema.safeExtend({
+              state: z.literal('retained_historical'),
+            }),
+          )
+          .max(1000)
+          .optional(),
         retainedUnplannedRuns: z
           .array(
             z
@@ -296,10 +305,28 @@ export const raceRelativeScheduleImpactResultCompatibleV4BodySchema = z.discrimi
             value.completionReports.length
         )
           fail('Duplicate output rosters');
-        if (value.retainedUnplannedRuns !== undefined) {
+        {
+          const historical = value.retainedHistoricalRoutines ?? [];
+          const versions = [...value.routines, ...historical].map((row) => row.record.versionId);
+          if (
+            new Set(versions).size !== versions.length ||
+            historical.some(
+              (row) =>
+                !value.routines.some(
+                  (current) =>
+                    current.record.id === row.record.id &&
+                    current.record.versionId === row.currentHead.versionId,
+                ),
+            )
+          )
+            fail('Historical/current schedule roster mismatch');
           const ids = new Set<string>();
           const blueprints = new Map<string, unknown>();
-          for (const row of [...value.routines, ...value.retainedUnplannedRuns]) {
+          for (const row of [
+            ...value.routines,
+            ...historical,
+            ...(value.retainedUnplannedRuns ?? []),
+          ]) {
             const identity = JSON.stringify([row.blueprint.routineId, row.blueprint.versionId]);
             const previous = blueprints.get(identity);
             if (previous !== undefined && !same(previous, row.blueprint))
@@ -307,13 +334,13 @@ export const raceRelativeScheduleImpactResultCompatibleV4BodySchema = z.discrimi
             blueprints.set(identity, row.blueprint);
           }
           let visits = 0;
-          for (const row of value.routines)
+          for (const row of [...value.routines, ...historical])
             for (const run of row.runs) {
               if (run.origin.kind !== 'planned' || ids.has(run.id))
                 fail('Scheduled run roster mismatch');
               ids.add(run.id);
             }
-          for (const row of value.retainedUnplannedRuns) {
+          for (const row of value.retainedUnplannedRuns ?? []) {
             if (ids.has(row.run.id)) fail('Duplicate retained run');
             ids.add(row.run.id);
             visits += 1 + row.blueprint.steps.length + row.run.progress.length;
@@ -325,7 +352,10 @@ export const raceRelativeScheduleImpactResultCompatibleV4BodySchema = z.discrimi
           value.nutrition.some((row) =>
             row.items.some((entry) => entry.notice === 'affected_unresolved_requires_resolution'),
           ) ||
-          value.routines.some((row) => row.notice === 'affected_unresolved_requires_resolution');
+          value.routines.some(
+            (row) =>
+              row.state === 'affected' && row.notice === 'affected_unresolved_requires_resolution',
+          );
         if (value.requiresResolution !== unresolved) fail('Resolution summary mismatch');
       }),
   ],

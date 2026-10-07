@@ -16,7 +16,10 @@ import { createIntegratedFixtureV4Repository } from '@workout/server-persistence
 import { createJointFixtureRepository } from '@workout/server-persistence/joint-fixture';
 import { createActivityContextRepository } from '@workout/server-persistence/activity-context';
 import { createPlanningRepository } from '@workout/server-persistence/planning';
-import { createNutritionRepository } from '@workout/server-persistence/nutrition-core';
+import {
+  createNutritionRepository,
+  createNutritionPlanV4Reader,
+} from '@workout/server-persistence/nutrition-core';
 import { createSupplementaryRepository } from '@workout/server-persistence/supplementary-core';
 import { createStretchingRepository } from '@workout/server-persistence/stretching';
 import { createRoutineRepository } from '@workout/server-persistence/routine-core';
@@ -374,6 +377,7 @@ export async function createConfiguredApi(
       aiSettings: createAiSettingsService(createAiSettingsRepository(database)),
       planning: createPlanningRepository(database),
       nutrition: createNutritionRepository(database),
+      nutritionV4: createNutritionPlanV4Reader(database),
       restoreGeneration: createRestoreGenerationRepository(database),
       supplementary: createSupplementaryRepository(database),
       stretching: createStretchingRepository(database),

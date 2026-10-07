@@ -509,7 +509,7 @@ it('bounds this successor envelope without redefining the legacy output allowanc
     }).success,
   ).toBe(false);
 });
-it('leaves the existing explicit resolution max200 input unchanged', () => {
+it('preserves the canonical long nutrition ID in explicit resolution input', () => {
   const input = fixture(4, true);
   input.resolutions.nutrition = [
     {
@@ -519,9 +519,14 @@ it('leaves the existing explicit resolution max200 input unchanged', () => {
       anchor: { kind: 'absolute', date: '2026-03-09', localTime: null, timezone: 'UTC' },
     },
   ];
-  expect(projectRaceRelativeScheduleImpactCompatibleV4(input, ports())).toMatchObject({
-    status: 'rejected',
-    reason: 'invalid_input',
+  const result = output(input),
+    resolved = result.nutrition
+      .flatMap((row) => row.items)
+      .find((item) => item.itemId === 'a'.repeat(1000));
+  expect(resolved).toMatchObject({
+    itemId: 'a'.repeat(1000),
+    item: { anchor: input.resolutions.nutrition[0]?.anchor },
+    resolution: { state: 'explicit', action: 'replace_anchor' },
   });
 });
 it('rejects unknown nested routine fields and invalid expansion unions', () => {
@@ -780,4 +785,105 @@ it('charges retained source visits before duplicate-body reuse within the 1000-r
       retainedUnplannedRuns: retained,
     }).success,
   ).toBe(false);
+});
+
+it('strict result codec accepts ended unresolved retention and rejects obsolete resolution claims', () => {
+  const { input } = routineInput();
+  input.nutrition = [];
+  const context = input.routines[0];
+  if (!context) throw Error('fixture');
+  context.record.state = 'ended';
+  const occurrence = context.occurrences[0];
+  if (!occurrence) throw Error('fixture');
+  occurrence.scheduledAt = null;
+  occurrence.timingStatus = 'unresolved';
+  const result = output(input),
+    ended = result.routines[0];
+  if (!ended || ended.state !== 'retained_ended') throw Error('fixture');
+  expect(ended.notice).toBe('existing_unresolved_preserved');
+  expect(result.requiresResolution).toBe(false);
+  expect(raceRelativeScheduleImpactResultCompatibleV4BodySchema.safeParse(result).success).toBe(
+    true,
+  );
+  expect(
+    raceRelativeScheduleImpactResultCompatibleV4BodySchema.safeParse({
+      ...result,
+      requiresResolution: true,
+    }).success,
+  ).toBe(false);
+  expect(
+    raceRelativeScheduleImpactResultCompatibleV4BodySchema.safeParse({
+      ...result,
+      routines: [{ ...ended, notice: 'affected_unresolved_requires_resolution' }],
+    }).success,
+  ).toBe(false);
+  expect(
+    raceRelativeScheduleImpactResultCompatibleV4BodySchema.safeParse({
+      ...result,
+      routines: [{ ...ended, notice: 'ended_schedule_preserved' }],
+    }).success,
+  ).toBe(false);
+});
+
+it('retains historical active schedule/run/occurrences without expanding or applying a resolution', () => {
+  const { input } = routineInput();
+  const old = input.routines[0];
+  if (!old) throw Error('fixture');
+  const historical = {
+    ...structuredClone(old),
+    currentHead: { state: 'present' as const, versionId: 'schedule-v2', notificationMuted: false },
+  };
+  input.routines = [
+    {
+      ...structuredClone(old),
+      record: { ...old.record, versionId: 'schedule-v2', state: 'ended' },
+      occurrences: [],
+      runs: [],
+    },
+  ];
+  input.retainedHistoricalRoutines = [historical];
+  const before = structuredClone(historical),
+    calc = ports();
+  calc.expandRoutine = () => {
+    throw Error('historical/ended expansion forbidden');
+  };
+  const result = output(input, calc);
+  expect(result.routines[0]?.state).toBe('retained_ended');
+  expect(result.retainedHistoricalRoutines).toEqual([{ state: 'retained_historical', ...before }]);
+  expect(input.retainedHistoricalRoutines).toEqual([before]);
+  for (const change of [
+    'samehead',
+    'wrongoccurrence',
+    'unknownfield',
+    'duplicate',
+    'resolution',
+  ] as const) {
+    const v = structuredClone(input),
+      h = v.retainedHistoricalRoutines?.[0];
+    if (!h) throw Error('fixture');
+    if (change === 'samehead') h.currentHead.versionId = h.record.versionId;
+    if (change === 'wrongoccurrence') {
+      const o = h.occurrences[0];
+      if (!o) throw Error('fixture');
+      o.schedule.versionId = 'wrong';
+    }
+    if (change === 'unknownfield') Object.assign(h, { approved: true });
+    if (change === 'duplicate') v.retainedHistoricalRoutines?.push(structuredClone(h));
+    if (change === 'resolution')
+      v.resolutions.routines = [
+        {
+          scheduleVersionId: h.record.versionId,
+          action: 'replace_rule',
+          rule: h.record.rule,
+          window: h.record.window,
+          sourcePlanVersionId: h.sourcePlanVersionId,
+        },
+      ];
+    expect(raceRelativeScheduleImpactInputCompatibleV4Schema.safeParse(v).success).toBe(false);
+  }
+  const forged = structuredClone(result),
+    row = forged.retainedHistoricalRoutines?.[0];
+  if (!row) throw Error('fixture');
+  Object.assign(row, { projection: { state: 'expanded' } });
+  expect(raceRelativeScheduleImpactResultCompatibleV4Schema.safeParse(forged).success).toBe(false);
 });

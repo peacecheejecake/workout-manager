@@ -35,6 +35,7 @@ export type RaceProjectionCapture = Pick<
   | 'readSetDigest'
 > & {
   // Older internal unit captures may omit these; omission never grants readiness.
+  routines?: RacePlanImpactContext['routines'];
   consumedSources?: RacePlanImpactContext['consumedSources'];
   routineActualManifest: Pick<
     RacePlanImpactContext['routineActualManifest'],
@@ -275,6 +276,9 @@ export function buildRacePlanImpactProjectionInput(
     unique(occurrences, (row) => row.id);
     unique(runs, (row) => row.id);
     const routines: RaceRelativeScheduleImpactInputCompatibleV4['routines'] = [];
+    const retainedHistoricalRoutines: NonNullable<
+      RaceRelativeScheduleImpactInputCompatibleV4['retainedHistoricalRoutines']
+    > = [];
     for (const row of schedules) {
       sourcePlan(row.sourcePlanVersionId);
       const blueprint = blueprints.find(
@@ -296,8 +300,38 @@ export function buildRacePlanImpactProjectionInput(
             (value) => run.origin.kind === 'planned' && value.id === run.origin.occurrenceId,
           ),
       );
-      routines.push({ ...row, blueprint, occurrences: ownedOccurrences, runs: ownedRuns });
+      const source = { ...row, blueprint, occurrences: ownedOccurrences, runs: ownedRuns };
+      const captured = manifest.schedules.find((s) => s.versionId === row.record.versionId);
+      if (!captured) throw new Error('source_head_missing');
+      if (captured.currentHead.state !== 'present') {
+        if (capture.routines !== undefined) throw new Error('source_head_missing');
+        routines.push(source);
+        continue;
+      }
+      if (captured.currentHead.versionId === row.record.versionId) {
+        if (
+          capture.routines !== undefined &&
+          !capture.routines.some(
+            (r) =>
+              r.aggregateId === row.record.id &&
+              r.versionId === row.record.versionId &&
+              JSON.stringify(r.record) === JSON.stringify(row.record),
+          )
+        )
+          throw new Error('current_source_mismatch');
+        routines.push(source);
+      } else retainedHistoricalRoutines.push({ ...source, currentHead: captured.currentHead });
     }
+    if (
+      capture.routines !== undefined &&
+      capture.routines.some(
+        (r) =>
+          !routines.some(
+            (row) => row.record.id === r.aggregateId && row.record.versionId === r.versionId,
+          ),
+      )
+    )
+      throw new Error('current_roster_missing');
     for (const occurrence of occurrences)
       if (!schedules.some((row) => row.record.versionId === occurrence.schedule.versionId))
         fatal.push({ kind: 'routine_run_schedule', id: occurrence.schedule.versionId });
@@ -311,7 +345,11 @@ export function buildRacePlanImpactProjectionInput(
         );
         if (!blueprint) fatal.push({ kind: 'frozen_blueprint', id: run.blueprint.versionId });
         else retainedUnplannedRuns.push({ blueprint, run });
-      } else if (!routines.some((row) => row.runs.some((value) => value.id === run.id)))
+      } else if (
+        ![...routines, ...retainedHistoricalRoutines].some((row) =>
+          row.runs.some((value) => value.id === run.id),
+        )
+      )
         fatal.push({ kind: 'routine_run_schedule', id: run.id });
     }
     retainedUnplannedRuns.sort((a, b) => compare(a.run.id, b.run.id));
@@ -347,6 +385,7 @@ export function buildRacePlanImpactProjectionInput(
       })),
       routines,
       retainedUnplannedRuns,
+      retainedHistoricalRoutines,
       resolutions: intent.resolutions,
     };
     const projection = projectRaceRelativeScheduleImpactCompatibleV4(input, ports);

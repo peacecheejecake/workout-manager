@@ -580,8 +580,14 @@ export function enumerateRaceManualReviewFullCopiedSourcesV2(
         path + '.run',
       );
     });
-    input.routines.forEach((r, i) => {
-      const path = `sourceInput.projectionInput.routines[${i}]`;
+    const routineSources = [
+      ...input.routines.map((r, i) => ({ r, path: `sourceInput.projectionInput.routines[${i}]` })),
+      ...(input.retainedHistoricalRoutines ?? []).map((r, i) => ({
+        r,
+        path: `sourceInput.projectionInput.retainedHistoricalRoutines[${i}]`,
+      })),
+    ];
+    routineSources.forEach(({ r, path }) => {
       add(
         { kind: 'routine-schedule-version', sourceId: r.record.id, versionId: r.record.versionId },
         r.record,

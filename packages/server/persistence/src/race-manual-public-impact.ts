@@ -427,6 +427,8 @@ export function projectRaceManualPublicImpact(raw: unknown): RaceManualPublicImp
       retainedStarted: started,
       storedOccurrences: c.routineActualManifest.occurrences.flatMap((row) => {
         const o = row.record;
+        // The public wire lists current occurrences and frozen started history;
+        // unstarted historical rows remain in the private retained source roster.
         if (
           o.schedule.versionId !== r.record.versionId &&
           !started.some((run) => run.occurrenceId === o.id)
@@ -457,10 +459,8 @@ export function projectRaceManualPublicImpact(raw: unknown): RaceManualPublicImp
       }),
       resolution: resolution ? 'explicit_replacement' : 'absent',
       requirement:
-        r.notice === 'affected_unresolved_requires_resolution'
-          ? r.state === 'retained_ended'
-            ? 'retained_ended_unresolved'
-            : 'resolve_before_review'
+        r.state === 'affected' && r.notice === 'affected_unresolved_requires_resolution'
+          ? 'resolve_before_review'
           : 'none',
     };
   });
@@ -525,7 +525,7 @@ export function projectRaceManualPublicImpact(raw: unknown): RaceManualPublicImp
             : 'replace_rule',
       });
     if (
-      r.state === 'unchanged' &&
+      r.state !== 'affected' &&
       r.storedOccurrences.some(
         (o) =>
           o.schedule.versionId === r.before.schedule.versionId && o.timingStatus === 'unresolved',
@@ -537,7 +537,7 @@ export function projectRaceManualPublicImpact(raw: unknown): RaceManualPublicImp
         itemId: null,
         code: 'UNCHANGED_UNRESOLVED',
       });
-    if (r.state === 'retained_ended')
+    if (r.before.schedule.state === 'ended')
       notices.push({
         domain: 'routine_schedule',
         aggregateId: r.aggregateId,

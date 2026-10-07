@@ -26,7 +26,11 @@ const draft = {
   items: [],
 };
 const apps: ReturnType<typeof createApi>[] = [];
-function setup(authenticated = true) {
+function setup(authenticated = true, withV4 = false) {
+  const nutritionV4 = {
+    readPlanV4: vi.fn().mockResolvedValue(null),
+    listPlansV4: vi.fn().mockResolvedValue({ schemaVersion: 4, plans: [], nextCursor: null }),
+  };
   const nutrition = {
     listPlans: vi.fn().mockResolvedValue({ plans: [], nextCursor: null }),
     readPlan: vi.fn().mockResolvedValue(null),
@@ -59,6 +63,7 @@ function setup(authenticated = true) {
     },
     consent: { getConsent: vi.fn(), setConsent: vi.fn() },
     nutrition,
+    ...(withV4 ? { nutritionV4 } : {}),
     restoreGeneration: { read: vi.fn().mockResolvedValue({ generationId }) },
     logStream: new Writable({
       write(_chunk, _encoding, callback) {
@@ -67,7 +72,7 @@ function setup(authenticated = true) {
     }),
   });
   apps.push(app);
-  return { app, nutrition };
+  return { app, nutrition, nutritionV4 };
 }
 afterEach(async () => Promise.all(apps.splice(0).map((app) => app.close())));
 
@@ -361,7 +366,7 @@ it('preserves legacy detail wire, returns missing V3 distinctly and validates re
   ).toBe(404);
   nutrition.readPlanV3.mockClear();
   for (const suffix of [
-    'maxSchemaVersion=4',
+    'maxSchemaVersion=5',
     'maxSchemaVersion=0',
     'maxSchemaVersion=3&athleteId=foreign',
   ]) {
@@ -391,3 +396,158 @@ it.each([
     expect(response.body).not.toContain('record_json');
   },
 );
+
+it('reads explicit V4 detail and list through the injected owned reader without mutations or legacy dispatch', async () => {
+  const { app, nutrition, nutritionV4 } = setup(true, true);
+  const head = { ...retainedV3, schemaVersion: 4 };
+  const read = {
+    schemaVersion: 4,
+    planId,
+    head,
+    history: [{ versionId, version: 1, approvedAt: head.approvedAt }],
+  };
+  nutritionV4.readPlanV4.mockResolvedValue(read);
+  nutritionV4.listPlansV4.mockResolvedValue({ schemaVersion: 4, plans: [head], nextCursor: null });
+  const detail = await app.inject({
+    url: `${base}/plans/${planId.toUpperCase()}?maxSchemaVersion=4`,
+    headers,
+  });
+  expect(detail.statusCode).toBe(200);
+  expect(detail.json()).toEqual(read);
+  expect(nutritionV4.readPlanV4).toHaveBeenCalledExactlyOnceWith('owner', planId);
+  const list = await app.inject({
+    url: `${base}/plans?from=2026-10-07&toInclusive=2026-10-07&limit=1&maxSchemaVersion=4`,
+    headers,
+  });
+  expect(list.statusCode).toBe(200);
+  expect(list.json()).toEqual({ schemaVersion: 4, plans: [head], nextCursor: null });
+  expect(nutritionV4.listPlansV4).toHaveBeenCalledExactlyOnceWith('owner', {
+    from: '2026-10-07',
+    toInclusive: '2026-10-07',
+    limit: 1,
+    cursor: null,
+  });
+  for (const port of [
+    nutrition.readPlan,
+    nutrition.readPlanV2,
+    nutrition.readPlanV3,
+    nutrition.listPlans,
+    nutrition.listPlansV3,
+    nutrition.savePlan,
+    nutrition.createIntake,
+  ])
+    expect(port).not.toHaveBeenCalled();
+  expect(detail.json().head.items[0].anchor).toEqual({ kind: 'disconnected', entity: 'race' });
+  expect(detail.json().head.items[0].foods[0].quantity).toBe(0);
+});
+
+it('distinguishes absent V4 capability, missing owned plan and unauthenticated access', async () => {
+  const absent = setup();
+  for (const url of [
+    `${base}/plans/${planId}?maxSchemaVersion=4`,
+    `${base}/plans?from=2026-10-07&toInclusive=2026-10-07&maxSchemaVersion=4`,
+  ]) {
+    const reply = await absent.app.inject({ url, headers });
+    expect(reply.statusCode).toBe(409);
+    expect(reply.json().error.code).toBe('NUTRITION_READ_VERSION_UNSUPPORTED');
+  }
+  expect(absent.nutrition.readPlan).not.toHaveBeenCalled();
+  const present = setup(true, true);
+  const foreign = await present.app.inject({
+    url: `${base}/plans/${versionId}?maxSchemaVersion=4`,
+    headers,
+  });
+  expect(foreign.statusCode).toBe(404);
+  expect(foreign.json().error.code).toBe('NUTRITION_PLAN_NOT_FOUND');
+  expect(present.nutritionV4.readPlanV4).toHaveBeenCalledWith('owner', versionId);
+  const anonymous = setup(false, true);
+  expect(
+    (await anonymous.app.inject({ url: `${base}/plans/${planId}?maxSchemaVersion=4`, headers }))
+      .statusCode,
+  ).toBe(401);
+  expect(anonymous.nutritionV4.readPlanV4).not.toHaveBeenCalled();
+});
+
+it('rejects invalid negotiation before V4 access while retaining default and max3 dispatch', async () => {
+  const { app, nutrition, nutritionV4 } = setup(true, true);
+  for (const query of [
+    'maxSchemaVersion=0',
+    'maxSchemaVersion=5',
+    'maxSchemaVersion=4.5',
+    'maxSchemaVersion=4&maxSchemaVersion=3',
+    'maxSchemaVersion=4&athleteId=foreign',
+  ]) {
+    expect(
+      (await app.inject({ url: `${base}/plans/${planId}?${query}`, headers })).statusCode,
+    ).toBe(400);
+    expect(
+      (
+        await app.inject({
+          url: `${base}/plans?from=2026-10-07&toInclusive=2026-10-07&${query}`,
+          headers,
+        })
+      ).statusCode,
+    ).toBe(400);
+  }
+  expect(nutritionV4.readPlanV4).not.toHaveBeenCalled();
+  expect(nutritionV4.listPlansV4).not.toHaveBeenCalled();
+  nutrition.readPlan.mockResolvedValue({ planId, head: null, history: [] });
+  expect((await app.inject({ url: `${base}/plans/${planId}`, headers })).json()).toEqual({
+    planId,
+    head: null,
+    history: [],
+  });
+  nutrition.readPlanV3.mockRejectedValue(new NutritionReadVersionError());
+  const incompatible = await app.inject({
+    url: `${base}/plans/${planId}?maxSchemaVersion=3`,
+    headers,
+  });
+  expect(incompatible.statusCode).toBe(409);
+  expect(incompatible.json().error.code).toBe('NUTRITION_READ_VERSION_UNSUPPORTED');
+  expect(nutritionV4.readPlanV4).not.toHaveBeenCalled();
+});
+
+it('strictly rejects wrong V4 response tuple, unknown bodies and duplicate heads without disclosure', async () => {
+  const { app, nutritionV4 } = setup(true, true);
+  const head = { ...retainedV3, schemaVersion: 4 };
+  const read = { schemaVersion: 4, planId, head, history: [] };
+  for (const body of [
+    { ...read, rawSource: 'private-boundary-secret' },
+    { ...read, planId: versionId, head: { ...head, planId: versionId } },
+    { ...read, head: { ...head, planId: versionId } },
+    { ...read, head: { ...head, rawSource: 'private-boundary-secret' } },
+  ]) {
+    nutritionV4.readPlanV4.mockResolvedValue(body);
+    const reply = await app.inject({ url: `${base}/plans/${planId}?maxSchemaVersion=4`, headers });
+    expect(reply.statusCode).toBe(500);
+    expect(reply.body).not.toContain('private-boundary-secret');
+  }
+  nutritionV4.listPlansV4.mockResolvedValue({
+    schemaVersion: 4,
+    plans: [head, head],
+    nextCursor: null,
+  });
+  expect(
+    (
+      await app.inject({
+        url: `${base}/plans?from=2026-10-07&toInclusive=2026-10-07&maxSchemaVersion=4`,
+        headers,
+      })
+    ).statusCode,
+  ).toBe(500);
+});
+
+it('maps V4 size boundary failures to stable sanitized errors', async () => {
+  const { app, nutritionV4 } = setup(true, true);
+  nutritionV4.readPlanV4.mockRejectedValue(new NutritionReadLimitError());
+  nutritionV4.listPlansV4.mockRejectedValue(new NutritionReadLimitError());
+  for (const url of [
+    `${base}/plans/${planId}?maxSchemaVersion=4`,
+    `${base}/plans?from=2026-10-07&toInclusive=2026-10-07&maxSchemaVersion=4`,
+  ]) {
+    const reply = await app.inject({ url, headers });
+    expect(reply.statusCode).toBe(422);
+    expect(reply.json().error.code).toBe('NUTRITION_READ_LIMIT');
+    expect(reply.body).not.toContain('record_json');
+  }
+});

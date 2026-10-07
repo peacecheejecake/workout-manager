@@ -1770,3 +1770,44 @@ it.each([
     ]),
   });
 });
+
+it('indexes exact historical schedule copies and rejects omitted retained history despite intact context', () => {
+  const value = input((c) => {
+    withRun(c);
+    const current = c.routines[0],
+      old = c.routineActualManifest.schedules[0];
+    if (!current || !old) throw Error('fixture');
+    const newVersion = '99999999-9999-4999-8999-999999999999';
+    current.versionId = newVersion;
+    current.record = { ...current.record, versionId: newVersion, state: 'ended' };
+    c.rosters.routine = [{ aggregateId: current.aggregateId, versionId: newVersion }];
+    old.currentHead = { state: 'present', versionId: newVersion, notificationMuted: false };
+    c.routineActualManifest.schedules.push({
+      ...structuredClone(old),
+      versionId: newVersion,
+      record: structuredClone(current.record),
+    });
+  });
+  const result = mapped(value),
+    historical = value.sourceInput.projectionInput.retainedHistoricalRoutines?.[0];
+  if (!historical) throw Error('fixture');
+  const ref = result.refs.find(
+    (r) =>
+      r.identity.kind === 'routine-schedule-version' &&
+      r.identity.versionId === historical.record.versionId,
+  );
+  expect(ref?.dtoDigest).toBe(digest(historical.record));
+  expect(ref?.copiedLocations).toEqual(
+    expect.arrayContaining([
+      'sourceInput.projectionInput.retainedHistoricalRoutines[0].record',
+      'candidate.body.projectionInput.retainedHistoricalRoutines[0].record',
+      'candidate.body.projection.retainedHistoricalRoutines[0].record',
+    ]),
+  );
+  const missing = structuredClone(value);
+  missing.sourceInput.projectionInput.retainedHistoricalRoutines = [];
+  missing.candidate.body.projectionInput.retainedHistoricalRoutines = [];
+  missing.candidate.body.projection.retainedHistoricalRoutines = [];
+  missing.candidate.digest = digest(missing.candidate.body);
+  expect(enumerate(missing).inventoryState).toBe('blocked');
+});

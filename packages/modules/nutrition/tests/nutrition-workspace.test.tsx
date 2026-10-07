@@ -68,6 +68,7 @@ function planRead(
   head: { versionId: string; version: number; approvedAt: string } = planVersion(),
 ) {
   return {
+    schemaVersion: 4,
     planId,
     head,
     history: [{ versionId: head.versionId, version: head.version, approvedAt: head.approvedAt }],
@@ -158,13 +159,15 @@ describe('nutrition manual workspace', () => {
     });
     const aliceTransport: AuthenticatedTransport = {
       async request(input) {
-        if (input.path !== `/bff/v1/nutrition/plans/${planId}`) throw new Error(input.path);
+        if (input.path !== `/bff/v1/nutrition/plans/${planId}?maxSchemaVersion=4`)
+          throw new Error(input.path);
         return transportReplySchema.parse({ status: 200, body: await alicePending, traceId: null });
       },
     };
     const bobTransport: AuthenticatedTransport = {
       async request(input) {
-        if (input.path !== `/bff/v1/nutrition/plans/${planId}`) throw new Error(input.path);
+        if (input.path !== `/bff/v1/nutrition/plans/${planId}?maxSchemaVersion=4`)
+          throw new Error(input.path);
         return transportReplySchema.parse({
           status: 200,
           body: { ...planRead(), head: { ...planVersion(), purpose: 'Bob plan' } },
@@ -332,8 +335,12 @@ describe('nutrition manual workspace', () => {
     const cloneId = '3a44a988-134a-47e9-9007-d0b314736279';
     const cloneVersionId = 'a131e807-88d2-45d6-8ed3-48cec6f03e0b';
     const { transport, request } = transportWith((input) => {
-      if (input.method === 'GET' && input.path.endsWith(planId))
+      if (
+        input.method === 'GET' &&
+        input.path === `/bff/v1/nutrition/plans/${planId}?maxSchemaVersion=4`
+      )
         return {
+          schemaVersion: 4,
           planId,
           head: original,
           history: [{ versionId, version: 1, approvedAt: original.approvedAt }],
@@ -615,7 +622,10 @@ describe('nutrition manual workspace', () => {
       items: planVersion().items.map((item) => ({ ...item, planVersionId: nextVersionId })),
     };
     const { transport, request } = transportWith((input) => {
-      if (input.method === 'GET' && input.path.endsWith(planId)) {
+      if (
+        input.method === 'GET' &&
+        input.path === `/bff/v1/nutrition/plans/${planId}?maxSchemaVersion=4`
+      ) {
         reads += 1;
         if (reads === 3) throw new Error('Network unavailable');
         return planRead(reads === 1 ? planVersion() : latest);

@@ -146,6 +146,21 @@ const bodySchema = z.strictObject({
 export const raceManualReviewCandidateV2BodySchema = plainGuard
   .pipe(bodySchema)
   .superRefine((value, ctx) => {
+    const originalHistory = value.projectionInput.retainedHistoricalRoutines;
+    const projectedHistory = value.projection.retainedHistoricalRoutines;
+    const normalizeHistory = (rows: NonNullable<typeof originalHistory>) =>
+      [...rows].sort((a, b) => compare(a.record.versionId, b.record.versionId));
+    if (
+      (originalHistory === undefined) !== (projectedHistory === undefined) ||
+      canonical(normalizeHistory(originalHistory ?? [])) !==
+        canonical(
+          normalizeHistory((projectedHistory ?? []).map(({ state: _state, ...row }) => row)),
+        )
+    )
+      ctx.addIssue({
+        code: 'custom',
+        message: 'Retained historical source/output roster mismatch',
+      });
     const original = value.projectionInput.retainedUnplannedRuns;
     const projected = value.projection.retainedUnplannedRuns;
     const sorted = (rows: NonNullable<typeof original>) =>
@@ -276,6 +291,16 @@ export function assembleRaceManualReviewCandidateCompatibleV4(
       unresolved: z.infer<typeof bodySchema.shape.unresolvedBindingItems> = [];
     const consumed = new Set<string>();
     let visits = input.sourceFacts.nutritionRacePins.length;
+    for (const row of p.retainedHistoricalRoutines ?? [])
+      visits +=
+        1 +
+        row.blueprint.steps.length +
+        row.occurrences.length +
+        row.runs.reduce(
+          (n, r) =>
+            n + 1 + r.progress.length + r.progress.reduce((a, p) => a + p.actualRefs.length, 0),
+          0,
+        );
     for (const row of p.retainedUnplannedRuns ?? []) {
       visits += 1 + row.blueprint.steps.length + row.run.progress.length;
       for (const progress of row.run.progress) visits += progress.actualRefs.length;
@@ -343,6 +368,18 @@ export function assembleRaceManualReviewCandidateCompatibleV4(
       [...rows].sort((a, b) => compare(identity(a), identity(b)));
     const normalizedInput = {
       ...p,
+      ...(p.retainedHistoricalRoutines === undefined
+        ? {}
+        : {
+            retainedHistoricalRoutines: sort(
+              p.retainedHistoricalRoutines,
+              (row) => row.record.versionId,
+            ).map((row) => ({
+              ...row,
+              occurrences: sort(row.occurrences, (o) => o.id),
+              runs: sort(row.runs, (r) => r.id),
+            })),
+          }),
       ...(p.retainedUnplannedRuns === undefined
         ? {}
         : {
@@ -366,6 +403,18 @@ export function assembleRaceManualReviewCandidateCompatibleV4(
     };
     const normalizedProjection = {
       ...projection,
+      ...(projection.retainedHistoricalRoutines === undefined
+        ? {}
+        : {
+            retainedHistoricalRoutines: sort(
+              projection.retainedHistoricalRoutines,
+              (row) => row.record.versionId,
+            ).map((row) => ({
+              ...row,
+              occurrences: sort(row.occurrences, (o) => o.id),
+              runs: sort(row.runs, (r) => r.id),
+            })),
+          }),
       ...(projection.retainedUnplannedRuns === undefined
         ? {}
         : {
