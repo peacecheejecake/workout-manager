@@ -256,3 +256,65 @@ it('semantic expected decoder shares pre-serialization primitive/key bound', () 
   ])
     expect(raceManualSemanticBasisV2Schema.safeParse(value).success).toBe(false);
 });
+function mediaPurposeBasis() {
+  const c = basis();
+  c.consumedUses.facts.push({
+    identity: { kind: 'gallery-descriptor', sourceId: eventId, accessRevision: 1 },
+    use: 'core_manual',
+    reason: null,
+    resourceSource: null,
+    sourceAuthentication: 'unverified',
+    sourcePurpose: {
+      adapterVersion: 2,
+      kind: 'own_media_descriptor',
+      mediaItemId: eventId,
+      accessRevision: 1,
+      mediaConsent: { kind: 'media', granted: true, revision: 2 },
+      descriptorDigest: 'a'.repeat(64),
+      originalObjectIdentityDigest: 'b'.repeat(64),
+      originalLedger: { sha256: 'c'.repeat(64), byteSize: 2, mediaType: 'image/png' },
+      previewLedger: null,
+      cleanup: {
+        digestVersion: 'postgres-jsonb-v1',
+        sourceDigest: 'd'.repeat(64),
+        state: 'absent',
+        refs: [{ digest: 'e'.repeat(64), reason: null, state: 'absent' }],
+      },
+    },
+  });
+  return c;
+}
+it.each(['mediaConsent', 'accessRevision', 'descriptorDigest', 'cleanup'] as const)(
+  'actual consumed media %s drift is a semantic change',
+  (field) => {
+    const before = mediaPurposeBasis(),
+      after = structuredClone(before),
+      f = after.consumedUses.facts[0]?.sourcePurpose;
+    if (!f || f.kind !== 'own_media_descriptor') throw Error('fixture');
+    if (field === 'mediaConsent') f.mediaConsent.revision++;
+    else if (field === 'accessRevision') f.accessRevision++;
+    else if (field === 'descriptorDigest') f.descriptorDigest = 'f'.repeat(64);
+    else f.cleanup.sourceDigest = 'f'.repeat(64);
+    expect(compareRaceManualSemanticBasisV2(before, after)).toMatchObject({
+      status: 'blocked',
+      reason: 'semantic_basis_changed',
+      authority: 'none',
+      approvalAllowed: false,
+    });
+  },
+);
+it('media purpose never accepts AI/include-for-coach flags as equivalent authorization', () => {
+  const c = mediaPurposeBasis(),
+    f = c.consumedUses.facts[0];
+  expect(
+    raceManualSemanticBasisV2Schema.safeParse({
+      ...c,
+      consumedUses: {
+        ...c.consumedUses,
+        facts: [
+          { ...f, sourcePurpose: { ...f?.sourcePurpose, aiGranted: true, includeForCoach: true } },
+        ],
+      },
+    }).success,
+  ).toBe(false);
+});

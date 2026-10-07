@@ -503,3 +503,7 @@ Root V2 optional product 등록과 브라우저 Host exact path/method 경계의
 ## Local 저장 실제 재검증 · 2026-10-07
 
 SQL116 local FIT/fixture와 manual recorded course 저장·삭제 R2는 Root actualPG34/34 및 DB/roles0이다([I 기록](progress/M2-02i.md)). R1 course ambiguity 실패는 보존했다. phase의 V2client commit6bc97834는 unit43/actualmoduleTS0이고 공개 proof DTO exact 조회 준비까지이며 J 첨부 화면·실 HTTP/DB activation은 아직 없다. Native 병렬3범위는 result editor/selector UI, own media purpose/semantic, SQL 저장 후속이다. normalregistry107·main/push0·I/J/phase in_progress·외부not_executed를 유지한다.
+
+## Media actual purpose 검증 · 2026-10-07
+
+Root own media named adapter→실제 preparation/semantic 연결의 unit71/actualPG5·frozen7 SHA·DB/roles0를 확인했다([I 기록](progress/M2-02i.md)). normal107에 capability 없으면 blocked이며 raw113+115 공개 gallery metadata finalize로 검증한 로컬 범위다. 객체 bytes/provider 인증/SQL116 media store/withdrawal lifecycle/full authenticated restore는 미완료다. Native3 agent는 HealthKit current purpose+metadata companion, media 최종 SQL predicate/store/purge, 증빙 선택 editor를 비중복 범위로 진행한다. Root는 shared integration/실DB/Git/graph를 직렬 소유한다. registry107·main/push0·I/J/phase in_progress 및 외부not_executed를 유지한다.

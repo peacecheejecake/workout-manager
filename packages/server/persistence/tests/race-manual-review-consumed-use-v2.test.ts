@@ -94,3 +94,56 @@ it('primitive/key UTF8 accumulation stops before caller serialization; escaped J
   ])
     expect(() => assertRaceManualPlainV2(value)).toThrow();
 });
+it('media grant and descriptor observations remain strict facts rather than permission credentials', () => {
+  const observation = {
+    adapterVersion: 2,
+    kind: 'own_media_descriptor',
+    mediaItemId: 'a0000000-0000-4000-8000-000000000001',
+    accessRevision: 1,
+    mediaConsent: { kind: 'media', granted: true, revision: 2 },
+    descriptorDigest: 'a'.repeat(64),
+    originalObjectIdentityDigest: 'b'.repeat(64),
+    originalLedger: { sha256: 'c'.repeat(64), byteSize: 2, mediaType: 'image/png' },
+    previewLedger: null,
+    cleanup: {
+      digestVersion: 'postgres-jsonb-v1',
+      sourceDigest: 'd'.repeat(64),
+      state: 'absent',
+      refs: [{ digest: 'e'.repeat(64), reason: null, state: 'absent' }],
+    },
+  };
+  const uses = {
+    purpose: 'manual_race_date_change',
+    facts: [
+      {
+        identity: {
+          kind: 'gallery-descriptor',
+          sourceId: observation.mediaItemId,
+          accessRevision: 1,
+        },
+        use: 'core_manual',
+        reason: null,
+        sourceAuthentication: 'unverified',
+        sourcePurpose: observation,
+        resourceAccess: null,
+      },
+    ],
+    authority: 'none',
+    permissionAuthority: 'none',
+    storage: 'not_persisted',
+    freshness: 'not_checked',
+    admissionAllowed: false,
+    approvalAllowed: false,
+  };
+  expect(raceManualConsumedUseFactsV2Schema.safeParse(uses).success).toBe(true);
+  expect(
+    raceManualConsumedUseFactsV2Schema.safeParse({
+      ...uses,
+      facts: [{ ...uses.facts[0], sourcePurpose: { ...observation, verified: true } }],
+    }).success,
+  ).toBe(false);
+  // Pure classification still cannot call the DB authorizer or manufacture a grant.
+  expect(classifyRaceManualConsumedSourceV2('gallery-descriptor', null)).toBe(
+    'media_policy_adapter_unavailable',
+  );
+});

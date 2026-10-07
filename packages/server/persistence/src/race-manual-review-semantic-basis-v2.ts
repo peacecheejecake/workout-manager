@@ -52,7 +52,9 @@ function boundedResult<T>(result: T): T {
   return result;
 }
 /** Manual-purpose dependency projection only. AI review/coach/share cleanup metadata
- * remains in observed uses; it is not raw-text withdrawal or a permission seal. */
+ * remains in observed uses; it is not raw-text withdrawal or a permission seal.
+ * Media purpose carries actual individual consent, finalized descriptor revision
+ * and deletion inventory; these are relevant sources, never AI coach-use flags. */
 export const raceManualPurposeUseProjectionV2Schema = raceManualConsumedUseFactsV2Schema.extend({
   purposeProjectionVersion: z.literal(2),
   facts: z

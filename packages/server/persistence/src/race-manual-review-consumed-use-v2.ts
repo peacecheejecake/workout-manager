@@ -1,3 +1,8 @@
+import {
+  captureRaceManualMediaPurposeV2In,
+  raceManualMediaPurposeObservationV2Schema,
+  raceManualMediaPurposeReasonV2Schema,
+} from './race-manual-review-media-purpose-v2.js';
 import { activityValuesSchema, activityOverlaySchema } from '@workout/contracts/activity';
 import {
   assertRaceManualSourcePurposePlainV2,
@@ -21,6 +26,7 @@ export function assertRaceManualPlainV2(value: unknown): void {
 }
 const identity = raceManualReviewFullCopiedInventoryV2Schema.out.shape.refs.element.shape.identity;
 export const raceManualConsumedUseReasonV2Schema = z.enum([
+  ...raceManualMediaPurposeReasonV2Schema.options,
   'preparation_blocked',
   'source_unavailable',
   'source_tuple_mismatch',
@@ -48,7 +54,12 @@ export const raceManualConsumedUseFactsV2Schema = z.strictObject({
         use: z.enum(['core_manual', 'own_retained_text', 'blocked']),
         reason: raceManualConsumedUseReasonV2Schema.nullable(),
         sourceAuthentication: z.literal('unverified'),
-        sourcePurpose: raceManualSourcePurposeObservationV2Schema.nullable(),
+        sourcePurpose: z
+          .union([
+            raceManualSourcePurposeObservationV2Schema,
+            raceManualMediaPurposeObservationV2Schema,
+          ])
+          .nullable(),
         resourceAccess: z
           .strictObject({
             accessRevision: z.number().int().positive().max(2147483647),
@@ -180,7 +191,30 @@ export async function prepareRaceManualConsumedUseV2In(
               null)
           : null,
       );
-    let sourcePurpose: z.infer<typeof raceManualSourcePurposeObservationV2Schema> | null = null;
+    let sourcePurpose: z.infer<
+      typeof raceManualConsumedUseFactsV2Schema
+    >['facts'][number]['sourcePurpose'] = null;
+    if (i.kind === 'gallery-descriptor') {
+      const media = c.mediaReadFacts?.facts.find(
+        (f) => f.requestedId.toLowerCase() === i.sourceId.toLowerCase(),
+      );
+      if (!media?.record || !media.originalObjectIdentityDigest)
+        reason = 'media_source_unavailable';
+      else {
+        const observed = await captureRaceManualMediaPurposeV2In(
+          tx,
+          {
+            mediaItemId: i.sourceId,
+            expectedAccessRevision: i.accessRevision,
+            expectedDescriptorDigest: impactDependencyDigest(media.record),
+            expectedObjectIdentityDigest: media.originalObjectIdentityDigest,
+          },
+          budget,
+        );
+        reason = observed.reason;
+        sourcePurpose = observed.observation;
+      }
+    }
     if (
       (i.kind === 'course-revision' ||
         i.kind === 'course-head-descriptor' ||
