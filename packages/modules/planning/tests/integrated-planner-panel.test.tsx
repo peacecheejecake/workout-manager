@@ -9,7 +9,7 @@ import {
   type AuthenticatedTransport,
   type TransportRequest,
 } from '@workout/contracts/core';
-import { integratedPlannerReadV4Schema } from '@workout/contracts/integrated-planner';
+import { integratedPlannerReadV5Schema } from '@workout/contracts/integrated-planner';
 import { addDays } from '../src/lens';
 import { IntegratedPlannerPanel } from '../src/integrated-planner-panel';
 
@@ -95,8 +95,8 @@ function emptyRead(from: string, toExclusive: string) {
       stretchingActivityIds: [],
       summary: emptySummary,
     });
-  return integratedPlannerReadV4Schema.parse({
-    schemaVersion: 4,
+  return integratedPlannerReadV5Schema.parse({
+    schemaVersion: 5,
     from,
     toExclusive,
     timezone: 'UTC',
@@ -106,6 +106,7 @@ function emptyRead(from: string, toExclusive: string) {
     routineScheduleVersionIds: [],
     days,
     unresolvedNutritionItems: [],
+    nutritionOperationalStates: [],
     unplacedActivityCount: 0,
     summary: emptySummaryV4,
   });
@@ -128,7 +129,7 @@ const session = {
 };
 function populatedRead() {
   const read = emptyRead('2026-09-18', '2026-09-20');
-  return integratedPlannerReadV4Schema.parse({
+  return integratedPlannerReadV5Schema.parse({
     ...read,
     nutritionPlanVersionIds: [nutritionVersionId],
     recoveryStrategyVersionIds: [recoveryVersionId],
@@ -305,7 +306,7 @@ describe('integrated Planner panel', () => {
     expect(onSelectSession).toHaveBeenCalledWith('session-1');
     expect(request).toHaveBeenCalledWith(
       expect.objectContaining({
-        path: '/bff/v1/planner/integrated?from=2026-09-18&toExclusive=2026-09-20&timezone=UTC&maxSchemaVersion=4',
+        path: '/bff/v1/planner/integrated?from=2026-09-18&toExclusive=2026-09-20&timezone=UTC&maxSchemaVersion=5',
         method: 'GET',
       }),
     );
@@ -332,7 +333,7 @@ describe('integrated Planner panel', () => {
     expect(request).toHaveBeenCalledTimes(1);
     expect(request).toHaveBeenCalledWith(
       expect.objectContaining({
-        path: `/bff/v1/planner/integrated?from=${start}&toExclusive=${end}&timezone=UTC&maxSchemaVersion=4`,
+        path: `/bff/v1/planner/integrated?from=${start}&toExclusive=${end}&timezone=UTC&maxSchemaVersion=5`,
       }),
     );
   });
@@ -395,7 +396,7 @@ describe('integrated Planner panel', () => {
     expect(request).toHaveBeenCalledTimes(2);
   });
 
-  it('keeps the loading state and explicit refetch behavior for the v4 request', async () => {
+  it('keeps the loading state and explicit refetch behavior for the v5 request', async () => {
     const user = userEvent.setup();
     let resolveFirst: ((value: unknown) => void) | undefined;
     const first = new Promise((resolve) => {
@@ -426,4 +427,129 @@ describe('integrated Planner panel', () => {
     await user.click(screen.getByRole('button', { name: '통합 기록 다시 확인' }));
     await waitFor(() => expect(request).toHaveBeenCalledTimes(2));
   });
+});
+
+it.each([
+  { state: 'suspended', reason: 'race_disconnected', notice: '대회 연결 해제' },
+  { state: 'suspended', reason: 'source_unavailable', notice: '연결된 시각 근거 사용 불가' },
+  {
+    state: 'unresolved',
+    reason: 'legacy_unpinned',
+    notice: '이전 계획의 시각 근거가 고정되지 않았습니다.',
+  },
+  {
+    state: 'unresolved',
+    reason: 'timing_unresolved',
+    notice: '연결된 시각 근거를 해결하지 못했습니다.',
+  },
+] as const)(
+  'shows $state/$reason only for its matching unresolved nutrition item',
+  async ({ state, reason, notice }) => {
+    const read = integratedPlannerReadV5Schema.parse({
+      ...emptyRead('2026-09-18', '2026-09-20'),
+      nutritionPlanVersionIds: [nutritionVersionId],
+      unresolvedNutritionItems: [
+        {
+          id: 'linked',
+          planVersionId: nutritionVersionId,
+          title: '보존 식사',
+          category: 'meal',
+          source: 'user_confirmed',
+          reason: 'missing_anchor',
+        },
+        {
+          id: 'other',
+          planVersionId: nutritionVersionId,
+          title: '별도 미해결 식사',
+          category: 'meal',
+          source: 'user_confirmed',
+          reason: 'missing_session_time',
+        },
+      ],
+      nutritionOperationalStates: [
+        { planVersionId: nutritionVersionId, itemId: 'linked', state, reason },
+      ],
+    });
+    mount(vi.fn(async () => ({ status: 200, body: read, traceId: null })));
+    const section = await screen.findByRole('region', { name: '날짜 미해결 영양 계획' });
+    const linked = within(section)
+      .getByText(/보존 식사/)
+      .closest('li');
+    const other = within(section)
+      .getByText(/별도 미해결 식사/)
+      .closest('li');
+    expect(linked).toHaveTextContent(notice);
+    expect(other).not.toHaveTextContent(notice);
+    expect(section.textContent).not.toContain(nutritionVersionId);
+    expect(section).not.toHaveTextContent('08:00');
+    expect(within(section).queryByRole('button')).not.toBeInTheDocument();
+    expect(within(section).queryByRole('link')).not.toBeInTheDocument();
+    if (state === 'suspended') {
+      expect(linked).toHaveTextContent('대회 유래 시각 사용이 중단되었습니다');
+      expect(linked).toHaveTextContent('음식·수량과 실제 섭취 기록은 유지됩니다');
+      expect(linked).toHaveTextContent('재연결·재승인 전까지 저장된 대회 시각을 사용하지 않습니다');
+    } else {
+      expect(linked).not.toHaveTextContent('대회 연결 해제');
+      expect(linked).toHaveTextContent('시각은 미해결 상태');
+    }
+  },
+);
+it.each([4, 1])(
+  'rejects legacy v%i replies to the current v5 request without fallback',
+  async (schemaVersion) => {
+    const read = emptyRead('2026-09-18', '2026-09-20');
+    const { nutritionOperationalStates: _states, ...legacy } = read;
+    const request = vi.fn(async () => ({
+      status: 200,
+      body: { ...legacy, schemaVersion },
+      traceId: null,
+    }));
+    mount(request);
+    expect(await screen.findByRole('alert')).toHaveTextContent('통합 기록을 확인하지 못했습니다');
+    expect(screen.queryByText(/표시한 날짜/)).not.toBeInTheDocument();
+    expect(request).toHaveBeenCalledTimes(1);
+  },
+);
+
+it('matches plan UUID case aliases while keeping item IDs and different plan versions distinct', async () => {
+  const lower = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+  const item = {
+    id: 'Meal',
+    planVersionId: lower.toUpperCase(),
+    title: '대문자 UUID 식사',
+    category: 'meal',
+    source: 'user_confirmed',
+    reason: 'missing_anchor',
+  };
+  const read = integratedPlannerReadV5Schema.parse({
+    ...emptyRead('2026-09-18', '2026-09-20'),
+    nutritionPlanVersionIds: [lower, nutritionVersionId],
+    unresolvedNutritionItems: [
+      item,
+      { ...item, id: 'meal', title: '다른 항목 식사' },
+      { ...item, planVersionId: nutritionVersionId, title: '다른 버전 식사' },
+    ],
+    nutritionOperationalStates: [
+      { planVersionId: lower, itemId: 'Meal', state: 'suspended', reason: 'race_disconnected' },
+    ],
+  });
+  mount(vi.fn(async () => ({ status: 200, body: read, traceId: null })));
+  const section = await screen.findByRole('region', { name: '날짜 미해결 영양 계획' });
+  expect(
+    within(section)
+      .getByText(/대문자 UUID 식사/)
+      .closest('li'),
+  ).toHaveTextContent('대회 연결 해제');
+  expect(
+    within(section)
+      .getByText(/다른 항목 식사/)
+      .closest('li'),
+  ).not.toHaveTextContent('대회 연결 해제');
+  expect(
+    within(section)
+      .getByText(/다른 버전 식사/)
+      .closest('li'),
+  ).not.toHaveTextContent('대회 연결 해제');
+  expect(section.textContent).not.toContain(lower);
+  expect(section.textContent).not.toContain(lower.toUpperCase());
 });

@@ -8,9 +8,10 @@ import {
 } from '@workout/contracts/core';
 import {
   integratedPlannerQuerySchema,
-  integratedPlannerReadV4Schema,
-  type IntegratedPlannerReadV4,
+  integratedPlannerReadV5Schema,
+  type IntegratedPlannerReadV5,
   type UnresolvedNutritionItem,
+  type NutritionOperationalState,
 } from '@workout/contracts/integrated-planner';
 import type { PlanSnapshot } from '@workout/contracts/planning';
 import { sumTargetQuantities } from '@workout/contracts/planning';
@@ -30,7 +31,7 @@ type Props = {
   activityHref?: (id: string) => string;
 };
 type Range = { from: string; toExclusive: string; timezone: string };
-type Read = IntegratedPlannerReadV4;
+type Read = IntegratedPlannerReadV5;
 type Day = Read['days'][number];
 const maximumWindowDays = 93;
 
@@ -85,7 +86,7 @@ async function fetchIntegrated(
 ): Promise<Read> {
   const input = integratedPlannerQuerySchema.parse(range);
   const query = new URLSearchParams(input);
-  query.set('maxSchemaVersion', '4');
+  query.set('maxSchemaVersion', '5');
   const response = transportReplySchema.parse(
     await transport.request({
       path: `/bff/v1/planner/integrated?${query}`,
@@ -99,7 +100,7 @@ async function fetchIntegrated(
   if (response.status !== 200) {
     throw new IntegratedPlannerRequestError(responseErrorCode(response.body));
   }
-  const read = integratedPlannerReadV4Schema.parse(response.body);
+  const read = integratedPlannerReadV5Schema.parse(response.body);
   if (read.from !== range.from || read.toExclusive !== range.toExclusive)
     throw new Error('INTEGRATED_RANGE_MISMATCH');
   return read;
@@ -119,7 +120,7 @@ export function IntegratedPlannerPanel({
   const range = invalidLens ? null : rangeForLens(head, lens);
   const validRange = range !== null && readRange(range);
   const read = useQuery({
-    queryKey: ['integrated-planner', athleteId, sessionId, 'schema-v4', head?.id ?? null, range],
+    queryKey: ['integrated-planner', athleteId, sessionId, 'schema-v5', head?.id ?? null, range],
     enabled: validRange,
     retry: false,
     queryFn: ({ signal }) => {
@@ -220,6 +221,14 @@ function IntegratedRead({
   onSelectSession(id: string): void;
   activityHref?: (id: string) => string;
 }) {
+  const operationalKey = (planVersionId: string, itemId: string) =>
+    JSON.stringify([planVersionId.toLowerCase(), itemId]);
+  const operationalStates = new Map(
+    read.nutritionOperationalStates.map((state) => [
+      operationalKey(state.planVersionId, state.itemId),
+      state,
+    ]),
+  );
   const activeDays = read.days.filter(
     (day) =>
       day.plannedSessions.length +
@@ -366,6 +375,9 @@ function IntegratedRead({
             {read.unresolvedNutritionItems.map((item) => (
               <li key={`${item.planVersionId}:${item.id}`}>
                 {item.title} · {unresolvedLabel[item.reason]}
+                <NutritionOperationalNotice
+                  state={operationalStates.get(operationalKey(item.planVersionId, item.id))}
+                />
               </li>
             ))}
           </ul>
@@ -439,5 +451,25 @@ function StretchingSection({
         ))}
       </ul>
     </section>
+  );
+}
+
+function NutritionOperationalNotice({ state }: { state: NutritionOperationalState | undefined }) {
+  if (!state) return null;
+  if (state.state === 'suspended')
+    return (
+      <p role="status">
+        {state.reason === 'race_disconnected' ? '대회 연결 해제' : '연결된 시각 근거 사용 불가'} ·
+        대회 유래 시각 사용이 중단되었습니다. 음식·수량과 실제 섭취 기록은 유지됩니다. 재연결·재승인
+        전까지 저장된 대회 시각을 사용하지 않습니다.
+      </p>
+    );
+  return (
+    <p>
+      {state.reason === 'legacy_unpinned'
+        ? '이전 계획의 시각 근거가 고정되지 않았습니다.'
+        : '연결된 시각 근거를 해결하지 못했습니다.'}{' '}
+      시각은 미해결 상태이며 저장된 대회 시각으로 대신 배치하지 않습니다.
+    </p>
   );
 }

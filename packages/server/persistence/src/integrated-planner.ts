@@ -7,6 +7,9 @@ import { z } from 'zod';
 import { activityOverlaySchema, activityValuesSchema } from '@workout/contracts/activity';
 import {
   integratedPlannerReadV4Schema,
+  integratedPlannerReadV5Schema,
+  type IntegratedPlannerReadV5,
+  type NutritionOperationalState,
   integratedPlannerQuerySchema,
   integratedPlannerReadSchema,
   type IntegratedActivity,
@@ -34,11 +37,20 @@ import {
   routineScheduleVersionSchema,
 } from '@workout/contracts/routines';
 import type { Database } from './database.js';
+import {
+  nutritionPlanVersionCompatibleV4Schema,
+  type NutritionPlanVersionCompatibleV4,
+} from '@workout/contracts/nutrition-race-plan-v4';
+import {
+  nutritionRaceSourceHeadSchema,
+  createOperationalNutritionProjector,
+} from './nutrition-operational-timing.js';
 import { activityInstantSql } from './activity-calendar.js';
 
 export interface IntegratedPlannerRepository {
   read(athleteId: string, query: IntegratedPlannerQuery): Promise<IntegratedPlannerRead>;
   readV4(athleteId: string, query: IntegratedPlannerQuery): Promise<IntegratedPlannerReadV4>;
+  readV5(athleteId: string, query: IntegratedPlannerQuery): Promise<IntegratedPlannerReadV5>;
 }
 
 /** A response is complete or it fails; silently truncating actuals would corrupt totals. */
@@ -106,7 +118,7 @@ const baseSelect = `SELECT
     FROM linked_plans) AS linked_plans,
   (SELECT count(*)::int FROM activities WHERE local_date IS NULL) AS unplaced_count`;
 const sql = `${baseCtes} ${baseSelect}`;
-const sqlV4 = `${baseCtes},
+const domainCtesV4 = `,
 recovery_strategies AS MATERIALIZED (
   SELECT v.record_json FROM recovery_strategy_head h JOIN recovery_strategy_version v
     ON v.athlete_id=h.athlete_id AND v.version_id=h.version_id
@@ -157,8 +169,8 @@ recovery_strategies AS MATERIALIZED (
     WHERE l.athlete_id=$1 AND l.activity_id=a.id AND l.status='active'
   )
   ORDER BY a.local_date,a.id LIMIT ${maximumRows + 1}
-)
-${baseSelect},
+)`;
+const domainSelectV4 = `,
   (SELECT coalesce(jsonb_agg(record_json ORDER BY record_json->>'strategyId'),'[]'::jsonb)
     FROM recovery_strategies) AS recovery_strategies,
   (SELECT coalesce(jsonb_agg(jsonb_build_object('date',local_time::date::text,'record',record_json)
@@ -171,6 +183,59 @@ ${baseSelect},
     ORDER BY local_date,record_json->>'id'),'[]'::jsonb) FROM routine_runs) AS routine_runs,
   (SELECT coalesce(jsonb_agg(jsonb_build_object('date',local_date::text,'activityId',id)
     ORDER BY local_date,id),'[]'::jsonb) FROM stretching_activities) AS stretching_activities`;
+
+const sqlV4 = `${baseCtes}${domainCtesV4}
+${baseSelect}${domainSelectV4}`;
+
+const maximumConsumedReferences = 5000;
+const maximumDecodedBytes = 4 * 1024 * 1024;
+// Scalar preflight and all domain/visibility reads share this one MVCC snapshot.
+// CASE prevents JSON aggregates from running when the bounded snapshot fails.
+const sqlV5 = `${baseCtes}${domainCtesV4},
+consumed_race_ids AS MATERIALIZED (
+  SELECT DISTINCT lower(item->'anchor'->>'entityId') AS id
+  FROM nutrition n, LATERAL jsonb_array_elements(n.record_json->'items') item
+  WHERE item->'anchor'->>'kind'='relative' AND item->'anchor'->>'entity'='race'
+), race_source_heads AS MATERIALIZED (
+  SELECT r.id,r.revision,r.deleted,(r.values_json IS NOT NULL) AS body_present
+  FROM public.race_event r WHERE r.athlete_id=$1
+    AND r.id::text IN (SELECT id FROM consumed_race_ids)
+  ORDER BY r.id LIMIT ${maximumConsumedReferences + 1}
+), payload_rows AS (
+  SELECT jsonb_build_object('id',id,'draft',draft) AS body FROM current_plan
+  UNION ALL SELECT record_json FROM nutrition
+  UNION ALL SELECT jsonb_build_object('id',id,'draft',draft) FROM linked_plans
+  UNION ALL SELECT jsonb_build_object('id',id,'original',original,'overlay',overlay,
+    'date',local_date::text,'hasDetail',has_supplementary_detail) FROM visible_activities
+  UNION ALL SELECT jsonb_build_object('date',local_date::text,'record',record_json) FROM intakes
+  UNION ALL SELECT record_json FROM recovery_strategies
+  UNION ALL SELECT jsonb_build_object('date',local_time::date::text,'record',record_json) FROM recovery_actions
+  UNION ALL SELECT record_json FROM routine_schedules
+  UNION ALL SELECT jsonb_build_object('date',local_date::text,'record',record_json) FROM routine_occurrences
+  UNION ALL SELECT jsonb_build_object('date',local_date::text,'record',record_json) FROM routine_runs
+  UNION ALL SELECT jsonb_build_object('date',local_date::text,'activityId',id) FROM stretching_activities
+  UNION ALL SELECT to_jsonb(h) FROM race_source_heads h
+), preflight AS MATERIALIZED (
+  SELECT
+    (SELECT count(*) FROM nutrition)<=${maximumNutritionPlans}
+    AND (SELECT coalesce(sum(jsonb_array_length(record_json->'items')),0) FROM nutrition)<=${maximumRows}
+    AND (SELECT coalesce(sum(jsonb_array_length(record_json->'items')
+      +coalesce(jsonb_array_length(record_json->'raceTimingPins'),0)
+      +coalesce(jsonb_array_length(record_json->'itemRaceTimingBindings'),0)),0) FROM nutrition)
+      +(SELECT count(*) FROM linked_plans)+(SELECT count(*) FROM race_source_heads)<=${maximumConsumedReferences}
+    AND greatest((SELECT count(*) FROM visible_activities),(SELECT count(*) FROM intakes),
+      (SELECT count(*) FROM recovery_strategies),(SELECT count(*) FROM recovery_actions),
+      (SELECT count(*) FROM routine_schedules),(SELECT count(*) FROM routine_occurrences),
+      (SELECT count(*) FROM routine_runs),(SELECT count(*) FROM stretching_activities))<=${maximumRows}
+    AND (SELECT coalesce(sum(octet_length(convert_to(body::text,'UTF8'))+2),0)+2048 FROM payload_rows)<=${maximumDecodedBytes}
+    AS ok
+)
+SELECT p.ok,CASE WHEN p.ok THEN (
+  SELECT to_jsonb(snapshot) FROM (
+    ${baseSelect}${domainSelectV4},
+    (SELECT coalesce(jsonb_agg(to_jsonb(h) ORDER BY id),'[]'::jsonb) FROM race_source_heads h) AS race_source_heads
+  ) snapshot
+) ELSE NULL END AS payload FROM preflight p`;
 
 const planRow = z.strictObject({ id: z.uuid(), draft: planDraftSchema });
 const rowSchema = z.object({
@@ -202,6 +267,51 @@ const rowSchemaV4 = rowSchema.extend({
   routine_runs: z.array(z.strictObject({ date: z.iso.date(), record: routineRunSchema })),
   stretching_activities: z.array(z.strictObject({ date: z.iso.date(), activityId: z.uuid() })),
 });
+
+const rowSchemaV5 = rowSchemaV4
+  .extend({
+    nutrition: z.array(nutritionPlanVersionCompatibleV4Schema),
+    race_source_heads: z.array(nutritionRaceSourceHeadSchema).max(maximumConsumedReferences),
+  })
+  .strict();
+function requireBoundedSnapshot(row: z.infer<typeof rowSchemaV5>) {
+  const nutritionIds = new Set(row.nutrition.map((plan) => plan.versionId.toLowerCase()));
+  const linkedIds = new Set(row.linked_plans.map((plan) => plan.id.toLowerCase()));
+  if (nutritionIds.size !== row.nutrition.length || linkedIds.size !== row.linked_plans.length)
+    throw new Error('INVALID_PLANNER_SOURCE_HEADS');
+  const references =
+    row.nutrition.reduce(
+      (count, plan) =>
+        count +
+        plan.items.length +
+        ('schemaVersion' in plan
+          ? plan.raceTimingPins.length + plan.itemRaceTimingBindings.length
+          : 0),
+      0,
+    ) +
+    row.linked_plans.length +
+    row.race_source_heads.length;
+  if (
+    references > maximumConsumedReferences ||
+    Buffer.byteLength(JSON.stringify(row), 'utf8') > maximumDecodedBytes
+  )
+    throw new IntegratedPlannerLimitError();
+  const consumed = new Set(
+    row.nutrition.flatMap((plan) =>
+      plan.items.flatMap((item) =>
+        item.anchor.kind === 'relative' && item.anchor.entity === 'race'
+          ? [item.anchor.entityId.toLowerCase()]
+          : [],
+      ),
+    ),
+  );
+  const heads = new Set<string>();
+  for (const head of row.race_source_heads) {
+    if (!consumed.has(head.id.toLowerCase()) || heads.has(head.id.toLowerCase()))
+      throw new Error('INVALID_PLANNER_SOURCE_HEADS');
+    heads.add(head.id.toLowerCase());
+  }
+}
 
 const compare = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 const metric = (values: readonly (number | null)[]) => {
@@ -256,9 +366,15 @@ function summary(
   };
 }
 
-function projectBase(
-  row: z.infer<typeof rowSchema>,
+function projectBase<TPlan extends NutritionPlanVersionCompatibleV4>(
+  row: Omit<z.infer<typeof rowSchema>, 'nutrition'> & { nutrition: TPlan[] },
   query: IntegratedPlannerQuery,
+  nutritionProjection: (
+    item: TPlan['items'][number],
+    plan: TPlan,
+    linked: Map<string, z.infer<typeof planDraftSchema>>,
+    timezone: string,
+  ) => ReturnType<typeof projectNutritionItem>,
 ): IntegratedPlannerRead {
   if (
     row.nutrition.length > maximumNutritionPlans ||
@@ -294,7 +410,7 @@ function projectBase(
   const unresolvedNutritionItems: UnresolvedNutritionItem[] = [];
   for (const plan of row.nutrition)
     for (const item of plan.items) {
-      const projection = projectNutritionItem(item, plan, linked, row.timezone);
+      const projection = nutritionProjection(item, plan, linked, row.timezone);
       if ('reason' in projection) unresolvedNutritionItems.push(projection);
       else days.get(projection.date)?.nutritionItems.push(projection.value);
     }
@@ -370,6 +486,119 @@ function projectBase(
   });
 }
 
+function projectDomainsV4(
+  row: Omit<z.infer<typeof rowSchemaV4>, 'nutrition'>,
+  base: IntegratedPlannerRead,
+): IntegratedPlannerReadV4 {
+  const days = new Map(
+    base.days.map((day) => [
+      day.date,
+      {
+        ...day,
+        recoveryPlans: [] as {
+          strategyId: string;
+          versionId: string;
+          title: string;
+          selectedOptionId: string;
+        }[],
+        recoveryActions: [] as {
+          actionId: string;
+          revision: number;
+          occurredAt: string;
+          state: 'performed' | 'partial' | 'confirmed_skipped' | 'stopped' | 'unconfirmed';
+          methodVersionId: string;
+        }[],
+        routineOccurrences: [] as {
+          occurrenceId: string;
+          scheduleId: string;
+          scheduleVersionId: string;
+          blueprintVersionId: string;
+          scheduledAt: string;
+        }[],
+        routineRuns: [] as {
+          runId: string;
+          revision: number;
+          state: 'in_progress' | 'paused' | 'ended' | 'stopped';
+          occurrenceId: string | null;
+        }[],
+        stretchingActivityIds: [] as string[],
+      },
+    ]),
+  );
+  for (const strategy of row.recovery_strategies) {
+    if (strategy.selectedOptionId === null) continue;
+    for (const [date, day] of days)
+      if (date >= strategy.draft.startDate && date < strategy.draft.endDateExclusive)
+        day.recoveryPlans.push({
+          strategyId: strategy.strategyId,
+          versionId: strategy.versionId,
+          title: strategy.draft.title,
+          selectedOptionId: strategy.selectedOptionId,
+        });
+  }
+  for (const item of row.recovery_actions)
+    days.get(item.date)?.recoveryActions.push({
+      actionId: item.record.actionId,
+      revision: item.record.revision,
+      occurredAt: item.record.occurredAt,
+      state: item.record.state,
+      methodVersionId: item.record.methodVersionId,
+    });
+  for (const item of row.routine_occurrences) {
+    if (item.record.scheduledAt === null) continue;
+    days.get(item.date)?.routineOccurrences.push({
+      occurrenceId: item.record.id,
+      scheduleId: item.record.schedule.id,
+      scheduleVersionId: item.record.schedule.versionId,
+      blueprintVersionId: item.record.blueprint.versionId,
+      scheduledAt: item.record.scheduledAt,
+    });
+  }
+  for (const item of row.routine_runs)
+    days.get(item.date)?.routineRuns.push({
+      runId: item.record.id,
+      revision: item.record.revision,
+      state: item.record.state,
+      occurrenceId: item.record.origin.kind === 'planned' ? item.record.origin.occurrenceId : null,
+    });
+  for (const item of row.stretching_activities)
+    days.get(item.date)?.stretchingActivityIds.push(item.activityId);
+  const projectedDays = [...days.values()].map((day) => {
+    day.recoveryPlans.sort((a, b) => compare(a.strategyId, b.strategyId));
+    day.recoveryActions.sort(
+      (a, b) =>
+        Date.parse(a.occurredAt) - Date.parse(b.occurredAt) || compare(a.actionId, b.actionId),
+    );
+    day.routineOccurrences.sort(
+      (a, b) =>
+        Date.parse(a.scheduledAt) - Date.parse(b.scheduledAt) ||
+        compare(a.occurrenceId, b.occurrenceId),
+    );
+    day.routineRuns.sort((a, b) => compare(a.runId, b.runId));
+    day.stretchingActivityIds.sort(compare);
+    return day;
+  });
+  return integratedPlannerReadV4Schema.parse({
+    ...base,
+    schemaVersion: 4,
+    recoveryStrategyVersionIds: row.recovery_strategies.map((item) => item.versionId),
+    routineScheduleVersionIds: row.routine_schedules.map((item) => item.versionId),
+    days: projectedDays,
+    summary: {
+      ...base.summary,
+      recovery: {
+        plannedStrategyCount: row.recovery_strategies.length,
+        actualActionCount: row.recovery_actions.length,
+      },
+      routines: {
+        occurrenceCount: row.routine_occurrences.length,
+        runCount: row.routine_runs.length,
+      },
+      stretchingActivityCount: row.stretching_activities.length,
+    },
+  });
+}
+
 export function createIntegratedPlannerRepository(database: Database): IntegratedPlannerRepository {
   return {
     async read(athleteId, input) {
@@ -378,7 +607,7 @@ export function createIntegratedPlannerRepository(database: Database): Integrate
         const row = rowSchema.parse(
           (await tx.query(sql, [athleteId, query.from, query.toExclusive, query.timezone])).rows[0],
         );
-        return projectBase(row, query);
+        return projectBase(row, query, projectNutritionItem);
       });
     },
     async readV4(athleteId, input) {
@@ -397,115 +626,67 @@ export function createIntegratedPlannerRepository(database: Database): Integrate
           row.stretching_activities.length > maximumRows
         )
           throw new IntegratedPlannerLimitError();
-        const base = projectBase(row, query);
-        const days = new Map(
-          base.days.map((day) => [
-            day.date,
-            {
-              ...day,
-              recoveryPlans: [] as {
-                strategyId: string;
-                versionId: string;
-                title: string;
-                selectedOptionId: string;
-              }[],
-              recoveryActions: [] as {
-                actionId: string;
-                revision: number;
-                occurredAt: string;
-                state: 'performed' | 'partial' | 'confirmed_skipped' | 'stopped' | 'unconfirmed';
-                methodVersionId: string;
-              }[],
-              routineOccurrences: [] as {
-                occurrenceId: string;
-                scheduleId: string;
-                scheduleVersionId: string;
-                blueprintVersionId: string;
-                scheduledAt: string;
-              }[],
-              routineRuns: [] as {
-                runId: string;
-                revision: number;
-                state: 'in_progress' | 'paused' | 'ended' | 'stopped';
-                occurrenceId: string | null;
-              }[],
-              stretchingActivityIds: [] as string[],
-            },
-          ]),
+        const base = projectBase(row, query, projectNutritionItem);
+        return projectDomainsV4(row, base);
+      });
+    },
+    async readV5(athleteId, input) {
+      const query = integratedPlannerQuerySchema.parse(input);
+      return database.tenant(athleteId, async (tx) => {
+        const envelope = z
+          .strictObject({ ok: z.boolean(), payload: z.unknown() })
+          .parse(
+            (await tx.query(sqlV5, [athleteId, query.from, query.toExclusive, query.timezone]))
+              .rows[0],
+          );
+        if (!envelope.ok) throw new IntegratedPlannerLimitError();
+        if (Buffer.byteLength(JSON.stringify(envelope.payload), 'utf8') > maximumDecodedBytes)
+          throw new IntegratedPlannerLimitError();
+        const row = rowSchemaV5.parse(envelope.payload);
+        requireBoundedSnapshot(row);
+        const heads = new Map(row.race_source_heads.map((head) => [head.id.toLowerCase(), head]));
+        const states: NutritionOperationalState[] = [];
+        const linked = new Map(row.linked_plans.map((plan) => [plan.id, plan.draft]));
+        const projectors = new Map(
+          row.nutrition.map((record) => {
+            const draft =
+              record.linkedTrainingPlanVersionId === null
+                ? undefined
+                : linked.get(record.linkedTrainingPlanVersionId);
+            return [
+              record.versionId,
+              createOperationalNutritionProjector({
+                record,
+                targetTimezone: row.timezone,
+                linkedTraining:
+                  draft === undefined
+                    ? null
+                    : { versionId: record.linkedTrainingPlanVersionId, draft },
+              }),
+            ];
+          }),
         );
-        for (const strategy of row.recovery_strategies) {
-          if (strategy.selectedOptionId === null) continue;
-          for (const [date, day] of days)
-            if (date >= strategy.draft.startDate && date < strategy.draft.endDateExclusive)
-              day.recoveryPlans.push({
-                strategyId: strategy.strategyId,
-                versionId: strategy.versionId,
-                title: strategy.draft.title,
-                selectedOptionId: strategy.selectedOptionId,
-              });
-        }
-        for (const item of row.recovery_actions)
-          days.get(item.date)?.recoveryActions.push({
-            actionId: item.record.actionId,
-            revision: item.record.revision,
-            occurredAt: item.record.occurredAt,
-            state: item.record.state,
-            methodVersionId: item.record.methodVersionId,
+        const base = projectBase(row, query, (item, record) => {
+          const projector = projectors.get(record.versionId);
+          if (!projector) throw new Error('INVALID_PLANNER_NUTRITION_CONTEXT');
+          const result = projector({
+            itemId: item.id,
+            sourceHead:
+              item.anchor.kind === 'relative' && item.anchor.entity === 'race'
+                ? (heads.get(item.anchor.entityId.toLowerCase()) ?? null)
+                : null,
           });
-        for (const item of row.routine_occurrences) {
-          if (item.record.scheduledAt === null) continue;
-          days.get(item.date)?.routineOccurrences.push({
-            occurrenceId: item.record.id,
-            scheduleId: item.record.schedule.id,
-            scheduleVersionId: item.record.schedule.versionId,
-            blueprintVersionId: item.record.blueprint.versionId,
-            scheduledAt: item.record.scheduledAt,
-          });
-        }
-        for (const item of row.routine_runs)
-          days.get(item.date)?.routineRuns.push({
-            runId: item.record.id,
-            revision: item.record.revision,
-            state: item.record.state,
-            occurrenceId:
-              item.record.origin.kind === 'planned' ? item.record.origin.occurrenceId : null,
-          });
-        for (const item of row.stretching_activities)
-          days.get(item.date)?.stretchingActivityIds.push(item.activityId);
-        const projectedDays = [...days.values()].map((day) => {
-          day.recoveryPlans.sort((a, b) => compare(a.strategyId, b.strategyId));
-          day.recoveryActions.sort(
-            (a, b) =>
-              Date.parse(a.occurredAt) - Date.parse(b.occurredAt) ||
-              compare(a.actionId, b.actionId),
-          );
-          day.routineOccurrences.sort(
-            (a, b) =>
-              Date.parse(a.scheduledAt) - Date.parse(b.scheduledAt) ||
-              compare(a.occurrenceId, b.occurrenceId),
-          );
-          day.routineRuns.sort((a, b) => compare(a.runId, b.runId));
-          day.stretchingActivityIds.sort(compare);
-          return day;
+          if (result.operationalState !== null) states.push(result.operationalState);
+          return result.projection;
         });
-        return integratedPlannerReadV4Schema.parse({
-          ...base,
-          schemaVersion: 4,
-          recoveryStrategyVersionIds: row.recovery_strategies.map((item) => item.versionId),
-          routineScheduleVersionIds: row.routine_schedules.map((item) => item.versionId),
-          days: projectedDays,
-          summary: {
-            ...base.summary,
-            recovery: {
-              plannedStrategyCount: row.recovery_strategies.length,
-              actualActionCount: row.recovery_actions.length,
-            },
-            routines: {
-              occurrenceCount: row.routine_occurrences.length,
-              runCount: row.routine_runs.length,
-            },
-            stretchingActivityCount: row.stretching_activities.length,
-          },
+        const domains = projectDomainsV4(row, base);
+        states.sort(
+          (a, b) => compare(a.planVersionId, b.planVersionId) || compare(a.itemId, b.itemId),
+        );
+        return integratedPlannerReadV5Schema.parse({
+          ...domains,
+          schemaVersion: 5,
+          nutritionOperationalStates: states,
         });
       });
     },

@@ -81,7 +81,8 @@
     "./race-result-proofs": "./src/race-result-proofs.ts",
     "./nutrition-race-plan-writer": "./src/nutrition-race-plan-writer.ts",
     "./race-relative-schedule-calculation": "./src/race-relative-schedule-calculation.ts",
-    "./race-timing-bindings": "./src/race-timing-bindings.ts"
+    "./race-timing-bindings": "./src/race-timing-bindings.ts",
+    "./nutrition-race-plan-v4-writer": "./src/nutrition-race-plan-v4-writer.ts"
   },
   "devDependencies": {
     "@types/pg": "8.23.1",

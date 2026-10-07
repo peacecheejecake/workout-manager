@@ -177,3 +177,59 @@ export const integratedPlannerReadV4Schema = integratedPlannerReadSchema
     summary: integratedPlannerSummaryV4Schema,
   });
 export type IntegratedPlannerReadV4 = z.infer<typeof integratedPlannerReadV4Schema>;
+
+/** Operational status only. This carries no deleted source identity, frozen
+ * source time, reconnection instruction, or approval authority. */
+export const nutritionOperationalStateSchema = z.discriminatedUnion('state', [
+  z.strictObject({
+    planVersionId: z.uuid(),
+    itemId: idSchema,
+    state: z.literal('suspended'),
+    reason: z.enum(['race_disconnected', 'source_unavailable']),
+  }),
+  z.strictObject({
+    planVersionId: z.uuid(),
+    itemId: idSchema,
+    state: z.literal('unresolved'),
+    reason: z.enum(['legacy_unpinned', 'timing_unresolved']),
+  }),
+]);
+export type NutritionOperationalState = z.infer<typeof nutritionOperationalStateSchema>;
+
+/** Separate transport version; V1/V4 retain their original wire meanings. */
+export const integratedPlannerReadV5Schema = integratedPlannerReadV4Schema
+  .omit({ schemaVersion: true })
+  .extend({
+    schemaVersion: z.literal(5),
+    nutritionOperationalStates: z.array(nutritionOperationalStateSchema).max(3000),
+  })
+  .superRefine((read, context) => {
+    const key = (planVersionId: string, itemId: string) =>
+      JSON.stringify([planVersionId.toLowerCase(), itemId]);
+    const unresolved = new Set(
+      read.unresolvedNutritionItems.map((item) => key(item.planVersionId, item.id)),
+    );
+    const placed = new Set(
+      read.days.flatMap((day) =>
+        day.nutritionItems.map((item) => key(item.planVersionId, item.id)),
+      ),
+    );
+    const plans = new Set(read.nutritionPlanVersionIds.map((id) => id.toLowerCase()));
+    const seen = new Set<string>();
+    for (const [index, state] of read.nutritionOperationalStates.entries()) {
+      const identity = key(state.planVersionId, state.itemId);
+      if (
+        seen.has(identity) ||
+        !plans.has(state.planVersionId.toLowerCase()) ||
+        !unresolved.has(identity) ||
+        placed.has(identity)
+      )
+        context.addIssue({
+          code: 'custom',
+          path: ['nutritionOperationalStates', index],
+          message: 'Operational state must identify one unresolved, unplaced nutrition item',
+        });
+      seen.add(identity);
+    }
+  });
+export type IntegratedPlannerReadV5 = z.infer<typeof integratedPlannerReadV5Schema>;

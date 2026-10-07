@@ -74,12 +74,14 @@ const emptyReadV4 = {
     stretchingActivityCount: 0,
   },
 };
+const emptyReadV5 = { ...emptyReadV4, schemaVersion: 5 as const, nutritionOperationalStates: [] };
 const url = '/planner/integrated?from=2026-09-18&toExclusive=2026-09-19&timezone=UTC';
 function setup() {
   const app = Fastify();
   const repository = {
     read: vi.fn().mockResolvedValue(emptyRead),
     readV4: vi.fn().mockResolvedValue(emptyReadV4),
+    readV5: vi.fn().mockResolvedValue(emptyReadV5),
   };
   registerIntegratedPlannerRoutes(app, repository, () => ({
     athleteId: 'owner',
@@ -104,6 +106,7 @@ it.each([url, `${url}&maxSchemaVersion=1`])(
       timezone: 'UTC',
     });
     expect(repository.readV4).not.toHaveBeenCalled();
+    expect(repository.readV5).not.toHaveBeenCalled();
   },
 );
 
@@ -150,6 +153,7 @@ it.each([2, 3])(
     expect(response.json().message).toBe('UNSUPPORTED_SCHEMA_VERSION');
     expect(repository.read).not.toHaveBeenCalled();
     expect(repository.readV4).not.toHaveBeenCalled();
+    expect(repository.readV5).not.toHaveBeenCalled();
   },
 );
 
@@ -168,4 +172,105 @@ it('reports a complete-result limit instead of a silently truncated summary', as
   const result = await app.inject({ url });
   expect(result.statusCode).toBe(422);
   expect(result.json().message).toBe('PLANNER_RESULT_TOO_LARGE');
+});
+
+it('returns strictly decoded v5 only to an explicit v5 request and derives the tenant', async () => {
+  const { app, repository } = setup();
+  const response = await app.inject({ url: `${url}&maxSchemaVersion=5` });
+  expect(response.statusCode).toBe(200);
+  expect(response.json()).toEqual(emptyReadV5);
+  expect(repository.readV5).toHaveBeenCalledWith('owner', {
+    from: '2026-09-18',
+    toExclusive: '2026-09-19',
+    timezone: 'UTC',
+  });
+  expect(repository.read).not.toHaveBeenCalled();
+  expect(repository.readV4).not.toHaveBeenCalled();
+});
+it.each([
+  emptyReadV4,
+  {
+    ...emptyReadV5,
+    nutritionOperationalStates: [
+      {
+        planVersionId: '11111111-1111-4111-8111-111111111111',
+        itemId: 'missing',
+        state: 'suspended',
+        reason: 'race_disconnected',
+      },
+    ],
+  },
+  { ...emptyReadV5, frozenRaceTime: '2026-09-18T08:00:00Z' },
+])(
+  'rejects an invalid v5 response without falling back to saved time or legacy reads',
+  async (body) => {
+    const { app, repository } = setup();
+    repository.readV5.mockResolvedValueOnce(body);
+    expect((await app.inject({ url: `${url}&maxSchemaVersion=5` })).statusCode).toBe(500);
+    expect(repository.read).not.toHaveBeenCalled();
+    expect(repository.readV4).not.toHaveBeenCalled();
+  },
+);
+it('preserves bounded result errors for v5', async () => {
+  const { app, repository } = setup();
+  repository.readV5.mockRejectedValueOnce(new IntegratedPlannerLimitError());
+  const response = await app.inject({ url: `${url}&maxSchemaVersion=5` });
+  expect(response.statusCode).toBe(422);
+  expect(response.json().message).toBe('PLANNER_RESULT_TOO_LARGE');
+});
+
+it('returns suspended operational facts without adding a deleted race identity or time', async () => {
+  const { app, repository } = setup();
+  const body = {
+    ...emptyReadV5,
+    nutritionPlanVersionIds: ['11111111-1111-4111-8111-111111111111'],
+    unresolvedNutritionItems: [
+      {
+        id: 'meal',
+        planVersionId: '11111111-1111-4111-8111-111111111111',
+        title: '보존 식사',
+        category: 'meal',
+        source: 'user_confirmed',
+        reason: 'missing_anchor',
+      },
+    ],
+    nutritionOperationalStates: [
+      {
+        planVersionId: '11111111-1111-4111-8111-111111111111',
+        itemId: 'meal',
+        state: 'suspended',
+        reason: 'race_disconnected',
+      },
+    ],
+  };
+  repository.readV5.mockResolvedValueOnce(body);
+  const response = await app.inject({ url: `${url}&maxSchemaVersion=5` });
+  expect(response.statusCode).toBe(200);
+  expect(response.json()).toEqual(body);
+  expect(repository.read).not.toHaveBeenCalled();
+  expect(repository.readV4).not.toHaveBeenCalled();
+});
+
+it('rejects operational facts with an unresolved item whose plan is outside the response roster', async () => {
+  const { app, repository } = setup();
+  const planVersionId = '11111111-1111-4111-8111-111111111111';
+  repository.readV5.mockResolvedValueOnce({
+    ...emptyReadV5,
+    unresolvedNutritionItems: [
+      {
+        id: 'meal',
+        planVersionId,
+        title: '보존 식사',
+        category: 'meal',
+        source: 'user_confirmed',
+        reason: 'missing_anchor',
+      },
+    ],
+    nutritionOperationalStates: [
+      { planVersionId, itemId: 'meal', state: 'suspended', reason: 'race_disconnected' },
+    ],
+  });
+  expect((await app.inject({ url: `${url}&maxSchemaVersion=5` })).statusCode).toBe(500);
+  expect(repository.read).not.toHaveBeenCalled();
+  expect(repository.readV4).not.toHaveBeenCalled();
 });

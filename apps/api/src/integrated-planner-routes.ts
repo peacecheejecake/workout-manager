@@ -4,6 +4,7 @@ import { z } from 'zod';
 import {
   integratedPlannerQuerySchema,
   integratedPlannerReadV4Schema,
+  integratedPlannerReadV5Schema,
   integratedPlannerReadSchema,
 } from '@workout/contracts/integrated-planner';
 import {
@@ -14,7 +15,7 @@ import type { Principal } from './ports.js';
 import { input, ProductRequestError } from './product-boundary.js';
 
 const integratedPlannerVersionedQuerySchema = integratedPlannerQuerySchema.safeExtend({
-  maxSchemaVersion: z.coerce.number().int().min(1).max(4).optional(),
+  maxSchemaVersion: z.coerce.number().int().min(1).max(5).optional(),
 });
 
 export function registerIntegratedPlannerRoutes(
@@ -30,6 +31,11 @@ export function registerIntegratedPlannerRoutes(
     if (maxSchemaVersion === 2 || maxSchemaVersion === 3)
       throw new ProductRequestError(409, 'UNSUPPORTED_SCHEMA_VERSION');
     try {
+      if (maxSchemaVersion === 5) {
+        return integratedPlannerReadV5Schema.parse(
+          await planner.readV5(principal(request).athleteId, query),
+        );
+      }
       if (maxSchemaVersion === 4) {
         return integratedPlannerReadV4Schema.parse(
           await planner.readV4(principal(request).athleteId, query),
