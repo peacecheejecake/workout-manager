@@ -150,7 +150,7 @@ APPROVE를 받았다. 당시 기록 갱신의 검토 refresh 후 main에 반영�
 
 ## 다음 작업 순서
 
-현재 실행 기준(2026-10-08): main `1d557358`, `phase/m2-02` 최신 검증 커밋 `35b4f2fc`. 이전 실행 기준 `2e56edd8`과 뒤에 이어지는 2026-09-27 기록은 역사적 스냅샷이며 최신 수용으로 승격하지 않는다. 이후 검증 커밋은 재개 시 `git log -1`로 확인한다.
+현재 실행 기준(2026-10-08): main `1d557358`, `phase/m2-02` 최신 검증 커밋 `d2449728`. 이전 실행 기준 `2e56edd8`과 뒤에 이어지는 2026-09-27 기록은 역사적 스냅샷이며 최신 수용으로 승격하지 않는다. 이후 검증 커밋은 재개 시 `git log -1`로 확인한다.
 
 1. **M2-02i/j ready 구현**: I의 실제 목적별 source adapter·trusted Evidence→Decision→Proposal 저장·삭제/복원 closure·전체 도메인 원자 승인, J의 configured V2 증빙 경로·첨부/PB 화면을 완료한다. 비중복 scope를 native agent에 배정하고 Root가 shared schema/registry·실DB·graph/Git를 직렬 통합한다. PB chip/gun·거리 분류는 답변 대기를 유지한다.
 2. **M2-02 phase 검증·독립 검토**: runnable 노드 완료 후 전체 install/generated/lint/TS/build/unit/integration/identity 두 회차/format 및 해당 drill을 실제 실행하고, base/head를 고정한 context-less `gpt-6-sol` high 읽기 전용 phase review를 받는다. 승인과 기록 후 main fast-forward만 수행하며 push는 사용자 작업이다.
@@ -535,3 +535,11 @@ Garmin 저장 canonical Activity 수동 목적은 사용자 승인된 S22 app co
 검증 커밋35b4f2fc는 실제 appAdmission을 쓰는 Garmin core 목적 소비·semantic을 연결했고 Root unit51/actualPG9/scopedTS 및6 SHA변경0이다. SQL116 저장 직전 목적 재검증은 다음 작업이다. 새 V7 실제 publisher 시험은 두회차6/6이며 R2의12입력변경0과 DB/roles/slot0를 확인했다([I 기록](progress/M2-02i.md)). 실제 old4/5 원본 reuse이며 새7 공개 producer·원본 stage·complete source/tail/archive 인증을 통과시킨 것이 아니다.
 
 현재 native 병렬은 Garmin 최종 저장 재검증, current-family signed artifact+strict roster/parent closure prerequisite, V7 실제 전달 수용의 통합/원본 stage 준비다. Root는 SQL/공통registry 소유를 직렬 배정하고 actualDB/graph/Git 통합을 소유한다. 전체영향 도메인 원자 승인·normalconfigured 활성화·phasefullgates/독립검토·운영/실기기 gate와 기존 사용자 답변대기를 유지한다.
+
+## 사용자 결정 재확인 · 2026-10-08 대회 삭제와 영양 일정
+
+사용자는 대회 삭제 뒤 승인된 영양 일정을 연결 해제로 표시하고, 명시적 재연결·재승인 전까지 대회 시각 사용을 중단하도록 확정했다. 음식·수량·실제 IntakeEntry는 보존한다. 기존 V4 disconnection/reconnect 정책을 유지하며 자동 재연결이나 삭제를 추가하지 않는다. 전체 영향 일정 원자 승인 수용은 M2-02i의 잔여 작업이다.
+
+## current child artifact 인증 검증 · 2026-10-08
+
+Root가 15 child relation(14 durable와 archive-empty transient)의 strict signed-byte codec/factory opaque handle을 단위47/47, persistence TypeScript0, scoped ESLint0/Prettier0으로 재검증했다. source key resolver는 factory 생성 때 고정하되 매 준비 시 내부 키 철회 정책을 다시 조회한다. 입력2 SHA는 R5 동결값과 일치한다. 부모 closure·SQL row encoding·original tail stage·운영 restore는 이 child 인증으로 통과하지 않으며 별도 미완료다.
