@@ -224,3 +224,20 @@ it('compares exact target version and SQL115 key membership, not only equal coun
     ),
   ).toBe(true);
 });
+
+it('multi-race lifecycle parent enumeration preserves both exact own dependencies without inventing PRIMARY authority', () => {
+  const extra = {
+    kind: 'race-event',
+    sourceId: 'cccccccc-1234-4123-8123-abcdefabcdef',
+    revision: 2,
+  };
+  const first = { kind: 'race-event', sourceId: id, revision: 1 };
+  const parents = planRaceManualReviewLifecycleParentsV2([first, extra]);
+  expect(parents.map((p) => p.identity)).toEqual([first, extra]);
+  expect(parents).toHaveLength(2);
+  expect(parents[0]?.edge).not.toEqual(parents[1]?.edge);
+  expect(parents[0]).toMatchObject({
+    authority: 'none',
+    originalEventAuthentication: 'unverified_original_event',
+  });
+});

@@ -1,3 +1,4 @@
+import { selectRaceManualOwnedProtocolIn } from './race-manual-review-full-owned-binding-consumer-v2.js';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { Database, Transaction } from './database.js';
@@ -8,8 +9,11 @@ import {
   prepareRaceManualSemanticBasisV2In,
   raceManualSemanticBasisV2Schema,
 } from './race-manual-review-semantic-basis-v2.js';
-import { raceManualReviewRetainedPayloadV2Schema } from './race-manual-review-retained-payload-v2.js';
-import { captureRaceManualReviewLifecycleInventoryV2In } from './race-manual-review-lifecycle-inventory-v2.js';
+import {
+  raceManualReviewRetainedPayloadV2Schema,
+  raceManualReviewMultiOwnedRetainedPayloadV3Schema,
+} from './race-manual-review-retained-payload-v2.js';
+import { captureRaceManualReviewCompatibleLifecycleInventoryIn } from './race-manual-review-lifecycle-inventory-v2.js';
 import { reserveSourceBudget, type SourceBudget } from './race-plan-impact-nested-sources.js';
 import { validateRaceSourceResponseBudget } from './race-plan-impact-context.js';
 
@@ -53,6 +57,11 @@ export const raceManualReviewChainReadV2Schema = z.strictObject({
 });
 export type RaceManualReviewChainResultV2 = z.infer<typeof raceManualReviewChainResultV2Schema>;
 export type RaceManualReviewChainReadV2 = z.infer<typeof raceManualReviewChainReadV2Schema>;
+export const raceManualReviewMultiOwnedChainReadV3Schema = z.strictObject({
+  schemaVersion: z.literal(2),
+  result: raceManualReviewChainResultV2Schema,
+  payload: raceManualReviewMultiOwnedRetainedPayloadV3Schema.nullable(),
+});
 const limits = {
   authority: 'none',
   freshness: 'not_checked',
@@ -130,14 +139,23 @@ export async function storeRaceManualReviewChainV2In(
   );
   if (prepared.status !== 'current_dependencies_captured')
     return { status: 'blocked' as const, prepared, storage: 'not_persisted' as const, ...limits };
-  const retained = raceManualReviewRetainedPayloadV2Schema.parse(prepared.prepared.retained);
+  const store = await selectRaceManualOwnedProtocolIn(tx, budget, 'store');
+  const retainedSchema =
+    store === 'public.store_manual_race_multi_owned_chain_v3'
+      ? raceManualReviewMultiOwnedRetainedPayloadV3Schema
+      : raceManualReviewRetainedPayloadV2Schema;
+  const retained = retainedSchema.parse(prepared.prepared.retained);
   if (
     retained.state !== 'present' ||
     retained.status !== 'structurally_corresponding' ||
     retained.payload.preparation.candidate.status !== 'assembled_readonly'
   )
     throw new RaceImpactDependencyError('INVALID_CONTEXT');
-  const lifecycle = await captureRaceManualReviewLifecycleInventoryV2In(tx, retained, budget);
+  const lifecycle = await captureRaceManualReviewCompatibleLifecycleInventoryIn(
+    tx,
+    retained,
+    budget,
+  );
   if (lifecycle.status !== 'dependency_correspondence')
     return {
       status: 'blocked' as const,
@@ -151,10 +169,12 @@ export async function storeRaceManualReviewChainV2In(
     decisionId: uuid.parse(ids()),
     proposalId: uuid.parse(ids()),
   };
+  // Receipt lookup stays first. Selection is capability-only, never fallback
+  // after the successor rejects a fresh current-source/purpose/basis check.
   const result = raceManualReviewChainResultV2Schema.parse(
     await boundedCall(
       tx,
-      'public.store_manual_race_chain_v2($1::uuid,$2::uuid,$3::uuid,$4::text,$5::jsonb,$6::jsonb,$7::jsonb,$8::jsonb)',
+      `${store}($1::uuid,$2::uuid,$3::uuid,$4::text,$5::jsonb,$6::jsonb,$7::jsonb,$8::jsonb)`,
       [
         minted.evidenceId,
         minted.decisionId,
@@ -184,10 +204,37 @@ export async function readRaceManualReviewChainV2In(
   rawId: unknown,
   budget: SourceBudget,
 ) {
+  return readChain(tx, rawId, budget, 'single_race_v2');
+}
+export async function readRaceManualReviewCompatibleChainIn(
+  tx: Transaction,
+  rawId: unknown,
+  budget: SourceBudget,
+) {
+  const store = await selectRaceManualOwnedProtocolIn(tx, budget, 'store');
+  return readChain(
+    tx,
+    rawId,
+    budget,
+    store === 'public.store_manual_race_multi_owned_chain_v3'
+      ? 'multi_owned_races_v3'
+      : 'single_race_v2',
+  );
+}
+async function readChain(
+  tx: Transaction,
+  rawId: unknown,
+  budget: SourceBudget,
+  profile: 'single_race_v2' | 'multi_owned_races_v3',
+) {
   const id = uuid.parse(rawId);
   const raw = await boundedCall(tx, 'public.read_manual_race_chain_v2($1::uuid)', [id], budget);
   if (raw === null) return null;
-  const read = raceManualReviewChainReadV2Schema.parse(raw);
+  const schema =
+    profile === 'single_race_v2'
+      ? raceManualReviewChainReadV2Schema
+      : raceManualReviewMultiOwnedChainReadV3Schema;
+  const read = schema.parse(raw);
   if (read.result.evidenceId !== id) throw new RaceImpactDependencyError('INVALID_CONTEXT');
   if (read.payload !== null && read.payload.minimalAudit.athleteId !== tx.athleteId)
     throw new RaceImpactDependencyError('INVALID_CONTEXT');

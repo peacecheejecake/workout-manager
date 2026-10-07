@@ -513,10 +513,24 @@ export function saveNutritionPlanV4In(
 ): Promise<NutritionRacePlanV4WriteResult> {
   return commitPreparedWrite(tx, prepareWrite(unknownIntent), options);
 }
+/** Explicit integrated race-only timing successor. Context identity is looked up
+ * by SQL118 in this same transaction; callers cannot supply affected IDs/pins.
+ * Standalone V4 writes retain their original preservation behavior. */
+export async function saveNutritionPlanV4ForRaceApprovalIn(
+  tx: Transaction,
+  unknownIntent: unknown,
+  applicationContextId: string,
+  options: NutritionRacePlanV4WriteOptions = {},
+): Promise<NutritionRacePlanV4WriteResult> {
+  const prepared = prepareWrite(unknownIntent);
+  const contextId = z.uuid().parse(applicationContextId).toLowerCase();
+  return commitPreparedWrite(tx, prepared, options, contextId);
+}
 async function commitPreparedWrite(
   tx: Transaction,
   prepared: ReturnType<typeof prepareWrite>,
   { now = () => new Date(), id = randomUUID }: NutritionRacePlanV4WriteOptions,
+  applicationContextId?: string,
 ): Promise<NutritionRacePlanV4WriteResult> {
   const { outer, intent, command, request, key } = prepared;
   await lockAppAdmission(tx);
@@ -524,7 +538,10 @@ async function commitPreparedWrite(
   if (replay) return replay;
   await requireAppAdmission(tx);
   const { prior, size } = await priorHead(tx, intent);
-  const affected = deriveNutritionAffectedItemIdsV4(prior, intent);
+  const affected =
+    applicationContextId === undefined
+      ? deriveNutritionAffectedItemIdsV4(prior, intent)
+      : await raceApprovalAffectedItems(tx, applicationContextId, prepared.request, prior, intent);
   await requireOrigins(tx, prior, intent);
   const sources = await preparationSources(tx, intent, addSize(bytes(outer), size));
   const timing = selectTiming(prior, intent, affected, sources);
@@ -575,4 +592,60 @@ export function createNutritionRacePlanV4Writer(
       return database.tenant(athleteId, (tx) => commitPreparedWrite(tx, prepared, { now, id }));
     },
   };
+}
+
+async function raceApprovalAffectedItems(
+  tx: Transaction,
+  applicationContextId: string,
+  request: unknown,
+  prior: NutritionPlanVersionCompatibleV4,
+  intent: SaveNutritionPlanV3Intent,
+): Promise<readonly string[]> {
+  const row = z
+    .strictObject({ item_ids: z.array(z.string()).max(5000) })
+    .parse(
+      (
+        await tx.query(
+          'SELECT public.race_manual_nutrition_affected_items_v1($1::uuid,$2::jsonb) AS item_ids',
+          [applicationContextId, JSON.stringify(request)],
+        )
+      ).rows[0],
+    );
+  const declared = new Set(intent.command.draft.items.map((item) => item.id));
+  if (
+    new Set(row.item_ids).size !== row.item_ids.length ||
+    row.item_ids.some((id) => !declared.has(id))
+  )
+    return invalid();
+  const preserved = z
+    .strictObject({ item_ids: z.array(z.string()).max(5000) })
+    .parse(
+      (
+        await tx.query(
+          'SELECT public.race_manual_nutrition_preserved_items_v1($1::uuid,$2::jsonb) AS item_ids',
+          [applicationContextId, JSON.stringify(request)],
+        )
+      ).rows[0],
+    );
+  const oldItems = new Map(prior.items.map((item) => [item.id, item]));
+  if (
+    new Set(preserved.item_ids).size !== preserved.item_ids.length ||
+    preserved.item_ids.some((id) => {
+      const anchor = oldItems.get(id)?.anchor;
+      return (
+        !declared.has(id) ||
+        row.item_ids.includes(id) ||
+        anchor?.kind !== 'relative' ||
+        anchor.entity !== 'race'
+      );
+    })
+  )
+    return invalid();
+  const preservedIds = new Set(preserved.item_ids);
+  return [
+    ...new Set([
+      ...deriveNutritionAffectedItemIdsV4(prior, intent).filter((id) => !preservedIds.has(id)),
+      ...row.item_ids,
+    ]),
+  ].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
 }

@@ -429,6 +429,8 @@ function input(change: (c: z.infer<typeof raceImpactConsumedCaptureSchema>) => v
 
 import {
   prepareRaceManualReviewRetainedPayloadV2 as retain,
+  prepareRaceManualReviewMultiOwnedRetainedPayloadV3 as retainMulti,
+  raceManualReviewMultiOwnedRetainedPayloadV3Schema,
   validateRaceManualReviewRetainedPayloadV2 as validate,
   raceManualReviewRetainedPayloadV2InputSchema,
 } from '../src/race-manual-review-retained-payload-v2.js';
@@ -887,4 +889,50 @@ it('rejects copied visit overflow before allowing a larger roster', () => {
   if (!ref) throw Error('ref');
   ref.copiedLocations = Array.from({ length: 5001 }, () => 'context.event');
   expect(() => retain(v)).toThrow();
+});
+
+it('explicit multi-owned profile retains both copied race bodies while old V2 still rejects them', () => {
+  const preparation = input((c) => {
+    c.consumedSources.races.push({
+      ...structuredClone(c.event),
+      id: '00000000-0000-4000-8000-000000000003',
+      title: 'Unrelated frozen source',
+    });
+  });
+  const value = retainedInput(preparation);
+  expect(value.inventory.refs.filter((r) => r.identity.kind === 'race-event')).toHaveLength(2);
+  expect(() => retain(value)).toThrow();
+  const retained = retainMulti(value);
+  expect(retained).toMatchObject({
+    state: 'present',
+    status: 'structurally_corresponding',
+    codecVersion: 2,
+    authority: 'none',
+    sourceAuthentication: 'unverified',
+    approvalAllowed: false,
+  });
+  expect(raceManualReviewMultiOwnedRetainedPayloadV3Schema.parse(retained)).toEqual(retained);
+  expect(validate(retained).success).toBe(false);
+});
+it('multi-owned retained profile preserves old single-race bytes and no-authority limitations', () => {
+  const value = retainedInput();
+  expect(retainMulti(value)).toEqual(retain(value));
+});
+it('multi-owned profile rejects duplicate/unknown observation authority without weakening correspondence', () => {
+  const value = retainedInput();
+  expect(() =>
+    retainMulti({
+      ...value,
+      sqlObservations: { ...value.sqlObservations, authority: 'authenticated' },
+    }),
+  ).toThrow();
+  expect(() =>
+    retainMulti({
+      ...value,
+      sqlObservations: {
+        ...value.sqlObservations,
+        rows: [...value.sqlObservations.rows, ...value.sqlObservations.rows],
+      },
+    }),
+  ).toThrow();
 });

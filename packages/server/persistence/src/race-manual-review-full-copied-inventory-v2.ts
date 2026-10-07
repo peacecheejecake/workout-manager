@@ -712,7 +712,11 @@ export function enumerateRaceManualReviewFullCopiedSourcesV2(
           f.content?.digest !== digest(r) ||
           f.state === 'unavailable' ||
           (f.state === 'current' &&
-            !equal(f.currentHead, { aggregate_id: r.planId, version_id: r.versionId }))
+            !equal(f.currentHead, { aggregateId: r.planId, versionId: r.versionId })) ||
+          (f.state === 'historical' &&
+            f.currentHead !== null &&
+            (tuple(f.currentHead.aggregateId) !== tuple(r.planId) ||
+              tuple(f.currentHead.versionId) === tuple(r.versionId)))
         )
           blocker(`context.recoveryNutritionSources.records[${i}]`, 'source_tuple_mismatch');
         const current = c.nutrition.find(

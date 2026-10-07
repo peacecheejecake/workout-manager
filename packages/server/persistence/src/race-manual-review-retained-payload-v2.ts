@@ -1,5 +1,8 @@
 import { z } from 'zod';
-import { parseRaceManualReviewFullSqlObservationV2 } from './race-manual-review-full-owned-binding-consumer-v2.js';
+import {
+  parseRaceManualReviewFullSqlObservationV2,
+  parseRaceManualReviewMultiOwnedSqlObservationV3,
+} from './race-manual-review-full-owned-binding-consumer-v2.js';
 import { raceImpactConsumedCaptureSchema } from './race-plan-impact-complete-manifest.js';
 import {
   raceManualReviewCandidateV2InputSchema,
@@ -67,24 +70,28 @@ const preparation = z.strictObject({
   candidate: raceManualReviewCandidateV2ResultSchema,
 });
 // The SQL observation codec is supplied by the existing finite consumer below.
-const presentBody = z
-  .strictObject({
-    state: z.literal('present'),
-    preparation,
-    inventory: raceManualReviewFullCopiedInventoryV2Schema,
-    dtoObservations: raceManualReviewFullOwnedSourceInventoryV2Schema,
-    sqlObservations: z.json(),
-    currentAuthority: absentAuthority,
-  })
-  .superRefine((v, ctx) => {
-    if (
-      parseRaceManualReviewFullSqlObservationV2(
-        v.sqlObservations,
-        v.inventory.refs.map((ref) => ref.identity),
-      ).status !== 'validated_structure'
-    )
-      ctx.addIssue({ code: 'custom', message: 'Invalid finite SQL relation observation' });
-  });
+function presentBodyFor(parseObservation: typeof parseRaceManualReviewFullSqlObservationV2) {
+  return z
+    .strictObject({
+      state: z.literal('present'),
+      preparation,
+      inventory: raceManualReviewFullCopiedInventoryV2Schema,
+      dtoObservations: raceManualReviewFullOwnedSourceInventoryV2Schema,
+      sqlObservations: z.json(),
+      currentAuthority: absentAuthority,
+    })
+    .superRefine((v, ctx) => {
+      if (
+        parseObservation(
+          v.sqlObservations,
+          v.inventory.refs.map((ref) => ref.identity),
+        ).status !== 'validated_structure'
+      )
+        ctx.addIssue({ code: 'custom', message: 'Invalid finite SQL relation observation' });
+    });
+}
+const presentBody = presentBodyFor(parseRaceManualReviewFullSqlObservationV2);
+const multiOwnedPresentBody = presentBodyFor(parseRaceManualReviewMultiOwnedSqlObservationV3);
 const auditSchema = z.strictObject({
   athleteId: z.string().min(1).max(200),
   candidateDigest: hash,
@@ -101,6 +108,9 @@ const purgedBody = z.strictObject({
 });
 export const raceManualReviewRetainedPayloadV2InputSchema = plain.pipe(
   z.discriminatedUnion('state', [presentBody, purgedBody]),
+);
+export const raceManualReviewMultiOwnedRetainedPayloadV3InputSchema = plain.pipe(
+  z.discriminatedUnion('state', [multiOwnedPresentBody, purgedBody]),
 );
 const limitations = {
   codecVersion: 2 as const,
@@ -144,7 +154,23 @@ function at(root: unknown, path: string): unknown {
 }
 /** This is JSON correspondence, not evidence of DB execution, lifecycle or storage admission. */
 export function prepareRaceManualReviewRetainedPayloadV2(raw: unknown) {
-  const payload = raceManualReviewRetainedPayloadV2InputSchema.parse(raw);
+  return prepareRetainedPayload(raw, 'single_race_v2');
+}
+/** Explicit multi-owned validation profile; physical codecVersion/wire2 and
+ * correspondence hashes are unchanged and confer no lifecycle/auth authority. */
+export function prepareRaceManualReviewMultiOwnedRetainedPayloadV3(raw: unknown) {
+  return prepareRetainedPayload(raw, 'multi_owned_races_v3');
+}
+function prepareRetainedPayload(raw: unknown, profile: 'single_race_v2' | 'multi_owned_races_v3') {
+  const schema =
+    profile === 'single_race_v2'
+      ? raceManualReviewRetainedPayloadV2InputSchema
+      : raceManualReviewMultiOwnedRetainedPayloadV3InputSchema;
+  const parseObservation =
+    profile === 'single_race_v2'
+      ? parseRaceManualReviewFullSqlObservationV2
+      : parseRaceManualReviewMultiOwnedSqlObservationV3;
+  const payload = schema.parse(raw);
   if (payload.state === 'purged')
     return finish({
       ...limitations,
@@ -188,7 +214,7 @@ export function prepareRaceManualReviewRetainedPayloadV2(raw: unknown) {
     reason = 'dto_observation_mismatch';
   else if (payload.dtoObservations.status !== 'observed_correspondence')
     reason = 'source_unavailable';
-  const sql = parseRaceManualReviewFullSqlObservationV2(
+  const sql = parseObservation(
     payload.sqlObservations,
     payload.inventory.refs.map((ref) => ref.identity),
   );
@@ -226,39 +252,52 @@ const limitationShape = {
   admissionAllowed: z.literal(false),
   approvalAllowed: z.literal(false),
 };
-export const raceManualReviewRetainedPayloadV2Schema = plain.pipe(
-  z.discriminatedUnion('state', [
-    z
-      .strictObject({
+function retainedSchemaFor(
+  body: typeof presentBody,
+  preparePayload: typeof prepareRaceManualReviewRetainedPayloadV2,
+) {
+  return plain.pipe(
+    z.discriminatedUnion('state', [
+      z
+        .strictObject({
+          ...limitationShape,
+          state: z.literal('present'),
+          status: z.enum(['structurally_corresponding', 'blocked']),
+          reason: reasonSchema.nullable(),
+          payloadDigest: hash,
+          payload: body,
+          minimalAudit: auditSchema,
+        })
+        .superRefine((v, ctx) => {
+          try {
+            if (!equal(v, preparePayload(v.payload)))
+              ctx.addIssue({ code: 'custom', message: 'Retained payload correspondence mismatch' });
+          } catch {
+            ctx.addIssue({ code: 'custom', message: 'Invalid retained payload correspondence' });
+          }
+        }),
+      z.strictObject({
         ...limitationShape,
-        state: z.literal('present'),
-        status: z.enum(['structurally_corresponding', 'blocked']),
-        reason: reasonSchema.nullable(),
-        payloadDigest: hash,
-        payload: presentBody,
+        state: z.literal('purged'),
+        status: z.literal('blocked'),
+        reason: z.literal('external_source_witness_required'),
+        originalPayloadDigest: hash,
         minimalAudit: auditSchema,
-      })
-      .superRefine((v, ctx) => {
-        try {
-          if (!equal(v, prepareRaceManualReviewRetainedPayloadV2(v.payload)))
-            ctx.addIssue({ code: 'custom', message: 'Retained payload correspondence mismatch' });
-        } catch {
-          ctx.addIssue({ code: 'custom', message: 'Invalid retained payload correspondence' });
-        }
+        requiredExternalProofs: z.tuple([
+          z.literal('independently_retained_original_source_witness'),
+          z.literal('authenticated_contiguous_suppression_tail'),
+        ]),
       }),
-    z.strictObject({
-      ...limitationShape,
-      state: z.literal('purged'),
-      status: z.literal('blocked'),
-      reason: z.literal('external_source_witness_required'),
-      originalPayloadDigest: hash,
-      minimalAudit: auditSchema,
-      requiredExternalProofs: z.tuple([
-        z.literal('independently_retained_original_source_witness'),
-        z.literal('authenticated_contiguous_suppression_tail'),
-      ]),
-    }),
-  ]),
+    ]),
+  );
+}
+export const raceManualReviewRetainedPayloadV2Schema = retainedSchemaFor(
+  presentBody,
+  prepareRaceManualReviewRetainedPayloadV2,
+);
+export const raceManualReviewMultiOwnedRetainedPayloadV3Schema = retainedSchemaFor(
+  multiOwnedPresentBody,
+  prepareRaceManualReviewMultiOwnedRetainedPayloadV3,
 );
 export type RaceManualReviewRetainedPayloadV2 = z.infer<
   typeof raceManualReviewRetainedPayloadV2Schema

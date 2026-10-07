@@ -1639,3 +1639,134 @@ it('rejects rehashed changed unplanned progress contents despite unchanged ident
     ]),
   });
 });
+
+function recoveryNutritionTupleFixture(
+  state: 'current' | 'historical',
+  head: { aggregateId: string; versionId: string } | null,
+) {
+  const planId = 'aaaaaaaa-1111-4111-8111-111111111111',
+    versionId = 'bbbbbbbb-1111-4111-8111-111111111111';
+  const record = nutritionPlanVersionV4Schema.parse({
+    schemaVersion: 4,
+    planId,
+    versionId,
+    version: 1,
+    previousVersionId: null,
+    approvedAt: now,
+    approvalId: generation,
+    period: { from: '2026-10-07', toInclusive: '2026-10-09' },
+    timezone: 'UTC',
+    purpose: 'Frozen recovery-consumed nutrition',
+    linkedTrainingPlanVersionId: null,
+    items: [
+      {
+        id: 'food-zero-null',
+        planVersionId: versionId,
+        category: 'before',
+        title: 'Retained instruction',
+        anchor: { kind: 'absolute', date: '2026-10-07', localTime: '06:00', timezone: 'UTC' },
+        foods: [],
+        targets: [],
+        instructions: 'Retain explicit intake instruction',
+        evidenceIds: [],
+        source: 'user_confirmed',
+      },
+    ],
+    raceTimingPins: [],
+    itemRaceTimingBindings: [],
+  });
+  const value = input((c) => {
+    c.recoveryNutritionSources = {
+      records: [record],
+      facts: [
+        {
+          requested: { aggregateId: planId, versionId },
+          state,
+          reason: null,
+          content: { digest: digest(record) },
+          currentHead: head,
+        },
+      ],
+      nestedSources: {
+        nutrition: [
+          {
+            versionId,
+            recordDigest: digest(record),
+            foods: [],
+            anchors: [],
+            linkedPlan: { state: 'absent' },
+          },
+        ],
+        loadedPlans: [],
+      },
+      authority: 'none',
+      freshness: 'not_checked',
+    };
+  });
+  return { value, record, planId, versionId };
+}
+it('indexes actual camelCase current recovery nutrition tuple and exact original body/digest/location', () => {
+  const id = 'aaaaaaaa-1111-4111-8111-111111111111',
+    version = 'bbbbbbbb-1111-4111-8111-111111111111';
+  const f = recoveryNutritionTupleFixture('current', { aggregateId: id, versionId: version });
+  const inventory = mapped(f.value);
+  expect(inventory.refs.find((r) => r.identity.kind === 'nutrition-plan-version')).toMatchObject({
+    identity: { kind: 'nutrition-plan-version', sourceId: id, versionId: version },
+    dtoDigest: digest(f.record),
+    copiedLocations: expect.arrayContaining(['context.recoveryNutritionSources.records[0]']),
+  });
+});
+it.each([
+  null,
+  {
+    aggregateId: 'aaaaaaaa-1111-4111-8111-111111111111',
+    versionId: 'cccccccc-1111-4111-8111-111111111111',
+  },
+])('preserves historical frozen recovery nutrition with actual head %s', (head) => {
+  const f = recoveryNutritionTupleFixture('historical', head);
+  const inventory = mapped(f.value);
+  expect(inventory.refs.find((r) => r.identity.kind === 'nutrition-plan-version')?.dtoDigest).toBe(
+    digest(f.record),
+  );
+  expect(f.value.context.recoveryNutritionSources?.records[0]).toEqual(f.record);
+});
+it.each([
+  ['current', null],
+  [
+    'current',
+    {
+      aggregateId: 'aaaaaaaa-1111-4111-8111-111111111111',
+      versionId: 'cccccccc-1111-4111-8111-111111111111',
+    },
+  ],
+  [
+    'current',
+    {
+      aggregateId: 'dddddddd-1111-4111-8111-111111111111',
+      versionId: 'bbbbbbbb-1111-4111-8111-111111111111',
+    },
+  ],
+  [
+    'historical',
+    {
+      aggregateId: 'dddddddd-1111-4111-8111-111111111111',
+      versionId: 'cccccccc-1111-4111-8111-111111111111',
+    },
+  ],
+  [
+    'historical',
+    {
+      aggregateId: 'aaaaaaaa-1111-4111-8111-111111111111',
+      versionId: 'bbbbbbbb-1111-4111-8111-111111111111',
+    },
+  ],
+] as const)('rejects %s recovery nutrition wrong/foreign current head', (state, head) => {
+  const f = recoveryNutritionTupleFixture(state, head);
+  expect(enumerate(f.value)).toMatchObject({
+    inventoryState: 'blocked',
+    allCopiedBodiesIndexed: false,
+    blockers: expect.arrayContaining([
+      { location: 'context.recoveryNutritionSources.records[0]', reason: 'source_tuple_mismatch' },
+    ]),
+  });
+});

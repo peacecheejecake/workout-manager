@@ -91,6 +91,11 @@ export async function persistRecoveryStrategyVersionIn(
   return saved;
 }
 
+/** Materialize a new immutable version, never mutate existing occurrences/runs.
+ * The transaction owner must hold the tenant command fence and validate the full
+ * affected/started-anchor roster before calling. These structural/CAS checks do
+ * not grant approval authority. Repeated anchors require the version-scoped SQL
+ * successor; the historical immutable schema is never bypassed here. */
 export async function persistRoutineScheduleVersionIn(
   tx: Transaction,
   input: {
@@ -107,6 +112,8 @@ export async function persistRoutineScheduleVersionIn(
   if (
     schedule.id !== input.aggregateId ||
     schedule.versionId === input.expectedVersionId ||
+    new Set(occurrences.map((item) => item.id)).size !== occurrences.length ||
+    new Set(occurrences.map((item) => item.anchorKey)).size !== occurrences.length ||
     occurrences.some(
       (item) =>
         item.schedule.id !== input.aggregateId ||
@@ -116,6 +123,26 @@ export async function persistRoutineScheduleVersionIn(
     )
   )
     throw new RaceManualApprovalDomainWriteError('CANDIDATE_NOT_APPROVABLE');
+  const head = (
+    await tx.query(
+      `SELECT h.version_id,v.record_json FROM routine_schedule_head h
+       JOIN routine_schedule_version v ON v.athlete_id=h.athlete_id
+         AND v.schedule_id=h.schedule_id AND v.version_id=h.version_id
+       WHERE h.athlete_id=$1 AND h.schedule_id=$2 FOR UPDATE OF h`,
+      [tx.athleteId, input.aggregateId],
+    )
+  ).rows[0];
+  if (input.expectedVersionId === null ? head !== undefined : head === undefined)
+    throw new RaceManualApprovalDomainWriteError('STALE_BASIS');
+  if (head) {
+    const prior = routineScheduleVersionSchema.parse(head['record_json']);
+    if (
+      head['version_id'] !== input.expectedVersionId ||
+      prior.versionId !== input.expectedVersionId ||
+      prior.id !== input.aggregateId
+    )
+      throw new RaceManualApprovalDomainWriteError('STALE_BASIS');
+  }
   await tx.query(
     `INSERT INTO routine_schedule_version
     (athlete_id,schedule_id,version_id,prior_version_id,blueprint_routine_id,
@@ -133,11 +160,17 @@ export async function persistRoutineScheduleVersionIn(
       input.approvedAt,
     ],
   );
-  await tx.query(
-    `INSERT INTO routine_schedule_head(athlete_id,schedule_id,version_id) VALUES($1,$2,$3)
-    ON CONFLICT(athlete_id,schedule_id) DO UPDATE SET version_id=EXCLUDED.version_id`,
-    [tx.athleteId, input.aggregateId, schedule.versionId],
+  const advanced = await tx.query(
+    input.expectedVersionId === null
+      ? `INSERT INTO routine_schedule_head(athlete_id,schedule_id,version_id) VALUES($1,$2,$3)
+         ON CONFLICT(athlete_id,schedule_id) DO NOTHING RETURNING version_id`
+      : `UPDATE routine_schedule_head SET version_id=$3
+         WHERE athlete_id=$1 AND schedule_id=$2 AND version_id=$4 RETURNING version_id`,
+    input.expectedVersionId === null
+      ? [tx.athleteId, input.aggregateId, schedule.versionId]
+      : [tx.athleteId, input.aggregateId, schedule.versionId, input.expectedVersionId],
   );
+  if (advanced.rowCount !== 1) throw new RaceManualApprovalDomainWriteError('STALE_BASIS');
   for (const item of occurrences)
     await tx.query(
       `INSERT INTO routine_occurrence

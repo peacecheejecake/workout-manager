@@ -1,3 +1,4 @@
+import { selectRaceManualOwnedProtocolIn } from './race-manual-review-full-owned-binding-consumer-v2.js';
 import {
   captureRaceManualGarminPurposeV2In,
   raceManualGarminCorePurposeObservationV2Schema,
@@ -23,7 +24,10 @@ import {
 import { z } from 'zod';
 import type { Transaction } from './database.js';
 import { prepareRaceManualReviewFullOwnedBindingV2In } from './race-manual-review-full-owned-binding-consumer-v2.js';
-import { prepareRaceManualReviewRetainedPayloadV2 } from './race-manual-review-retained-payload-v2.js';
+import {
+  prepareRaceManualReviewRetainedPayloadV2,
+  prepareRaceManualReviewMultiOwnedRetainedPayloadV3,
+} from './race-manual-review-retained-payload-v2.js';
 import { raceManualReviewFullCopiedInventoryV2Schema } from './race-manual-review-full-copied-inventory-v2.js';
 import { reserveSourceBudget, type SourceBudget } from './race-plan-impact-nested-sources.js';
 import {
@@ -151,7 +155,12 @@ export async function prepareRaceManualConsumedUseV2In(
     sourceInput: binding.preparation.sourceInput,
     candidate: binding.preparation.candidate,
   };
-  const retained = prepareRaceManualReviewRetainedPayloadV2({
+  const observer = await selectRaceManualOwnedProtocolIn(tx, budget, 'observer');
+  const prepareRetained =
+    observer === 'public.observe_manual_review_multi_owned_source_bindings_v3'
+      ? prepareRaceManualReviewMultiOwnedRetainedPayloadV3
+      : prepareRaceManualReviewRetainedPayloadV2;
+  const retained = prepareRetained({
     state: 'present',
     preparation,
     inventory: binding.inventory,

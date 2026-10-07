@@ -1,9 +1,16 @@
 import { supplementarySpecSchema } from '@workout/contracts/supplementary-core';
-import { parseRaceManualReviewFullSqlObservationV2 } from './race-manual-review-full-owned-binding-consumer-v2.js';
+import {
+  selectRaceManualOwnedProtocolIn,
+  parseRaceManualReviewFullSqlObservationV2,
+  parseRaceManualReviewMultiOwnedSqlObservationV3,
+} from './race-manual-review-full-owned-binding-consumer-v2.js';
 import { z } from 'zod';
 import type { Transaction } from './database.js';
 import { raceManualReviewFullCopiedInventoryV2Schema } from './race-manual-review-full-copied-inventory-v2.js';
-import { raceManualReviewRetainedPayloadV2Schema } from './race-manual-review-retained-payload-v2.js';
+import {
+  raceManualReviewRetainedPayloadV2Schema,
+  raceManualReviewMultiOwnedRetainedPayloadV3Schema,
+} from './race-manual-review-retained-payload-v2.js';
 import {
   impactDependencyDigest,
   RaceImpactDependencyError,
@@ -419,7 +426,41 @@ export async function captureRaceManualReviewLifecycleInventoryV2In(
   unknownRetainedPayload: unknown,
   budget: SourceBudget,
 ) {
-  const retained = raceManualReviewRetainedPayloadV2Schema.parse(unknownRetainedPayload);
+  return captureLifecycleInventory(tx, unknownRetainedPayload, budget, 'single_race_v2');
+}
+export async function captureRaceManualReviewMultiOwnedLifecycleInventoryV3In(
+  tx: Transaction,
+  unknownRetainedPayload: unknown,
+  budget: SourceBudget,
+) {
+  return captureLifecycleInventory(tx, unknownRetainedPayload, budget, 'multi_owned_races_v3');
+}
+/** Actual finite SQL capability chooses the profile, never caller payload/GUC. */
+export async function captureRaceManualReviewCompatibleLifecycleInventoryIn(
+  tx: Transaction,
+  unknownRetainedPayload: unknown,
+  budget: SourceBudget,
+) {
+  const observer = await selectRaceManualOwnedProtocolIn(tx, budget, 'observer');
+  return observer === 'public.observe_manual_review_multi_owned_source_bindings_v3'
+    ? captureRaceManualReviewMultiOwnedLifecycleInventoryV3In(tx, unknownRetainedPayload, budget)
+    : captureRaceManualReviewLifecycleInventoryV2In(tx, unknownRetainedPayload, budget);
+}
+async function captureLifecycleInventory(
+  tx: Transaction,
+  unknownRetainedPayload: unknown,
+  budget: SourceBudget,
+  profile: 'single_race_v2' | 'multi_owned_races_v3',
+) {
+  const retainedSchema =
+    profile === 'single_race_v2'
+      ? raceManualReviewRetainedPayloadV2Schema
+      : raceManualReviewMultiOwnedRetainedPayloadV3Schema;
+  const parseObservation =
+    profile === 'single_race_v2'
+      ? parseRaceManualReviewFullSqlObservationV2
+      : parseRaceManualReviewMultiOwnedSqlObservationV3;
+  const retained = retainedSchema.parse(unknownRetainedPayload);
   if (retained.minimalAudit.athleteId !== tx.athleteId)
     throw new RaceImpactDependencyError('INVALID_CONTEXT');
   const anchor = z
@@ -452,7 +493,7 @@ export async function captureRaceManualReviewLifecycleInventoryV2In(
   );
   const observed = retained.payload.sqlObservations;
   // Structural observation is expected correspondence, never source authentication.
-  const parsedObservation = parseRaceManualReviewFullSqlObservationV2(
+  const parsedObservation = parseObservation(
     observed,
     refs.map((r) => r.identity),
   );

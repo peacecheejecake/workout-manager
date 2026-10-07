@@ -17,6 +17,41 @@ import {
 } from './race-plan-impact-dependencies.js';
 import { reserveSourceBudget, type SourceBudget } from './race-plan-impact-nested-sources.js';
 
+/** Capability selection is not source validation or authority. The exact SQL
+ * call selected here must propagate validation failures without legacy retry. */
+export async function selectRaceManualOwnedProtocolIn(
+  tx: Transaction,
+  budget: SourceBudget,
+  kind: 'observer' | 'store',
+) {
+  const protocols = {
+    observer: {
+      successor: 'public.observe_manual_review_multi_owned_source_bindings_v3',
+      predecessor: 'public.observe_manual_review_full_owned_source_bindings_v2',
+      signature: 'public.observe_manual_review_multi_owned_source_bindings_v3(jsonb)',
+    },
+    store: {
+      successor: 'public.store_manual_race_multi_owned_chain_v3',
+      predecessor: 'public.store_manual_race_chain_v2',
+      signature:
+        'public.store_manual_race_multi_owned_chain_v3(uuid,uuid,uuid,text,jsonb,jsonb,jsonb,jsonb)',
+    },
+  } as const;
+  const protocol = protocols[kind];
+  reserveSourceBudget(budget, 64n, 1);
+  const capability = z
+    .strictObject({ available: z.boolean() })
+    .parse(
+      (
+        await tx.query(
+          "SELECT coalesce(has_function_privilege(to_regprocedure($1::text), 'EXECUTE'),false) AS available",
+          [protocol.signature],
+        )
+      ).rows[0],
+    );
+  return capability.available ? protocol.successor : protocol.predecessor;
+}
+
 const identitySchema =
   raceManualReviewFullCopiedInventoryV2Schema.out.shape.refs.element.shape.identity;
 const hash = z.string().regex(/^[a-f0-9]{64}$/);
@@ -369,11 +404,29 @@ const structuralLimitations = {
  * It does not verify PostgreSQL JSONB hashes, transaction identity, source rows,
  * authentication, purpose or permission. Hash-shaped fields remain untrusted. */
 export function parseRaceManualReviewFullSqlObservationV2(raw: unknown, expectedRefs: unknown) {
+  return parseOwnedSqlObservation(raw, expectedRefs, 'single_race_v2');
+}
+/** SQL v3 protocol companion with the unchanged readonly wire2/hash algorithms.
+ * Nonempty whole owned race roster is structural membership only. PRIMARY
+ * intent/basis matching remains the trusted SQL storage validator's task. */
+export function parseRaceManualReviewMultiOwnedSqlObservationV3(
+  raw: unknown,
+  expectedRefs: unknown,
+) {
+  return parseOwnedSqlObservation(raw, expectedRefs, 'multi_owned_races_v3');
+}
+function parseOwnedSqlObservation(
+  raw: unknown,
+  expectedRefs: unknown,
+  protocol: 'single_race_v2' | 'multi_owned_races_v3',
+) {
   let reason: 'invalid_expected_refs' | 'invalid_observation' = 'invalid_expected_refs';
   try {
     const refs = parse(z.array(identitySchema).min(1).max(5000), expectedRefs);
     if (
-      refs.filter((r) => r.kind === 'race-event').length !== 1 ||
+      (protocol === 'single_race_v2'
+        ? refs.filter((r) => r.kind === 'race-event').length !== 1
+        : refs.filter((r) => r.kind === 'race-event').length < 1) ||
       new Set(refs.map(impactDependencyDigest)).size !== refs.length
     )
       invalid();
@@ -486,10 +539,11 @@ export async function prepareRaceManualReviewFullOwnedBindingV2In(
   // refs are a bounded Node→DB input, not a source response. Preserve visits.
   boundedPlain(refs);
   reserveSourceBudget(requestSourceBudget, 2048n, refs.length);
+  const observer = await selectRaceManualOwnedProtocolIn(tx, requestSourceBudget, 'observer');
   const remaining = 4194304n - requestSourceBudget.bytes;
   const observedRows = await tx.query(
     `/* manual_review_full_owned_binding_consumer_v2 */ WITH observed AS MATERIALIZED (
-      SELECT public.observe_manual_review_full_owned_source_bindings_v2($1::jsonb) AS observation,
+      SELECT ${observer}($1::jsonb) AS observation,
        encode(sha256(convert_to(($1::jsonb)::text,'UTF8')),'hex') AS "expectedRefsDigest",
        txid_current()::text AS "transactionId",current_user::text AS "callerRole",
        current_setting('app.athlete_id',true) AS "athleteId",current_setting('transaction_isolation') AS isolation
@@ -535,7 +589,10 @@ export async function prepareRaceManualReviewFullOwnedBindingV2In(
     isolation: gated.isolation,
   };
   if (BigInt(boundedPlain(wire)) > responseBytes) invalid();
-  const structural = parseRaceManualReviewFullSqlObservationV2(wire.observation, refs);
+  const structural =
+    observer === 'public.observe_manual_review_multi_owned_source_bindings_v3'
+      ? parseRaceManualReviewMultiOwnedSqlObservationV3(wire.observation, refs)
+      : parseRaceManualReviewFullSqlObservationV2(wire.observation, refs);
   if (structural.status === 'blocked') {
     if (structural.reason === 'decoded_bound')
       throw new RaceImpactDependencyError('CONTEXT_UNAVAILABLE', 'decoded_bytes');

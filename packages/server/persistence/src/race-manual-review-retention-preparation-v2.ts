@@ -1,9 +1,14 @@
 import type { Database, Transaction } from './database.js';
 import { validateRaceSourceResponseBudget } from './race-plan-impact-context.js';
 import type { SourceBudget } from './race-plan-impact-nested-sources.js';
-import { prepareRaceManualReviewFullOwnedBindingV2In } from './race-manual-review-full-owned-binding-consumer-v2.js';
+import {
+  selectRaceManualOwnedProtocolIn,
+  prepareRaceManualReviewFullOwnedBindingV2In,
+} from './race-manual-review-full-owned-binding-consumer-v2.js';
 import {
   prepareRaceManualReviewRetainedPayloadV2,
+  prepareRaceManualReviewMultiOwnedRetainedPayloadV3,
+  raceManualReviewMultiOwnedRetainedPayloadV3Schema,
   raceManualReviewRetainedPayloadV2Schema,
 } from './race-manual-review-retained-payload-v2.js';
 import { raceProjectionIntentSchema } from './race-plan-impact-projection-input.js';
@@ -34,8 +39,17 @@ export async function prepareRaceManualReviewRetentionV2In(
   );
   if (binding.status === 'blocked')
     return { ...limitations, status: 'blocked' as const, preparation: binding.preparation };
-  const retained = raceManualReviewRetainedPayloadV2Schema.parse(
-    prepareRaceManualReviewRetainedPayloadV2({
+  const observer = await selectRaceManualOwnedProtocolIn(tx, requestSourceBudget, 'observer');
+  const prepareRetained =
+    observer === 'public.observe_manual_review_multi_owned_source_bindings_v3'
+      ? prepareRaceManualReviewMultiOwnedRetainedPayloadV3
+      : prepareRaceManualReviewRetainedPayloadV2;
+  const retainedSchema =
+    observer === 'public.observe_manual_review_multi_owned_source_bindings_v3'
+      ? raceManualReviewMultiOwnedRetainedPayloadV3Schema
+      : raceManualReviewRetainedPayloadV2Schema;
+  const retained = retainedSchema.parse(
+    prepareRetained({
       state: 'present',
       preparation: {
         context: binding.preparation.context,

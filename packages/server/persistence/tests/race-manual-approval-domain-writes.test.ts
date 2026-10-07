@@ -147,19 +147,129 @@ describe('same transaction recovery/routine writes', () => {
   });
   it('persists exact new schedule and occurrence bytes without touching started runs', async () => {
     const { schedule, occurrence } = routine(),
-      { tx, query } = transaction();
+      priorVersionId = randomUUID(),
+      { tx, query } = transaction([
+        { version_id: priorVersionId, record_json: { ...schedule, versionId: priorVersionId } },
+      ]);
     const result = await persistRoutineScheduleVersionIn(tx, {
       aggregateId: schedule.id,
-      expectedVersionId: randomUUID(),
+      expectedVersionId: priorVersionId,
       schedule,
       sourcePlanVersionId: null,
       occurrences: [occurrence],
       approvedAt: at,
     });
     expect(result).toEqual({ versionId: schedule.versionId, occurrenceIds: [occurrence.id] });
-    expect(query.mock.calls[0]?.[1]?.[7]).toBe(JSON.stringify(schedule));
-    expect(query.mock.calls[2]?.[1]?.[8]).toBe(JSON.stringify(occurrence));
+    expect(query.mock.calls[1]?.[1]?.[7]).toBe(JSON.stringify(schedule));
+    expect(query.mock.calls[3]?.[1]?.[8]).toBe(JSON.stringify(occurrence));
+    expect(query.mock.calls[2]?.[0]).toContain('AND version_id=$4 RETURNING');
+    expect(query.mock.calls[2]?.[1]?.[3]).toBe(priorVersionId);
     expect(query.mock.calls.some(([sql]) => sql.includes('routine_run'))).toBe(false);
+  });
+  it('creates an absent head without updating historical occurrences', async () => {
+    const { schedule, occurrence } = routine(),
+      { tx, query } = transaction();
+    await persistRoutineScheduleVersionIn(tx, {
+      aggregateId: schedule.id,
+      expectedVersionId: null,
+      schedule,
+      sourcePlanVersionId: null,
+      occurrences: [occurrence],
+      approvedAt: at,
+    });
+    expect(query.mock.calls[2]?.[0]).toContain('DO NOTHING RETURNING');
+    expect(
+      query.mock.calls.some(([sql]) => /(?:UPDATE|DELETE).*routine_occurrence/s.test(sql)),
+    ).toBe(false);
+  });
+  it.each(['absent', 'changed', 'foreign'] as const)(
+    'rejects %s prior head before new version writes',
+    async (kind) => {
+      const { schedule, occurrence } = routine(),
+        expected = randomUUID();
+      const { tx, query } = transaction(
+        kind === 'absent'
+          ? []
+          : [
+              {
+                version_id: kind === 'changed' ? randomUUID() : expected,
+                record_json: {
+                  ...schedule,
+                  id: kind === 'foreign' ? randomUUID() : schedule.id,
+                  versionId: expected,
+                },
+              },
+            ],
+      );
+      await expect(
+        persistRoutineScheduleVersionIn(tx, {
+          aggregateId: schedule.id,
+          expectedVersionId: expected,
+          schedule,
+          sourcePlanVersionId: null,
+          occurrences: [occurrence],
+          approvedAt: at,
+        }),
+      ).rejects.toThrow('STALE_BASIS');
+      expect(query).toHaveBeenCalledTimes(1);
+    },
+  );
+  it('rejects a present head when absence was expected', async () => {
+    const { schedule, occurrence } = routine(),
+      prior = randomUUID();
+    const { tx, query } = transaction([
+      { version_id: prior, record_json: { ...schedule, versionId: prior } },
+    ]);
+    await expect(
+      persistRoutineScheduleVersionIn(tx, {
+        aggregateId: schedule.id,
+        expectedVersionId: null,
+        schedule,
+        sourcePlanVersionId: null,
+        occurrences: [occurrence],
+        approvedAt: at,
+      }),
+    ).rejects.toThrow('STALE_BASIS');
+    expect(query).toHaveBeenCalledTimes(1);
+  });
+  it('rejects a failed head CAS before occurrence writes', async () => {
+    const { schedule, occurrence } = routine(),
+      prior = randomUUID();
+    const { tx, query } = transaction([
+      { version_id: prior, record_json: { ...schedule, versionId: prior } },
+    ]);
+    query.mockResolvedValueOnce({ rows: [], rowCount: 1 });
+    query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    await expect(
+      persistRoutineScheduleVersionIn(tx, {
+        aggregateId: schedule.id,
+        expectedVersionId: prior,
+        schedule,
+        sourcePlanVersionId: null,
+        occurrences: [occurrence],
+        approvedAt: at,
+      }),
+    ).rejects.toThrow('STALE_BASIS');
+    expect(query).toHaveBeenCalledTimes(3);
+  });
+  it.each(['id', 'anchorKey'] as const)('rejects duplicate %s before SQL', async (key) => {
+    const { schedule, occurrence } = routine(),
+      { tx, query } = transaction();
+    const other =
+      key === 'id'
+        ? { ...occurrence, anchorKey: 'different' }
+        : { ...occurrence, id: randomUUID() };
+    await expect(
+      persistRoutineScheduleVersionIn(tx, {
+        aggregateId: schedule.id,
+        expectedVersionId: null,
+        schedule,
+        sourcePlanVersionId: null,
+        occurrences: [occurrence, other],
+        approvedAt: at,
+      }),
+    ).rejects.toThrow('CANDIDATE_NOT_APPROVABLE');
+    expect(query).not.toHaveBeenCalled();
   });
   it('denies foreign lineage and reused schedule version before SQL', async () => {
     const { schedule, occurrence } = routine(),

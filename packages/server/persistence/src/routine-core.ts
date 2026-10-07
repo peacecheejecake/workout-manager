@@ -302,7 +302,7 @@ async function scheduleRead(
 ): Promise<RoutineScheduleRead | null> {
   const row = (
     await tx.query(
-      `SELECT v.record_json,v.source_plan_version_id,h.notification_muted
+      `SELECT v.record_json,v.source_plan_version_id,h.notification_muted,h.version_id
      FROM routine_schedule_head h JOIN routine_schedule_version v
        ON v.athlete_id=h.athlete_id AND v.version_id=h.version_id
      WHERE h.athlete_id=$1 AND h.schedule_id=$2`,
@@ -312,9 +312,10 @@ async function scheduleRead(
   if (!row) return null;
   const rows = (
     await tx.query(
-      `SELECT record_json FROM routine_occurrence WHERE athlete_id=$1 AND schedule_id=$2
+      `SELECT record_json FROM routine_occurrence
+     WHERE athlete_id=$1 AND schedule_id=$2 AND schedule_version_id=$3
      ORDER BY scheduled_at NULLS LAST,anchor_key,id LIMIT 101`,
-      [tx.athleteId, scheduleId],
+      [tx.athleteId, scheduleId, row['version_id']],
     )
   ).rows;
   return routineScheduleReadSchema.parse({
@@ -759,6 +760,10 @@ export function createRoutineRepository(db: Database): RoutineRepository {
             const occurrence = routineOccurrenceSchema.parse(row['record_json']);
             const activeSchedule = routineScheduleVersionSchema.parse(row['schedule']);
             if (
+              occurrence.schedule.versionId !== activeSchedule.versionId ||
+              occurrence.schedule.id !== activeSchedule.id ||
+              row['version_id'] !== activeSchedule.versionId ||
+              occurrence.blueprint.id !== blueprint.routineId ||
               occurrence.blueprint.versionId !== blueprint.versionId ||
               activeSchedule.state !== 'active'
             )
