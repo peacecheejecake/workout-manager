@@ -1,3 +1,4 @@
+import { captureCourseReadSources } from './race-plan-impact-course-sources.js';
 import {
   validateRaceImpactConsumedManifest,
   type RaceImpactConsumedScope,
@@ -410,7 +411,6 @@ export async function captureRacePlanImpactContext(tx: Transaction, input: unkno
     )
       fail('INVALID_CONTEXT');
   }
-  const course = await captureCourse(tx, event);
   const collections = (
     await tx.query(
       'SELECT kind,revision,privacy_generation::text AS privacy_generation FROM race_collection_head WHERE athlete_id=$1 ORDER BY kind',
@@ -621,6 +621,7 @@ export async function captureRacePlanImpactContext(tx: Transaction, input: unkno
   let recoverySources: Awaited<ReturnType<typeof captureRecoverySourceFacts>>;
   let recoveryNutritionSources: Awaited<ReturnType<typeof captureRecoveryNutritionSourceFacts>>;
   let routineTimerReads: Awaited<ReturnType<typeof captureRoutineTimerReads>>;
+  let course: Awaited<ReturnType<typeof captureCourseReadSources>>;
   try {
     dependencyInventory = await captureIntegratedDependencyInventory(tx);
     routineActualManifest = await captureRoutineActualManifest(tx, sources);
@@ -628,6 +629,7 @@ export async function captureRacePlanImpactContext(tx: Transaction, input: unkno
       bytes: baseBytes,
       sources: sources.sourceCount() + routineActualManifest.uniqueSourceCount,
     };
+    course = await captureCourseReadSources(tx, event.course, sourceBudget);
     recoverySources = await captureRecoverySourceFacts(
       tx,
       recovery.map((row) => row.record),
@@ -743,26 +745,6 @@ export async function captureRacePlanImpactContext(tx: Transaction, input: unkno
   if (Buffer.byteLength(JSON.stringify(result), 'utf8') > decodedBytesCap)
     throw new RacePlanImpactContextError('CONTEXT_UNAVAILABLE', 'decoded_bytes');
   return result;
-}
-async function captureCourse(tx: Transaction, event: RaceEvent) {
-  if (event.course === null) return null;
-  const ref = event.course;
-  const row = (
-    await tx.query(
-      `SELECT c.status,r.revision_id,r.content_digest FROM course c JOIN course_revision r ON r.athlete_id=c.athlete_id AND r.course_id=c.course_id WHERE c.athlete_id=$1 AND c.course_id=$2 AND r.course_revision=$3 AND r.revision_id=$4`,
-      [tx.athleteId, ref.courseId, ref.courseRevision, ref.revisionId],
-    )
-  ).rows[0];
-  if (!row) fail('SOURCE_UNAVAILABLE');
-  const course = parse(
-    z.strictObject({
-      status: z.literal('available'),
-      revision_id: uuid,
-      content_digest: z.string().regex(/^[a-f0-9]{64}$/),
-    }),
-    row,
-  );
-  return { ref, digest: course.content_digest };
 }
 export type RacePlanImpactContext = Awaited<ReturnType<typeof captureRacePlanImpactContext>>;
 

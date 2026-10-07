@@ -831,6 +831,9 @@ importers:
       '@workout/server-coaching':
         specifier: workspace:*
         version: link:../coaching
+      '@workout/server-courses':
+        specifier: workspace:*
+        version: link:../courses
       '@workout/server-resource-ingestion':
         specifier: workspace:*
         version: link:../resource-ingestion
@@ -844,9 +847,6 @@ importers:
       '@types/pg':
         specifier: 8.23.1
         version: 8.23.1
-      '@workout/server-courses':
-        specifier: workspace:*
-        version: link:../courses
       '@workout/server-media':
         specifier: workspace:*
         version: link:../media

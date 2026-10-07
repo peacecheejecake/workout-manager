@@ -11,6 +11,7 @@
     "pg": "8.23.0",
     "zod": "4.6.5",
     "@workout/contracts": "workspace:*",
+    "@workout/server-courses": "workspace:*",
     "@workout/server-coaching": "workspace:*",
     "@workout/server-resource-ingestion": "workspace:*"
   },
@@ -86,7 +87,6 @@
   },
   "devDependencies": {
     "@types/pg": "8.23.1",
-    "@workout/server-courses": "workspace:*",
     "@workout/server-media": "workspace:*"
   }
 }

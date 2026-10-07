@@ -1,3 +1,8 @@
+import {
+  courseReadManifestSchema,
+  validateCourseReadManifest,
+  type CourseReadBlocker,
+} from './race-plan-impact-course-manifest.js';
 import { z } from 'zod';
 import { raceEventSchema } from '@workout/contracts/races';
 import { planSnapshotSchema } from '@workout/contracts/planning';
@@ -527,7 +532,7 @@ const captureSchema = z.strictObject({
   linkedPlan: planSnapshotSchema.nullable(),
   currentTraining: z.strictObject({ aggregateId: uuid, snapshot: planSnapshotSchema }).nullable(),
   completions: z.array(sessionCompletionSchema).max(1000),
-  course: z.json().nullable(),
+  course: courseReadManifestSchema.nullable(),
   rosters: z.strictObject({
     nutrition: z.array(tuple).max(1000),
     recovery: z.array(tuple).max(1000),
@@ -570,7 +575,8 @@ export type RaceImpactManifestBlocker = {
     | 'permission_port_missing'
     | 'bounds_exceeded'
     | RecoveryReadSourceBlocker['reason']
-    | RoutineReadBlocker['reason'];
+    | RoutineReadBlocker['reason']
+    | CourseReadBlocker;
 };
 export type RaceImpactConsumedManifestResult =
   | { readonly status: 'blocked'; readonly blockers: readonly RaceImpactManifestBlocker[] }
@@ -1003,7 +1009,11 @@ export function validateRaceImpactConsumedManifest(
     ['sourcePermissionManifest.resources', c.sourcePermissionManifest.resources],
   ] as const)
     if (rows.length) block(path, 'unsupported_consumed_channel');
-  if (c.course !== null || c.event.course !== null) block('course', 'unsupported_consumed_channel');
+  const courseResult = validateCourseReadManifest(
+    { athleteId: c.athleteId, eventCourse: c.event.course },
+    c.course,
+  );
+  for (const reason of courseResult.blockers) block('course', reason);
   const versions = new Map(c.nutrition.map((n) => [n.versionId.toLowerCase(), n]));
   if (
     versions.size !== c.nutrition.length ||

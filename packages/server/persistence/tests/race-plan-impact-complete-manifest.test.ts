@@ -1,3 +1,6 @@
+import { courseRevisionSchema } from '@workout/contracts/courses';
+import { courseContentDigest } from '@workout/server-courses/digest';
+import { courseReadManifestSchema } from '../src/race-plan-impact-course-manifest.js';
 import { sessionCompletionSchema } from '@workout/contracts/session-completion';
 import { routineRunReadSchema } from '@workout/contracts/routine-commands';
 import { recoverySourceFactsSchema } from '../src/race-plan-impact-recovery-sources.js';
@@ -97,7 +100,7 @@ function fixture() {
       .nullable(z.strictObject({ aggregateId: z.uuid(), snapshot: planSnapshotSchema }))
       .parse(null),
     completions: z.array(sessionCompletionSchema).parse([]),
-    course: null,
+    course: courseReadManifestSchema.nullable().parse(null),
     rosters: {
       nutrition: z.array(z.strictObject({ aggregateId: z.uuid(), versionId: z.uuid() })).parse([]),
       recovery: jsonRows(),
@@ -2581,4 +2584,165 @@ it('preserves an existing empty completion collection revision without fabricati
   c.coreDependencies.sessionCompletions = { kind: 'exists', revision: 9 };
   expect(inspect(c).status).toBe('validated_read_scope');
   expect(c.completions).toEqual([]);
+});
+
+function withCourseRead() {
+  const c = fixture();
+  const courseId = 'aaaaaaaa-0000-4000-8000-000000000031';
+  const revisionId = 'bbbbbbbb-0000-4000-8000-000000000032';
+  const ref = { courseId, courseRevision: 1, revisionId };
+  const record = courseRevisionSchema.parse({
+    ...ref,
+    name: 'Synthetic imported course',
+    geometry: {
+      type: 'LineString',
+      coordinates: [
+        [127, 37],
+        [127.01, 37.01],
+      ],
+    },
+    waypoints: [
+      { role: 'start', position: [127, 37], name: null, sourceSampleId: null, locked: false },
+      {
+        role: 'finish',
+        position: [127.01, 37.01],
+        name: null,
+        sourceSampleId: null,
+        locked: false,
+      },
+    ],
+    generation: {
+      kind: 'imported-file',
+      format: 'gpx',
+      sourceKind: 'gpx-rte',
+      itemIndex: 0,
+      parserId: 'gpx-track-v1',
+      parserVersion: 1,
+      fileSha256: hash,
+      fileByteLength: 320,
+      originalFilename: null,
+      fileCreator: null,
+      vertexCount: 2,
+      importedWaypointCount: 0,
+      ignoredFileWaypointCount: 0,
+    },
+    edit: { kind: 'imported' },
+    lineage: [],
+    distanceMeters: 0,
+    contentDigest: hash,
+    createdAt: now,
+  });
+  record.contentDigest = courseContentDigest({
+    ...record,
+    coordinates: record.geometry.coordinates,
+  });
+  c.event.course = ref;
+  c.course = courseReadManifestSchema.parse({
+    ref,
+    digest: record.contentDigest,
+    owned: {
+      athleteId: athlete,
+      head: {
+        status: 'available',
+        courseId,
+        name: record.name,
+        visibility: 'private',
+        headRevision: 1,
+        revisionId,
+        createdAt: now,
+        updatedAt: now,
+      },
+      revision: record,
+      deletion: absent(),
+    },
+    lineageSources: [],
+  });
+  return c;
+}
+function courseOwned(c: Capture) {
+  const owned = c.course?.owned;
+  if (!owned?.revision) throw Error('course fixture');
+  return { owned, record: owned.revision };
+}
+it('consumes nonempty full course projection as readonly scope while retaining geometry and provenance', () => {
+  const c = withCourseRead(),
+    body = structuredClone(c.course),
+    coverage = structuredClone(c.coverage);
+  const result = inspect(c);
+  expect(result.status).toBe('validated_read_scope');
+  if (result.status === 'validated_read_scope') {
+    expect(result.approvalAuthority).toBe('none');
+    expect(result.freshness).toBe('not_checked');
+    expect(result.remaining).toHaveLength(5);
+  }
+  expect(c.course).toEqual(body);
+  expect(c.coverage).toEqual(coverage);
+  expect(c.coverage.complete).toBe(false);
+  expect(c.course?.owned?.revision).toMatchObject({
+    distanceMeters: 0,
+    generation: { originalFilename: null, fileCreator: null },
+  });
+});
+it('retains legacy course metadata as explicitly blocked rather than routing acceptance', () => {
+  const c = withCourseRead();
+  if (!c.course) throw Error('course fixture');
+  c.course = { ref: c.course.ref, digest: c.course.digest };
+  blocked(c, 'course_owned_projection_port_missing', 'course');
+});
+it.each(['version', 'revisionId', 'digest', 'foreign', 'deleted', 'lineage_missing'] as const)(
+  'propagates course companion blocker into complete consumer: %s',
+  (kind) => {
+    const c = withCourseRead(),
+      { owned, record } = courseOwned(c);
+    let reason = 'course_version_mismatch';
+    if (kind === 'version') record.courseRevision = 2;
+    if (kind === 'revisionId') record.revisionId = generation;
+    if (kind === 'digest') {
+      if (!c.course) throw Error('fixture');
+      c.course.digest = hash;
+      reason = 'course_digest_mismatch';
+    }
+    if (kind === 'foreign') {
+      owned.athleteId = 'foreign';
+      reason = 'foreign_source';
+    }
+    if (kind === 'deleted') {
+      owned.deletion = { state: 'present', courseId: record.courseId };
+      reason = 'course_deleted';
+    }
+    if (kind === 'lineage_missing') {
+      record.lineage = [{ activityId: race, trackId: plan, trackRevision: 1 }];
+      if (!c.course) throw Error('fixture');
+      delete c.course.lineageSources;
+      record.contentDigest = courseContentDigest({
+        ...record,
+        coordinates: record.geometry.coordinates,
+      });
+      c.course.digest = record.contentDigest;
+      reason = 'lineage_source_port_missing';
+    }
+    blocked(c, reason, 'course');
+  },
+);
+it('uses requested historical course revision under a newer head without replacing it', () => {
+  const c = withCourseRead(),
+    { owned, record } = courseOwned(c),
+    original = structuredClone(record);
+  if (owned.head.status !== 'available') throw Error('fixture');
+  owned.head = { ...owned.head, headRevision: 2, revisionId: generation, name: 'Later course' };
+  expect(inspect(c).status).toBe('validated_read_scope');
+  expect(record).toEqual(original);
+});
+it('binds original course body into complete readset rather than trusting a copied digest', () => {
+  const c = withCourseRead(),
+    scope = sign(c),
+    { record } = courseOwned(c);
+  record.geometry.coordinates[1] = [128, 38];
+  expect(validateRaceImpactConsumedManifest(c, scope)).toMatchObject({
+    status: 'blocked',
+    blockers: expect.arrayContaining([
+      { path: 'readSetDigest', reason: 'digest_mismatch' },
+      { path: 'course', reason: 'course_digest_mismatch' },
+    ]),
+  });
 });

@@ -1,3 +1,6 @@
+import { captureCourseReadSources } from '../src/race-plan-impact-course-sources.js';
+import { createCourseRepository, type PreparedCourseContent } from '../src/courses.js';
+import { courseContentDigest } from '@workout/server-courses/digest';
 import { createSessionCompletionRepository } from '../src/session-completions.js';
 import {
   currentRestoreGeneration,
@@ -546,6 +549,111 @@ it('captures public completion reports against their own frozen historical sourc
   expect(after.completions).toEqual([retracted.report]);
   expect(after.coreDependencies.sessionCompletions).toEqual({ kind: 'exists', revision: 2 });
   expect(after.readSetDigest).not.toBe(consumed.capture.readSetDigest);
+});
+
+it('reads public imported course geometry and original revision after an owned head change', async () => {
+  const athlete = await account(),
+    repository = createCourseRepository(database);
+  const raw: PreparedCourseContent = {
+    name: 'Synthetic imported course',
+    coordinates: [
+      [127, 37],
+      [127.01, 37.01],
+    ],
+    waypoints: [
+      { role: 'start', position: [127, 37], name: null, sourceSampleId: null, locked: false },
+      {
+        role: 'finish',
+        position: [127.01, 37.01],
+        name: null,
+        sourceSampleId: null,
+        locked: false,
+      },
+    ],
+    generation: {
+      kind: 'imported-file',
+      format: 'gpx',
+      sourceKind: 'gpx-rte',
+      itemIndex: 0,
+      parserId: 'gpx-track-v1',
+      parserVersion: 1,
+      fileSha256: 'a'.repeat(64),
+      fileByteLength: 320,
+      originalFilename: null,
+      fileCreator: null,
+      vertexCount: 2,
+      importedWaypointCount: 0,
+      ignoredFileWaypointCount: 0,
+    },
+    edit: { kind: 'imported' },
+    lineage: [],
+    distanceMeters: 0,
+    contentDigest: 'a'.repeat(64),
+  };
+  const content = { ...raw, contentDigest: courseContentDigest(raw) };
+  const created = await repository.create(athlete, content, randomUUID());
+  if (created.status !== 'available') throw new Error('COURSE_NOT_AVAILABLE');
+  const event = await create(athlete, {
+    course: {
+      courseId: created.course.courseId,
+      courseRevision: 1,
+      revisionId: created.revision.revisionId,
+    },
+  });
+  const read = () =>
+    database.tenant(athlete, (tx) =>
+      captureRacePlanImpactConsumedScope(tx, {
+        eventId: event.id,
+        expectedRevision: 1,
+        selection: { kind: 'keep_plan' },
+      }),
+    );
+  const initial = await read();
+  expect(initial.capture.course?.owned?.revision).toEqual(created.revision);
+  expect(initial.consumedScope).toMatchObject({
+    status: 'validated_read_scope',
+    approvalAuthority: 'none',
+    freshness: 'not_checked',
+  });
+  const renamedRaw: PreparedCourseContent = {
+    ...content,
+    name: 'Synthetic renamed course',
+    edit: { kind: 'renamed' },
+  };
+  const renamed = await repository.update(
+    athlete,
+    created.course.courseId,
+    1,
+    { ...renamedRaw, contentDigest: courseContentDigest(renamedRaw) },
+    randomUUID(),
+  );
+  if (renamed.status !== 'available') throw new Error('COURSE_NOT_AVAILABLE');
+  const historical = await read();
+  expect(historical.capture.course?.owned?.head).toEqual(renamed.course);
+  expect(historical.capture.course?.owned?.revision).toEqual(created.revision);
+  expect(historical.consumedScope).toMatchObject({
+    status: 'validated_read_scope',
+    approvalAuthority: 'none',
+    freshness: 'not_checked',
+  });
+  expect(historical.capture.coverage.missing).toHaveLength(5);
+  expect(historical.capture.readSetDigest).not.toBe(initial.capture.readSetDigest);
+  const other = await account();
+  await expect(
+    database.tenant(other, (tx) =>
+      captureCourseReadSources(
+        tx,
+        {
+          courseId: created.course.courseId,
+          courseRevision: 1,
+          revisionId: created.revision.revisionId,
+        },
+        { bytes: 0n, sources: 0 },
+      ),
+    ),
+  ).rejects.toMatchObject({ code: 'SOURCE_UNAVAILABLE' });
+  await repository.remove(athlete, created.course.courseId, renamed.course.headRevision);
+  await expect(read()).rejects.toMatchObject({ code: 'SOURCE_UNAVAILABLE' });
 });
 
 it('rejects unknown DTO keys and refuses1001 heads rather than claiming first1000 complete', async () => {
