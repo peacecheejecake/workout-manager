@@ -589,3 +589,7 @@ Root actual PG R2 15/15·unit43/43 및 cleanup0로 non-stored five-domain 영향
 ## 네 도메인 두 Host·CheckIn 실제 삭제 수용 후속 · 2026-10-08
 
 Root actual allfour R16 Next/Vite **2/2**·V2 boundary unit355/355를 확인했다. 새 non-stored 진단→저장검토→명시승인→네 도메인 head/receipt 재생→영양 V4 readonly 화면까지 검증했고 raw126는 SQL116 원본을 보존하며 checklist UUID 비교만 교정한다. 이전 R1–R15 실패/진단 및 불일치 gate는 [I 기록](progress/M2-02i.md)에 보존한다. 실제 CheckIn copied/delete PG R2 **2/2**·companion unit327/327도 통과했다. 기존 값 없는 command ack 재생은 현재 자료가 아니며 삭제 자료/복사 payload 재생성없음을 확인했다. 별도 ended PG R3는2pass/1fail로 current/역사 schedule 분류 수정이 진행 중이다. unresolved editor 두Host4case와 archive 실제행 대응 증명을 native 병렬 진행한다. normal107/fixed116222/main/push0와 외부 not_executed·503은 유지한다.
+
+## fixed116 archive 행 대응 검증 갱신 · 2026-10-08
+
+Root가 신규 correspondence verifier의 단위19/19와 실제 PG composite1/1(skip0)을 통과했다. authenticated snapshot archive를 별도 일회용 DB에 실제 복원하고222 물리 관계의 행·배열 layout·float bit를 대조했다. 같은 count의 public 수정·target/key 불일치는 거절했고 정리 잔존0이다. [I 기록](progress/M2-02i.md)의 한정 fixed116 증거이며 최신 profile·tail/sequence·admission·전체 복원·공개 release는 미완료다. main/push0이다.
