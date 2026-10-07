@@ -1142,3 +1142,43 @@ it('unused actual ledger rows preserve manual/local membership and opaque keys s
     l.source_id += 'A';
   expect(validateRoutineReadSources(g).status).toBe('blocked');
 });
+
+it('validates an explicit CheckIn actual revision without treating its template as an actual', () => {
+  const c = fixture(),
+    b = blueprint(c),
+    r = run(c),
+    a = actual(c);
+  const step = b.record.steps[0],
+    progress = r.record.progress[0];
+  if (!step || !progress) throw Error('fixture');
+  step.content = { kind: 'checkin_template', ref: { id: id(9), versionId: id(10) } };
+  const ref = { kind: 'checkin' as const, id: id(4), revisionId: '1' };
+  progress.actualRefs = [ref];
+  a.fact = {
+    requested: ref,
+    state: 'current',
+    reason: null,
+    current: { id: id(4), revision: 1, deleted: false },
+    content: {
+      observedAt: at,
+      timezone: 'UTC',
+      fatigue: 0,
+      discomfort: null,
+      bodyLocation: null,
+      note: null,
+    },
+  };
+  sync(c);
+  expect(validateRoutineReadSources(c).blockers).toEqual([]);
+  expect(validateRoutineReadSources(c).status).toBe('validated_read_sources');
+  a.fact.state = 'historical';
+  a.fact.current = { id: id(4), revision: 2, deleted: false };
+  expect(validateRoutineReadSources(c).blockers).toEqual([]);
+  a.fact.current = { id: id(11), revision: 2, deleted: false };
+  expect(reasons(c)).toContain('actual_membership_mismatch');
+  a.fact.current = { id: id(4), revision: 1, deleted: false };
+  expect(reasons(c)).toContain('actual_membership_mismatch');
+  a.fact.state = 'current';
+  a.fact.current = { id: id(4), revision: 1, deleted: true };
+  expect(reasons(c)).toContain('actual_membership_mismatch');
+});

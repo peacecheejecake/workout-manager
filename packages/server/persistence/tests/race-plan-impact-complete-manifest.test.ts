@@ -3621,3 +3621,71 @@ it('full ledger correspondence rejects forged local fallback for a consumed Garm
     fullManualActivityReasons(c).some((r) => r.reason === 'actual_permission_port_missing'),
   ).toBe(true);
 });
+
+function withCheckInTemplate(historical = false) {
+  const c = withNutritionRef();
+  const b = c.routineActualManifest.blueprints[0];
+  const o = c.routineActualManifest.occurrences[0];
+  if (!b || !o || !b.record.steps[0]) throw Error('fixture');
+  b.record.steps[0].content = { kind: 'checkin_template', ref: { id: plan, versionId: version } };
+  o.record.stepBindings = [];
+  c.sourcePermissionManifest.planned = [];
+  const headId = historical ? race : version;
+  const descriptor = {
+    templateId: plan,
+    versionId: version,
+    version: 1,
+    currentHead: { templateId: plan, versionId: headId, version: historical ? 2 : 1 },
+    contentDigest: hash,
+    definitionVersion: 'checkin-v1',
+    source: 'user',
+    method: 'self_report',
+    authority: 'none',
+    freshness: 'not_checked',
+  };
+  c.sourcePermissionManifest.catalog = [
+    {
+      requested: { kind: 'checkin_template', ref: { id: plan, versionId: version } },
+      state: historical ? 'historical' : 'current',
+      reason: null,
+      content: { digest: hash },
+      currentHead: { aggregate_id: plan, version_id: headId },
+      checkInTemplateSource: descriptor,
+    },
+  ];
+  return c;
+}
+it.each([false, true])(
+  'validates exact metadata-only CheckIn template descriptor historical=%s without copying prompts or adding authority',
+  (historical) => {
+    const c = withCheckInTemplate(historical);
+    sign(c);
+    const before = structuredClone(c);
+    const r = inspect(c);
+    expect(r.status).toBe('validated_read_scope');
+    if (r.status === 'validated_read_scope') {
+      expect(r.approvalAuthority).toBe('none');
+      expect(r.freshness).toBe('not_checked');
+    }
+    expect(c).toEqual(before);
+    expect(JSON.stringify(c.sourcePermissionManifest.catalog)).not.toContain('instructions');
+  },
+);
+it.each(['missing', 'tuple', 'digest', 'head', 'unknown', 'wrong-kind'] as const)(
+  'rejects CheckIn template descriptor %s correspondence',
+  (kind) => {
+    const c = withCheckInTemplate();
+    const row = z.record(z.string(), z.unknown()).parse(c.sourcePermissionManifest.catalog[0]);
+    const d = z.record(z.string(), z.unknown()).parse(row['checkInTemplateSource']);
+    if (kind === 'missing') delete row['checkInTemplateSource'];
+    if (kind === 'tuple') d['templateId'] = race;
+    if (kind === 'digest') d['contentDigest'] = '2'.repeat(64);
+    if (kind === 'head') d['currentHead'] = { templateId: plan, versionId: race, version: 1 };
+    if (kind === 'unknown') d['instructions'] = 'No raw prompt extension';
+    if (kind === 'wrong-kind')
+      row['requested'] = { kind: 'nutrition_template', ref: { id: plan, versionId: version } };
+    if (kind !== 'missing') row['checkInTemplateSource'] = d;
+    c.sourcePermissionManifest.catalog = [z.json().parse(row)];
+    expect(inspect(c).status).toBe('blocked');
+  },
+);

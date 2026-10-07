@@ -249,10 +249,7 @@ export async function captureRoutineActualManifest(tx: Transaction, sources: Rou
               favorite: row.favorite,
             },
       unsupportedContent: record.steps
-        .filter(
-          (step) =>
-            step.content.kind === 'recovery_method' || step.content.kind === 'checkin_template',
-        )
+        .filter((step) => step.content.kind === 'recovery_method')
         .map((step) => ({
           stepId: step.id,
           content: step.content,

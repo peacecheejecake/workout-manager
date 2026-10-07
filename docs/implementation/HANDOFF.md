@@ -585,3 +585,7 @@ Root actual Chromium Next/Vite 날짜 검토 R3 **2/2** 및 RTL99/platform focus
 ## 공개 영향 진단 실제 DB 수용 · 2026-10-08
 
 Root actual PG R2 15/15·unit43/43 및 cleanup0로 non-stored five-domain 영향 서비스의 소유권·동의·revision·긴 ID 해결을 검증했다. R1 fixture sorted-item 오류14/1은 [I 기록](progress/M2-02i.md)에 보존했다. candidate/receipt/plan head 쓰기는 없으며 HTTP/UI/whole phase 완료가 아니다. 병렬 nutrition V4 consumer/API 구현을 회수해 Root rebuild·두Host 수용을 진행하고 ended unresolved의 frozen 보존 정책 모순을 별도 교정한다. normalregistry107/main/push0와 공개503·native·외부 not_executed를 유지한다.
+
+## 네 도메인 두 Host·CheckIn 실제 삭제 수용 후속 · 2026-10-08
+
+Root actual allfour R16 Next/Vite **2/2**·V2 boundary unit355/355를 확인했다. 새 non-stored 진단→저장검토→명시승인→네 도메인 head/receipt 재생→영양 V4 readonly 화면까지 검증했고 raw126는 SQL116 원본을 보존하며 checklist UUID 비교만 교정한다. 이전 R1–R15 실패/진단 및 불일치 gate는 [I 기록](progress/M2-02i.md)에 보존한다. 실제 CheckIn copied/delete PG R2 **2/2**·companion unit327/327도 통과했다. 기존 값 없는 command ack 재생은 현재 자료가 아니며 삭제 자료/복사 payload 재생성없음을 확인했다. 별도 ended PG R3는2pass/1fail로 current/역사 schedule 분류 수정이 진행 중이다. unresolved editor 두Host4case와 archive 실제행 대응 증명을 native 병렬 진행한다. normal107/fixed116222/main/push0와 외부 not_executed·503은 유지한다.

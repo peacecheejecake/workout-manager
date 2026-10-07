@@ -38,6 +38,24 @@ const opaque = z.string().min(1).max(200);
 const revision = z.number().int().min(1).max(2147483647);
 const hash = z.string().regex(/^[a-f0-9]{64}$/);
 const absent = z.strictObject({ state: z.literal('absent') });
+/** Captured exact reader descriptor, never source authentication or approval. */
+export const checkInTemplateCatalogDescriptorSchema = z.strictObject({
+  templateId: uuid,
+  versionId: uuid,
+  version: z.number().int().min(1).max(2147483646),
+  currentHead: z.strictObject({
+    templateId: uuid,
+    versionId: uuid,
+    version: z.number().int().min(1).max(2147483646),
+  }),
+  contentDigest: hash,
+  definitionVersion: z.literal('checkin-v1'),
+  source: z.literal('user'),
+  method: z.literal('self_report'),
+  authority: z.literal('none'),
+  freshness: z.literal('not_checked'),
+});
+
 const checklist = z.strictObject({
   id: uuid,
   run_id: uuid,
@@ -488,10 +506,7 @@ export function validateRoutineReadSources(input: unknown): {
     )
       block('blueprints', 'source_identity_mismatch');
     const expected = row.record.steps
-      .filter(
-        (step) =>
-          step.content.kind === 'recovery_method' || step.content.kind === 'checkin_template',
-      )
+      .filter((step) => step.content.kind === 'recovery_method')
       .map((step) => ({
         stepId: step.id,
         content: step.content,
@@ -580,7 +595,7 @@ export function validateRoutineReadSources(input: unknown): {
     for (const p of r.progress) {
       const step = steps.get(p.stepId);
       if (!step) block(`${path}.progress`, 'actual_membership_mismatch');
-      else if (step.content.kind === 'recovery_method' || step.content.kind === 'checkin_template')
+      else if (step.content.kind === 'recovery_method')
         block(`${path}.${p.stepId}`, 'unsupported_consumed_content');
     }
     for (const [key, a] of facts) {
@@ -665,6 +680,7 @@ export function validateRoutineReadSources(input: unknown): {
           ) &&
           retained.current.contentDigest === intake.get(retained.requested.id)?.contentDigest;
         if (
+          ref.kind !== 'checkin' &&
           !matchesRetained &&
           !(
             ref.kind === 'activity' &&

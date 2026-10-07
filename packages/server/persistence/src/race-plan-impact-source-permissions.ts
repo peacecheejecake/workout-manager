@@ -1,3 +1,5 @@
+import { captureCheckInTemplateSourceIn } from './check-in-template-source.js';
+import { checkInTemplateCatalogDescriptorSchema } from './race-plan-impact-routine-manifest.js';
 import {
   readTrainingPlanAggregateSource,
   type TrainingPlanAggregateSource,
@@ -421,12 +423,48 @@ export async function captureRaceImpactSourcePermissions(
       continue;
     }
     if (requested.kind === 'checkin_template') {
+      // The catalog visit was reserved above. The reader owns exact body/scalar
+      // reservations; its one visit replaces that reservation rather than doubling it.
+      const templateBudget = {
+        bytes,
+        sources: input.existingSourceCount + refs.length + resourceIds.length + extraSources - 1,
+      };
+      const exact = await captureCheckInTemplateSourceIn(tx, requested.ref, templateBudget);
+      bytes = templateBudget.bytes;
+      if (!exact.record || !exact.currentHead) {
+        catalog.push({
+          requested,
+          state: 'unavailable' as const,
+          reason: exact.reason,
+          content: null,
+          currentHead: null,
+        });
+        continue;
+      }
+      const contentDigest = impactDependencyDigest(exact.record);
+      // Drop title/instructions/field prompts here: no new copied template body.
+      const descriptor = checkInTemplateCatalogDescriptorSchema.parse({
+        templateId: exact.record.templateId,
+        versionId: exact.record.versionId,
+        version: exact.record.version,
+        currentHead: exact.currentHead,
+        contentDigest,
+        definitionVersion: exact.record.content.definitionVersion,
+        source: exact.record.content.source,
+        method: exact.record.content.method,
+        authority: 'none',
+        freshness: 'not_checked',
+      });
       catalog.push({
         requested,
-        state: 'unavailable' as const,
-        reason: 'producer_content_contract_unavailable',
-        content: null,
-        currentHead: null,
+        state: exact.state,
+        reason: null,
+        content: { digest: contentDigest },
+        currentHead: {
+          aggregate_id: exact.currentHead.templateId,
+          version_id: exact.currentHead.versionId,
+        },
+        checkInTemplateSource: descriptor,
       });
       continue;
     }

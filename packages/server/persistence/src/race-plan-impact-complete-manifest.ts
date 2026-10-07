@@ -1,3 +1,4 @@
+import { checkInTemplateCatalogDescriptorSchema } from './race-plan-impact-routine-manifest.js';
 import { garminActivityReadFactsSchema } from './race-plan-impact-garmin-activity-read-facts.js';
 import { healthKitActivityReadFactsSchema } from './race-plan-impact-healthkit-activity-read-facts.js';
 import { localImportedActivityReadFactsSchema } from './race-plan-impact-local-imported-activity-read-facts.js';
@@ -511,6 +512,7 @@ const activityMedia = z.strictObject({
   media: jsonRows,
 });
 const catalog = z.strictObject({
+  checkInTemplateSource: checkInTemplateCatalogDescriptorSchema.optional(),
   requested: routineStepContentSchema,
   state: z.enum(['current', 'historical', 'unavailable']),
   reason: z.string().nullable(),
@@ -1395,7 +1397,9 @@ export function validateRaceImpactConsumedManifest(
       b.unsupportedContent.length ||
       b.record.steps.some(
         (step) =>
-          !['checklist', 'nutrition_template', 'workout_template'].includes(step.content.kind),
+          !['checklist', 'nutrition_template', 'workout_template', 'checkin_template'].includes(
+            step.content.kind,
+          ),
       )
     )
       block(`blueprint:${b.record.versionId}`, 'unsupported_consumed_channel');
@@ -1438,6 +1442,31 @@ export function validateRaceImpactConsumedManifest(
       c.recoverySources?.methodCatalogRequests.some((ref) => equal(ref, requested))
     )
       continue;
+    if (requested.kind === 'checkin_template') {
+      const source = row?.checkInTemplateSource;
+      if (
+        !row ||
+        !source ||
+        row.state === 'unavailable' ||
+        row.reason !== null ||
+        !sameId(source.templateId, requested.ref.id) ||
+        !sameId(source.versionId, requested.ref.versionId) ||
+        !sameId(source.currentHead.templateId, requested.ref.id) ||
+        row.content?.digest !== source.contentDigest ||
+        !row.currentHead ||
+        !sameId(row.currentHead.aggregate_id, source.currentHead.templateId) ||
+        !sameId(row.currentHead.version_id, source.currentHead.versionId) ||
+        (row.state === 'current'
+          ? !sameId(source.currentHead.versionId, source.versionId) ||
+            source.currentHead.version !== source.version
+          : sameId(source.currentHead.versionId, source.versionId) ||
+            source.currentHead.version <= source.version) ||
+        (row.exercises !== undefined && row.exercises.length !== 0) ||
+        row.provenance !== undefined
+      )
+        block('sourcePermissionManifest.catalog', 'source_membership_mismatch');
+      continue;
+    }
     if (requested.kind === 'workout_template') continue;
     if (requested.kind !== 'nutrition_template') {
       block('sourcePermissionManifest.catalog', 'unsupported_consumed_channel');
@@ -1461,6 +1490,9 @@ export function validateRaceImpactConsumedManifest(
     )
       block('sourcePermissionManifest.catalog', 'source_membership_mismatch');
   }
+  for (const row of catalogRows.values())
+    if (row.requested.kind !== 'checkin_template' && row.checkInTemplateSource !== undefined)
+      block('sourcePermissionManifest.catalog', 'source_membership_mismatch');
   for (const row of catalogRows.values())
     if (!catalogRequests.has(impactDependencyDigest(row.requested)))
       block('sourcePermissionManifest.catalog', 'unsupported_consumed_channel');
