@@ -1,3 +1,14 @@
+import {
+  classifyIntegratedApprovalNutritionCopies,
+  classifyIntegratedNutritionCopiedSources,
+  inspectIntegratedNutritionCopiedSources,
+  integratedCandidatePayloadDigest,
+  integratedV4ContextDependencyKinds,
+  nutritionCopiedSourceMaximumRefs,
+  nutritionCopiedSourceMaximumRowBytes,
+  nutritionCopiedSourceMaximumTotalBytes,
+  type NutritionCopiedSourceClassification,
+} from './nutrition-copied-source-inventory.js';
 import { requireAppAdmission, requireAppBinding } from './app-admission.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
@@ -51,27 +62,9 @@ function canonical(value: unknown): string {
 }
 
 const same = (left: unknown, right: unknown) => canonical(left) === canonical(right);
-const sha256 = (value: unknown) => createHash('sha256').update(canonical(value)).digest('hex');
 const receiptKey = (kind: 'prepare' | 'approve', key: string) =>
   `integrated-v4:${kind}:${createHash('sha256').update(key).digest('hex')}`;
-const requiredDependencyKinds = [
-  'activity-head',
-  'intake-head',
-  'supplementary-execution-head',
-  'supplementary-set-head',
-  'food-catalog-head',
-  'exercise-catalog-head',
-  'routine-catalog-head',
-  'routine-run-head',
-  'routine-occurrence-head',
-  'routine-blueprint-head',
-  'recovery-action-head',
-  'recovery-method-head',
-  'check-in-head',
-  'session-completion-head',
-  'coaching-constraint-head',
-  'ai-consent',
-] as const;
+const requiredDependencyKinds = integratedV4ContextDependencyKinds;
 
 export class IntegratedApprovalV4Error extends Error {
   constructor(
@@ -288,11 +281,97 @@ async function finish(tx: Transaction, key: string, request: unknown, result: un
   );
 }
 
+const copiedSourceSnapshotSchema = z.strictObject({
+  matched_count: z.number().int().min(0).max(nutritionCopiedSourceMaximumRefs),
+  largest_bytes: z.number().int().nonnegative(),
+  total_bytes: z
+    .string()
+    .max(19)
+    .regex(/^(0|[1-9][0-9]*)$/),
+  source_rows: z.array(z.unknown()).nullable(),
+});
+async function candidateInventoryIn(
+  tx: Transaction,
+  candidate: IntegratedCandidateV4,
+): Promise<NutritionCopiedSourceClassification> {
+  const identity = {
+    athleteId: tx.athleteId,
+    id: candidate.id,
+    proposalId: candidate.proposalId,
+    digest: candidate.digest,
+    createdAt: candidate.createdAt,
+  };
+  const inspected = inspectIntegratedNutritionCopiedSources({ identity, body: candidate });
+  if (inspected.kind === 'unsupported') return inspected;
+  const refs = inspected.manifest.nutritionVersions;
+  // Frozen full tuples, not current nutrition heads. No race SELECT or new grant:
+  // race owner/original-event authority belongs to the SQL suppression protocol.
+  let rows: unknown[] = [];
+  if (refs.length !== 0) {
+    // Size preflight and conditional body materialization share ONE MVCC snapshot.
+    // Neither malformed nor oversized payloads cross the SQL→JS boundary.
+    const snapshot = await tx.query(
+      `WITH requested AS MATERIALIZED (
+        SELECT * FROM unnest($2::uuid[],$3::uuid[]) AS source(plan_id,version_id)
+      ), sizes AS MATERIALIZED (
+        SELECT count(*)::int AS matched_count,
+          coalesce(max(octet_length(v.record_json::text)),0)::int AS largest_bytes,
+          coalesce(sum(octet_length(jsonb_build_object('athlete_id',v.athlete_id,
+            'plan_id',v.plan_id,'version_id',v.version_id,'record_json',v.record_json)::text)),0)
+            +2*count(*)+2 AS total_bytes
+        FROM nutrition_plan_version v JOIN requested source
+          ON source.plan_id=v.plan_id AND source.version_id=v.version_id
+        WHERE v.athlete_id=$1
+      ) SELECT matched_count,largest_bytes,total_bytes::text AS total_bytes,
+        CASE WHEN matched_count=cardinality($2::uuid[]) AND largest_bytes<=$4 AND total_bytes<=$5
+        THEN (SELECT coalesce(jsonb_agg(jsonb_build_object('athlete_id',v.athlete_id,
+          'plan_id',v.plan_id,'version_id',v.version_id,'record_json',v.record_json)
+          ORDER BY v.plan_id,v.version_id),'[]'::jsonb)
+          FROM nutrition_plan_version v JOIN requested source
+            ON source.plan_id=v.plan_id AND source.version_id=v.version_id
+          WHERE v.athlete_id=$1 AND sizes.largest_bytes<=$4 AND sizes.total_bytes<=$5)
+        ELSE NULL END AS source_rows FROM sizes`,
+      [
+        tx.athleteId,
+        refs.map((ref) => ref.planId),
+        refs.map((ref) => ref.versionId),
+        nutritionCopiedSourceMaximumRowBytes,
+        nutritionCopiedSourceMaximumTotalBytes,
+      ],
+    );
+    const checked = copiedSourceSnapshotSchema.safeParse(snapshot.rows[0]);
+    if (
+      !checked.success ||
+      checked.data.matched_count !== refs.length ||
+      checked.data.source_rows === null
+    )
+      return { kind: 'unsupported', reason: 'source_unavailable' };
+    if (
+      checked.data.largest_bytes > nutritionCopiedSourceMaximumRowBytes ||
+      BigInt(checked.data.total_bytes) > BigInt(nutritionCopiedSourceMaximumTotalBytes)
+    )
+      return { kind: 'unsupported', reason: 'source_limit' };
+    rows = checked.data.source_rows;
+  }
+  return classifyIntegratedNutritionCopiedSources({
+    identity,
+    body: candidate,
+    nutritionRows: rows,
+  });
+}
+function candidateCopyAvailable(inventory: Awaited<ReturnType<typeof candidateInventoryIn>>) {
+  return (
+    inventory.kind !== 'unsupported' &&
+    (inventory.kind !== 'related' || inventory.disconnectedVersions.length === 0)
+  );
+}
+
 async function readCandidate(tx: Transaction, candidateId: string) {
   const row = (
     await tx.query(
-      'SELECT id,proposal_id,digest,body,created_at FROM integrated_candidate_v4 WHERE athlete_id=$1 AND id=$2',
-      [tx.athleteId, candidateId],
+      `SELECT id,proposal_id,digest,CASE WHEN octet_length(body::text)<=$3 THEN body ELSE NULL END AS body,created_at
+       FROM integrated_candidate_v4 WHERE athlete_id=$1 AND id=$2`,
+      [tx.athleteId, candidateId, nutritionCopiedSourceMaximumTotalBytes],
     )
   ).rows[0];
   if (!row) return null;
@@ -305,6 +384,7 @@ async function readCandidate(tx: Transaction, candidateId: string) {
     candidate.data.createdAt !== iso(row['created_at'])
   )
     return null;
+  if (!candidateCopyAvailable(await candidateInventoryIn(tx, candidate.data))) return null;
   return candidate.data;
 }
 
@@ -634,7 +714,10 @@ export function createIntegratedApprovalV4Repository(
         summary: input.summary,
         validation: input.validation,
       };
-      const request = { kind: 'integrated_prepare_v4', digest: sha256(payload) };
+      const request = {
+        kind: 'integrated_prepare_v4',
+        digest: integratedCandidatePayloadDigest(payload),
+      };
       return guarded(athleteId, async (tx) => {
         const prior = await replay(tx, key, request);
         if (prior !== null) {
@@ -651,9 +734,11 @@ export function createIntegratedApprovalV4Repository(
           schemaVersion: 4,
           id: randomUUID(),
           ...payload,
-          digest: sha256(payload),
+          digest: integratedCandidatePayloadDigest(payload),
           createdAt,
         });
+        if (!candidateCopyAvailable(await candidateInventoryIn(tx, candidate)))
+          throw new IntegratedApprovalV4Error('STALE_BASIS');
         await assertFresh(tx, candidate, policyVersion);
         await tx.query(
           `INSERT INTO integrated_candidate_v4(athlete_id,id,proposal_id,digest,body,created_at)
@@ -681,7 +766,21 @@ export function createIntegratedApprovalV4Repository(
       const request = { kind: 'integrated_approve_v4', ...input };
       return guarded(athleteId, async (tx) => {
         const prior = await replay(tx, key, request);
-        if (prior !== null) return integratedApprovalResultV4Schema.parse(prior);
+        if (prior !== null) {
+          const committed = integratedApprovalResultV4Schema.parse(prior);
+          if (
+            classifyIntegratedApprovalNutritionCopies({
+              identity: {
+                approvalId: committed.approvalId,
+                candidateId: input.candidateId,
+                approvedAt: committed.approvedAt,
+              },
+              body: committed,
+            }).kind === 'unsupported'
+          )
+            throw new IntegratedApprovalV4Error('CANDIDATE_MISMATCH');
+          return committed;
+        }
         await requireAppAdmission(tx);
         const candidate = await readCandidate(tx, input.candidateId);
         if (!candidate) throw new IntegratedApprovalV4Error('CANDIDATE_UNAVAILABLE');
