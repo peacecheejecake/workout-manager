@@ -338,3 +338,11 @@ V3 receipt 소비자와 replay-only API는 원 승인 tuple만 반환하며 rece
 Root 실제 copied-source unit26 및 V4 PG17 승인 회귀19, compatible V3 preview PG17 R2 3, 관련 계약 회귀141과 수동 증빙 계약38/contracts build를 확인했다. 실패했던 startup과 시간 기대값 시험은 별도 로그로 보존하며 [I](progress/M2-02i.md), [J](progress/M2-02j.md)의 최신 범위·한계를 따른다. main `1d557358`은 clean, phase 병합·push0이다.
 
 Native 병렬 작업은 SQL108의 exact copied-channel 처리, immutable V2 pin과 분리한 proposed-after 계산, 수동 증빙의 저장용 redacted lifecycle 계약으로 나눴다. Shared registry/grants/restore/graph는 Root 소유다. 미등록 migration·합성 fixture를 공개 승인·privacy restore 또는 출시 완료로 세지 않는다. AWS CLI token 만료와 새 recovery-v1 정확 실행 승인, iPhone 연결/합성 측정, PB 비교 기준 및 FUT-09 원문은 질문 대기다. 기존 실패 drill 승인을 새 artifact 실행에 재사용하지 않는다. macOS IPC32 정리는 승인 대기지만 Docker PG17 검증을 차단하지 않는다.
+
+## 최신 bounded source 검증 체크포인트 · 2026-10-07
+
+- 현재 작업 branch/worktree는 `phase/m2-02` / `.claude/worktrees/phase-m2-02`이며 HEAD `1679d8c5`다. 완료 자기보고 frozen source는 `fba081ff`, owned immutable course projection은 `21c0b11b`, manual intake retained read 및 실제 recorded lineage는 `1679d8c5`로 커밋했다. 위 이전 “미커밋” 기록은 당시 상태이며 최신 구현은 [I progress](progress/M2-02i.md)를 따른다.
+- 최종 scoped unit327/327, 공개 producer 기반 실제 합성 PG17 context63+course lineage9=72/72, persistence/API TS·변경 lint/format 통과, 전용 DB/역할 잔존0이다. 앞선 실패 로그는 각각 별도 보존한다. external object bytes·live provider·AWS/HTTPS/iPhone/전체 archive restore 증거로 승격하지 않는다.
+- normal migration registry107·기본 export34를 유지한다. raw SQL108–113와 명시 read/writer/export35 시험을 configured 제품 활성화로 세지 않는다. full collector missing5/authority none/freshness not_checked, I/J/phase in_progress다. 전체 phase gates와 fresh context-less gpt-6-sol high 독립 phase 검토 전 main 병합 금지; push는 사용자 작업이다. main `1d557358` clean을 재확인했다.
+- 다음 native 병렬 작업은 manual Activity retained read exact correspondence 포트, workout template의 full immutable catalog source, purpose-bound 저장 체인의 missing gate 조사다. Root가 공통 capture/consumer/graph를 통합하고 실제 DB 수용을 수행한다. agent 단위 통과만으로 full source permission·semantic freshness/all-domain approval 완료를 선언하지 않는다.
+- PB chip/gun·거리 분류, FUT-09 원문과 기존 AWS recovery-v1 정확 실행 승인/새 로그인·iPhone 합성 측정 질문은 기존 대기 상태를 따른다. Docker 경로가 있으므로 새 macOS IPC 일괄 삭제는 현재 DB 검증에 필요하지 않다.
