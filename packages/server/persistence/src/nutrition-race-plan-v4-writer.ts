@@ -484,74 +484,95 @@ function selectTiming(
     ),
   };
 }
+export interface NutritionRacePlanV4WriteOptions {
+  readonly now?: () => Date;
+  readonly id?: () => string;
+}
+function prepareWrite(unknownIntent: unknown) {
+  if (bytes(unknownIntent) > 524288) throw new NutritionRacePlanV4WriterError('NUTRITION_V4_LIMIT');
+  const outer = saveNutritionPlanV4IntentSchema.parse(unknownIntent),
+    intent = outer.intent,
+    command = intent.command;
+  const request = {
+    operation: 'nutrition_plan_save',
+    intentSchemaVersion: 4,
+    ...command,
+    expectedRaceHeads: intent.expectedRaceHeads,
+    reconnectItemIds: intent.reconnectItemIds,
+  };
+  const key = `nutrition-plan:${command.idempotencyKey}`;
+  return { outer, intent, command, request, key };
+}
+/** Same-tenant transaction seam for standalone SQL110 nutrition authority.
+ * The caller owns transaction/fences and rollback. This grants no integrated
+ * approval, affected-domain completeness or proposal applicability authority. */
+export function saveNutritionPlanV4In(
+  tx: Transaction,
+  unknownIntent: unknown,
+  options: NutritionRacePlanV4WriteOptions = {},
+): Promise<NutritionRacePlanV4WriteResult> {
+  return commitPreparedWrite(tx, prepareWrite(unknownIntent), options);
+}
+async function commitPreparedWrite(
+  tx: Transaction,
+  prepared: ReturnType<typeof prepareWrite>,
+  { now = () => new Date(), id = randomUUID }: NutritionRacePlanV4WriteOptions,
+): Promise<NutritionRacePlanV4WriteResult> {
+  const { outer, intent, command, request, key } = prepared;
+  await lockAppAdmission(tx);
+  const replay = await originalReceipt(tx, key, request, command.planId);
+  if (replay) return replay;
+  await requireAppAdmission(tx);
+  const { prior, size } = await priorHead(tx, intent);
+  const affected = deriveNutritionAffectedItemIdsV4(prior, intent);
+  await requireOrigins(tx, prior, intent);
+  const sources = await preparationSources(tx, intent, addSize(bytes(outer), size));
+  const timing = selectTiming(prior, intent, affected, sources);
+  const versionId = z.uuid().parse(id()).toLowerCase(),
+    approvalId = z.uuid().parse(id()).toLowerCase();
+  const saved = nutritionPlanVersionV4Schema.parse({
+    ...command.draft,
+    schemaVersion: 4,
+    planId: prior.planId,
+    versionId,
+    version: prior.version + 1,
+    previousVersionId: prior.versionId,
+    approvalId,
+    approvedAt: now().toISOString(),
+    items: command.draft.items.map((item) => ({ ...item, planVersionId: versionId })),
+    raceTimingPins: timing.raceTimingPins,
+    itemRaceTimingBindings: timing.itemRaceTimingBindings,
+  });
+  addSize(sources.size, bytes(saved));
+  const notices = frozenNotices(saved, sources.training);
+  const changed = new Set(affected);
+  if (
+    notices.some((notice) => notice.code === 'UNRESOLVED_PRESERVED' && changed.has(notice.itemId))
+  )
+    throw new NutritionRacePlanV4WriterError('NUTRITION_V4_TIMING_UNRESOLVED');
+  const committed = await tx.query(
+    'SELECT public.commit_nutrition_plan_v4($1::uuid,$2::uuid,$3::jsonb,$4::jsonb) AS result',
+    [prior.planId, prior.versionId, JSON.stringify(request), JSON.stringify(saved)],
+  );
+  if (committed.rows.length !== 1) return invalid();
+  const reference = decode(receiptResult, committed.rows[0]?.['result']);
+  if (
+    !sameId(reference.planId, saved.planId) ||
+    !sameId(reference.versionId, saved.versionId) ||
+    reference.version !== saved.version ||
+    !sameId(reference.approvalId, saved.approvalId)
+  )
+    return invalid();
+  return { plan: saved, notices };
+}
 export function createNutritionRacePlanV4Writer(
   database: Database,
-  { now = () => new Date(), id = randomUUID }: { now?: () => Date; id?: () => string } = {},
+  { now = () => new Date(), id = randomUUID }: NutritionRacePlanV4WriteOptions = {},
 ): NutritionRacePlanV4Writer {
   return {
     savePlanV4(athleteId, unknownIntent) {
-      if (bytes(unknownIntent) > 524288)
-        throw new NutritionRacePlanV4WriterError('NUTRITION_V4_LIMIT');
-      const outer = saveNutritionPlanV4IntentSchema.parse(unknownIntent),
-        intent = outer.intent,
-        command = intent.command;
-      const request = {
-        operation: 'nutrition_plan_save',
-        intentSchemaVersion: 4,
-        ...command,
-        expectedRaceHeads: intent.expectedRaceHeads,
-        reconnectItemIds: intent.reconnectItemIds,
-      };
-      const key = `nutrition-plan:${command.idempotencyKey}`;
-      return database.tenant(athleteId, async (tx) => {
-        await lockAppAdmission(tx);
-        const replay = await originalReceipt(tx, key, request, command.planId);
-        if (replay) return replay;
-        await requireAppAdmission(tx);
-        const { prior, size } = await priorHead(tx, intent);
-        const affected = deriveNutritionAffectedItemIdsV4(prior, intent);
-        await requireOrigins(tx, prior, intent);
-        const sources = await preparationSources(tx, intent, addSize(bytes(outer), size));
-        const timing = selectTiming(prior, intent, affected, sources);
-        const versionId = z.uuid().parse(id()).toLowerCase(),
-          approvalId = z.uuid().parse(id()).toLowerCase();
-        const saved = nutritionPlanVersionV4Schema.parse({
-          ...command.draft,
-          schemaVersion: 4,
-          planId: prior.planId,
-          versionId,
-          version: prior.version + 1,
-          previousVersionId: prior.versionId,
-          approvalId,
-          approvedAt: now().toISOString(),
-          items: command.draft.items.map((item) => ({ ...item, planVersionId: versionId })),
-          raceTimingPins: timing.raceTimingPins,
-          itemRaceTimingBindings: timing.itemRaceTimingBindings,
-        });
-        addSize(sources.size, bytes(saved));
-        const notices = frozenNotices(saved, sources.training);
-        const changed = new Set(affected);
-        if (
-          notices.some(
-            (notice) => notice.code === 'UNRESOLVED_PRESERVED' && changed.has(notice.itemId),
-          )
-        )
-          throw new NutritionRacePlanV4WriterError('NUTRITION_V4_TIMING_UNRESOLVED');
-        const committed = await tx.query(
-          'SELECT public.commit_nutrition_plan_v4($1::uuid,$2::uuid,$3::jsonb,$4::jsonb) AS result',
-          [prior.planId, prior.versionId, JSON.stringify(request), JSON.stringify(saved)],
-        );
-        if (committed.rows.length !== 1) return invalid();
-        const reference = decode(receiptResult, committed.rows[0]?.['result']);
-        if (
-          !sameId(reference.planId, saved.planId) ||
-          !sameId(reference.versionId, saved.versionId) ||
-          reference.version !== saved.version ||
-          !sameId(reference.approvalId, saved.approvalId)
-        )
-          return invalid();
-        return { plan: saved, notices };
-      });
+      const prepared = prepareWrite(unknownIntent);
+      return database.tenant(athleteId, (tx) => commitPreparedWrite(tx, prepared, { now, id }));
     },
   };
 }
