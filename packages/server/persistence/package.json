@@ -83,7 +83,9 @@
     "./nutrition-race-plan-writer": "./src/nutrition-race-plan-writer.ts",
     "./race-relative-schedule-calculation": "./src/race-relative-schedule-calculation.ts",
     "./race-timing-bindings": "./src/race-timing-bindings.ts",
-    "./nutrition-race-plan-v4-writer": "./src/nutrition-race-plan-v4-writer.ts"
+    "./nutrition-race-plan-v4-writer": "./src/nutrition-race-plan-v4-writer.ts",
+    "./race-manual-review-preparation-v2": "./src/race-manual-review-preparation-v2.ts",
+    "./race-manual-review-source-inventory-v2": "./src/race-manual-review-source-inventory-v2.ts"
   },
   "devDependencies": {
     "@types/pg": "8.23.1",
