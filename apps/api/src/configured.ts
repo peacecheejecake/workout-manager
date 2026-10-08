@@ -36,6 +36,7 @@ import { createRaceManualPublicRepository } from '@workout/server-persistence/ra
 import { createCheckInTemplateRepository } from '@workout/server-persistence/check-in-templates';
 import { createDashboardRepository } from '@workout/server-persistence/dashboard';
 import { createOperationsRepository } from '@workout/server-persistence/operations';
+import { createCurrentRuntimeV9Repositories } from './current-runtime-v9-repositories.js';
 import { createGalleryMediaRepository } from '@workout/server-persistence/gallery-media';
 import { createActivityTrackRepository } from '@workout/server-persistence/activity-tracks';
 import { createCourseRepository } from '@workout/server-persistence/courses';
@@ -97,6 +98,9 @@ const environmentSchema = z.object({
     .string()
     .url()
     .refine((value) => ['postgres:', 'postgresql:'].includes(new URL(value).protocol)),
+  WORKOUT_RUNTIME_PROFILE: z
+    .enum(['baseline107', 'installed-current-profile25'])
+    .default('baseline107'),
   PUBLIC_ORIGIN: z.string().url(),
   OIDC_ISSUER: z.string().url(),
   OIDC_CLIENT_ID: z.string().min(1),
@@ -276,6 +280,13 @@ export async function createConfiguredApi(
   const activityTrackParser = createBoundedTrackParser();
   const closeParsers = () => Promise.all([courseImportParser.close(), activityTrackParser.close()]);
   try {
+    const runtimeRepositories =
+      env.WORKOUT_RUNTIME_PROFILE === 'installed-current-profile25'
+        ? await createCurrentRuntimeV9Repositories(database)
+        : {
+            raceManualPublic: createRaceManualPublicRepository(database),
+            operations: createOperationsRepository(database),
+          };
     const resourceStorage = await createLocalFilesystemObjectStorage(
       env.PRIVATE_RESOURCE_STORAGE_ROOT,
     );
@@ -431,9 +442,9 @@ export async function createConfiguredApi(
       activityContext: createActivityContextRepository(database),
       checkIns: createCheckInRepository(database),
       checkInTemplates: createCheckInTemplateRepository(database),
-      raceManualPublic: createRaceManualPublicRepository(database),
+      raceManualPublic: runtimeRepositories.raceManualPublic,
       dashboard: createDashboardRepository(database),
-      operations: createOperationsRepository(database),
+      operations: runtimeRepositories.operations,
       resources: createPrivateTextResourceRepository(database),
       resourceFiles: {
         uploads: createResourceFileUploadRepository(database),

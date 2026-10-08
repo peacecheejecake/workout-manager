@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createConfiguredApi } from '../src/configured.js';
+import { createCurrentRuntimeV9Repositories } from '../src/current-runtime-v9-repositories.js';
 
 // Startup OIDC discovery is a network call; this test is about what the entrypoint hands the
 // factory, so the provider is replaced and nothing here reaches the network or a database.
@@ -12,10 +13,16 @@ vi.mock('@workout/server-identity/oidc', () => ({
     exchange: vi.fn(),
   })),
 }));
+vi.mock('../src/current-runtime-v9-repositories.js', () => ({
+  createCurrentRuntimeV9Repositories: vi.fn(async () => {
+    throw new Error('CURRENT_RUNTIME_V9_UNAVAILABLE');
+  }),
+}));
 
 let storageRoot: string;
 
 beforeEach(async () => {
+  vi.clearAllMocks();
   storageRoot = await mkdtemp(join(tmpdir(), 'workout-configured-env-'));
   vi.stubEnv('NODE_ENV', 'development');
   vi.stubEnv('DATABASE_URL', 'postgres://runtime:secret@127.0.0.1:1/workout');
@@ -39,6 +46,7 @@ beforeEach(async () => {
     'ROUTING_PROFILE_CONFIG',
     'ROUTING_ENGINE_ALLOWED_HOSTS',
     'WORKOUT_RELEASE',
+    'WORKOUT_RUNTIME_PROFILE',
   ])
     vi.stubEnv(key, undefined);
 });
@@ -54,6 +62,7 @@ describe('createConfiguredApi given the real process environment (M2-01aa)', () 
     expect(Object.getPrototypeOf(process.env)).not.toBe(Object.prototype);
     const app = await createConfiguredApi(process.env);
     try {
+      expect(createCurrentRuntimeV9Repositories).not.toHaveBeenCalled();
       expect((await app.inject('/health')).statusCode).toBe(200);
     } finally {
       await app.close();
@@ -76,5 +85,17 @@ describe('createConfiguredApi given the real process environment (M2-01aa)', () 
     // The release is written into every log line, so it may hold nothing but a name.
     vi.stubEnv('WORKOUT_RELEASE', 'token=secret value');
     await expect(createConfiguredApi(process.env)).rejects.toThrow();
+  });
+  it('selects the named profile25 gate explicitly and refuses startup without readiness', async () => {
+    vi.stubEnv('WORKOUT_RUNTIME_PROFILE', 'installed-current-profile25');
+    await expect(createConfiguredApi(process.env)).rejects.toThrow(
+      'CURRENT_RUNTIME_V9_UNAVAILABLE',
+    );
+    expect(createCurrentRuntimeV9Repositories).toHaveBeenCalledTimes(1);
+  });
+  it('refuses unknown runtime profiles before selecting a repository', async () => {
+    vi.stubEnv('WORKOUT_RUNTIME_PROFILE', 'installed-current-profile26');
+    await expect(createConfiguredApi(process.env)).rejects.toThrow();
+    expect(createCurrentRuntimeV9Repositories).not.toHaveBeenCalled();
   });
 });

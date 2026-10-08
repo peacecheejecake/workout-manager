@@ -809,3 +809,9 @@ Root177 frozen inputs의 trusted twoDB named 설치·baselineV2/core·grant42·�
 Root 새 catalog-only comparator 실제 R2 11/11·unit24/24를 확인했다. R1 3pass/8fail은 역사 namespace 분류기의 새 wm_manual_pooled 거절 문제였으며 정확 namespace7·whole hash·28 sections 검증으로 교정했다. 실패/소스 SHA/실제 두 DB 및 drift 음성/cleanup0은 [I 기록](progress/M2-02i.md)에 보존한다. Caller expected/hash/role 입력·owner URL·private ledger grant는 없고 결과는 processingAuthority none/restore not_verified/supported false다. 이 관측만으로 새 처리나 복원 권한을 주장하지 않는다.
 
 Native agent는 source-bound proof/compiler, readiness successor, 정상 API repository factory를 비중복 파일에 병렬 구현한다. Root가 공통 configured/package/asset·DB·graph/Git를 통합한다. 원문 없는 신규 계획 생성·사용 개발은 계속하며 FUT-09 역사 원문 이식은 별도 대기다. I/J/phase 및 정상 configured 최종 수용/복원/외부 운영·full phase review/main/push는 미완료다.
+
+## 2026-10-08 정상 신규 계획 구성 코드 및 남은 실제 검증
+
+원문 없는 신규 계획 생성·사용 개발을 계속한다. Root catalog 전용 DB 연결 실제4pass/11filtered skip(원 cold11과 별도), source-proof/readiness/APIfactory 및 explicit configured selector 통합 unit59/59·전체 persistence/API TS·scoped lint/format0을 확인했다. Source artifact compiler는 Vitest/Playwright 실제 로그와 고정 source manifest를 검증하며 Root pin은 아직 null이다. 따라서 latest 정상 startup의 ready를 아직 주장하지 않는다.
+
+다음은 native 준비 candidate manifest의 source/case/log 범위를 Root가 검사·고정→실제 compile/immutable pin→normal configured 실제5case와 두 Host 최신 경로를 실행하는 순서다. Native compiler staging은 TMP만, normal configured fixture는 별도1파일에서 준비했다. Root가 공통 source asset/configured/package·DB·graph/Git를 소유한다. FUT-09 역사 원문 이식은 별도 대기이며 latest restore/운영503/AWS/native/provider/full phase gate·독립 검토/main/push는 미완료다. exactSHA/결과와 실패는 [I 기록](progress/M2-02i.md)을 따른다.
