@@ -780,3 +780,8 @@ Root SQL141 실제27/27·unit10/10을 확인했다. End140 installer 준비도 f
 ## 2026-10-08 원문 없는 신규 계획 개발 · end141 설치 검증
 
 사용자의 신규 계획 생성·사용 개발 지시를 유지한다. FUT-09 역사 원문 이식은 별도 대기다. Root 최종 end141 installer V8 실제 PG22/22·unit7/7·scoped lint/format exit0와 시험 잔존0을 확인했다. Post141 metadata 실제24함수(public12/private12)·기존33 불변·154입력 전후 SHA를 관측했다. 권한 V8 actual R1은18pass/2fail이며 fixture 교정 후 다시 검증한다. 대량 혼합400/400/30의 전체 승인·export와 cold/configured/복원·phase/main·외부 not_executed는 미완료로 유지한다.
+
+
+## 2026-10-08 신규 계획 권한 재검증·대량 후속
+
+Root grant V8 actual R1 18pass/2fail을 보존하고 정확 fixture 교정 후 R2 20/20·unit58/58·전체persistenceTS/scoped lint/format0·잔존0을 확인했다. Dense actual R6는3pass/5fail이며 public.review52.447초·preview12.237초·losslessread30.064초, 승인 parentreader2302497byte 뒤4MiB budget 초과가 남는다. 원문 없는 신규 계획 생성·사용 개발은 native 병렬로 계속한다. 역사 원문 이식·전체 대량수용/정상configured/cold/복원·phase/main·외부 not_executed는 별도 미완료다. [I 기록](progress/M2-02i.md)에 실제 로그·SHA·실패를 보존한다.
