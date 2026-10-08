@@ -924,6 +924,12 @@ export function validateRaceImpactConsumedManifest(
       c.currentTraining?.snapshot.id,
       c.linkedPlan?.id,
       ...c.completions.map((report) => report.planVersionId),
+      // Exact frozen schedule dependencies are also consumed plan bodies. The
+      // strict schedule companion below validates their full tuples/membership;
+      // including them here does not authorize an unvalidated or foreign plan.
+      ...c.routineActualManifest.schedules.flatMap((row) =>
+        row.sourcePlanVersionId === null ? [] : [row.sourcePlanVersionId],
+      ),
       ...allNutrition.flatMap((n) =>
         n.record.linkedTrainingPlanVersionId === null ? [] : [n.record.linkedTrainingPlanVersionId],
       ),

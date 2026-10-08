@@ -3689,3 +3689,98 @@ it.each(['missing', 'tuple', 'digest', 'head', 'unknown', 'wrong-kind'] as const
     expect(inspect(c).status).toBe('blocked');
   },
 );
+
+function withScheduleOnlyTrainingSource(ended: boolean) {
+  const c = withNutritionRef(),
+    source = withSupplementary().currentTraining?.snapshot;
+  if (!source) throw Error('fixture training source');
+  const historical = planSnapshotSchema.parse({
+    ...source,
+    draft: { ...source.draft, sessions: [] },
+  });
+  const current = planSnapshotSchema.parse({ ...historical, id: generation, version: 2 });
+  c.currentTraining = { aggregateId: plan, snapshot: current };
+  c.coreDependencies.trainingPlan = { kind: 'exists', versionId: current.id };
+  c.consumedSources.plans = [historical, current];
+  const row = c.routineActualManifest.schedules[0],
+    routine = c.routines[0];
+  if (!row || !routine) throw Error('fixture schedule');
+  row.sourcePlanVersionId = historical.id;
+  routine.sourceVersionId = historical.id;
+  routine.sourceRelation = 'historical';
+  if (ended) {
+    const successor = routineScheduleVersionSchema.parse({
+      ...row.record,
+      versionId: race,
+      state: 'ended',
+    });
+    row.currentHead = {
+      state: 'present',
+      versionId: successor.versionId,
+      notificationMuted: false,
+    };
+    c.routineActualManifest.schedules.push({
+      ...structuredClone(row),
+      versionId: successor.versionId,
+      record: successor,
+    });
+    c.routineActualManifest.uniqueSourceCount = 3;
+    routine.versionId = successor.versionId;
+    routine.record = successor;
+    c.rosters.routine = [{ aggregateId: routine.aggregateId, versionId: successor.versionId }];
+    const occurrence = c.routineActualManifest.occurrences[0];
+    if (!occurrence) throw Error('fixture occurrence');
+    occurrence.currentSchedule = { state: 'present', versionId: successor.versionId };
+  }
+  return { c, historical, current };
+}
+it.each([false, true])(
+  'validates schedule-only exact historical training consumed body ended=%s without repin or authority',
+  (ended) => {
+    const { c, historical } = withScheduleOnlyTrainingSource(ended),
+      before = structuredClone(c);
+    const result = inspect(c);
+    if (result.status === 'blocked') expect(result.blockers).toEqual([]);
+    expect(result.status).toBe('validated_read_scope');
+    if (result.status === 'validated_read_scope') {
+      expect(result.approvalAuthority).toBe('none');
+      expect(result.freshness).toBe('not_checked');
+      expect(result.remaining).toHaveLength(5);
+    }
+    expect(c.consumedSources.plans).toEqual(before.consumedSources.plans);
+    expect(
+      c.routineActualManifest.schedules.every((s) => s.sourcePlanVersionId === historical.id),
+    ).toBe(true);
+    expect(c.coverage.complete).toBe(false);
+  },
+);
+it.each(['missing', 'foreign', 'duplicate', 'extra', 'malformed'] as const)(
+  'rejects schedule-only historical training %s instead of treating a source ID set as permission',
+  (kind) => {
+    const { c, historical } = withScheduleOnlyTrainingSource(true);
+    const row = c.routineActualManifest.schedules[0];
+    if (!row) throw Error('fixture schedule');
+    if (kind === 'missing')
+      c.consumedSources.plans = c.consumedSources.plans.filter((p) => p.id !== historical.id);
+    if (kind === 'foreign') row.sourcePlanVersionId = blueprintId;
+    if (kind === 'duplicate') c.routineActualManifest.schedules.push(structuredClone(row));
+    if (kind === 'extra')
+      c.consumedSources.plans.push(planSnapshotSchema.parse({ ...historical, id: blueprintId }));
+    if (kind === 'malformed')
+      return expect(
+        validateRaceImpactConsumedManifest(
+          {
+            ...c,
+            routineActualManifest: {
+              ...c.routineActualManifest,
+              schedules: [{ ...row, sourcePlanVersionId: { claimed: historical.id } }],
+            },
+          },
+          sign(c),
+        ).status,
+      ).toBe('blocked');
+    const result = inspect(c);
+    expect(result.status).toBe('blocked');
+    if (result.status === 'blocked') expect(result.blockers.length).toBeGreaterThan(0);
+  },
+);
