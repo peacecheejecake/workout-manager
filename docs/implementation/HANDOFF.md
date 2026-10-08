@@ -763,3 +763,7 @@ Root 새 Node V38 export R2 실제7/7와 별도 단위147/147을 확인했다. �
 ## 2026-10-08 원문 없는 신규 계획 저장 개선 수용
 
 사용자 지시에 따라 원문 없는 신규 계획 생성·사용 기능 개발을 계속한다. FUT-09 역사 원문 이식은 별도 대기다. Root SQL140 실제 PG R1 0pass/25skip과 R2 23pass/2fail을 보존하고 fixture 교정 뒤 R3 25/25·unit4/4·시험 잔존0을 확인했다. 대량400/400/30은 실제 store2738ms·ACK1769ms까지 진행했지만 Node 스키마 순환 import 오류로 전체2pass/4fail이었다. 최소 transport 수정·대량 승인 재검증은 병렬 진행하며 전체 승인/export·정상 profile/cold/복원·phase/main·외부 not_executed를 통과로 바꾸지 않는다. 상세 로그·SHA는 [I 기록](progress/M2-02i.md)을 따른다.
+
+## 2026-10-08 신규 계획 결과 스키마 교정·다음 병목
+
+Public-first 모듈 순환 초기화 결함을 transport result2곳의 lazy 참조로 교정하고 Root unit13/13을 확인했다. 대량 R4는2pass/4fail: actual store2761ms·ACK1722ms 다음 applicationprepare5013ms/57014로 중단됐다. 저장/ACK 진행을 전체 승인 통과로 승격하지 않는다. 다음 successor 개선 설계와 정상profile 준비를 native agent에 병렬 배정했다. 원문 없는 신규 계획 개발은 계속하며 역사 이식은 별도 대기, phase/main·운영/복원·외부 gate는 미완료다. [I 기록](progress/M2-02i.md)에 실패/검증/cleanup/SHA를 보존한다.

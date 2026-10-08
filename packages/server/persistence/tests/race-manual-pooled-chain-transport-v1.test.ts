@@ -1,4 +1,4 @@
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import type { Transaction } from '../src/database.js';
 import { createRaceManualPooledTransportFixtureV1 } from './race-manual-pooled-test-fixtures-v1.js';
 import { encodeRaceManualReviewPooledRetainedPayloadV1 } from '../src/race-manual-review-pooled-retained-payload-v1.js';
@@ -296,4 +296,41 @@ it('concurrent result with different minted IDs is accepted only after exact ori
       return id;
     }),
   ).rejects.toThrow();
+});
+
+it('public-first fresh module initialization preserves strict reader and ACK result schemas', async () => {
+  vi.resetModules();
+  try {
+    const publicEntry = await import('../src/race-manual-public.js');
+    expect(publicEntry.createRaceManualPooledPublicRepositoryForBundle).toBeTypeOf('function');
+    const transport = await import('../src/race-manual-pooled-chain-transport-v1.js');
+    expect(transport.parseRaceManualPooledChainReadTransportV1(purged).result).toEqual(result);
+    const m = mock([ackResponse]);
+    expect(
+      await transport.ackRaceManualPooledChainTransportV1In(m.tx, result, f.logical, {
+        bytes: 0n,
+        sources: 0,
+      }),
+    ).toMatchObject({ result, authority: 'none', approvalAllowed: false });
+    expect(m.calls).toHaveLength(1);
+    for (const changed of [
+      { ...result, schemaVersion: 3 },
+      { ...result, evidenceId: null },
+      { ...result, extra: true },
+      { ...result, applicable: true },
+    ]) {
+      expect(() =>
+        transport.parseRaceManualPooledChainReadTransportV1({ ...purged, result: changed }),
+      ).toThrow();
+      const bad = mock([{ ...ackResponse, ack: { ...acknowledgement, result: changed } }]);
+      await expect(
+        transport.ackRaceManualPooledChainTransportV1In(bad.tx, result, f.logical, {
+          bytes: 0n,
+          sources: 0,
+        }),
+      ).rejects.toThrow();
+    }
+  } finally {
+    vi.resetModules();
+  }
 });

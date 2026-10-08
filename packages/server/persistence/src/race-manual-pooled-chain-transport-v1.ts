@@ -186,7 +186,7 @@ export async function storeRaceManualPooledChainTransportV1In(
 const readWire = z.strictObject({
   readerVersion: z.literal(1),
   schemaVersion: z.literal(2),
-  result: raceManualReviewChainResultV2Schema,
+  result: z.lazy(() => raceManualReviewChainResultV2Schema),
   payloadEncoding: encoding.nullable(),
   payload: z.unknown(),
   purgedAt: z.iso.datetime({ offset: true }).nullable(),
@@ -239,7 +239,7 @@ export async function readRaceManualPooledChainTransportV1In(
 const ackWire = z.strictObject({
   ackVersion: z.literal(2),
   payloadEncoding: encoding,
-  result: raceManualReviewChainResultV2Schema,
+  result: z.lazy(() => raceManualReviewChainResultV2Schema),
   bodyState: z.literal('present'),
   payloadDigestMethod: z.literal('postgres-jsonb-v1'),
   payloadSqlDigest: hash,
