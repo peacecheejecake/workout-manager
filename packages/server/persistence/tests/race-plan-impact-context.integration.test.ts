@@ -1625,7 +1625,31 @@ it('B captures unresolved/outside-period historical occurrences and consumes the
     );
   });
   const advanced = await capture(athlete, event.id);
-  expect(advanced.routineActualManifest.schedules[0]?.versionId).toBe(schedule.versionId);
+  expect(advanced.routineActualManifest.schedules.map((row) => row.versionId).sort()).toEqual(
+    [schedule.versionId, versionId].sort(),
+  );
+  const historicalSchedule = advanced.routineActualManifest.schedules.find(
+    (row) => row.scheduleId === schedule.id && row.versionId === schedule.versionId,
+  );
+  const currentSchedule = advanced.routineActualManifest.schedules.find(
+    (row) => row.scheduleId === schedule.id && row.versionId === versionId,
+  );
+  expect(historicalSchedule?.record).toEqual(schedule);
+  expect(historicalSchedule?.sourcePlanVersionId).toBe(historical);
+  expect(currentSchedule?.record).toEqual(next);
+  expect(currentSchedule?.sourcePlanVersionId).toBeNull();
+  for (const row of [historicalSchedule, currentSchedule])
+    expect(row?.currentHead).toEqual({ state: 'present', versionId, notificationMuted: false });
+  expect(advanced.routineActualManifest.occurrences.map((row) => row.record.id).sort()).toEqual(
+    [unresolved.id, resolved.id].sort(),
+  );
+  for (const originalOccurrence of [unresolved, resolved]) {
+    const retained = advanced.routineActualManifest.occurrences.find(
+      (row) => row.record.id === originalOccurrence.id,
+    );
+    expect(retained?.record).toEqual(originalOccurrence);
+    expect(retained?.currentSchedule).toEqual({ state: 'present', versionId });
+  }
   expect(advanced.routineActualManifest.occurrences[0]?.currentSchedule).toEqual({
     state: 'present',
     versionId,
@@ -2306,9 +2330,23 @@ it('B keeps exact historical check-in values after correction and a content-free
     current: { revision: 2 },
     content: { fatigue: 0, discomfort: null },
   });
-  expect(historical.routineActualManifest.blueprints[0]?.unsupportedContent).toMatchObject([
-    { reason: 'producer_content_unsupported' },
-  ]);
+  const templateContent = blueprint.steps[0]?.content;
+  if (!templateContent || templateContent.kind !== 'checkin_template')
+    throw new Error('Missing frozen check-in template fixture');
+  const frozenBlueprint = historical.routineActualManifest.blueprints.find(
+    (row) =>
+      row.record.routineId === blueprint.routineId && row.record.versionId === blueprint.versionId,
+  );
+  expect(frozenBlueprint?.record).toEqual(blueprint);
+  expect(frozenBlueprint?.unsupportedContent).toEqual([]);
+  expect(historical.sourcePermissionManifest.catalog).toContainEqual({
+    requested: templateContent,
+    state: 'unavailable',
+    reason: 'reader_unavailable',
+    content: null,
+    currentHead: null,
+  });
+  expect(historical.sourcePermissionManifest.complete).toBe(false);
   await repository.deleteCheckIn(athlete, created.id, {
     idempotencyKey: randomUUID(),
     expectedRevision: 2,

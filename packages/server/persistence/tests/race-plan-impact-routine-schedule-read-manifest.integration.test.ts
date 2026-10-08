@@ -5,6 +5,7 @@ import { afterAll, beforeAll, expect, it } from 'vitest';
 import { planDraftSchema, type PlanDraft } from '@workout/contracts/planning';
 import {
   routineScheduleVersionSchema,
+  routineOccurrenceSchema,
   type RoutineScheduleRule,
 } from '@workout/contracts/routines';
 import { projectRacePlanImpact } from '@workout/server-coaching/race-plan-impact';
@@ -527,5 +528,21 @@ it('retains a historical schedule version and its occurrences after public pause
       ),
     ).toEqual(f.approved.schedule);
   });
-  expect(paused.occurrences).toEqual(f.approved.occurrences);
+  expect(paused.schedule.state).toBe('paused');
+  expect(paused.occurrences).toEqual([]);
+  expect(paused.sourcePlanVersionId).toBe(f.approved.sourcePlanVersionId);
+  const historicalOccurrences = await db.tenant(f.athlete, async (tx) =>
+    (
+      await tx.query(
+        `SELECT record_json FROM routine_occurrence
+         WHERE athlete_id=$1 AND schedule_id=$2 AND schedule_version_id=$3
+         ORDER BY id`,
+        [tx.athleteId, f.approved.schedule.id, f.approved.schedule.versionId],
+      )
+    ).rows.map((row) => routineOccurrenceSchema.parse(row['record_json'])),
+  );
+  const byId = (a: { id: string }, b: { id: string }) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+  expect(historicalOccurrences).toEqual([...f.approved.occurrences].sort(byId));
+  const current = await f.routine.readSchedule(f.athlete, paused.schedule.id);
+  expect(current).toEqual(paused);
 });

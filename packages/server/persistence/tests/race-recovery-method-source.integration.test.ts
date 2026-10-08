@@ -293,7 +293,7 @@ it('keeps unsupported checkin content and the generic membership missing flag un
     {
       requested,
       state: 'unavailable',
-      reason: 'producer_content_contract_unavailable',
+      reason: 'reader_unavailable',
       content: null,
       currentHead: null,
     },
