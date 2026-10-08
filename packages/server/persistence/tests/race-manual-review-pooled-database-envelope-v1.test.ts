@@ -1,4 +1,4 @@
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { raceEventSchema } from '@workout/contracts/races';
 import { planSnapshotSchema } from '@workout/contracts/planning';
@@ -676,8 +676,18 @@ it('rejects unknown/drop/null/inventory/marker/ordinal tampering and a forged pu
         currentAuthority: { ...db.payload.currentAuthority, approvalAllowed: true },
       },
     },
-  ])
-    expect(databaseSchema.safeParse(raw).success).toBe(false);
+  ]) {
+    const validation = databaseSchema.safeParse(raw);
+    expect(validation.success).toBe(false);
+    if (validation.success) throw Error('NEGATIVE_REQUIRED');
+    try {
+      decodeDatabase(raw);
+      throw Error('DECODE_REJECTION_REQUIRED');
+    } catch (error) {
+      if (!(error instanceof z.ZodError)) throw error;
+      expect(error.issues).toEqual(validation.error.issues);
+    }
+  }
 });
 it('never accepts the private wire as a DB envelope or the old logical preparation as encoded', () => {
   const logical = original();
@@ -727,6 +737,53 @@ it('reports numeric compact bytes only and keeps no full old skeleton copy in th
       refs: db.payload.inventory.refs.length,
       pool: db.payload.preparation.sourcePool.length,
       slots: db.payload.preparation.substitutions.length,
+    }) + '\n',
+  );
+});
+
+it('validates each database conversion once and preserves structural out schemas', () => {
+  const privateWire = encode(original());
+  const db = toDatabase(privateWire);
+  const spy = vi.spyOn(raceManualReviewMultiOwnedRetainedPayloadV3Schema, 'parse');
+  try {
+    expect(toDatabase(privateWire)).toEqual(db);
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(fromDatabase(db)).toEqual(privateWire);
+    expect(spy).toHaveBeenCalledTimes(2);
+    const first = decodeDatabase(db);
+    expect(spy).toHaveBeenCalledTimes(3);
+    if (first.state !== 'present') throw Error('FIXTURE_REQUIRED');
+    first.payload.preparation.context.event.title = 'returned view mutation';
+    const second = decodeDatabase(db);
+    if (second.state !== 'present') throw Error('FIXTURE_REQUIRED');
+    expect(second.payload).not.toEqual(first.payload);
+    expect(spy).toHaveBeenCalledTimes(4);
+    db.payload.preparation.logicalDigest = 'f'.repeat(64);
+    expect(() => decodeDatabase(db)).toThrow();
+  } finally {
+    spy.mockRestore();
+  }
+  expect(databaseSchema.out.shape.payload).toBeDefined();
+});
+it('reports numeric-only synthetic decoder timing without a timing pass threshold', () => {
+  const preparation = foodFixture(Array.from({ length: 6001 }, (_, i) => (i % 2 ? '한글' : 'x'))).p;
+  const logical = raceManualReviewMultiOwnedRetainedPayloadV3Schema.parse(
+    retainMulti(retainedInput(preparation)),
+  );
+  const encoded = toDatabase(encode(logical));
+  expect(decodeDatabase(encoded)).toEqual(logical);
+  const started = performance.now();
+  for (let index = 0; index < 3; index++) expect(decodeDatabase(encoded)).toEqual(logical);
+  process.stdout.write(
+    JSON.stringify({
+      diagnostic: 'pooled_codec_invocation',
+      iterations: 3,
+      elapsedMs: performance.now() - started,
+      logicalBytes: Buffer.byteLength(JSON.stringify(logical)),
+      databaseBytes: Buffer.byteLength(JSON.stringify(encoded)),
+      refs: encoded.payload.inventory.refs.length,
+      pool: encoded.payload.preparation.sourcePool.length,
+      slots: encoded.payload.preparation.substitutions.length,
     }) + '\n',
   );
 });

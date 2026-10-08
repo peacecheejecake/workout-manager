@@ -253,18 +253,38 @@ function decodeWire(encoded: Wire): Retained {
     throw Error('POOLED_RETAINED_CORRESPONDENCE');
   return retained;
 }
+function refineDecoded(value: Wire, ctx: z.RefinementCtx): Retained | undefined {
+  try {
+    return decodeWire(value);
+  } catch {
+    ctx.addIssue({ code: 'custom', message: 'Invalid pooled retained correspondence' });
+    return undefined;
+  }
+}
 export const raceManualReviewPooledRetainedPayloadV1Schema = plain
   .pipe(wire)
   .superRefine((value, ctx) => {
-    try {
-      decodeWire(value);
-    } catch {
-      ctx.addIssue({ code: 'custom', message: 'Invalid pooled retained correspondence' });
-    }
+    refineDecoded(value, ctx);
   });
 export type RaceManualReviewPooledRetainedPayloadV1 = z.infer<
   typeof raceManualReviewPooledRetainedPayloadV1Schema
 >;
+/** Validates every unknown invocation and returns its strict wire/logical pair.
+ * The pair is structural correspondence only, never a permission or cache token.
+ * Shared internally by the database bijection; no unchecked typed entry exists. */
+export function parseRaceManualReviewPooledRetainedPairV1(raw: unknown) {
+  // Invocation-local state preserves Zod's continuable-issue refinement order.
+  // Nothing survives this call or accepts a previously validated caller object.
+  let retained: Retained | undefined;
+  const pooled = plain
+    .pipe(wire)
+    .superRefine((value, ctx) => {
+      retained = refineDecoded(value, ctx);
+    })
+    .parse(raw);
+  if (retained === undefined) throw Error('POOLED_RETAINED_CORRESPONDENCE');
+  return { pooled, retained };
+}
 export function decodeRaceManualReviewPooledRetainedPayloadV1(raw: unknown): Retained {
-  return decodeWire(raceManualReviewPooledRetainedPayloadV1Schema.parse(raw));
+  return parseRaceManualReviewPooledRetainedPairV1(raw).retained;
 }

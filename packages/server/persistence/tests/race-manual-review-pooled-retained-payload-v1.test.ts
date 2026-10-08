@@ -1,4 +1,4 @@
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { raceEventSchema } from '@workout/contracts/races';
 import { planSnapshotSchema } from '@workout/contracts/planning';
@@ -648,8 +648,18 @@ it('rejects unknown wire, authority, wrong tuple/digest/body, orphan, missing, d
     { ...p, substitutions: [{ ...slot, location: 'candidate.body.projection.proposed' }] },
     { ...p, substitutions: [{ ...slot, location: slot.location + '.nested' }, slot] },
     { ...p, substitutions: [{ ...slot, sourceOrdinal: 4999 }] },
-  ])
-    expect(pooledSchema.safeParse(raw).success).toBe(false);
+  ]) {
+    const validation = pooledSchema.safeParse(raw);
+    expect(validation.success).toBe(false);
+    if (validation.success) throw Error('NEGATIVE_REQUIRED');
+    try {
+      decode(raw);
+      throw Error('DECODE_REJECTION_REQUIRED');
+    } catch (error) {
+      if (!(error instanceof z.ZodError)) throw error;
+      expect(error.issues).toEqual(validation.error.issues);
+    }
+  }
 });
 it('rejects ingress accessors without executing them, cycles, symbols, holes and nonplain prototypes', () => {
   let calls = 0;
@@ -742,4 +752,23 @@ it('allows dense legitimate source arrays above 5000 nodes while bounding refere
   const { p } = foodFixture(Array.from({ length: 6001 }, (_, i) => (i % 2 ? '한글' : 'x')));
   const v = raceManualReviewMultiOwnedRetainedPayloadV3Schema.parse(retainMulti(retainedInput(p)));
   expect(decode(encode(v))).toEqual(v);
+});
+
+it('strict-decodes once per invocation and never caches a mutated input or result', () => {
+  const pooled = encode(original());
+  const spy = vi.spyOn(raceManualReviewMultiOwnedRetainedPayloadV3Schema, 'parse');
+  try {
+    const first = decode(pooled);
+    expect(spy).toHaveBeenCalledTimes(1);
+    if (first.state !== 'present') throw Error('FIXTURE_REQUIRED');
+    first.payload.preparation.context.event.title = 'returned view mutation';
+    const second = decode(pooled);
+    if (second.state !== 'present') throw Error('FIXTURE_REQUIRED');
+    expect(spy).toHaveBeenCalledTimes(2);
+    expect(second.payload).not.toEqual(first.payload);
+    pooled.logicalDigest = 'f'.repeat(64);
+    expect(() => decode(pooled)).toThrow();
+  } finally {
+    spy.mockRestore();
+  }
 });
