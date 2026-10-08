@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { FoodEditor } from '../src/food-editor';
 import { createNutritionApi } from '../src/nutrition-api';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { z } from 'zod';
 import {
@@ -13,6 +13,7 @@ import {
 import {
   activeIntakeEntrySchema,
   nutritionPlanDraftSchema,
+  nutritionPlanVersionSchema,
 } from '@workout/contracts/nutrition-core';
 import { NutritionWorkspace } from '../src/nutrition-workspace';
 import { parseNutritionSegments } from '../src/nutrition-route';
@@ -196,6 +197,253 @@ describe('nutrition manual workspace', () => {
     expect(await screen.findByDisplayValue('Bob plan')).toBeTruthy();
     expect(screen.queryByDisplayValue('Alice private plan')).toBeNull();
   });
+  it('keeps composing Korean input mounted on Enter or submit and previews only after composition ends', async () => {
+    const { transport, request } = transportWith(() => null);
+    render(
+      <NutritionWorkspace
+        athleteId="a"
+        sessionId="s"
+        transport={transport}
+        route={{ kind: 'plans-new' }}
+      />,
+    );
+    const purpose = await screen.findByRole('textbox', { name: '계획 목적' });
+    await userEvent.type(purpose, '한글 계획');
+    // Native composing information also prevents an implicit Enter submit
+    // when the browser has not delivered a compositionStart handler yet.
+    expect(fireEvent.keyDown(purpose, { key: 'Enter', code: 'Enter', isComposing: true })).toBe(
+      false,
+    );
+    fireEvent.compositionStart(purpose);
+    expect(fireEvent.keyDown(purpose, { key: 'Enter', code: 'Enter', isComposing: false })).toBe(
+      false,
+    );
+    const form = purpose.closest('form');
+    if (!form) throw new Error('FORM_REQUIRED');
+    fireEvent.submit(form);
+    expect(screen.getByRole('textbox', { name: '계획 목적' })).toBe(purpose);
+    expect(purpose).toHaveValue('한글 계획');
+    expect(screen.queryByRole('heading', { name: '저장 전 계획 미리보기' })).toBeNull();
+    expect(request).not.toHaveBeenCalled();
+    fireEvent.compositionEnd(purpose, { data: '계획' });
+    await userEvent.click(screen.getByRole('button', { name: '계획 미리보기' }));
+    expect(screen.getByRole('heading', { name: '저장 전 계획 미리보기' })).toHaveFocus();
+    expect(screen.getByText('한글 계획')).toBeTruthy();
+    expect(screen.getByRole('checkbox', { name: /계획 내용을 직접 확인했고/ })).not.toBeChecked();
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  it('previews a schema-cloned draft without writes and resets confirmation after returning to edit', async () => {
+    const navigate = vi.fn();
+    const { transport, request } = transportWith((input) => {
+      const draft = z.object({ draft: nutritionPlanDraftSchema }).parse(input.body).draft;
+      return {
+        ...planVersion(),
+        ...draft,
+        items: draft.items.map((item) => ({ ...item, planVersionId: versionId })),
+      };
+    });
+    render(
+      <NutritionWorkspace
+        athleteId="a"
+        sessionId="s"
+        transport={transport}
+        route={{ kind: 'plans-new' }}
+        navigate={navigate}
+      />,
+    );
+    await userEvent.type(await screen.findByRole('textbox', { name: '계획 목적' }), '첫 초안');
+    const preview = screen.getByRole('button', { name: '계획 미리보기' });
+    preview.focus();
+    await userEvent.keyboard('{Enter}');
+    expect(screen.getByRole('heading', { name: '저장 전 계획 미리보기' })).toHaveFocus();
+    expect(screen.getByText('첫 초안')).toBeTruthy();
+    expect(screen.queryByRole('textbox', { name: '계획 목적' })).toBeNull();
+    expect(request).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: '확인한 계획 저장' })).toBeDisabled();
+    await userEvent.click(screen.getByRole('checkbox', { name: /계획 내용을 직접 확인했고/ }));
+    await userEvent.click(screen.getByRole('button', { name: '편집으로 돌아가기' }));
+    expect(screen.getByRole('textbox', { name: '계획 목적' })).toHaveValue('첫 초안');
+    expect(screen.getByRole('textbox', { name: '계획 목적' })).toHaveFocus();
+    await userEvent.clear(screen.getByRole('textbox', { name: '계획 목적' }));
+    await userEvent.type(screen.getByRole('textbox', { name: '계획 목적' }), '다시 검토한 초안');
+    await userEvent.click(screen.getByRole('button', { name: '계획 미리보기' }));
+    expect(screen.getByRole('checkbox', { name: /계획 내용을 직접 확인했고/ })).not.toBeChecked();
+    expect(screen.getByRole('button', { name: '확인한 계획 저장' })).toBeDisabled();
+    expect(request).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole('checkbox', { name: /계획 내용을 직접 확인했고/ }));
+    await userEvent.click(screen.getByRole('button', { name: '확인한 계획 저장' }));
+    await waitFor(() => expect(navigate).toHaveBeenCalledTimes(1));
+    expect(
+      z.object({ draft: nutritionPlanDraftSchema }).parse(request.mock.calls[0]?.[0].body).draft
+        .purpose,
+    ).toBe('다시 검토한 초안');
+    expect(request).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows readable zero and unknown values, keeps optional version details and saves exact frozen food tuples', async () => {
+    const original = nutritionPlanVersionSchema.parse(
+      planVersion([
+        {
+          metric: 'energy',
+          amount: { min: 0, max: 0, unit: 'kcal', basis: 'user_confirmed', evidenceIds: [] },
+        },
+      ]),
+    );
+    const item = original.items[0];
+    if (!item) throw new Error('FIXTURE_ITEM_REQUIRED');
+    item.foods = [
+      {
+        description: '영양 정의',
+        foodVersionId: '4a9345dc-3ec7-4493-ad99-e4b8f4fef632',
+        quantity: 0,
+        unit: 'g',
+        sourceBasis: 'unknown',
+      },
+      {
+        description: '양 모르는 음식',
+        foodVersionId: null,
+        quantity: null,
+        unit: 'unspecified',
+        sourceBasis: 'unknown',
+      },
+    ];
+    const navigate = vi.fn();
+    const { transport, request } = transportWith((input) => {
+      if (input.method === 'GET') return planRead(original);
+      const draft = z.object({ draft: nutritionPlanDraftSchema }).parse(input.body).draft;
+      return {
+        ...original,
+        ...draft,
+        version: 2,
+        versionId: nextVersionId,
+        previousVersionId: versionId,
+        items: draft.items.map((entry) => ({ ...entry, planVersionId: nextVersionId })),
+      };
+    });
+    render(
+      <NutritionWorkspace
+        athleteId="a"
+        sessionId="s"
+        transport={transport}
+        route={{ kind: 'plan', planId }}
+        navigate={navigate}
+      />,
+    );
+    await screen.findByRole('textbox', { name: '계획 목적' });
+    await userEvent.click(screen.getByRole('button', { name: '계획 미리보기' }));
+    expect(screen.getByText('영양 정의 · 0 g')).toBeTruthy();
+    expect(screen.getByText('양 모르는 음식 · 양 미상')).toBeTruthy();
+    expect(screen.queryByText(/user_confirmed|unknown|\(null\)/)).toBeNull();
+    const frozenFood = screen.getByText('4a9345dc-3ec7-4493-ad99-e4b8f4fef632');
+    expect(frozenFood).not.toBeVisible();
+    await userEvent.click(screen.getByText('연결 정보'));
+    expect(frozenFood).toBeVisible();
+    expect(screen.getByText(/0 ~ 0 kcal/)).toBeTruthy();
+    expect(screen.getByText(/시각 미상/)).toBeTruthy();
+    expect(screen.getByText('2026-09-18 ~ 2026-09-18')).toBeTruthy();
+    expect(request.mock.calls.some(([input]) => input.method === 'POST')).toBe(false);
+    await userEvent.click(screen.getByRole('checkbox', { name: /계획 내용을 직접 확인했고/ }));
+    await userEvent.click(screen.getByRole('button', { name: '확인한 계획 저장' }));
+    await waitFor(() => expect(navigate).toHaveBeenCalledTimes(1));
+    const write = request.mock.calls.find(([input]) => input.method === 'POST')?.[0];
+    const savedDraft = z.object({ draft: nutritionPlanDraftSchema }).parse(write?.body).draft;
+    expect(savedDraft.items[0]?.foods).toEqual(item.foods);
+    expect(savedDraft.items[0]?.id).toBe(item.id);
+    expect(savedDraft.items[0]?.source).toBe('user_confirmed');
+  });
+
+  it('retains the reviewed draft when server head changes and blocks save with the original CAS basis', async () => {
+    let reads = 0;
+    const { transport, request } = transportWith((input) => {
+      if (input.method !== 'GET') throw new Error('UNEXPECTED_WRITE');
+      reads += 1;
+      const refreshed = {
+        ...planVersion(),
+        purpose: '서버의 새 목적',
+        version: 2,
+        versionId: nextVersionId,
+        previousVersionId: versionId,
+        items: planVersion().items.map((item) => ({ ...item, planVersionId: nextVersionId })),
+      };
+      return planRead(reads === 1 ? planVersion() : refreshed);
+    });
+    render(
+      <NutritionWorkspace
+        athleteId="a"
+        sessionId="s"
+        transport={transport}
+        route={{ kind: 'plan', planId }}
+      />,
+    );
+    const purpose = await screen.findByRole('textbox', { name: '계획 목적' });
+    await userEvent.clear(purpose);
+    await userEvent.type(purpose, '내 미리보기 초안');
+    await userEvent.click(screen.getByRole('button', { name: '계획 미리보기' }));
+    await userEvent.click(screen.getByRole('checkbox', { name: /계획 내용을 직접 확인했고/ }));
+    await userEvent.click(screen.getByRole('button', { name: '서버 최신 버전 확인' }));
+    expect(await screen.findByText(/서버에는 버전 2/)).toBeTruthy();
+    expect(screen.getByText('내 미리보기 초안')).toBeTruthy();
+    expect(screen.queryByText('서버의 새 목적')).toBeNull();
+    expect(screen.getByRole('button', { name: '확인한 계획 저장' })).toBeDisabled();
+    expect(request.mock.calls.some(([input]) => input.method === 'POST')).toBe(false);
+    await userEvent.click(screen.getByRole('button', { name: '편집으로 돌아가기' }));
+    expect(screen.getByRole('textbox', { name: '계획 목적' })).toHaveValue('내 미리보기 초안');
+  });
+
+  it('rejects incomplete target inputs before preview rather than treating blank as zero', async () => {
+    const { transport, request } = transportWith(() => null);
+    render(
+      <NutritionWorkspace
+        athleteId="a"
+        sessionId="s"
+        transport={transport}
+        route={{ kind: 'plans-new' }}
+      />,
+    );
+    await userEvent.type(await screen.findByRole('textbox', { name: '계획 목적' }), '미완성 목표');
+    await userEvent.click(screen.getByRole('button', { name: '항목 추가' }));
+    await userEvent.type(screen.getByRole('textbox', { name: '항목 이름' }), '식사');
+    await userEvent.selectOptions(
+      screen.getByRole('combobox', { name: '영양 목표 (선택)' }),
+      'fluid',
+    );
+    await userEvent.type(screen.getByRole('spinbutton', { name: '목표 최소값' }), '0');
+    await userEvent.click(screen.getByRole('button', { name: '계획 미리보기' }));
+    expect(screen.getByText(/빈칸은 0이 아닙니다/)).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: '저장 전 계획 미리보기' })).toBeNull();
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  it('keeps the reviewed snapshot and blocks further mutation after an uncertain network result', async () => {
+    const request = vi.fn(async () => {
+      throw new Error('NETWORK_LOST');
+    });
+    const navigate = vi.fn();
+    render(
+      <NutritionWorkspace
+        athleteId="a"
+        sessionId="s"
+        transport={{ request }}
+        route={{ kind: 'plans-new' }}
+        navigate={navigate}
+      />,
+    );
+    await userEvent.type(
+      await screen.findByRole('textbox', { name: '계획 목적' }),
+      '응답 불확실 초안',
+    );
+    await userEvent.click(screen.getByRole('button', { name: '계획 미리보기' }));
+    await userEvent.click(screen.getByRole('checkbox', { name: /계획 내용을 직접 확인했고/ }));
+    await userEvent.click(screen.getByRole('button', { name: '확인한 계획 저장' }));
+    expect(await screen.findByText(/저장 결과를 확인할 수 없습니다/)).toBeTruthy();
+    expect(screen.getByText('응답 불확실 초안')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '확인한 계획 저장' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '편집으로 돌아가기' })).toBeDisabled();
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
   it('does not create an actual when the user confirms a nutrition plan (V022-A11)', async () => {
     const navigate = vi.fn();
     const { transport, request } = transportWith((input) => {
@@ -230,12 +478,13 @@ describe('nutrition manual workspace', () => {
     );
     const name = await screen.findByRole('textbox', { name: '계획 목적' });
     expect(request).not.toHaveBeenCalled();
-    const save = screen.getByRole('button', { name: '확인한 계획 저장' });
-    expect((save as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByRole('button', { name: '확인한 계획 저장' })).toBeNull();
+    expect(screen.queryByRole('checkbox', { name: /계획 내용을 직접 확인했고/ })).toBeNull();
     await userEvent.type(name, '훈련 전후 식사');
     expect(request).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole('button', { name: '계획 미리보기' }));
     await userEvent.click(screen.getByRole('checkbox', { name: /계획 내용을 직접 확인했고/ }));
-    await userEvent.click(save);
+    await userEvent.click(screen.getByRole('button', { name: '확인한 계획 저장' }));
     await waitFor(() => expect(navigate).toHaveBeenCalledWith(`/nutrition/plans/${planId}`));
     expect(request).toHaveBeenCalledTimes(1);
     expect(request.mock.calls[0]?.[0].idempotencyKey).toEqual(expect.any(String));
@@ -281,6 +530,7 @@ describe('nutrition manual workspace', () => {
     );
     await userEvent.type(screen.getByRole('spinbutton', { name: '목표 최소값' }), '0');
     await userEvent.type(screen.getByRole('spinbutton', { name: '목표 최대값' }), '250');
+    await userEvent.click(screen.getByRole('button', { name: '계획 미리보기' }));
     await userEvent.click(screen.getByRole('checkbox', { name: /계획 내용을 직접 확인했고/ }));
     await userEvent.click(screen.getByRole('button', { name: '확인한 계획 저장' }));
     await waitFor(() => expect(navigate).toHaveBeenCalledTimes(1));
@@ -373,9 +623,8 @@ describe('nutrition manual workspace', () => {
     );
     await userEvent.click(await screen.findByRole('button', { name: '새 계획으로 복제' }));
     expect(screen.getByText(/섭취 기록은 생성되지 않습니다/)).toBeTruthy();
-    expect(
-      (screen.getByRole('button', { name: '확인한 계획 저장' }) as HTMLButtonElement).disabled,
-    ).toBe(true);
+    expect(screen.queryByRole('button', { name: '확인한 계획 저장' })).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: '계획 미리보기' }));
     await userEvent.click(screen.getByRole('checkbox', { name: /계획 내용을 직접 확인했고/ }));
     await userEvent.click(screen.getByRole('button', { name: '확인한 계획 저장' }));
     await waitFor(() => expect(navigate).toHaveBeenCalledWith(`/nutrition/plans/${cloneId}`));
@@ -665,6 +914,7 @@ describe('nutrition manual workspace', () => {
     expect((screen.getByRole('textbox', { name: '계획 목적' }) as HTMLInputElement).value).toBe(
       '내 미저장 변경',
     );
+    await userEvent.click(screen.getByRole('button', { name: '계획 미리보기' }));
     await userEvent.click(screen.getByRole('checkbox', { name: /계획 내용을 직접 확인했고/ }));
     expect(
       (screen.getByRole('button', { name: '확인한 계획 저장' }) as HTMLButtonElement).disabled,
@@ -710,6 +960,7 @@ describe('nutrition manual workspace', () => {
     const min = await screen.findByRole('spinbutton', { name: '목표 최소값' });
     await userEvent.clear(min);
     await userEvent.type(min, '350');
+    await userEvent.click(screen.getByRole('button', { name: '계획 미리보기' }));
     await userEvent.click(screen.getByRole('checkbox', { name: /계획 내용을 직접 확인했고/ }));
     await userEvent.click(screen.getByRole('button', { name: '확인한 계획 저장' }));
     await waitFor(() =>
@@ -811,6 +1062,7 @@ describe('nutrition manual workspace', () => {
       screen.getByRole('combobox', { name: '연결할 훈련 세션' }),
       'owned-session',
     );
+    await userEvent.click(screen.getByRole('button', { name: '계획 미리보기' }));
     await userEvent.click(screen.getByRole('checkbox', { name: /계획 내용을 직접 확인했고/ }));
     await userEvent.click(screen.getByRole('button', { name: '확인한 계획 저장' }));
     await waitFor(() =>
@@ -846,6 +1098,7 @@ describe('nutrition manual workspace', () => {
       />,
     );
     await userEvent.type(await screen.findByRole('textbox', { name: '계획 목적' }), '거절된 계획');
+    await userEvent.click(screen.getByRole('button', { name: '계획 미리보기' }));
     await userEvent.click(screen.getByRole('checkbox', { name: /계획 내용을 직접 확인했고/ }));
     await userEvent.click(screen.getByRole('button', { name: '확인한 계획 저장' }));
     expect(
@@ -854,6 +1107,7 @@ describe('nutrition manual workspace', () => {
     expect(
       (screen.getByRole('button', { name: '확인한 계획 저장' }) as HTMLButtonElement).disabled,
     ).toBe(false);
+    await userEvent.click(screen.getByRole('button', { name: '편집으로 돌아가기' }));
     expect((screen.getByRole('textbox', { name: '계획 목적' }) as HTMLInputElement).value).toBe(
       '거절된 계획',
     );
@@ -1058,6 +1312,7 @@ it.each(admissionFailures)(
     );
     const purpose = await screen.findByRole('textbox', { name: '계획 목적' });
     await userEvent.type(purpose, '유지할 계획');
+    await userEvent.click(screen.getByRole('button', { name: '계획 미리보기' }));
     await userEvent.click(screen.getByRole('checkbox', { name: /계획 내용을 직접 확인했고/ }));
     await userEvent.click(screen.getByRole('button', { name: '확인한 계획 저장' }));
     expect(await screen.findByText(new RegExp(message))).toBeTruthy();

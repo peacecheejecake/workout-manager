@@ -778,6 +778,7 @@ Native shell·collector는 M1c 통합과 native feasibility 이후 M2 Web 확장
 | M2-02i 날짜·Plan 영향 승인 | M2-02e | [진행 중](progress/M2-02i.md); 설계 준비, 전체 affected manifest·별도 원자적 승인 미구현 |
 | M2-02j 거리별 PB | M2-02g | [진행 중](progress/M2-02j.md); 직접 입력 대회 기록도 PB; 링크·인증 첨부 근거 마크와 진위 검토 구분; Chip 우선·Chip null이면 Gun/공식 5km·10km·하프·풀 분류 확정·실제 두 Host 4/4; 정상 runtime·최신 closure/phase 검증 별도, 기기 추정 split 자동 승격 금지 |
 | M2-02k app 처리 동의 연결 | M2-02e, S22 v-a root 통합 | [완료](progress/M2-02k.md); 새 처리만 gate, 조회/삭제/성공 replay 유지 |
+| M2-02m 원문 없는 신규 영양 계획 검토 | M1b-01, M2-01k-v-d | [로컬 수용 완료](progress/M2-02m.md); 미저장 미리보기·편집 복귀·명시 저장·실제 두 Host 검증, FUT-09 이식은 별도 보류 |
 | M2-02 대회·기록 | M2-01, M2-02a, M2-02b, M2-02c | competitions; 코스 참조·결과. M2-01의 외부 gate는 그대로 선행 조건 |
 | M2-03 갤러리·media | M1c-04 | gallery/media; 객체 권한·upload·video·삭제 |
 | M2-04 자료 생명주기 | M1c-04 | 진행 중; text core 이후 object storage/upload·URL/parser·접근/삭제 manifest 통합 |

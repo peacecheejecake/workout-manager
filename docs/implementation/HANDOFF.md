@@ -689,3 +689,7 @@ Root는 actualDB lane·operations/공통package/graph/Git 통합을 직렬 소�
 ## 사용자 결정 · 2026-10-08 원문 없는 신규 계획 개발
 
 사용자는 “원문 없이 새 계획을 만들고 사용하는 기능은 계속 개발”로 확정했다. 신규 작성·미리보기·명시적 승인·저장·조회·사용 경로의 구현과 수용 검증을 계속한다. FUT-09의 기존 원문 이식만 원문 전달 전까지 별도 보류하며, 이 결정을 기존 원문 이식의 완료나 제품 범위 삭제로 해석하지 않는다. 외부 운영·복원·기기 검증의 `not_executed`도 변경하지 않는다.
+
+## 2026-10-08 원문 없는 신규 영양 계획 로컬 수용
+
+M2-02m은 무저장 미리보기·편집 복귀·확인 초기화·명시 저장·재조회 경로를 구현했다. Root RTL44/44, Next/Vite build, 실제 합성 OIDC+PostgreSQL 두 Host Playwright2/2를 확인했다. Aside는 실행 불가, 추가 Chrome은 합성 로그인 경로의 ERR_BLOCKED_BY_CLIENT로 미완료이며 실기기 IME·운영/native/provider not_executed는 유지한다. FUT-09 원문 이식은 별도 대기다. M2-02 전체는 in_progress·미검토이며 main/push0이다. 상세는 progress/M2-02m.md.

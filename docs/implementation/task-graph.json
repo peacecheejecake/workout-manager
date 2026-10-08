@@ -1873,7 +1873,8 @@
         "M2-02i",
         "M2-02j",
         "M2-02k",
-        "M2-02l"
+        "M2-02l",
+        "M2-02m"
       ],
       "kind": "task",
       "status": "in_progress",
@@ -2412,6 +2413,15 @@
       "status": "completed",
       "scope": "S22/V2-F31·S35/V023-F18/A35의 기존 personal export 누락을 보완. Additive export34로 generic routine9·recovery6·approval history2 및 참조된 committed approval facts를 strict 현재 body/SQL tuple로 보존한다. bigint 문자열·bounded rows/bytes·SELECT-only grant·tenant/RLS·철회 후 retained export·역사와 tombstone·account erase를 실제 producer/PG로 수용한다. old2..33과 historical restore protocol은 불변. raw candidate/evidence/command receipt/credential을 무조건 추가하지 않으며 전체 personal-data inventory나 full restore 완료와 혼동하지 않는다.",
       "evidence": "docs/implementation/progress/M2-02l.md"
+    },
+    {
+      "id": "M2-02m",
+      "title": "원문 없는 신규 영양 계획 미리보기·명시 저장 수용",
+      "dependsOn": ["M1b-01", "M2-01k-v-d"],
+      "kind": "task",
+      "status": "completed",
+      "scope": "2026-10-08 사용자 결정: 기존 원문 없이 신규 계획 작성·사용을 계속 개발. V1 수동 영양 draft의 무저장 미리보기·편집 복귀·별도 확인 저장과 재조회·사용을 검증한다. stable idempotency/CAS/app consent와 V2–4 readonly·재연결 경계를 보존한다. RTL·build·실브라우저 및 실제 OIDC/DB 두 Host 수용 필요. FUT-09 원문 이식은 별도 보류.",
+      "evidence": "docs/implementation/progress/M2-02m.md"
     }
   ]
 }

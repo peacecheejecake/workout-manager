@@ -242,6 +242,7 @@ describe('explicit nutrition V4 read', () => {
     await userEvent.click(screen.getByRole('button', { name: '서버 최신 버전 확인' }));
     await screen.findByText(/서버에는 버전 2/);
     expect(screen.getByDisplayValue('Unsent private draft')).toBeTruthy();
+    await userEvent.click(screen.getByRole('button', { name: '계획 미리보기' }));
     await userEvent.click(screen.getByRole('checkbox', { name: /계획 내용을 직접 확인했고/ }));
     expect(screen.getByRole('button', { name: '확인한 계획 저장' }).hasAttribute('disabled')).toBe(
       true,

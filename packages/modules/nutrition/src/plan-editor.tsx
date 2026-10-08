@@ -1,4 +1,4 @@
-import { useRef, useState, type FormEvent } from 'react';
+import { Fragment, useCallback, useRef, useState, type FormEvent } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   nutritionPlanDraftSchema,
@@ -16,6 +16,7 @@ import { NutritionRequestError } from './nutrition-api';
 import { nutrientFields, type NutrientKey } from './nutrition-model';
 import type { NutritionApi, NutritionClock, NutritionScope } from './nutrition-workspace';
 import styles from './nutrition.module.css';
+import reviewStyles from './plan-editor-review.module.css';
 
 const categories = [
   ['meal', '식사'],
@@ -308,6 +309,15 @@ function PlanForm({
   const additionalTargets = useRef(
     Object.fromEntries(initialDraft.items.map((item) => [item.id, item.targets.slice(1)])),
   );
+  const composing = useRef(false);
+  const restoreEditingFocus = useRef(false);
+  const focusEditingPurpose = useCallback((node: HTMLInputElement | null) => {
+    if (node && restoreEditingFocus.current) {
+      restoreEditingFocus.current = false;
+      node.focus();
+    }
+  }, []);
+  const [review, setReview] = useState<NutritionPlanDraft | null>(null);
   const [confirmed, setConfirmed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [locked, setLocked] = useState(false);
@@ -367,17 +377,15 @@ function PlanForm({
       setConnecting(false);
     }
   }
-  async function save(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!confirmed || busy || locked || stale) return;
-    const relativeItems = draft.items.filter((item) => item.anchor.kind === 'relative');
+  function validateDraft(value: NutritionPlanDraft): NutritionPlanDraft | null {
+    const relativeItems = value.items.filter((item) => item.anchor.kind === 'relative');
     const validSessionIds = new Set(
       training.data?.draft.sessions.map((session) => session.id) ?? [],
     );
     if (
       relativeItems.length > 0 &&
-      (draft.linkedTrainingPlanVersionId === null ||
-        training.data?.id !== draft.linkedTrainingPlanVersionId ||
+      (value.linkedTrainingPlanVersionId === null ||
+        training.data?.id !== value.linkedTrainingPlanVersionId ||
         relativeItems.some(
           (item) =>
             item.anchor.kind === 'relative' &&
@@ -385,7 +393,7 @@ function PlanForm({
         ))
     ) {
       setNotice('상대 시각은 연결된 훈련 계획의 세션을 선택한 뒤 저장하세요.');
-      return;
+      return null;
     }
     if (
       Object.values(targetInputs).some(
@@ -393,15 +401,43 @@ function PlanForm({
       )
     ) {
       setNotice('선택한 영양 목표의 최소·최대 값을 모두 입력하세요. 빈칸은 0이 아닙니다.');
-      return;
+      return null;
     }
-    const parsed = nutritionPlanDraftSchema.safeParse(draft);
+    const parsed = nutritionPlanDraftSchema.safeParse(value);
     if (!parsed.success) {
       setNotice(
         '계획 기간과 항목을 확인하세요. 각 항목에는 음식, 목표 또는 행동 설명이 필요합니다.',
       );
+      return null;
+    }
+    return parsed.data;
+  }
+  function previewDraft() {
+    if (busy || locked || connecting) return;
+    const snapshot = validateDraft(draft);
+    if (!snapshot) return;
+    setReview(snapshot);
+    setConfirmed(false);
+    setNotice('');
+  }
+  function returnToEditing() {
+    restoreEditingFocus.current = true;
+    setReview(null);
+    setConfirmed(false);
+    setNotice('');
+  }
+  async function save(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (composing.current) return;
+    if (review === null) {
+      previewDraft();
       return;
     }
+    if (!confirmed || busy || locked || stale) return;
+    // Recheck the exact frozen snapshot and current loaded session tuple before
+    // the existing command boundary; preview itself creates no receipt or version.
+    const validated = validateDraft(review);
+    if (!validated) return;
     const idempotencyKey = key.current ?? crypto.randomUUID();
     key.current = idempotencyKey;
     setBusy(true);
@@ -415,9 +451,9 @@ function PlanForm({
               expectedHeadVersionId: head.versionId,
               idempotencyKey,
               confirmed: true,
-              draft: parsed.data,
+              draft: validated,
             }
-          : { kind: 'create', idempotencyKey, confirmed: true, draft: parsed.data },
+          : { kind: 'create', idempotencyKey, confirmed: true, draft: validated },
       );
       key.current = null;
       (navigate ?? window.location.assign.bind(window.location))(
@@ -465,454 +501,627 @@ function PlanForm({
         onSubmit={(event) => {
           void save(event);
         }}
+        onCompositionStart={() => {
+          composing.current = true;
+        }}
+        onCompositionEnd={() => {
+          composing.current = false;
+        }}
+        onKeyDownCapture={(event) => {
+          if (event.key === 'Enter' && (composing.current || event.nativeEvent.isComposing)) {
+            event.preventDefault();
+          }
+        }}
         className={styles.form}
       >
-        <TextField
-          label="계획 목적"
-          required
-          maxLength={160}
-          value={draft.purpose}
-          disabled={busy || locked}
-          onChange={(event) => setDraft({ ...draft, purpose: event.target.value })}
-        />
-        <div className={styles.row}>
-          <TextField
-            label="시작 날짜"
-            type="date"
-            required
-            value={draft.period.from}
-            disabled={busy || locked}
-            onChange={(event) =>
-              setDraft({ ...draft, period: { ...draft.period, from: event.target.value } })
-            }
-          />
-          <TextField
-            label="종료 날짜"
-            type="date"
-            required
-            value={draft.period.toInclusive}
-            disabled={busy || locked}
-            onChange={(event) =>
-              setDraft({ ...draft, period: { ...draft.period, toInclusive: event.target.value } })
-            }
-          />
-        </div>
-        <p>적용 시간대: {draft.timezone}</p>
-        <div className={styles.item}>
-          <h3>훈련 계획 연결</h3>
-          <p>
-            세션 상대 시각은 본인 훈련 계획의 버전과 세션이 필요합니다. 대회 연결은 현재 수동
-            편집기에서 지원하지 않습니다.
-          </p>
-          <Button
-            variant="secondary"
-            disabled={busy || locked || connecting}
-            onClick={() => {
-              void connectCurrentTraining();
-            }}
-          >
-            {connecting ? '훈련 계획 확인 중' : '현재 훈련 계획 연결'}
-          </Button>
-          {draft.linkedTrainingPlanVersionId ? (
-            <p>연결 버전: {draft.linkedTrainingPlanVersionId}</p>
-          ) : (
-            <p>연결된 훈련 계획 없음</p>
-          )}
-          {training.data ? (
-            <p role="status">훈련 세션 {training.data.draft.sessions.length}개 연결됨</p>
-          ) : null}
-          {training.isError ? (
-            <p role="alert">
-              연결된 훈련 계획 버전을 불러오지 못했습니다. 상대 시각 항목을 저장할 수 없습니다.
-            </p>
-          ) : null}
-        </div>
-        <div className={styles.sectionHead}>
-          <h3>식사·보급 항목</h3>
-          <Button
-            variant="secondary"
-            disabled={busy || locked}
-            onClick={() =>
-              setDraft({
-                ...draft,
-                items: [...draft.items, blankItem(draft.period.from, draft.timezone)],
-              })
-            }
-          >
-            항목 추가
-          </Button>
-        </div>
-        {draft.items.length === 0 ? (
-          <p>항목 없이 기간만 저장할 수 있습니다. 실제 섭취는 별도로 기록하세요.</p>
-        ) : null}
-        {draft.items.map((item, index) => (
-          <fieldset key={item.id} className={styles.item} disabled={busy || locked}>
-            <legend>계획 항목 {index + 1}</legend>
+        {review === null ? (
+          <>
+            <TextField
+              label="계획 목적"
+              ref={focusEditingPurpose}
+              required
+              maxLength={160}
+              value={draft.purpose}
+              disabled={busy || locked}
+              onChange={(event) => setDraft({ ...draft, purpose: event.target.value })}
+            />
             <div className={styles.row}>
               <TextField
-                label="항목 이름"
-                value={item.title}
+                label="시작 날짜"
+                type="date"
                 required
-                maxLength={160}
-                onChange={(event) => updateItem(item.id, { ...item, title: event.target.value })}
+                value={draft.period.from}
+                disabled={busy || locked}
+                onChange={(event) =>
+                  setDraft({ ...draft, period: { ...draft.period, from: event.target.value } })
+                }
               />
-              <label>
-                종류
-                <select
-                  value={item.category}
-                  onChange={(event) =>
-                    updateItem(item.id, {
-                      ...item,
-                      category: event.target.value as NutritionPlanItemDraft['category'],
-                    })
-                  }
-                >
-                  {categories.map(([value, label]) => (
-                    <option key={value} value={value}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <TextField
+                label="종료 날짜"
+                type="date"
+                required
+                value={draft.period.toInclusive}
+                disabled={busy || locked}
+                onChange={(event) =>
+                  setDraft({
+                    ...draft,
+                    period: { ...draft.period, toInclusive: event.target.value },
+                  })
+                }
+              />
             </div>
-            <label>
-              시각 기준
-              <select
-                value={item.anchor.kind}
-                onChange={(event) => {
-                  if (
-                    event.target.value === 'relative' &&
-                    (draft.linkedTrainingPlanVersionId === null ||
-                      training.data?.id !== draft.linkedTrainingPlanVersionId)
-                  ) {
-                    setNotice(
-                      '상대 시각을 사용하려면 먼저 현재 훈련 계획을 연결하고 세션 목록을 불러오세요.',
-                    );
-                    return;
-                  }
-                  updateItem(item.id, {
-                    ...item,
-                    anchor:
-                      event.target.value === 'absolute'
-                        ? {
-                            kind: 'absolute',
-                            date: draft.period.from,
-                            localTime: null,
-                            timezone: draft.timezone,
-                          }
-                        : {
-                            kind: 'relative',
-                            entity: 'session',
-                            entityId: '',
-                            point: 'start',
-                            offsetMinutes: 0,
-                          },
-                  });
+            <p>적용 시간대: {draft.timezone}</p>
+            <div className={styles.item}>
+              <h3>훈련 계획 연결</h3>
+              <p>
+                세션 상대 시각은 본인 훈련 계획의 버전과 세션이 필요합니다. 대회 연결은 현재 수동
+                편집기에서 지원하지 않습니다.
+              </p>
+              <Button
+                variant="secondary"
+                disabled={busy || locked || connecting}
+                onClick={() => {
+                  void connectCurrentTraining();
                 }}
               >
-                <option value="absolute">날짜·시각</option>
-                <option value="relative">훈련 세션 상대 시각</option>
-              </select>
-            </label>
-            {item.anchor.kind === 'absolute' ? (
-              <div className={styles.row}>
-                <TextField
-                  label="예정 날짜"
-                  type="date"
-                  required
-                  value={item.anchor.date}
-                  onChange={(event) =>
-                    updateItem(item.id, {
-                      ...item,
-                      anchor:
-                        item.anchor.kind === 'absolute'
-                          ? { ...item.anchor, date: event.target.value }
-                          : item.anchor,
-                    })
-                  }
-                />
-                <TextField
-                  label="예정 시각 (선택)"
-                  type="time"
-                  value={item.anchor.localTime ?? ''}
-                  onChange={(event) =>
-                    updateItem(item.id, {
-                      ...item,
-                      anchor:
-                        item.anchor.kind === 'absolute'
-                          ? { ...item.anchor, localTime: event.target.value || null }
-                          : item.anchor,
-                    })
-                  }
-                />
-              </div>
-            ) : (
-              <div className={styles.row}>
-                <label>
-                  연결 종류
-                  <select
-                    value={item.anchor.entity}
-                    onChange={(event) =>
-                      updateItem(item.id, {
-                        ...item,
-                        anchor:
-                          item.anchor.kind === 'relative'
-                            ? { ...item.anchor, entity: event.target.value as 'session' | 'race' }
-                            : item.anchor,
-                      })
-                    }
-                  >
-                    <option value="session">세션</option>
-                    {item.anchor.entity === 'race' ? (
-                      <option value="race" disabled>
-                        대회 · 현재 편집 불가
-                      </option>
-                    ) : null}
-                  </select>
-                </label>
-                {item.anchor.entity === 'race' ? (
-                  <p role="alert">
-                    기존 대회 기준 항목은 이 편집기에서 저장할 수 없습니다. 세션으로 바꾸거나
-                    날짜·시각을 선택하세요.
-                  </p>
-                ) : null}
-                <label>
-                  연결할 훈련 세션
-                  <select
+                {connecting ? '훈련 계획 확인 중' : '현재 훈련 계획 연결'}
+              </Button>
+              {draft.linkedTrainingPlanVersionId ? (
+                <p>연결 버전: {draft.linkedTrainingPlanVersionId}</p>
+              ) : (
+                <p>연결된 훈련 계획 없음</p>
+              )}
+              {training.data ? (
+                <p role="status">훈련 세션 {training.data.draft.sessions.length}개 연결됨</p>
+              ) : null}
+              {training.isError ? (
+                <p role="alert">
+                  연결된 훈련 계획 버전을 불러오지 못했습니다. 상대 시각 항목을 저장할 수 없습니다.
+                </p>
+              ) : null}
+            </div>
+            <div className={styles.sectionHead}>
+              <h3>식사·보급 항목</h3>
+              <Button
+                variant="secondary"
+                disabled={busy || locked}
+                onClick={() =>
+                  setDraft({
+                    ...draft,
+                    items: [...draft.items, blankItem(draft.period.from, draft.timezone)],
+                  })
+                }
+              >
+                항목 추가
+              </Button>
+            </div>
+            {draft.items.length === 0 ? (
+              <p>항목 없이 기간만 저장할 수 있습니다. 실제 섭취는 별도로 기록하세요.</p>
+            ) : null}
+            {draft.items.map((item, index) => (
+              <fieldset key={item.id} className={styles.item} disabled={busy || locked}>
+                <legend>계획 항목 {index + 1}</legend>
+                <div className={styles.row}>
+                  <TextField
+                    label="항목 이름"
+                    value={item.title}
                     required
-                    value={item.anchor.entityId}
+                    maxLength={160}
                     onChange={(event) =>
-                      updateItem(item.id, {
-                        ...item,
-                        anchor:
-                          item.anchor.kind === 'relative'
-                            ? { ...item.anchor, entityId: event.target.value }
-                            : item.anchor,
-                      })
+                      updateItem(item.id, { ...item, title: event.target.value })
                     }
-                  >
-                    <option value="">세션 선택</option>
-                    {training.data?.draft.sessions.map((session) => (
-                      <option key={session.id} value={session.id}>
-                        {session.title}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                  />
+                  <label>
+                    종류
+                    <select
+                      value={item.category}
+                      onChange={(event) =>
+                        updateItem(item.id, {
+                          ...item,
+                          category: event.target.value as NutritionPlanItemDraft['category'],
+                        })
+                      }
+                    >
+                      {categories.map(([value, label]) => (
+                        <option key={value} value={value}>
+                          {label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
                 <label>
-                  기준 지점
+                  시각 기준
                   <select
-                    value={item.anchor.point}
-                    onChange={(event) =>
-                      updateItem(item.id, {
-                        ...item,
-                        anchor:
-                          item.anchor.kind === 'relative'
-                            ? { ...item.anchor, point: event.target.value as 'start' | 'end' }
-                            : item.anchor,
-                      })
-                    }
-                  >
-                    <option value="start">시작</option>
-                    <option value="end">종료</option>
-                  </select>
-                </label>
-                <TextField
-                  label="전후 분 (이전은 음수)"
-                  type="number"
-                  step="1"
-                  value={item.anchor.offsetMinutes}
-                  onChange={(event) =>
-                    updateItem(item.id, {
-                      ...item,
-                      anchor:
-                        item.anchor.kind === 'relative'
-                          ? { ...item.anchor, offsetMinutes: Number(event.target.value) }
-                          : item.anchor,
-                    })
-                  }
-                />
-              </div>
-            )}
-            <TextField
-              label="계획한 음식·음료 (선택)"
-              maxLength={160}
-              value={item.foods[0]?.description ?? ''}
-              onChange={(event) => {
-                const description = event.target.value;
-                updateItem(item.id, {
-                  ...item,
-                  foods: description.trim()
-                    ? [
-                        {
-                          ...(item.foods[0] ?? {
-                            foodVersionId: null,
-                            quantity: null,
-                            unit: 'unspecified',
-                            sourceBasis: 'unknown',
-                          }),
-                          description,
-                        },
-                        ...item.foods.slice(1),
-                      ]
-                    : item.foods.slice(1),
-                });
-              }}
-            />
-            {item.foods[0] ? (
-              <div className={styles.row}>
-                <TextField
-                  label="계획한 양 (모르면 빈칸)"
-                  type="number"
-                  min="0"
-                  step="any"
-                  value={item.foods[0].quantity ?? ''}
-                  onChange={(event) => {
-                    const first = item.foods[0];
-                    if (!first) return;
-                    updateItem(item.id, {
-                      ...item,
-                      foods: [
-                        {
-                          ...first,
-                          quantity: event.target.value === '' ? null : Number(event.target.value),
-                          unit:
-                            event.target.value && first.unit === 'unspecified' ? 'g' : first.unit,
-                        },
-                        ...item.foods.slice(1),
-                      ],
-                    });
-                  }}
-                />
-                <label>
-                  계획한 양의 단위
-                  <select
-                    value={item.foods[0].unit}
+                    value={item.anchor.kind}
                     onChange={(event) => {
-                      const first = item.foods[0];
-                      if (!first) return;
+                      if (
+                        event.target.value === 'relative' &&
+                        (draft.linkedTrainingPlanVersionId === null ||
+                          training.data?.id !== draft.linkedTrainingPlanVersionId)
+                      ) {
+                        setNotice(
+                          '상대 시각을 사용하려면 먼저 현재 훈련 계획을 연결하고 세션 목록을 불러오세요.',
+                        );
+                        return;
+                      }
                       updateItem(item.id, {
                         ...item,
-                        foods: [
-                          {
-                            ...first,
-                            foodVersionId: null,
-                            sourceBasis: 'unknown',
-                            unit: event.target.value as typeof first.unit,
-                          },
-                          ...item.foods.slice(1),
-                        ],
+                        anchor:
+                          event.target.value === 'absolute'
+                            ? {
+                                kind: 'absolute',
+                                date: draft.period.from,
+                                localTime: null,
+                                timezone: draft.timezone,
+                              }
+                            : {
+                                kind: 'relative',
+                                entity: 'session',
+                                entityId: '',
+                                point: 'start',
+                                offsetMinutes: 0,
+                              },
                       });
                     }}
                   >
-                    <option value="unspecified">모름</option>
-                    <option value="g">g</option>
-                    <option value="mL">mL</option>
-                    <option value="serving">회분</option>
-                    <option value="piece">개</option>
+                    <option value="absolute">날짜·시각</option>
+                    <option value="relative">훈련 세션 상대 시각</option>
                   </select>
                 </label>
-              </div>
-            ) : null}
-            {item.foods.length > 1 ? (
-              <p>추가 음식 {item.foods.length - 1}개는 이 수동 편집기에서 유지됩니다.</p>
-            ) : null}
-            <div className={styles.row}>
-              <label>
-                영양 목표 (선택)
-                <select
-                  value={(targetInputs[item.id] ?? targetInput(item)).metric}
+                {item.anchor.kind === 'absolute' ? (
+                  <div className={styles.row}>
+                    <TextField
+                      label="예정 날짜"
+                      type="date"
+                      required
+                      value={item.anchor.date}
+                      onChange={(event) =>
+                        updateItem(item.id, {
+                          ...item,
+                          anchor:
+                            item.anchor.kind === 'absolute'
+                              ? { ...item.anchor, date: event.target.value }
+                              : item.anchor,
+                        })
+                      }
+                    />
+                    <TextField
+                      label="예정 시각 (선택)"
+                      type="time"
+                      value={item.anchor.localTime ?? ''}
+                      onChange={(event) =>
+                        updateItem(item.id, {
+                          ...item,
+                          anchor:
+                            item.anchor.kind === 'absolute'
+                              ? { ...item.anchor, localTime: event.target.value || null }
+                              : item.anchor,
+                        })
+                      }
+                    />
+                  </div>
+                ) : (
+                  <div className={styles.row}>
+                    <label>
+                      연결 종류
+                      <select
+                        value={item.anchor.entity}
+                        onChange={(event) =>
+                          updateItem(item.id, {
+                            ...item,
+                            anchor:
+                              item.anchor.kind === 'relative'
+                                ? {
+                                    ...item.anchor,
+                                    entity: event.target.value as 'session' | 'race',
+                                  }
+                                : item.anchor,
+                          })
+                        }
+                      >
+                        <option value="session">세션</option>
+                        {item.anchor.entity === 'race' ? (
+                          <option value="race" disabled>
+                            대회 · 현재 편집 불가
+                          </option>
+                        ) : null}
+                      </select>
+                    </label>
+                    {item.anchor.entity === 'race' ? (
+                      <p role="alert">
+                        기존 대회 기준 항목은 이 편집기에서 저장할 수 없습니다. 세션으로 바꾸거나
+                        날짜·시각을 선택하세요.
+                      </p>
+                    ) : null}
+                    <label>
+                      연결할 훈련 세션
+                      <select
+                        required
+                        value={item.anchor.entityId}
+                        onChange={(event) =>
+                          updateItem(item.id, {
+                            ...item,
+                            anchor:
+                              item.anchor.kind === 'relative'
+                                ? { ...item.anchor, entityId: event.target.value }
+                                : item.anchor,
+                          })
+                        }
+                      >
+                        <option value="">세션 선택</option>
+                        {training.data?.draft.sessions.map((session) => (
+                          <option key={session.id} value={session.id}>
+                            {session.title}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      기준 지점
+                      <select
+                        value={item.anchor.point}
+                        onChange={(event) =>
+                          updateItem(item.id, {
+                            ...item,
+                            anchor:
+                              item.anchor.kind === 'relative'
+                                ? { ...item.anchor, point: event.target.value as 'start' | 'end' }
+                                : item.anchor,
+                          })
+                        }
+                      >
+                        <option value="start">시작</option>
+                        <option value="end">종료</option>
+                      </select>
+                    </label>
+                    <TextField
+                      label="전후 분 (이전은 음수)"
+                      type="number"
+                      step="1"
+                      value={item.anchor.offsetMinutes}
+                      onChange={(event) =>
+                        updateItem(item.id, {
+                          ...item,
+                          anchor:
+                            item.anchor.kind === 'relative'
+                              ? { ...item.anchor, offsetMinutes: Number(event.target.value) }
+                              : item.anchor,
+                        })
+                      }
+                    />
+                  </div>
+                )}
+                <TextField
+                  label="계획한 음식·음료 (선택)"
+                  maxLength={160}
+                  value={item.foods[0]?.description ?? ''}
+                  onChange={(event) => {
+                    const description = event.target.value;
+                    updateItem(item.id, {
+                      ...item,
+                      foods: description.trim()
+                        ? [
+                            {
+                              ...(item.foods[0] ?? {
+                                foodVersionId: null,
+                                quantity: null,
+                                unit: 'unspecified',
+                                sourceBasis: 'unknown',
+                              }),
+                              description,
+                            },
+                            ...item.foods.slice(1),
+                          ]
+                        : item.foods.slice(1),
+                    });
+                  }}
+                />
+                {item.foods[0] ? (
+                  <div className={styles.row}>
+                    <TextField
+                      label="계획한 양 (모르면 빈칸)"
+                      type="number"
+                      min="0"
+                      step="any"
+                      value={item.foods[0].quantity ?? ''}
+                      onChange={(event) => {
+                        const first = item.foods[0];
+                        if (!first) return;
+                        updateItem(item.id, {
+                          ...item,
+                          foods: [
+                            {
+                              ...first,
+                              quantity:
+                                event.target.value === '' ? null : Number(event.target.value),
+                              unit:
+                                event.target.value && first.unit === 'unspecified'
+                                  ? 'g'
+                                  : first.unit,
+                            },
+                            ...item.foods.slice(1),
+                          ],
+                        });
+                      }}
+                    />
+                    <label>
+                      계획한 양의 단위
+                      <select
+                        value={item.foods[0].unit}
+                        onChange={(event) => {
+                          const first = item.foods[0];
+                          if (!first) return;
+                          updateItem(item.id, {
+                            ...item,
+                            foods: [
+                              {
+                                ...first,
+                                foodVersionId: null,
+                                sourceBasis: 'unknown',
+                                unit: event.target.value as typeof first.unit,
+                              },
+                              ...item.foods.slice(1),
+                            ],
+                          });
+                        }}
+                      >
+                        <option value="unspecified">모름</option>
+                        <option value="g">g</option>
+                        <option value="mL">mL</option>
+                        <option value="serving">회분</option>
+                        <option value="piece">개</option>
+                      </select>
+                    </label>
+                  </div>
+                ) : null}
+                {item.foods.length > 1 ? (
+                  <p>추가 음식 {item.foods.length - 1}개는 이 수동 편집기에서 유지됩니다.</p>
+                ) : null}
+                <div className={styles.row}>
+                  <label>
+                    영양 목표 (선택)
+                    <select
+                      value={(targetInputs[item.id] ?? targetInput(item)).metric}
+                      onChange={(event) =>
+                        updateTarget(item, {
+                          ...(targetInputs[item.id] ?? targetInput(item)),
+                          metric: event.target.value as NutrientKey | '',
+                        })
+                      }
+                    >
+                      <option value="">목표 없음 · 미상</option>
+                      {nutrientFields.map((field) => (
+                        <option key={field.key} value={field.key}>
+                          {field.label} ({field.unit})
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {(targetInputs[item.id] ?? targetInput(item)).metric !== '' ? (
+                    <>
+                      <TextField
+                        label="목표 최소값"
+                        type="number"
+                        min="0"
+                        step="any"
+                        value={(targetInputs[item.id] ?? targetInput(item)).min}
+                        onChange={(event) =>
+                          updateTarget(item, {
+                            ...(targetInputs[item.id] ?? targetInput(item)),
+                            min: event.target.value,
+                          })
+                        }
+                      />
+                      <TextField
+                        label="목표 최대값"
+                        type="number"
+                        min="0"
+                        step="any"
+                        value={(targetInputs[item.id] ?? targetInput(item)).max}
+                        onChange={(event) =>
+                          updateTarget(item, {
+                            ...(targetInputs[item.id] ?? targetInput(item)),
+                            max: event.target.value,
+                          })
+                        }
+                      />
+                    </>
+                  ) : null}
+                </div>
+                {item.targets.length > 1 ? (
+                  <p>추가 영양 목표 {item.targets.length - 1}개는 변경 없이 유지됩니다.</p>
+                ) : null}
+                <TextAreaField
+                  label="시간·행동 계획 (선택)"
+                  maxLength={2000}
+                  value={item.instructions}
                   onChange={(event) =>
-                    updateTarget(item, {
-                      ...(targetInputs[item.id] ?? targetInput(item)),
-                      metric: event.target.value as NutrientKey | '',
-                    })
+                    updateItem(item.id, { ...item, instructions: event.target.value })
                   }
+                />
+                <Button
+                  variant="danger"
+                  onClick={() => {
+                    setDraft({
+                      ...draft,
+                      items: draft.items.filter((other) => other.id !== item.id),
+                    });
+                    setTargetInputs((current) =>
+                      Object.fromEntries(
+                        Object.entries(current).filter(([key]) => key !== item.id),
+                      ),
+                    );
+                  }}
                 >
-                  <option value="">목표 없음 · 미상</option>
-                  {nutrientFields.map((field) => (
-                    <option key={field.key} value={field.key}>
-                      {field.label} ({field.unit})
-                    </option>
-                  ))}
-                </select>
-              </label>
-              {(targetInputs[item.id] ?? targetInput(item)).metric !== '' ? (
-                <>
-                  <TextField
-                    label="목표 최소값"
-                    type="number"
-                    min="0"
-                    step="any"
-                    value={(targetInputs[item.id] ?? targetInput(item)).min}
-                    onChange={(event) =>
-                      updateTarget(item, {
-                        ...(targetInputs[item.id] ?? targetInput(item)),
-                        min: event.target.value,
-                      })
-                    }
-                  />
-                  <TextField
-                    label="목표 최대값"
-                    type="number"
-                    min="0"
-                    step="any"
-                    value={(targetInputs[item.id] ?? targetInput(item)).max}
-                    onChange={(event) =>
-                      updateTarget(item, {
-                        ...(targetInputs[item.id] ?? targetInput(item)),
-                        max: event.target.value,
-                      })
-                    }
-                  />
-                </>
-              ) : null}
-            </div>
-            {item.targets.length > 1 ? (
-              <p>추가 영양 목표 {item.targets.length - 1}개는 변경 없이 유지됩니다.</p>
-            ) : null}
-            <TextAreaField
-              label="시간·행동 계획 (선택)"
-              maxLength={2000}
-              value={item.instructions}
-              onChange={(event) =>
-                updateItem(item.id, { ...item, instructions: event.target.value })
-              }
+                  항목 제거
+                </Button>
+              </fieldset>
+            ))}
+          </>
+        ) : (
+          <PlanDraftReview draft={review} />
+        )}
+        {review !== null ? (
+          <label className={styles.confirm}>
+            <input
+              type="checkbox"
+              checked={confirmed}
+              disabled={busy || locked}
+              onChange={(event) => setConfirmed(event.target.checked)}
             />
-            <Button
-              variant="danger"
-              onClick={() => {
-                setDraft({ ...draft, items: draft.items.filter((other) => other.id !== item.id) });
-                setTargetInputs((current) =>
-                  Object.fromEntries(Object.entries(current).filter(([key]) => key !== item.id)),
-                );
-              }}
-            >
-              항목 제거
-            </Button>
-          </fieldset>
-        ))}
-        <label className={styles.confirm}>
-          <input
-            type="checkbox"
-            checked={confirmed}
-            disabled={busy || locked}
-            onChange={(event) => setConfirmed(event.target.checked)}
-          />
-          계획 내용을 직접 확인했고 이 버전을 저장합니다. 실제로 먹었다는 뜻은 아닙니다.
-        </label>
+            계획 내용을 직접 확인했고 이 버전을 저장합니다. 실제로 먹었다는 뜻은 아닙니다.
+          </label>
+        ) : null}
         {notice ? (
           <p role="alert" className={styles.notice}>
             {notice}
           </p>
         ) : null}
         <div className={styles.actions}>
-          <Button type="submit" disabled={!confirmed || busy || locked || stale}>
-            {busy ? '저장 중' : '확인한 계획 저장'}
+          <Button
+            type="submit"
+            disabled={busy || locked || connecting || (review !== null && (!confirmed || stale))}
+          >
+            {busy ? '저장 중' : review === null ? '계획 미리보기' : '확인한 계획 저장'}
           </Button>
+          {review !== null ? (
+            <Button variant="secondary" disabled={busy || locked} onClick={returnToEditing}>
+              편집으로 돌아가기
+            </Button>
+          ) : null}
           <a href="/nutrition">목록으로</a>
         </div>
       </form>
+    </section>
+  );
+}
+
+/** Read-only view of a schema-cloned draft. No mutable head lookup replaces its
+ * frozen food/session IDs and no resolved wall clock is invented here. */
+function focusReviewTitle(node: HTMLHeadingElement | null) {
+  node?.focus();
+}
+const foodUnits: Record<NutritionPlanItemDraft['foods'][number]['unit'], string> = {
+  g: 'g',
+  mL: 'mL',
+  serving: '회분',
+  piece: '개',
+  unspecified: '단위 미상',
+};
+function PlanDraftReview({ draft }: { draft: NutritionPlanDraft }) {
+  const hasLinkedInformation =
+    draft.linkedTrainingPlanVersionId !== null ||
+    draft.items.some(
+      (item) =>
+        item.anchor.kind === 'relative' || item.foods.some((food) => food.foodVersionId !== null),
+    );
+  return (
+    <section aria-labelledby="plan-draft-review-title" className={reviewStyles.review}>
+      <h3 id="plan-draft-review-title" tabIndex={-1} ref={focusReviewTitle}>
+        저장 전 계획 미리보기
+      </h3>
+      <p>아직 저장하지 않은 초안입니다. 아래 내용을 확인하고 별도로 저장하세요.</p>
+      <dl>
+        <dt>목적</dt>
+        <dd>{draft.purpose}</dd>
+        <dt>기간</dt>
+        <dd>
+          {draft.period.from} ~ {draft.period.toInclusive}
+        </dd>
+        <dt>시간대</dt>
+        <dd>{draft.timezone}</dd>
+        <dt>훈련 계획</dt>
+        <dd>{draft.linkedTrainingPlanVersionId === null ? '연결 없음' : '연결됨'}</dd>
+      </dl>
+      {draft.items.length === 0 ? <p>계획 항목 없음</p> : null}
+      {draft.items.map((item) => (
+        <article key={item.id} className={styles.item}>
+          <h4>{item.title}</h4>
+          <p>종류: {categories.find(([kind]) => kind === item.category)?.[1]}</p>
+          {item.anchor.kind === 'absolute' ? (
+            <p>
+              날짜·시각: {item.anchor.date} · {item.anchor.localTime ?? '시각 미상'} ·{' '}
+              {item.anchor.timezone}
+            </p>
+          ) : (
+            <>
+              <p>
+                상대 시각: {item.anchor.entity === 'session' ? '세션' : '대회'}{' '}
+                {item.anchor.point === 'start' ? '시작' : '종료'} · {item.anchor.offsetMinutes}분
+              </p>
+              <p>기준 일정의 시작·종료 시각이 없으면 미해결로 남습니다.</p>
+            </>
+          )}
+          <h5>계획한 음식·음료</h5>
+          {item.foods.length === 0 ? (
+            <p>음식·음료 없음</p>
+          ) : (
+            <ul>
+              {item.foods.map((food, index) => (
+                <li key={index}>
+                  {food.description} ·{' '}
+                  {food.quantity === null ? '양 미상' : `${food.quantity} ${foodUnits[food.unit]}`}
+                </li>
+              ))}
+            </ul>
+          )}
+          <h5>영양 목표</h5>
+          {item.targets.length === 0 ? (
+            <p>목표 없음 · 미상</p>
+          ) : (
+            <ul>
+              {item.targets.map((target) => (
+                <li key={target.metric}>
+                  {nutrientFields.find((field) => field.key === target.metric)?.label}:{' '}
+                  {target.amount.min} ~ {target.amount.max} {target.amount.unit}
+                </li>
+              ))}
+            </ul>
+          )}
+          <p className={reviewStyles.instructions}>시간·행동 계획: {item.instructions || '없음'}</p>
+        </article>
+      ))}
+      {hasLinkedInformation ? (
+        <details>
+          <summary>연결 정보</summary>
+          <dl>
+            {draft.linkedTrainingPlanVersionId !== null ? (
+              <div>
+                <dt>훈련 계획 버전</dt>
+                <dd>{draft.linkedTrainingPlanVersionId}</dd>
+              </div>
+            ) : null}
+            {draft.items
+              .filter(
+                (item) =>
+                  item.anchor.kind === 'relative' ||
+                  item.foods.some((food) => food.foodVersionId !== null),
+              )
+              .map((item) => (
+                <div key={item.id}>
+                  {item.anchor.kind === 'relative' ? (
+                    <>
+                      <dt>
+                        {item.title} ·{' '}
+                        {item.anchor.entity === 'session' ? '연결 세션' : '연결 대회'}
+                      </dt>
+                      <dd>{item.anchor.entityId}</dd>
+                    </>
+                  ) : null}
+                  {item.foods.map((food, index) =>
+                    food.foodVersionId !== null ? (
+                      <Fragment key={index}>
+                        <dt>{food.description} · 식품 정의 버전</dt>
+                        <dd>{food.foodVersionId}</dd>
+                      </Fragment>
+                    ) : null,
+                  )}
+                </div>
+              ))}
+          </dl>
+        </details>
+      ) : null}
     </section>
   );
 }
