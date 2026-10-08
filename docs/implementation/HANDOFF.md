@@ -840,7 +840,6 @@ Root 자체 미커밋 legacy dense diagnosis(45029bytes/SHA701f0b4a…f544)를 `
 
 실패1건은 최신 builder가 V4-only `retainedUnplannedRuns`/`retainedHistoricalRoutines` 두 ownfields를 추가한 전체V4 input을 strictV3 positive fixture에 전달한 버전 불일치였다. 실제 두roster empty를 확인하고 해당 case만 exactV3 input으로 구성했다. strictV1 reject 및 fullV4→strictV3 invalid_input 음성도 유지·추가했다. 제품 schema/decoder/업무source/DBfixture/권한·정책은 변경0. unit fixture SHA42829ce9…386b, actor15/15·Root15/15(`/private/tmp/wm-compatible-v3-fixture-root-unit-r3-20261008.log`),persistenceTS/lint/format exit0. 원14pass1fail/fullunit9433/37/32와부분R2exit130은 그대로 보존하며 전체unit재실행 전 fullpass를 주장하지 않는다.
 
-
 ## 2026-10-08 전체 identity fixture 배정 보완
 
 Root가 canonical full identity를 general baseline107 → app-consent → ai-settings-lifecycle → current-manual profile25의 네 disposable fixture로 연결했다. 최신 수용 경로10파일을 current25에 배정하며 기존 worker/analysis/비공식 Garmin 시험은 general에 보존한다. 개별 focused CLI는 caller profile을 유지하고 canonical fixture는 상속된 stage/profile selector를 정리한다. 하네스 권한·repository factory·제품 schema 및 시험 skip 조건은 변경하지 않았다. 파일 roster는130개가 정확히 한 fixture에만 배정되도록 검사한다.
@@ -848,7 +847,6 @@ Root가 canonical full identity를 general baseline107 → app-consent → ai-se
 Root 실제 `pnpm test:identity --full --list` exit0: general331시험/117등록파일, app4/1, AI1/1, current22/10으로 총358시험/129등록파일이다. 차이1파일 `course-provider-isolation.spec.ts`는 기존 `PROVIDER_PROOF_MODE=missing-data|no-webgl`일 때만 등록되며 unset이면0건이다. 해당 별도 mode의 현재 실행과 full browser 두 회차는 아직 not_executed다. 목록 조회를 브라우저 pass로 세지 않는다. 순수 배정/신호 종료/첫 실패 중단 검사와 root TypeScript·scoped ESLint·Prettier·diff check는 exit0이다. 실제 전체 PG17 integration session71990은 아직 실행 중이며 중간 복원·worker/media 등 실패를 보존하고 종료 결과를 기다린다.
 
 정확 두 소스 SHA: launcher `5e5cccccbfd91e606817180d07e41521f23afac636701aa5f9817775111bc0e3`, config `0fe883c588f8636bb8e02d943ad0f441d0e2e6729cedb77719b9b59d3f711a29`. 실제 discovery/scoped checks는 `/private/tmp/wm-canonical-identity-{roster,pure,ts,lint,format}-root-r1-20261008.log`, 등록0 진단은 `/private/tmp/wm-canonical-identity-zero-registration-audit-20261008.{md,json}`이다. 원 출력은 commit하지 않는다. 전체 phase gate/독립 검토/main 및 외부 운영 gate는 미완료이며 EXT-HOSTING의 기존4lines WIP는 보존한다. EXT-RESTOREa는 승인된 phase schema 확정이 필요한 scope이므로 현재 inventory/실행 흐름 준비와 실제 구현·복원 수용을 구분한다.
-
 
 ## 2026-10-08 전체 검증 실패 분류·native PG17 및 roster 비용 교정
 
@@ -863,3 +861,11 @@ Native PostgreSQL17.11을 Homebrew skip-link/skip-post-install로 설치했다(�
 새 계약 source로 기존 V9 source-proof를 실제 noargs 검사해 unavailable/source_drift를 확인했다(`/private/tmp/wm-typed-linear-stale-source-proof-root-20261008.log`). 기존 HTTP12/normal5는 original inputs의 historical 증거이며 새소스 통과로 재표시하지 않는다. 다음은 historical 범위를 정확히 보존하고 genuine 새33unit을 추가한 bootstrap compile/pin→실제normal5와 freshHTTP12→최종compile/pin/cold검증이다. bootstrap을 최종 수용으로 부르지 않는다. sourceproof/phase/fullgate·독립review/main은 미완료다.
 
 사용자의 새 iPhone 연결 이후 wired/connected 및 exact 기존 합성bundle 한 번 launch success를 확인했다. 지도 표시/화면 유지 응답·20loads/pan·retained heap은 아직 없으므로 성능 passed가 아니다. synthetic-only이며 설치/서명/HealthKit/제품로그인0. 원문 없는 신규 계획 개발은 계속하고 FUT-09역사이식만 별도 대기한다. EXT-HOSTING 기존4lines WIP·main·사용자push·AWS/provider 운영 gate는 유지한다.
+
+### 2026-10-08 추가 실제 재검증 · bootstrap과 카탈로그 수용 분리
+
+계약 비용 교정은 phase/m2-02의 `a3b7da6e`로 커밋했다. Root 새 bootstrap manifest SHA `a05d052d1d41d51e76c617c0d5304609a915fb36eab5f8de1b0a287eb454ce9b`는 기존 모든 실행을 historical_suite로 보존하고 새33unit만 현재 단위 증거로 추가했다(383files/225선언labels, 신규225실행이 아님). 실제 compile exit0, bootstrap asset SHA `5f33114cd054475285fdc753470256eeaae23fbc38ab4059cabbac04b43b71d8` 선택 뒤 실제 noargs sourceproof는 verified였다. 이는 최종 HTTP/정상 기동 수용이 아니다. 실제 normalconfigured 시험은 nativePG17 및 별도PG14 모두4pass/1fail·CURRENT_RUNTIME_V9_INCOMPATIBLE였다. 전체 카탈로그의 정확 차이를 추가 진단 중이며 freshHTTP12/finalcompile/fullphase는 미완료다. PG17만의 실패라고 단정하지 않는다. 원로그 `/private/tmp/wm-typed-linear-bootstrap-{candidate,compile,proof,configured}-root-r1-20261008.log`와 별도 `wm-typed-linear-bootstrap-configured-pg14-root-r1-20261008.log`를 보존한다.
+
+네 historical fixture의 전체집합 정렬과 PG17 char concatenation explicitcast를 교정했다. Root nativePG17 첫 실제 실행은33pass/1fail: owner의 전체 ACL에 새 MAINTAIN(m)이 있으나 구 기대값이 없었다. 공식 PostgreSQL17 권한 문서에 따라 실제 server_version_num으로17이상/이전의 정확 전체owner/grantor ACL을 비교하도록 교정했다. SQL/제품권한/행수/집합 축소나 권한문자 무시 없이 Root 두 번째 실제 실행은4파일34/34·exit0(별도028→029 upgrade1/1), serverstop/temporarycleanup을 확인했다. 원실패를 유지하며 전체 integration229실패를 이34개로 소급 통과시키지 않는다. 원로그 `/private/tmp/wm-native-pg17-fixture-four-root-r{1,2}-20261008.log`; scopedlint/format 및 persistenceTS exit0.
+
+전체unit R4는 새 계약과 현재 bootstrap에서 별도 실행 중이다. 종료 전 fullpass로 표시하지 않는다. 기존 EXT-HOSTING4lines WIP를 보존하고 bootstrapasset/pin은 최종 증거 수용 전 미커밋 상태다.

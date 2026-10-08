@@ -1141,16 +1141,18 @@ describe('worker paths on a migration owner that is neither superuser nor BYPASS
         'SELECT DISTINCT kind FROM tenant_work_index WHERE athlete_id=$1 ORDER BY kind',
         [tenant],
       );
-      return rows.rows.map((row) => row.kind);
+      return rows.rows.map((row) => row.kind).sort();
     };
-    expect(await kinds()).toEqual([
-      'activity_track_object_ref:window',
-      'course_thumbnail:job',
-      'course_thumbnail:lease',
-      'course_thumbnail:reap',
-      'course_thumbnail_object_ref:window',
-      'resource_retrieval_cache:prune',
-    ]);
+    expect(await kinds()).toEqual(
+      [
+        'activity_track_object_ref:window',
+        'course_thumbnail:job',
+        'course_thumbnail:lease',
+        'course_thumbnail:reap',
+        'course_thumbnail_object_ref:window',
+        'resource_retrieval_cache:prune',
+      ].sort(),
+    );
     const lease = await leaseRenderFor(tenant);
     const sha256 = hashOf(`svg-${lease.jobId}`);
     await renderer.prepare(lease, {

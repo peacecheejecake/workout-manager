@@ -212,7 +212,12 @@ describe('lifetime link budget migration upgrade of a database built by every ea
        ORDER BY 1`,
       [[...newFunctions, 'erase_account(text)']],
     );
-    expect(paths.rows).toEqual(
+    // Compare the complete roster in JavaScript code-unit order on both sides.
+    expect(
+      [...paths.rows].sort((left, right) =>
+        left.signature < right.signature ? -1 : left.signature > right.signature ? 1 : 0,
+      ),
+    ).toEqual(
       [...newFunctions, 'erase_account(text)']
         .sort()
         .map((signature) => ({ signature, config: ['search_path=pg_catalog, pg_temp'] })),
