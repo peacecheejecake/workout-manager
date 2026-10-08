@@ -604,3 +604,13 @@ export function parseCurrentRuntimeCatalogWitness(raw: unknown) {
     fail('CATALOG_WITNESS_INVALID');
   return observation === undefined ? expected : { ...expected, observation };
 }
+
+// Server-private observation seams; preserve the parent17 SQL/codec semantics.
+export {
+  metadataSchema as currentRuntimeCatalogBaseMetadataSchema,
+  catalogCtes,
+  roleTag,
+  normalizedAcl,
+  boundedPlain,
+  canonical,
+};
