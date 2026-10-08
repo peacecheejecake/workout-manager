@@ -971,3 +971,19 @@ Fixture·문서 교정 뒤에도 전체 normal R2의1,091개 입력은 모두 �
 별도 새 소유 PostgreSQL170006에서 canonical AI lifecycle1건→current-manual10spec22건을 순서대로 실제 실행했다. 23/23·skip0·retry0·exit0이며 각 모음 전후 DB/역할/slot/포트/새 TMP 잔존0과 입력 불변을 확인했다. 이 진단은 원 시작 실패를 재현하지 못했으며 전체 두 회차 통과를 대체하지 않는다. aggregate SHA `666497bb144ef5f9d8b1ce87937ffd36ca483afeeeddf29641fdbe16143940ca`, 보고서 SHA `ee65ee07e9b55fab712362a24a4e4a504b45dc6bc33a5b337ab4cba1c0241169`를 따른다. 진단 전용 정리 guard를 검증한 뒤 정확한 소유 컨테이너와 handoff를 제거했다. cleanup SHA `53afde488ad6b0503263d84ff7ea170490cc874f9148946fa62c4da2b6057edb`·exit0이며 원 실패 기록은 불변이다.
 
 현재 로컬 합성 성능 앱은 codesign 실제검사에서 unsigned·exit1이었다. entitlement 디코딩도 실패해 HealthKit/location 여부는 unknown이다. 연결 조회는 paired지만 tunnel disconnected였고 새 실기기 실행·측정은 미실행이다. 이전 설치된 artifact와 현재 로컬 artifact가 같다는 증거는 없다. 서명·연결 확인 전에 이를 실행하거나 실기기 수용을 통과시키지 않는다. 공유 메모리32개 정확한 1회 정리는 이미 실행돼 대상 잔여0이고 해당 승인은 소비됐다. main·graph·EXT-HOSTING WIP·stash는 그대로이며 전체 identity 재검증·독립 phase 검토·main 병합과 운영/최신 인증 복원 gate가 남아 있다.
+
+### 2026-10-09 OIDC 경쟁 fixture 교정과 종료 관측
+
+Bounded stderr 관측을 추가한 canonical 전체 재실행은 general318통과·1timeout·12skip·exit1이었다. app-consent/AI/current-manual과 두 번째 전체 실행은 not_executed다. aggregate SHA `1c456fba9036b5375b5226b93ee8843010d2a99a70270344b1595b5a250cf5e5`를 보존한다. 원 OIDC 두 번째 탭 시험의 timeout 원인은 미확정이며, 앞선 current-manual 시작 실패와 구분한다. 원본 OIDC focused2/2 통과(SHA `906ecce3590431bd12e49c09fc69cbf4ae8dddd776dbf73046d927fe801f0810`)는 수정 증거가 아니다.
+
+별도 임시 controlled case에서 app 동의의 실제 SESSION_CHANGED 409로 옛 AI 요청이 취소되는 경쟁 경로를 확인했다. 시험1건은 통과했으나 actor는 즉시 DB1·역할5·새 TMP1 때문에 exit1/acceptedfalse였다. 결과 SHA `d361e788f63a965b32897174e524abcbc7ca75728e07bfc078a8b467ea62b872`를 보존한다. 이후 DB0·역할5 관측은 처음 정리 실패를 소급 통과시키지 않는다. 임시 spec은 원복했고, 정확한 소유 tmpfs 컨테이너와 handoff만 별도 제거했다(cleanup SHA `65531ff64647119e554a40062a74d3e89eb49485bcfad3eb0b6a8af3c624d99b`). 기존 varfolders TMP·다른 클러스터·실패 기록은 보존했다.
+
+OIDC fixture의 보류 목록에 `/bff/v1/consents/app` 한 줄을 추가했다. 주석은 관측한 경쟁과 원 timeout 원인 미확정을 구분한다. 실제 AI409·옛 캐시 불오염·Bob 재조회 단언, 제품/API/runtime333·빌드·timeout/retry는 유지한다. 최종 fixture SHA `79f73ce24626f265045a05be15f08bd5e969183a60bc696d86c6d7e5c90af550`이며 scoped TS/lint/format/diff는 exit0이었다.
+
+새 PostgreSQL170006에서 수정된 OIDC2건은 실제2/2·skip0·retry0·exit0이었다. 이번 진단은 DEBUG와 부모 Playwright의 TMP spawn observer를 사용했으며 전체 gate와 구분한다. 해당 fixture child의 실제 close는 code0/signalnull, 즉시 DB/역할/slot/포트/새 TMP 잔존0, source/build4,219개 불변이었다. aggregate SHA `3fc8d01c05a9fe67eee45c668a355b96cdb6cc572360459240e8eccaf92dec4d`, 세부 SHA `5cc02bb6aa9afa44c5d080fe3765a9c8d58b4dd7d53dc82b1b5b5094d09099f9`다. 과거 정리 실패 원인은 여전히 미확정이며 종료 시간 제한을 변경하지 않았다. finite ECONNREFUSED 문자 검출은 성공 실행에서 나온 값으로, 실패 원인으로 귀속하지 않는다. 진단 관측 없는 canonical 전체 두 회차와 독립 phase review/main 병합은 아직 미완료다.
+
+### 2026-10-09 합성 앱의 보존된 signed artifact 확인
+
+앞선 로컬 unsigned build 결과는 보존한다. 별도의 보존된 `signed-scene-derived/Build/Products/Debug-iphoneos/SyntheticPerformance.app`는 읽기 전용 실제 strict/deep signature verify exit0·validtrue였고 실제 signed entitlement XML에 HealthKit/location 관련 key가 없었다. 결과 SHA `f46530d315193c58fcf28022288bc14a594f18700d8ec20564b0f014432bd492`다. 이 signed artifact의 제한된 환경 검사 실패 기록도 보존하며, 실행 환경을 달리한 후속 성공을 과거 실패 원인 확정으로 취급하지 않는다. Profile CMS는 실제 유효·wildcard bundle 포함, 공개 certificate3개의 현재 validity를 확인했다(SHA `1e3e86613ccbb6ea27420882df6d2ad3121c9a4f7cdff7e1e14ec96d761bd00d`). 앱4,849파일의 전후 SHA는 동일했다.
+
+실제 기기 조회는 pairedtrue/connectedfalse였으며 installed artifact 동일성·새 설치/실행·성능 측정은 not_executed다. Native RSS 측정 절차는 준비됐지만 값은 없으며 JS retained heap도 미측정이다. Keychain/trust/서명/기기 쓰기는 하지 않았다. 원32개 SHM 승인은 이미1회 소비됐고 추가 정리는 없다. main·graph·EXT-HOSTING 보호 WIP·stash·사용자 push 경계를 유지한다.

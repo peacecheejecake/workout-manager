@@ -69,14 +69,15 @@ test('a second-tab account switch cannot populate the previous session consent c
   const delayed = new Promise<void>((resolve) => {
     releaseSession = resolve;
   });
-  // The account screen refetches three session-bound reads on visibility: consent, Garmin
-  // status and operations status. Whichever SESSION_CHANGED answer lands first tears the old
-  // account down and aborts the other two, so without holding the panels back the consent
-  // read loses that race about one time in fifteen and its 409 is never delivered (M2-01v).
+  // The account screen also refetches app consent alongside AI consent, session, Garmin
+  // status and operations status. The first SESSION_CHANGED answer still performs the normal
+  // account teardown and aborts obsolete reads. A controlled case confirmed that app consent
+  // can win this race; it did not establish the cause of the earlier full-run timeout.
   // Holding them keeps the consent read the only one that can answer, so this test always
   // exercises the path it is named for.
   const heldUntilRelease = new Set([
     '/bff/v1/session',
+    '/bff/v1/consents/app',
     '/bff/v1/integrations/garmin/status',
     '/bff/v1/operations/status',
   ]);
