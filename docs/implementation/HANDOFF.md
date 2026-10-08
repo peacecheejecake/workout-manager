@@ -927,3 +927,17 @@ Root는originalbootstrap/unit33·45와historical실행들을보존하고 실제�
 최종manifest SHA241845e3…5dea38는392files/268선언labels(268신규실행이아님)다. 실제rawcompilerasset SHA143527cd…10cc7(141148bytes)를보존하고 Prettier한formattedasset SHA7dc6138d…ad91c(168077bytes)와JSON정확semantic동일성을확인했다. Root가formattedbytes/별도literalpin을선택한후actualnoargs는verified/verified_build_evidence·sourceManifestSHA39d2f7cc…813a, scopedformat0이었다. algorithm/catalog91da…/source333/권한/restoreAuthoritynone은유지했다. Bootstrap8d와oldR3별도12pass는원입력의역사이며최신새fixture12실행은JSON-derivedsummary/provenance로연결한다.
 
 새핀에서독립exact170006 전체configured5는5/5·skip0·exit0(18.05s)였다. 정상startup의실제snapshotCatalog/cold/sourceproof/namedfactory/health와bodydrift/missingEXECUTE/ownercredential거절·baseline107경로를수행했다. 별도cold11을새로실행한것은아니다. current360/archive392/asset/manifest정체성불변·자체DB/역할/slot/port/temp정리0을확인했다. Root가actualrecordSHA40ac6e6c…2c66ae를확인했다. 실제log `wm-final-formatted-configured-pg176-actual-r1-20261008.log` SHA49b17796…2f8b9 및final-formatted-normalconfigured-actual-report를따른다. 이는source/runcompatibility이며latest239전체authenticatedrestore/운영admission·실제OIDC/native/전체phase통과가아니다. 다음fullunitR5는단독실행, exact170006trust normal전체·identity두회차/fullstatic/drill·독립phase/main은미완료다.
+
+### 2026-10-09 전체 검증과 영양 시각 시험 교정
+
+최종 자산·핀은 `faf85c59`에 커밋했다. 전체 단위 R5는 canonical `pnpm test`로 587파일 통과·1파일 skip, 9,499시험 통과·12시험 skip·실패0·exit0이었다. 2,917개 입력의 전후 SHA가 동일했다. 실제 결과 JSON SHA `38d20177…eabc1`과 `wm-m2-02-full-test-root-r5-final-report-20261008.md`를 따른다. 이전 R3/R4 실패를 이 결과로 덮어쓰지 않는다.
+
+전체 설치·generated·lint·typecheck·build·format 여섯 검사는 각각 exit0이었다. typecheck36/36 및 build15/15는 cache hit0, 모든 검사에서 2,917개 입력과 최종 파일 목록이 불변이었다. `wm-m2-02-fullstatic-actual-r1-20261009/terminal-records.json` SHA `e67ccf0f…5d21a` 및 실제 보고서 SHA `2c88eaf7…8fc14`를 따른다. 원 출력은 저장하지 않고 stream SHA/bytes와 유한 요약을 연결했다.
+
+독립 Docker170006 trust/tmpfs에서 canonical 전체 normal R1은 302파일 중298통과·1실패·3skip, 3,082시험 중3,067통과·1실패·14skip·exit1이었다. 별도028→029 upgrade1/1은 통과했다. 107 registry/plain owner·runtime/FORCE RLS 검사를 수행했고 1,091개 동결 입력 및 runtime333은 불변이었다. 원 `finite-terminal.json` SHA `f97927f2…7f4ba`, lifecycle SHA `39980b64…faa0`를 보존한다. 삭제 전 suite 역할17개를 관측했으며 개별 임의 DROP 없이 정확한 소유 컨테이너 전체를 제거했다. 앞선 v2 tmpfs 관측 오류는 시험 시작 전 실패이고, Docker 실제 HostConfig.Tmpfs 검증으로 v3에서 교정했다.
+
+단일 영양 실패의 실제 위치는 public updateRaceEvent 호출이며, 초기 DTO equality 귀속을 정정했다. 원 사례를 재현해 RaceRepositoryError/RACE_PLAN_IMPACT_REQUIRED, 수정 미적용·receipt0→0·V5/저장 계획/Intake 불변을 확인했다. 진단의 첫 savedPlan 비교는 JSONB 키 순서를 문자열로 비교한 오류라 원 false 관측을 보존하고 deep semantic 비교로 정정했다. 현재 정책은 날짜 변경에 전체 영향 승인을 요구한다.
+
+`nutrition-operational-timing.integration.test.ts` 한 파일에서 날짜 변경 거절·전체 기록 불변을 단언하고, 같은 날짜의 시각 수정으로 원 frozen pin 보존 목적을 유지했다. 공개 삭제/revision2·suspension·unresolved·원 저장본문/Intake 및 재생성 후 중단 상태의 단언은 유지했다. 최종 fixture SHA `f9e151d7…c344d`에서 전체8/8·skip0 및 focused1/7 filtered skip, 각각 별도 upgrade1/1·exit0이었다. scoped transitive TS R2/lint/format/diff0이며 TMP typeRoots 오류 R1은 보존한다. Root가 diff·SHA·actual JSON을 확인했고 소유 DB/역할/컨테이너 정리와 runtime333/SQL/contracts/자산·핀 불변을 확인했다. 실제 보고서 SHA `d0abc171…a1cba`를 따른다. 이8개의 통과를 원 전체 normal 통과로 표시하지 않으며 수정 후 전체 normal은 아직 미실행이다.
+
+기존 native logical/pgoutput/foundation 실행 입력의 완전한 HEAD 연결은 not_checked여서 갱신을 준비했다. 새 첫 logical 명령은 시험 전 exit1, assertions0이며 뒤 두 모음은 not_executed였다. 시작 원인은 아직 미분류다. 전용 Node cache3개만 정리한 보충 기록을 보존하고 기존 SHM에는 접근하지 않았다. 32개 정리 승인은 이미 1회 소비됐으며 재사용하지 않는다. 별도 진단 실행기·현재 빌드의 identity 전체 두 회차·독립 phase 검토/main·운영/실기기/전체 인증 복원 gate는 후속이며 아직 통과가 아니다. EXT-HOSTING의 기존4줄 WIP와 main `1d557358` 및 사용자 push 경계를 유지한다.

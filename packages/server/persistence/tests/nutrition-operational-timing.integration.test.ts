@@ -369,7 +369,7 @@ it('public legacy absolute/session plans and intake retain V1/V4/V5 domain resul
   );
   expect(v5.summary.nutrition).toEqual(v1.summary.nutrition);
 });
-it('public race edit preserves saved pin; delete suspends operational time without changing food or intake', async () => {
+it('public date edit requires impact approval; same-date time edit preserves saved pin and deletion suspends timing without changing food or intake', async () => {
   const id = await athlete(),
     race = createRaceRepository(runtime);
   const event = await race.createRaceEvent(id, { idempotencyKey: randomUUID(), values: values() });
@@ -393,10 +393,49 @@ it('public race edit preserves saved pin; delete suspends operational time witho
   const actual = await intake(id);
   const before = await reader().readV5(id, query);
   expect(before.days[0]?.nutritionItems[0]?.localTime).toBe('09:00:00');
+  const rejectedDateKey = randomUUID();
+  const eventBefore = await race.getRaceEvent(id, event.id);
+  const dateReceiptCount = () =>
+    runtime.tenant(
+      id,
+      async (tx) =>
+        (
+          await tx.query(
+            'SELECT count(*)::int AS count FROM race_command_receipt WHERE athlete_id=$1 AND idempotency_key=$2',
+            [id, rejectedDateKey],
+          )
+        ).rows[0]?.['count'],
+    );
+  expect(await dateReceiptCount()).toBe(0);
+  await expect(
+    race.updateRaceEvent(id, event.id, {
+      idempotencyKey: rejectedDateKey,
+      expectedRevision: 1,
+      values: { ...values(), localDate: '2026-10-08', localStartTime: '10:00' },
+    }),
+  ).rejects.toMatchObject({ code: 'RACE_PLAN_IMPACT_REQUIRED' });
+  expect(await race.getRaceEvent(id, event.id)).toEqual(eventBefore);
+  expect(await dateReceiptCount()).toBe(0);
+  expect(await reader().readV5(id, query)).toEqual(before);
+  expect(await createNutritionRepository(runtime).readIntake(id, actual.intakeId)).toEqual(actual);
+  expect(
+    await runtime.tenant(
+      id,
+      async (tx) =>
+        (
+          await tx.query(
+            'SELECT record_json FROM nutrition_plan_version WHERE athlete_id=$1 AND version_id=$2',
+            [id, saved.versionId],
+          )
+        ).rows[0]?.['record_json'],
+    ),
+  ).toEqual(saved);
+  // A date change needs the explicit full-impact approval path. A same-date time
+  // edit remains a public edit and must preserve this immutable saved race pin.
   await race.updateRaceEvent(id, event.id, {
     idempotencyKey: randomUUID(),
     expectedRevision: 1,
-    values: { ...values(), localDate: '2026-10-08', localStartTime: '10:00' },
+    values: { ...values(), localStartTime: '10:00' },
   });
   expect(await reader().readV5(id, query)).toEqual(before);
   await race.deleteRaceEvent(id, event.id, { idempotencyKey: randomUUID(), expectedRevision: 2 });
