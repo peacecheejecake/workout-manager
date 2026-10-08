@@ -110,11 +110,13 @@
         "M2-01az",
         "M0-06b-odbl-places",
         "M0-06b-odbl-scripts",
-        "M0-06b-odbl-gpx"
+        "M0-06b-odbl-gpx",
+        "M0-06b-local",
+        "M3-03b"
       ],
       "kind": "task",
       "status": "in_progress",
-      "scope": "adapter 호환성·라이선스·지도 coverage; 브라우저 증거",
+      "scope": "adapter 호환성·라이선스·지도 coverage; 브라우저 증거; 사용자 결정 2026-10-09: 구현 선행은 M0-06b-local, 기존 실기기 수용은 마지막 실제 제품 M3-03b로 이관하며 전체 완료 조건은 유지",
       "evidence": "docs/implementation/progress/M0-06b.md"
     },
     {
@@ -1118,7 +1120,7 @@
     {
       "id": "M2-01",
       "title": "코스·도로 routing",
-      "dependsOn": ["M1c-04", "M0-06b", "M2-01k"],
+      "dependsOn": ["M1c-04", "M0-06b-local", "M2-01k"],
       "kind": "task",
       "status": "not_started",
       "scope": "courses/geo-kit; 기록 viewer·자체 운영 routing·coverage·M2-01a~k 통합"
@@ -1945,7 +1947,7 @@
     {
       "id": "M2-06",
       "title": "전체 화면·내부 통합 검증",
-      "dependsOn": ["M2-02", "M2-05", "M0-06b", "M1-06b-tmp", "M2-05c"],
+      "dependsOn": ["M2-02", "M2-05", "M0-06b-local", "M1-06b-tmp", "M2-05c"],
       "kind": "task",
       "status": "not_started",
       "scope": "S01–S35·보안·운영·내부 수용 기준 대조; FUT-09 원문 미확정 해소 또는 명시적 범위 결정. 완료된 M1-06b-tmp의 소유자 한정·기본 꺼짐 비공식 수집 interface와 fixture 회귀를 포함하되, 실제 Garmin 계정 실행은 별도 not_executed이며 공식 연동·일반 사용자 자동 동기화 증거로 쓰지 않는다. 공식 후속 범위: docs/implementation/research/garmin-official-deferred.md"
@@ -2095,10 +2097,20 @@
     {
       "id": "M3-02h",
       "title": "서명된 iPhone HealthKit 전체 경로 검증",
-      "dependsOn": ["M3-02b", "M3-02c", "M3-02e", "M3-02f", "M3-02g", "M3-02i", "M3-02o"],
+      "dependsOn": [
+        "M3-02b",
+        "M3-02c",
+        "M3-02e",
+        "M3-02f",
+        "M3-02g",
+        "M3-02i",
+        "M3-02o",
+        "M3-03a",
+        "G2-PUBLIC"
+      ],
       "kind": "task",
       "status": "in_progress",
-      "scope": "서명된 제품 앱에서 명시적 동의·실제 HealthKit 운동 수집·삭제·background wake·offline ACK 재시도·재설치·계정 전환·공통 화면을 검증한다. 사용자가 허용한 표식 있는 합성 표본만 사용하고 원본 영수증은 Git 밖에 보관한다. Debug 표본 검증 코드와 실기기 증거를 분리하며, HTTPS 서버·로그인·실기기 실행이 없으면 해당 수용 행은 not_executed를 유지한다.",
+      "scope": "서명된 제품 앱에서 명시적 동의·실제 HealthKit 운동 수집·삭제·background wake·offline ACK 재시도·재설치·계정 전환·공통 화면을 검증한다. 사용자가 허용한 표식 있는 합성 표본만 사용하고 원본 영수증은 Git 밖에 보관한다. Debug 표본 검증 코드와 실기기 증거를 분리하며, HTTPS 서버·로그인·실기기 실행이 없으면 해당 수용 행은 not_executed를 유지한다. 사용자 결정 2026-10-09: 모든 구현 후 최종 실제 제품 앱에서 마지막에 실행한다. 시험 앱 증거로 대체하지 않는다.",
       "evidence": "docs/implementation/progress/M3-02h.md"
     },
     {
@@ -2212,7 +2224,7 @@
     {
       "id": "M3-03",
       "title": "최종 Native 통합",
-      "dependsOn": ["M3-02", "G2"],
+      "dependsOn": ["M3-02", "G2", "M3-03a", "M3-03b"],
       "kind": "task",
       "status": "not_started",
       "scope": "M2 전체 모듈 재조합·실기기 lifecycle/IME/back/offline 회귀·출시 요건"
@@ -2422,6 +2434,59 @@
       "status": "completed",
       "scope": "2026-10-08 사용자 결정: 기존 원문 없이 신규 계획 작성·사용을 계속 개발. V1 수동 영양 draft의 무저장 미리보기·편집 복귀·별도 확인 저장과 재조회·사용을 검증한다. stable idempotency/CAS/app consent와 V2–4 readonly·재연결 경계를 보존한다. RTL·build·실브라우저 및 실제 OIDC/DB 두 Host 수용 필요. FUT-09 원문 이식은 별도 보류.",
       "evidence": "docs/implementation/progress/M2-02m.md"
+    },
+    {
+      "id": "M0-06b-local",
+      "title": "UI·지도 로컬 구현 수용",
+      "dependsOn": [
+        "M0-04",
+        "M0-06a",
+        "M2-01az",
+        "M0-06b-odbl-places",
+        "M0-06b-odbl-scripts",
+        "M0-06b-odbl-gpx"
+      ],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "사용자 결정 2026-10-09: adapter·라이선스·coverage·브라우저 등 기존 M0-06b의 비실기기 구현 수용을 분리한다. 실제 증거를 대조한 뒤 완료하며 계획 변경만으로 passed가 되지 않는다. 실기기 성능·touch·IME는 구현 완료 후 실제 제품 앱의 M3-03b에서 검증하고 공개 ODbL 응답은 EXT-HOSTING에 남긴다. standalone 시험 앱 작업은 중단한다.",
+      "evidence": "docs/implementation/device-validation-plan.md"
+    },
+    {
+      "id": "M3-03a",
+      "title": "최종 제품 Native 통합 구현·로컬 수용",
+      "dependsOn": [
+        "M3-01",
+        "M3-02a",
+        "M3-02b",
+        "M3-02c",
+        "M3-02d",
+        "M3-02e",
+        "M3-02f",
+        "M3-02g",
+        "M3-02i",
+        "M3-02j",
+        "M3-02k",
+        "M3-02l",
+        "M3-02m",
+        "M3-02n",
+        "M3-02o",
+        "M3-02p",
+        "M3-02q",
+        "G2"
+      ],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "사용자 결정 2026-10-09: 모든 제품 구현 뒤 실제 apps/mobile shell에 M2 모듈·로그인·HealthKit·bridge를 통합하고 로컬 SDK/build·브라우저·계약 검증과 최종 서명 가능한 제품 빌드를 준비한다. standalone 시험 앱을 만들거나 실기기 시험을 먼저 실행하지 않는다. M3-02o의 운영 감사·배포/rollback 조건도 유지하며 미충족 dependency에서 준비만으로 완료하지 않는다.",
+      "evidence": "docs/implementation/device-validation-plan.md"
+    },
+    {
+      "id": "M3-03b",
+      "title": "최종 실제 제품 앱 실기기 수용",
+      "dependsOn": ["M3-03a", "M3-02h", "G2-PUBLIC"],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "사용자 결정 2026-10-09: 모든 구현과 HTTPS 제품 준비 후 실제 org.workoutmanager.app에서 기존 M0-06b·M3-03의 물리 touch/가로 넘침·지도 성능/RSS/JS heap·IME/back·offline·foreground/background·접근성 수용을 실행한다. HealthKit 전체 경로는 M3-02h 증거를 대조한다. standalone 시험 앱 결과를 최종 제품 증거로 승격하지 않는다. 실제 사용자 관측·자동화 관측·미실행을 구분하며 최종 미검증은 출시를 막는다.",
+      "evidence": "docs/implementation/device-validation-plan.md"
     }
   ]
 }

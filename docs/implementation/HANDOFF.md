@@ -150,6 +150,12 @@ APPROVE를 받았다. 당시 기록 갱신의 검토 refresh 후 main에 반영�
 
 ## 다음 작업 순서
 
+### 최신 우선 순서 · 사용자 결정 2026-10-09
+
+모든 구현을 먼저 완료하고 실기기 검증은 마지막에 실제 제품 앱으로 진행한다. standalone 시험 앱의 추가 작업과 수동 20회 측정 요청은 중단한다. [최종 제품 검증 계획](device-validation-plan.md)의 M0-06b-local → 전체 구현/phase 통합 → M3-03a → M3-02h/M3-03b → 출시 순서를 우선 적용한다. 비실기기 검증·독립 phase 검토·운영/복원/HTTPS gate는 유지한다. 기존 실기기 미검증은 통과로 바꾸지 않는다.
+
+현재 먼저 수정할 회귀는 HEAD6a00c113 canonical identity 둘째 회차의 영양 approve-v4 HTTP500 두 건이다. 첫 회차346pass/12skip, 둘째344pass/2fail/12skip을 별도 보존하며 두 회차 등록/skip 대조는 일치한다. main 병합 전 수정과 실제 재검증이 필요하다. 아래 2026-10-08 순서는 과거 진행 기록이다.
+
 2026-10-08 추가 진행: source116 인증 수신기 unit36/실제PG 복합1, 공개 최신성 추가 실제PG10, 새 preview/template contracts unit40 및 contracts 전체 TS/build를 Root가 검증·phase 커밋했다. 이전 setup 실패·skip는 별도 보존했다. SQL123 template producer는 Root unit17/두 프로필 실제PG18 및 consumerTS/lint/format을 통과해 phase에 커밋했다. template 소비 helper·공개 frozen before/after mapper·공개 소비 경로 준비는 native subagent 병렬 작업 중이며 Root만 공유파일/실제PG를 통합한다. parent 없는 unplanned run은 top-level roster로 계약을 수정하고 unit27을 재검증했다. source116222 profile은 그대로이고123 포함 새 profile·export/복원/이미 적용된 erasure postimage는 별도 미완료다. AWS STS는 SSO 만료로 실패하여 서버/503/배포 검증은 갱신하지 않았다. 상세 SHA/실제 결과·한계는 [I 기록](progress/M2-02i.md)을 따른다.
 
 최신 재개 기록(2026-10-08): `phase/m2-02` 검증 HEAD `b292e32e`, main은 병합하지 않았다. atomic approval 검증 당시 HEAD는 `b14c26ab`이었다. atomic approval 원15건, 별도 routine version6건, 기존 integrated approval19건이 실제 합성PG에서 통과했다. full phase나 공개 HTTP/UI/복원/운영 출시 완료가 아니다. 정확 입력·초기실패·최종결과는 [I 기록](progress/M2-02i.md)을 따른다.
@@ -1015,3 +1021,7 @@ OIDC fixture의 보류 목록에 `/bff/v1/consents/app` 한 줄을 추가했다.
 사용자 선호에 따라 실제 탐색은 Cua Codex In-app Browser로 수행했다. 로컬 합성 Alice 로그인·app 동의·고정 합성 GPX 가져오기·동일 이름 구역2개 추가 후 제거본 성공/수정번호2를 확인했다. 320/768/1280 외부 viewport의 client/scroll 폭은 각각305/753/1265로 동일했고 성공 상태가 유지됐다. 실제 pending 창은 관측하지 못했으며 IME/native lifecycle/개인 건강 자료 검증은 수행하지 않았다. viewport reset·소유 tab20 종료를 완료했다. 유한 UI 기록 SHA `cdbdb0de719a6ecfad6e8dc95181b55ae627e834549add68835e9131ae27ccc8`다. guardian 종료는 exit0·소유 process group 부재·DB/역할/slot/포트/새 TMP 잔존0·4219 입력 불변이며 SHA `d295e8210743431fe1c4629d07c981088be8f276bfd61b365a0a104d143f7d41`다. 파일명의 Aside를 실제 Aside 점검으로 표시하지 않는다.
 
 iPhone 재연결의 읽기 관측은 paired/connected1개·정확 합성 bundle/version/build 일치·artifact/hash 불변이었다(SHA `246d2c4135eb9f8508ee946baf9565dc60a9e689fb01a9a9bba81997454de72d`). 잠금 상태는 unknown이라 사용자 해제 확인을 기다린다. 새 설치/launch/trace/성능 측정은 수행하지 않았다. canonical 전체 identity 두 회차, 독립 phase review, main 병합과 운영/실기기 gate는 아직 미완료다.
+
+## 사용자 결정 기록 · 2026-10-09 실기기 검증 순서 변경
+
+모든 구현 완료 후 마지막에 실제 제품 앱으로 실기기 검증한다. standalone 시험 앱 작업은 중단했고 진행 중인 기기 명령은 없다. 기존 증거·WIP를 보존하고 앱 종료/삭제는 추가 실행하지 않았다. [검증 계획](device-validation-plan.md)에 DAG 분리와 최종 gate를 기록했다. 가로 overflow·한 손가락/페이지 scroll 충돌은 최종 제품 검증의 점검 항목이며, 시험 앱의 두 손가락 정상 관측을 제품 수용으로 승격하지 않는다.
