@@ -723,3 +723,9 @@ Explicit current22 harness는 Root unit83/83·전체harnessTS0·실제기존12�
 ## 2026-10-08 SQL133 승인400 실제 검증
 
 신규 SQL133 실제 PG R1은20pass/1fail이었다. 승인400과 기존 저장·재연결·receipt·철회·foreign/CAS 회귀는 통과했고, 실패한 변조 fixture의 함수 매개변수 이름 누락을 고친 R2는 해당5개 검증이 모두 통과했다. Root static2/2·lint/format0·actor 전체persistenceTS0 및 실제 시험DB/roles/slots잔존0을 확인했다. 명명된23 설치·새권한/catalog·production/복원·pooled 혼합저장·전체phase는 아직 미완료다. native agent는 새23 installer와 private pooled resolver를 비중복 소유로 구현하고 Root가 실제DB와 공통 통합을 담당한다. main/push·외부 not_executed 변경0이다.
+
+## 2026-10-08 Profile23 설치·권한·관측 및 SQL134 실제 검증
+
+Root는 명명된V7/profile23 installer11개와 private resolver134의6개를 합친 실제PG17/17, 별도grantV7 28/28 및 별도catalogV7 10/10을 확인했다. 기존22 이력/7ledger·원자적 설치·권한·중복/변조 거절과 metadata 관측을 검증했으며 default normal107·운영 활성화·compiled cold/security/최신 전체복원 지원은 미완료로 유지한다. 시험DB/roles/slots 잔존0이다.
+
+혼합400/400/30의 store/ACK/approval/export를 완료하기 위해 실제15개 predecessor 코드·metadata를 관측했다. Root 예약135 authoritative store/basis와136 chainreader/sameTx ACK를 native별로 구현하고23 identity helper를 준비한다. SQL134만으로 source/동의/현재근거를 인증하지 않으며, 기존 혼합store 실패·외부 not_executed·FUT-09 원문 이식 대기를 유지한다. phase 검토/main/push는 진행하지 않았다.
