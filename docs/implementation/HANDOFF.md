@@ -771,3 +771,7 @@ Public-first 모듈 순환 초기화 결함을 transport result2곳의 lazy 참�
 ## 2026-10-08 post140 실제 고정 입력 확보
 
 Root post140 metadata capture actual exit0로21함수(public12/private9)·기존33전체불변·두135body전이/metadata불변과153입력 전후SHA를 확보하고 별도 시험 잔존0을 확인했다. 이는 profile24 설치/지원/복원/전체 수용이 아니다. Native agent에 end140 named installer-v8 NEW3 구현과 새 applicationprepare 병목의 successor141 설계를 비중복 배정했다. Root통합/DB직렬·원문 없는 신규 계획 개발·FUT-09역사이식별도대기·외부 not_executed·phase/main미완료를 유지한다. [I 기록](progress/M2-02i.md)을 따른다.
+
+## 2026-10-08 SQL141 실제 부분 수용·대량8 다음 경계
+
+Root SQL141 실제27/27·unit10/10을 확인했다. End140 installer 준비도 fixture 교정 후 실제19/19·unit6/6이지만 최종141 profile 수용은 아니다. 대량8 R5는3pass/5fail이다. actual prepare4318ms로5초 SQL timeout을 넘겼고 lossless encoded2301981/logical4272398byte를 관측했으나 전체60초 test timeout·reviewed export의 ID/digest fixture 오류·승인 fresh source의4MiB command budget 초과가 남았다. Caps/deadlines/400수량 유지하며 전달 중복/검증 비용 분석·fixture 교정·최신 metadata 준비를 native 병렬 진행한다. 원문 없는 신규 계획 개발·역사이식별도대기·실제외부 not_executed·최종 설치/복원·phase/main 미완료를 유지한다. [I 기록](progress/M2-02i.md)에 실패와 actual/cleanup/SHA를 보존한다.
