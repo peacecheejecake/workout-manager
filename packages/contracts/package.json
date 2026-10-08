@@ -296,6 +296,10 @@
     "./race-manual-internal-personal-export": {
       "types": "./src/race-manual-internal-personal-export.ts",
       "default": "./dist/race-manual-internal-personal-export.js"
+    },
+    "./manual-source-personal-export": {
+      "types": "./src/manual-source-personal-export.ts",
+      "default": "./dist/manual-source-personal-export.js"
     }
   },
   "scripts": {
