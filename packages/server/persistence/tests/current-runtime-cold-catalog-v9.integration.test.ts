@@ -10,6 +10,7 @@ import { captureCurrentRuntimeCatalogWitnessV9In } from '../src/current-runtime-
 import { observeCurrentRuntimeColdCatalogV9In } from '../src/current-runtime-cold-catalog-v9.js';
 import { currentRuntimeCompiledExpectedV9 } from '../src/current-runtime-compiled-expected-v9.js';
 import { dropIsolatedDatabase } from './drop-isolated-database.js';
+import { createDatabase, type CatalogTransaction } from '../src/database.js';
 
 // Metadata only. Root executes PostgreSQL; this fixture creates no health/source
 // rows and invokes no product RPC. Observed equality is not dependency closure.
@@ -123,6 +124,99 @@ async function readonly<T>(
 }
 const observe = (environment = first) =>
   readonly(environment, environment.runtime, observeCurrentRuntimeColdCatalogV9In);
+async function catalogDatabase<T>(apply: (db: ReturnType<typeof createDatabase>) => Promise<T>) {
+  const db = createDatabase({ connectionString: url(first, first.runtime), max: 1 });
+  try {
+    return await apply(db);
+  } finally {
+    await db.close();
+  }
+}
+fixtureIt(
+  'database catalog wrapper establishes actual read-only context and closes the handle',
+  async () => {
+    await catalogDatabase(async (db) => {
+      if (!db.snapshotCatalog) throw Error('CATALOG_CAPABILITY_REQUIRED');
+      let saved: CatalogTransaction | undefined;
+      let pid = 0;
+      const result = await db.snapshotCatalog(async (tx) => {
+        saved = tx;
+        const context = await tx.query(
+          "SELECT pg_backend_pid() pid,current_setting('transaction_isolation') isolation,current_setting('transaction_read_only') readonly,current_setting('app.athlete_id',true) athlete",
+        );
+        expect(context.rows[0]).toMatchObject({
+          isolation: 'repeatable read',
+          readonly: 'on',
+          athlete: null,
+        });
+        pid = z.number().int().positive().parse(context.rows[0]?.['pid']);
+        return observeCurrentRuntimeColdCatalogV9In(tx);
+      });
+      expect(result).toMatchObject({
+        catalog: 'verified',
+        supported: false,
+        processingAuthority: 'none',
+      });
+      if (!saved) throw Error('CATALOG_HANDLE_NOT_CAPTURED');
+      await expect(saved.query('SELECT 1')).rejects.toThrow('TRANSACTION_CLOSED');
+      expect(
+        (await admin.query('SELECT count(*)::int n FROM pg_locks WHERE pid=$1', [pid])).rows,
+      ).toEqual([{ n: 0 }]);
+    });
+  },
+  60000,
+);
+fixtureIt(
+  'database catalog wrapper rolls back callback failure and frees both actual fences',
+  async () => {
+    await catalogDatabase(async (db) => {
+      if (!db.snapshotCatalog) throw Error('CATALOG_CAPABILITY_REQUIRED');
+      let pid = 0;
+      await expect(
+        db.snapshotCatalog(async (tx) => {
+          pid = z
+            .number()
+            .int()
+            .positive()
+            .parse((await tx.query('SELECT pg_backend_pid() pid')).rows[0]?.['pid']);
+          throw Error('SYNTHETIC_CALLBACK_FAILURE');
+        }),
+      ).rejects.toThrow('SYNTHETIC_CALLBACK_FAILURE');
+      expect(
+        (await admin.query('SELECT count(*)::int n FROM pg_locks WHERE pid=$1', [pid])).rows,
+      ).toEqual([{ n: 0 }]);
+    });
+  },
+);
+fixtureIt(
+  'database catalog wrapper rejects an aborted transaction even when callback catches it',
+  async () => {
+    await catalogDatabase(async (db) => {
+      if (!db.snapshotCatalog) throw Error('CATALOG_CAPABILITY_REQUIRED');
+      await expect(
+        db.snapshotCatalog(async (tx) => {
+          await expect(tx.query('SELECT 1/0')).rejects.toMatchObject({ code: '22012' });
+          return 'must not return success';
+        }),
+      ).rejects.toThrow('TRANSACTION_NOT_COMMITTED');
+    });
+  },
+);
+fixtureIt(
+  'database catalog wrapper denies real writes and permits a fresh observation afterwards',
+  async () => {
+    await catalogDatabase(async (db) => {
+      if (!db.snapshotCatalog) throw Error('CATALOG_CAPABILITY_REQUIRED');
+      await expect(
+        db.snapshotCatalog((tx) => tx.query('UPDATE public.consent SET athlete_id=athlete_id')),
+      ).rejects.toMatchObject({ code: '25006' });
+      expect(await db.snapshotCatalog(observeCurrentRuntimeColdCatalogV9In)).toMatchObject({
+        catalog: 'verified',
+      });
+    });
+  },
+  60000,
+);
 async function mutate(sql: string, undo: string) {
   await session(first, first.owner, (tx) => tx.query(sql));
   try {

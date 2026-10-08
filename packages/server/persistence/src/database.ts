@@ -13,6 +13,12 @@ export interface Transaction {
     values?: unknown[],
   ): Promise<{ rows: Record<string, unknown>[]; rowCount: number | null }>;
 }
+export interface CatalogTransaction {
+  query(
+    sql: string,
+    values?: unknown[],
+  ): Promise<{ rows: Record<string, unknown>[]; rowCount: number | null }>;
+}
 export interface Database {
   tenant<T>(athleteId: string, operation: (transaction: Transaction) => Promise<T>): Promise<T>;
   exclusiveTenant<T>(
@@ -26,6 +32,8 @@ export interface Database {
     athleteId: string,
     operation: (transaction: Transaction) => Promise<T>,
   ): Promise<T>;
+  /** Metadata observation only. No athlete context or processing admission. */
+  snapshotCatalog?<T>(operation: (transaction: CatalogTransaction) => Promise<T>): Promise<T>;
   close(): Promise<void>;
 }
 export class TenantErasedError extends Error {
@@ -154,10 +162,81 @@ export function createDatabase(options: { connectionString: string; max?: number
     if (releaseFailed) throw new Error('SNAPSHOT_FENCE_RELEASE_FAILED');
     return result;
   }
+  async function snapshotCatalog<T>(
+    operation: (transaction: CatalogTransaction) => Promise<T>,
+  ): Promise<T> {
+    const client = await pool.connect();
+    const fences: number[] = [];
+    let active = false;
+    let backendFailed = false;
+    let releaseFailed = false;
+    let result: T;
+    // This backend is always discarded, including unknown lock outcomes.
+    client.on('error', () => {
+      backendFailed = true;
+    });
+    try {
+      await client.query(
+        "SELECT set_config('statement_timeout','30000',false), set_config('lock_timeout','3000',false), set_config('search_path','pg_catalog,pg_temp',false)",
+      );
+      await validateRole(client);
+      for (const fence of [872194, 77210]) {
+        await client.query('SELECT pg_advisory_lock_shared($1,1)', [fence]);
+        fences.push(fence);
+      }
+      // Both session fences precede the first RR snapshot.
+      await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+      await client.query(
+        "SELECT set_config('statement_timeout','30000',true), set_config('lock_timeout','3000',true), set_config('search_path','pg_catalog,pg_temp',true)",
+      );
+      active = true;
+      result = await operation({
+        query: async (sql, values) => {
+          if (!active) throw new Error('TRANSACTION_CLOSED');
+          return client.query<Record<string, unknown>>(sql, values);
+        },
+      });
+      active = false;
+      const commit = await client.query('COMMIT');
+      if (commit.command !== 'COMMIT') throw new Error('TRANSACTION_NOT_COMMITTED');
+      if (backendFailed) throw new Error('CATALOG_BACKEND_FAILED');
+    } catch (error) {
+      active = false;
+      try {
+        await client.query('ROLLBACK');
+      } catch {
+        // Discarding the backend closes any outstanding transaction and locks.
+      }
+      throw error;
+    } finally {
+      active = false;
+      for (const fence of fences.reverse()) {
+        try {
+          const unlocked = await client.query(
+            'SELECT pg_advisory_unlock_shared($1,1) AS unlocked',
+            [fence],
+          );
+          if (
+            !z
+              .array(z.strictObject({ unlocked: z.literal(true) }))
+              .length(1)
+              .safeParse(unlocked.rows).success
+          )
+            releaseFailed = true;
+        } catch {
+          releaseFailed = true;
+        }
+      }
+      client.release(true);
+    }
+    if (releaseFailed) throw new Error('CATALOG_FENCE_RELEASE_FAILED');
+    return result;
+  }
   return {
     tenant: (athleteId, operation) => transact(athleteId, operation, false),
     exclusiveTenant: (athleteId, operation) => transact(athleteId, operation, true),
     snapshotTenant: (athleteId, operation) => transact(athleteId, operation, false, true),
+    snapshotCatalog,
     close: () => pool.end(),
   };
 }
