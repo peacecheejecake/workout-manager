@@ -25,8 +25,10 @@ import { grantAppProcessingForScenario } from './app-consent-prerequisite';
 // Test selection only, never a production support/admission claim. Baseline34,
 // old installed17 and unknown modes do not count as profile22 HTTP acceptance.
 test.skip(
-  process.env['IDENTITY_E2E_RACE_MANUAL_PUBLIC'] !== 'installed-current-profile22',
-  'Requires explicit installed-current-profile22 harness with actual V38 repository; older/default modes are not this acceptance.',
+  !['installed-current-profile22', 'installed-current-profile23'].includes(
+    process.env['IDENTITY_E2E_RACE_MANUAL_PUBLIC'] ?? '',
+  ),
+  'Requires an explicit installed profile22 or profile23 harness with actual V38 repository; older/default modes are not this acceptance.',
 );
 async function login(page: Page, origin: string) {
   await page.goto(`${origin}/account`);

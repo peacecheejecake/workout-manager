@@ -4,6 +4,10 @@ import {
   composeIdentityInstalledCurrentRuntimeV6Ports,
 } from './identity-installed-current-runtime-v6.mjs';
 import {
+  setupIdentityInstalledCurrentRuntimeV7,
+  composeIdentityInstalledCurrentRuntimeV7Ports,
+} from './identity-installed-current-runtime-v7.mjs';
+import {
   installCurrentRuntime,
   verifyCurrentRuntimeInstalledIn,
 } from '../packages/server/persistence/src/current-runtime-installation.ts';
@@ -213,6 +217,7 @@ const {
   stageRaceManualPublic,
   installedRuntime,
   installedCurrentRuntime,
+  installedCurrentRuntimeV7,
   enableRaceResultsV2,
   enableRaceManualPublic,
   enableCheckInTemplates,
@@ -603,7 +608,10 @@ try {
       await installCurrentRuntime(ownerUrl);
     } else if (installedCurrentRuntime) {
       await migrate(ownerUrl, 107);
-      const profile = await setupIdentityInstalledCurrentRuntimeV6({
+      const setup = installedCurrentRuntimeV7
+        ? setupIdentityInstalledCurrentRuntimeV7
+        : setupIdentityInstalledCurrentRuntimeV6;
+      const profile = await setup({
         ownerConnectionString: ownerUrl,
         runtimeRole: 'workout_runtime',
       });
@@ -1064,7 +1072,9 @@ try {
   closers.push(() => store.close());
   const database = createDatabase({ connectionString: runtimeUrl });
   const installedCurrentPorts = installedCurrentRuntime
-    ? composeIdentityInstalledCurrentRuntimeV6Ports(database)
+    ? installedCurrentRuntimeV7
+      ? composeIdentityInstalledCurrentRuntimeV7Ports(database)
+      : composeIdentityInstalledCurrentRuntimeV6Ports(database)
     : null;
 
   closers.push(() => database.close());

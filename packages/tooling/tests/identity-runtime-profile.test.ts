@@ -12,6 +12,7 @@ it('keeps the historical default and staged compositions independent', () => {
     stageRaceManualPublic: false,
     installedRuntime: false,
     installedCurrentRuntime: false,
+    installedCurrentRuntimeV7: false,
     enableRaceResultsV2: false,
     enableRaceManualPublic: false,
     enableCheckInTemplates: false,
@@ -25,14 +26,38 @@ it('keeps the historical default and staged compositions independent', () => {
   ).toMatchObject({
     stageRaceManualPublic: true,
     stageRaceResults: true,
+    installedCurrentRuntime: false,
+    installedCurrentRuntimeV7: false,
     installedRuntime: false,
     enableRaceResultsV2: true,
     enableRaceManualPublic: true,
   });
   expect(parseIdentityRuntimeProfile({ ...normal, checkInTemplates: 'staged-123' })).toMatchObject({
     stageCheckInTemplates: true,
+    installedCurrentRuntime: false,
+    installedCurrentRuntimeV7: false,
     enableCheckInTemplates: true,
     installedRuntime: false,
+  });
+});
+it.each([
+  {},
+  { raceResultsV2: 'staged-108-111' },
+  { checkInTemplates: 'staged-123' },
+  { raceManualPublic: 'staged-manual' },
+  { raceResultsV2: 'staged-108-111', checkInTemplates: 'staged-123' },
+  { raceResultsV2: 'staged-108-111', raceManualPublic: 'staged-manual' },
+  { checkInTemplates: 'staged-123', raceManualPublic: 'staged-manual' },
+  {
+    raceResultsV2: 'staged-108-111',
+    checkInTemplates: 'staged-123',
+    raceManualPublic: 'staged-manual',
+  },
+])('never selects V7 for a historical raw composition %j', (flags) => {
+  expect(parseIdentityRuntimeProfile({ ...normal, ...flags })).toMatchObject({
+    installedRuntime: false,
+    installedCurrentRuntime: false,
+    installedCurrentRuntimeV7: false,
   });
 });
 it('installed-runtime explicitly enables all installed public families without any raw staging', () => {
@@ -43,6 +68,7 @@ it('installed-runtime explicitly enables all installed public families without a
       stageRaceManualPublic: false,
       installedRuntime: true,
       installedCurrentRuntime: false,
+      installedCurrentRuntimeV7: false,
       enableRaceResultsV2: true,
       enableRaceManualPublic: true,
       enableCheckInTemplates: true,
@@ -58,10 +84,39 @@ it('profile22 is a separate installed path with all public families and no raw s
     stageRaceManualPublic: false,
     installedRuntime: false,
     installedCurrentRuntime: true,
+    installedCurrentRuntimeV7: false,
     enableRaceResultsV2: true,
     enableRaceManualPublic: true,
     enableCheckInTemplates: true,
   });
+});
+it('profile23 explicitly selects V7 while sharing installed current families', () => {
+  expect(
+    parseIdentityRuntimeProfile({ ...normal, raceManualPublic: 'installed-current-profile23' }),
+  ).toEqual({
+    stageRaceResults: false,
+    stageCheckInTemplates: false,
+    stageRaceManualPublic: false,
+    installedRuntime: false,
+    installedCurrentRuntime: true,
+    installedCurrentRuntimeV7: true,
+    enableRaceResultsV2: true,
+    enableRaceManualPublic: true,
+    enableCheckInTemplates: true,
+  });
+});
+it.each([
+  { raceResultsV2: 'staged-108-111' },
+  { checkInTemplates: 'staged-123' },
+  { raceResultsV2: 'staged-108-111', checkInTemplates: 'staged-123' },
+])('rejects current profile23/raw overlap before startup: %j', (overlap) => {
+  expect(() =>
+    parseIdentityRuntimeProfile({
+      ...normal,
+      ...overlap,
+      raceManualPublic: 'installed-current-profile23',
+    }),
+  ).toThrow('IDENTITY_RUNTIME_PROFILE_CONFLICT');
 });
 it.each([
   { raceResultsV2: 'staged-108-111' },
@@ -78,7 +133,9 @@ it.each([
 });
 it.each([
   'installed-current-profile21',
-  'installed-current-profile23',
+  'installed-current-profile24',
+  ' installed-current-profile23',
+  'installed-current-profile23 ',
   ' installed-current-profile22',
   'installed-current-profile22 ',
   ['installed-runtime', 'installed-current-profile22'],

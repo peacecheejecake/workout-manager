@@ -729,3 +729,9 @@ Explicit current22 harness는 Root unit83/83·전체harnessTS0·실제기존12�
 Root는 명명된V7/profile23 installer11개와 private resolver134의6개를 합친 실제PG17/17, 별도grantV7 28/28 및 별도catalogV7 10/10을 확인했다. 기존22 이력/7ledger·원자적 설치·권한·중복/변조 거절과 metadata 관측을 검증했으며 default normal107·운영 활성화·compiled cold/security/최신 전체복원 지원은 미완료로 유지한다. 시험DB/roles/slots 잔존0이다.
 
 혼합400/400/30의 store/ACK/approval/export를 완료하기 위해 실제15개 predecessor 코드·metadata를 관측했다. Root 예약135 authoritative store/basis와136 chainreader/sameTx ACK를 native별로 구현하고23 identity helper를 준비한다. SQL134만으로 source/동의/현재근거를 인증하지 않으며, 기존 혼합store 실패·외부 not_executed·FUT-09 원문 이식 대기를 유지한다. phase 검토/main/push는 진행하지 않았다.
+
+## 2026-10-08 pooled 저장·읽기 구성요소와 Profile23 HTTP 검증
+
+원문 없는 신규 계획 생성·사용 개발을 계속한다. Root SQL135 실제 PG9/9, SQL136은 경로/트랜잭션 fixture 실패를 보존하고 수정한 R3 실제15/15를 확인했다. Profile23 공개 Next/Vite HTTP는12pass/2skip 뒤 정확 selector 교정 후 별도 V38 HTTP2/2를 확인했다. Root unit112/112·harness TS0·시험 DB/roles/slots잔존0이다. 서로 다른 실행을 하나의 전수 통과로 합치지 않는다. 자세한 로그·SHA·실패는 [I 기록](progress/M2-02i.md)에 보존한다.
+
+Node transport 및 pooled 전체 승인/export 통합은 native agent와 병행 중이다. 신규 구성요소 단독으로 혼합400/400/30 최종 수용·production 지원·cold/security/fullrestore·phase 완료를 선언하지 않는다. FUT-09 기존 원문 이식, AWS 인증, 운영/native/provider not_executed, 전체 phase gate·독립 검토/main 병합·사용자 push는 별도 대기로 유지한다.
