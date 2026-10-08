@@ -619,3 +619,7 @@ PB Chip우선/null일 때 Gun 기본 정책은 unit75/75와 실제두Host4/4로 
 Root는 새 migration128 `128_personal_export_retained_runtime.sql`을 개인 template/manual public export의 좁은 두 reader 전용으로 직렬 배정했다. SQL·실제PG 시험준비, NEW `retained-personal-export` mapper/unit, current-runtime-support의 실제catalog integration 시험은 nativeagent별 분리소유한다. 기존001..127과 installer17/checksum/defaultexport34를 수정하지 않으며 SQL128의 존재만으로 설치/지원/producer/복원 완료를 표시하지 않는다. Root가 actualDB·공통exports/operationsV36·installation/grant witness·graph/Git 통합을 맡는다. 내부전용 candidate/preparation을 공개 JSON에 넣지 않는다.
 
 `40e68342` 정상설치 HTTP12/12와 `fe3ae229` 개인publicmanual 구조계약86/86은 phase branch에만 커밋했다. 운영 cold 지원·최신전체export/restore·wholephase/독립review/main·공개503/native/외부 gate와 AWS로그인/FUT09원문 답변은 대기 중이다.
+
+## V36 retained 개인 export 후속 · 2026-10-08
+
+Root 실제 aggregate PG R4 **16/16**,focused unit174 및 별도 계약8파일248을 확인했다. R1/R2의 신규8skip과 R3 실제15PASS/1FAIL은 [I 기록](progress/M2-02i.md)에 보존했다. 수정은 실제 versioned routine occurrence·별도 nutrition approval ID·central manual history 대응이며 조건을 우회하거나 이력을 만들어내지 않는다. cleanup DB/roles/slots0, default34/installer17/registry107/main/push0다. Native 병렬 작업은 internal-only portable renderer, 전체116/118 narrow enumeration 설계, actual catalog witness의 internal FK trigger identity 정규화다. Internal 계약 단위검증은 전체personal-export 완료가 아니다. provenance·normal successor/cold activation·최신 authenticated restore/phase/운영 gate는 미완료이며 I/J/phase in_progress와 외부 not_executed를 유지한다.

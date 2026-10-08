@@ -394,247 +394,259 @@ const fixed = {
   persistence: z.literal('not_stored'),
   freshness: z.literal('not_checked'),
 };
-const projected = z
-  .strictObject({
-    ...fixed,
-    status: z.literal('projected'),
-    expectedEvent: z.strictObject({ id: uuid, revision: version }),
-    intent: raceManualProjectionIntentSchema,
-    beforeBasis: z.literal('captured_snapshot'),
-    afterBasis: z.literal('hypothetical'),
-    race: raceManualPublicRaceChangeSchema,
-    training: section(raceManualPublicTrainingMemberSchema),
-    nutrition: section(nutrition),
-    recovery: section(recovery),
-    routines: section(routine),
-    retainedUnplanned: z
-      .array(
-        z.strictObject({
-          runId: idSchema,
-          blueprintVersionId: idSchema,
-          preservation: z.literal('unplanned_run_unchanged'),
-        }),
-      )
-      .max(1000),
-    affected: z.array(target).max(1000),
-    resolutionRequirements: z.array(requirement).max(1000),
-    notices: z.array(notice).max(5000),
-  })
-  .superRefine((p, c) => {
-    if (
-      p.expectedEvent.id !== p.intent.expectedEvent.id.toLowerCase() ||
-      p.expectedEvent.revision !== p.intent.expectedEvent.revision ||
-      p.race.eventId !== p.expectedEvent.id ||
-      p.race.expectedRevision !== p.expectedEvent.revision ||
-      p.race.after.localDate !== p.intent.newLocalDate
+const plannedFactsShape = z.strictObject({
+  ...fixed,
+  status: z.literal('projected'),
+  expectedEvent: z.strictObject({ id: uuid, revision: version }),
+  intent: raceManualProjectionIntentSchema,
+  beforeBasis: z.literal('captured_snapshot'),
+  afterBasis: z.literal('hypothetical'),
+  race: raceManualPublicRaceChangeSchema,
+  training: section(raceManualPublicTrainingMemberSchema),
+  nutrition: section(nutrition),
+  recovery: section(recovery),
+  routines: section(routine),
+  retainedUnplanned: z
+    .array(
+      z.strictObject({
+        runId: idSchema,
+        blueprintVersionId: idSchema,
+        preservation: z.literal('unplanned_run_unchanged'),
+      }),
     )
-      c.addIssue({ code: 'custom', message: 'Exact event and original intent required' });
-    const expectedAffected: z.infer<typeof target>[] = [],
-      expectedRequirements: z.infer<typeof requirement>[] = [],
-      expectedNotices: z.infer<typeof notice>[] = [];
-    const rosters = {
-      training: p.training,
-      nutrition: p.nutrition,
-      recovery: p.recovery,
-      routine_schedule: p.routines,
-    };
-    let count = 0;
-    for (const d of ['training', 'nutrition', 'recovery', 'routine_schedule'] as const) {
-      const roster = rosters[d];
-      if (roster.state === 'absent') continue;
-      count += roster.members.length;
-      unique(
-        roster.members.map((m) => m.aggregateId),
-        c,
-      );
-    }
-    if (count > 1000) c.addIssue({ code: 'custom', message: 'Whole aggregate limit' });
-    for (const m of p.training.state === 'present' ? p.training.members : [])
-      if (m.after.kind === 'new_version_on_approval')
-        expectedAffected.push({ domain: 'training', aggregateId: m.aggregateId });
-    for (const m of p.recovery.state === 'present' ? p.recovery.members : [])
-      if (m.state === 'affected') {
-        expectedAffected.push({ domain: 'recovery', aggregateId: m.aggregateId });
-        if (m.requirement === 'resolve_before_review')
-          expectedRequirements.push({
-            domain: 'recovery',
-            aggregateId: m.aggregateId,
-            strategyVersionId: m.before.ref.versionId,
-            reason: 'recovery_confirmation_required',
-            editor: 'confirm_recovery_and_review',
-          });
-      }
-    for (const m of p.nutrition.state === 'present' ? p.nutrition.members : []) {
-      if (m.timings.some((t) => t.state === 'affected'))
-        expectedAffected.push({ domain: 'nutrition', aggregateId: m.aggregateId });
-      for (const t of m.timings) {
-        if (t.requirement === 'resolve_before_review')
-          expectedRequirements.push({
-            domain: 'nutrition',
-            aggregateId: m.aggregateId,
-            planVersionId: m.before.ref.versionId,
-            itemId: t.itemId,
-            reason: 'affected_timing_unresolved',
-            editor: 'replace_anchor',
-          });
-        if (
-          t.state === 'unchanged' &&
-          (t.before.state === 'unresolved' || t.before.state === 'suspended')
-        )
-          expectedNotices.push({
-            domain: 'nutrition',
-            aggregateId: m.aggregateId,
-            itemId: t.itemId,
-            code: t.before.state === 'suspended' ? 'DISCONNECTED_RETAINED' : 'UNCHANGED_UNRESOLVED',
-          });
-        const r = p.intent.resolutions.nutrition.find(
-          (r) => r.planVersionId.toLowerCase() === m.before.ref.versionId && r.itemId === t.itemId,
-        );
-        if (
-          (t.resolution === 'explicit_replacement') !== Boolean(r) ||
-          (r && !same(r.anchor, m.after.plan.items.find((i) => i.id === t.itemId)?.anchor))
-        )
-          c.addIssue({
-            code: 'custom',
-            message: 'Exact nutrition resolution correspondence required',
-          });
-      }
-    }
-    for (const m of p.routines.state === 'present' ? p.routines.members : []) {
-      if (m.state === 'affected')
-        expectedAffected.push({ domain: 'routine_schedule', aggregateId: m.aggregateId });
-      if (m.requirement !== 'none')
-        expectedRequirements.push({
-          domain: 'routine_schedule',
-          aggregateId: m.aggregateId,
-          scheduleVersionId: m.before.schedule.versionId,
-          reason:
-            m.requirement === 'retained_ended_unresolved'
-              ? 'retained_ended_unresolved'
-              : 'affected_timing_unresolved',
-          editor:
-            m.requirement === 'retained_ended_unresolved'
-              ? 'unavailable_frozen_ended'
-              : 'replace_rule',
-        });
-      if (
-        m.state !== 'affected' &&
-        m.storedOccurrences.some(
-          (o) =>
-            o.schedule.versionId === m.before.schedule.versionId && o.timingStatus === 'unresolved',
-        )
-      )
-        expectedNotices.push({
-          domain: 'routine_schedule',
-          aggregateId: m.aggregateId,
-          itemId: null,
-          code: 'UNCHANGED_UNRESOLVED',
-        });
-      if (m.before.schedule.state === 'ended')
-        expectedNotices.push({
-          domain: 'routine_schedule',
-          aggregateId: m.aggregateId,
-          itemId: null,
-          code: 'ENDED_SCHEDULE_RETAINED',
-        });
-      if (m.retainedStarted.length)
-        expectedNotices.push({
-          domain: 'routine_schedule',
-          aggregateId: m.aggregateId,
-          itemId: null,
-          code: 'STARTED_RUN_PRESERVED',
-        });
-      const r = p.intent.resolutions.routines.find(
-        (r) => r.scheduleVersionId === m.before.schedule.versionId,
-      );
-      if (
-        (m.resolution === 'explicit_replacement') !== Boolean(r) ||
-        (r &&
-          (!same(r.rule, m.after.schedule.rule) ||
-            !same(r.window, m.after.schedule.window) ||
-            r.sourcePlanVersionId !== m.after.sourcePlanVersionId))
-      )
-        c.addIssue({ code: 'custom', message: 'Exact routine resolution correspondence required' });
-    }
-    for (const r of p.intent.resolutions.nutrition)
-      if (!(
-        p.nutrition.state === 'present' &&
-        p.nutrition.members.some(
-          (m) =>
-            m.before.ref.versionId === r.planVersionId.toLowerCase() &&
-            m.timings.some((t) => t.itemId === r.itemId && t.state === 'affected'),
-        )
-      ))
-        c.addIssue({ code: 'custom', message: 'Resolution requires affected owned tuple' });
-    for (const r of p.intent.resolutions.routines)
-      if (!(
-        p.routines.state === 'present' &&
-        p.routines.members.some(
-          (m) => m.before.schedule.versionId === r.scheduleVersionId && m.state === 'affected',
-        )
-      ))
-        c.addIssue({ code: 'custom', message: 'Resolution requires affected owned tuple' });
-    function exact(a: readonly unknown[], b: readonly unknown[]) {
-      unique(
-        a.map((v) => JSON.stringify(v)),
-        c,
-      );
-      if (a.length !== b.length || a.some((v) => !b.some((w) => same(v, w))))
-        c.addIssue({ code: 'custom', message: 'Exact derived roster required' });
-    }
-    const changedTraining = new Set(
-      expectedAffected.filter((t) => t.domain === 'training').map((t) => t.aggregateId),
+    .max(1000),
+  affected: z.array(target).max(1000),
+  resolutionRequirements: z.array(requirement).max(1000),
+  notices: z.array(notice).max(5000),
+});
+function validatePlannedFacts(
+  p: Omit<z.infer<typeof plannedFactsShape>, 'persistence' | 'beforeBasis'>,
+  c: z.RefinementCtx,
+) {
+  if (
+    p.expectedEvent.id !== p.intent.expectedEvent.id.toLowerCase() ||
+    p.expectedEvent.revision !== p.intent.expectedEvent.revision ||
+    p.race.eventId !== p.expectedEvent.id ||
+    p.race.expectedRevision !== p.expectedEvent.revision ||
+    p.race.after.localDate !== p.intent.newLocalDate
+  )
+    c.addIssue({ code: 'custom', message: 'Exact event and original intent required' });
+  const expectedAffected: z.infer<typeof target>[] = [],
+    expectedRequirements: z.infer<typeof requirement>[] = [],
+    expectedNotices: z.infer<typeof notice>[] = [];
+  const rosters = {
+    training: p.training,
+    nutrition: p.nutrition,
+    recovery: p.recovery,
+    routine_schedule: p.routines,
+  };
+  let count = 0;
+  for (const d of ['training', 'nutrition', 'recovery', 'routine_schedule'] as const) {
+    const roster = rosters[d];
+    if (roster.state === 'absent') continue;
+    count += roster.members.length;
+    unique(
+      roster.members.map((m) => m.aggregateId),
+      c,
     );
-    for (const m of p.nutrition.state === 'present' ? p.nutrition.members : [])
+  }
+  if (count > 1000) c.addIssue({ code: 'custom', message: 'Whole aggregate limit' });
+  for (const m of p.training.state === 'present' ? p.training.members : [])
+    if (m.after.kind === 'new_version_on_approval')
+      expectedAffected.push({ domain: 'training', aggregateId: m.aggregateId });
+  for (const m of p.recovery.state === 'present' ? p.recovery.members : [])
+    if (m.state === 'affected') {
+      expectedAffected.push({ domain: 'recovery', aggregateId: m.aggregateId });
+      if (m.requirement === 'resolve_before_review')
+        expectedRequirements.push({
+          domain: 'recovery',
+          aggregateId: m.aggregateId,
+          strategyVersionId: m.before.ref.versionId,
+          reason: 'recovery_confirmation_required',
+          editor: 'confirm_recovery_and_review',
+        });
+    }
+  for (const m of p.nutrition.state === 'present' ? p.nutrition.members : []) {
+    if (m.timings.some((t) => t.state === 'affected'))
+      expectedAffected.push({ domain: 'nutrition', aggregateId: m.aggregateId });
+    for (const t of m.timings) {
+      if (t.requirement === 'resolve_before_review')
+        expectedRequirements.push({
+          domain: 'nutrition',
+          aggregateId: m.aggregateId,
+          planVersionId: m.before.ref.versionId,
+          itemId: t.itemId,
+          reason: 'affected_timing_unresolved',
+          editor: 'replace_anchor',
+        });
       if (
-        m.after.linkedTraining.kind === 'follows_training_approval' &&
-        !changedTraining.has(m.after.linkedTraining.aggregateId)
+        t.state === 'unchanged' &&
+        (t.before.state === 'unresolved' || t.before.state === 'suspended')
+      )
+        expectedNotices.push({
+          domain: 'nutrition',
+          aggregateId: m.aggregateId,
+          itemId: t.itemId,
+          code: t.before.state === 'suspended' ? 'DISCONNECTED_RETAINED' : 'UNCHANGED_UNRESOLVED',
+        });
+      const r = p.intent.resolutions.nutrition.find(
+        (r) => r.planVersionId.toLowerCase() === m.before.ref.versionId && r.itemId === t.itemId,
+      );
+      if (
+        (t.resolution === 'explicit_replacement') !== Boolean(r) ||
+        (r && !same(r.anchor, m.after.plan.items.find((i) => i.id === t.itemId)?.anchor))
       )
         c.addIssue({
           code: 'custom',
-          message: 'Hypothetical nutrition link needs affected training',
+          message: 'Exact nutrition resolution correspondence required',
         });
-    for (const m of p.recovery.state === 'present' ? p.recovery.members : [])
-      for (const link of m.after.planLinks)
-        if (
-          link.version.kind === 'follows_approval' &&
-          !expectedAffected.some(
-            (t) => t.domain === link.domain && t.aggregateId === link.aggregateId,
-          )
-        )
-          c.addIssue({
-            code: 'custom',
-            message: 'Hypothetical recovery link needs affected target',
-          });
-    if (p.intent.selection.kind === 'keep_plan' && changedTraining.size)
-      c.addIssue({ code: 'custom', message: 'Keep plan cannot change training' });
-    if (p.intent.selection.kind === 'move_period') {
-      const selection = p.intent.selection;
-      if (!(
-        p.training.state === 'present' &&
-        p.training.members.length === 1 &&
-        p.training.members.some(
-          (m) =>
-            m.before.ref.versionId.toLowerCase() ===
-              selection.expectedCurrentPlanVersionId.toLowerCase() &&
-            m.before.plan.periods.some((period) => period.id === selection.periodId),
-        )
-      ))
-        c.addIssue({ code: 'custom', message: 'Move requires exact current training period' });
     }
-    exact(p.affected, expectedAffected);
-    exact(p.resolutionRequirements, expectedRequirements);
-    exact(p.notices, expectedNotices);
+  }
+  for (const m of p.routines.state === 'present' ? p.routines.members : []) {
+    if (m.state === 'affected')
+      expectedAffected.push({ domain: 'routine_schedule', aggregateId: m.aggregateId });
+    if (m.requirement !== 'none')
+      expectedRequirements.push({
+        domain: 'routine_schedule',
+        aggregateId: m.aggregateId,
+        scheduleVersionId: m.before.schedule.versionId,
+        reason:
+          m.requirement === 'retained_ended_unresolved'
+            ? 'retained_ended_unresolved'
+            : 'affected_timing_unresolved',
+        editor:
+          m.requirement === 'retained_ended_unresolved'
+            ? 'unavailable_frozen_ended'
+            : 'replace_rule',
+      });
+    if (
+      m.state !== 'affected' &&
+      m.storedOccurrences.some(
+        (o) =>
+          o.schedule.versionId === m.before.schedule.versionId && o.timingStatus === 'unresolved',
+      )
+    )
+      expectedNotices.push({
+        domain: 'routine_schedule',
+        aggregateId: m.aggregateId,
+        itemId: null,
+        code: 'UNCHANGED_UNRESOLVED',
+      });
+    if (m.before.schedule.state === 'ended')
+      expectedNotices.push({
+        domain: 'routine_schedule',
+        aggregateId: m.aggregateId,
+        itemId: null,
+        code: 'ENDED_SCHEDULE_RETAINED',
+      });
+    if (m.retainedStarted.length)
+      expectedNotices.push({
+        domain: 'routine_schedule',
+        aggregateId: m.aggregateId,
+        itemId: null,
+        code: 'STARTED_RUN_PRESERVED',
+      });
+    const r = p.intent.resolutions.routines.find(
+      (r) => r.scheduleVersionId === m.before.schedule.versionId,
+    );
+    if (
+      (m.resolution === 'explicit_replacement') !== Boolean(r) ||
+      (r &&
+        (!same(r.rule, m.after.schedule.rule) ||
+          !same(r.window, m.after.schedule.window) ||
+          r.sourcePlanVersionId !== m.after.sourcePlanVersionId))
+    )
+      c.addIssue({ code: 'custom', message: 'Exact routine resolution correspondence required' });
+  }
+  for (const r of p.intent.resolutions.nutrition)
+    if (!(
+      p.nutrition.state === 'present' &&
+      p.nutrition.members.some(
+        (m) =>
+          m.before.ref.versionId === r.planVersionId.toLowerCase() &&
+          m.timings.some((t) => t.itemId === r.itemId && t.state === 'affected'),
+      )
+    ))
+      c.addIssue({ code: 'custom', message: 'Resolution requires affected owned tuple' });
+  for (const r of p.intent.resolutions.routines)
+    if (!(
+      p.routines.state === 'present' &&
+      p.routines.members.some(
+        (m) => m.before.schedule.versionId === r.scheduleVersionId && m.state === 'affected',
+      )
+    ))
+      c.addIssue({ code: 'custom', message: 'Resolution requires affected owned tuple' });
+  function exact(a: readonly unknown[], b: readonly unknown[]) {
     unique(
-      [
-        ...p.retainedUnplanned.map((r) => r.runId),
-        ...(p.routines.state === 'present'
-          ? p.routines.members.flatMap((m) => m.retainedStarted.map((r) => r.runId))
-          : []),
-      ],
+      a.map((v) => JSON.stringify(v)),
       c,
     );
-  });
+    if (a.length !== b.length || a.some((v) => !b.some((w) => same(v, w))))
+      c.addIssue({ code: 'custom', message: 'Exact derived roster required' });
+  }
+  const changedTraining = new Set(
+    expectedAffected.filter((t) => t.domain === 'training').map((t) => t.aggregateId),
+  );
+  for (const m of p.nutrition.state === 'present' ? p.nutrition.members : [])
+    if (
+      m.after.linkedTraining.kind === 'follows_training_approval' &&
+      !changedTraining.has(m.after.linkedTraining.aggregateId)
+    )
+      c.addIssue({
+        code: 'custom',
+        message: 'Hypothetical nutrition link needs affected training',
+      });
+  for (const m of p.recovery.state === 'present' ? p.recovery.members : [])
+    for (const link of m.after.planLinks)
+      if (
+        link.version.kind === 'follows_approval' &&
+        !expectedAffected.some(
+          (t) => t.domain === link.domain && t.aggregateId === link.aggregateId,
+        )
+      )
+        c.addIssue({
+          code: 'custom',
+          message: 'Hypothetical recovery link needs affected target',
+        });
+  if (p.intent.selection.kind === 'keep_plan' && changedTraining.size)
+    c.addIssue({ code: 'custom', message: 'Keep plan cannot change training' });
+  if (p.intent.selection.kind === 'move_period') {
+    const selection = p.intent.selection;
+    if (!(
+      p.training.state === 'present' &&
+      p.training.members.length === 1 &&
+      p.training.members.some(
+        (m) =>
+          m.before.ref.versionId.toLowerCase() ===
+            selection.expectedCurrentPlanVersionId.toLowerCase() &&
+          m.before.plan.periods.some((period) => period.id === selection.periodId),
+      )
+    ))
+      c.addIssue({ code: 'custom', message: 'Move requires exact current training period' });
+  }
+  exact(p.affected, expectedAffected);
+  exact(p.resolutionRequirements, expectedRequirements);
+  exact(p.notices, expectedNotices);
+  unique(
+    [
+      ...p.retainedUnplanned.map((r) => r.runId),
+      ...(p.routines.state === 'present'
+        ? p.routines.members.flatMap((m) => m.retainedStarted.map((r) => r.runId))
+        : []),
+    ],
+    c,
+  );
+}
+const projected = plannedFactsShape.superRefine(validatePlannedFacts);
+/** Stored historical planned content, sharing every structural planned-data
+ * refinement with diagnostics. This does not claim processing or approval. */
+export const raceManualStoredPlannedFactsSchema = z
+  .strictObject({
+    ...plannedFactsShape.shape,
+    persistence: z.literal('stored_history'),
+    beforeBasis: z.literal('frozen_review'),
+  })
+  .superRefine(validatePlannedFacts);
 const blocked = z
   .strictObject({
     ...fixed,

@@ -1,6 +1,10 @@
 // Export34 factual routine/recovery records. This artifact grants no processing authority.
 import { z } from 'zod';
 import {
+  type RaceManualPersonalExportData,
+  validateRaceManualPersonalExportTuples,
+} from './race-manual-personal-export.js';
+import {
   routineBlueprintVersionSchema,
   routineScheduleVersionSchema,
   routineOccurrenceSchema,
@@ -320,6 +324,28 @@ export function validateGenericRecoveryExportTuples34(
   data: GenericRecoveryExportData34,
   context: z.RefinementCtx,
 ) {
+  validateGenericRecoveryExportTuples(data, context);
+}
+/** V36 accepts separately typed genuine manual results, never a fabricated
+ * integrated approval fact. Historical V34/V35 calls keep the empty default. */
+export function validateGenericRecoveryExportTuples36(
+  data: GenericRecoveryExportData34 & RaceManualPersonalExportData,
+  context: z.RefinementCtx,
+) {
+  validateRaceManualPersonalExportTuples(data, context);
+  validateGenericRecoveryExportTuples(
+    data,
+    context,
+    data.manualRaceCommandResults,
+    'versioned_anchor',
+  );
+}
+function validateGenericRecoveryExportTuples(
+  data: GenericRecoveryExportData34,
+  context: z.RefinementCtx,
+  manualCommands: RaceManualPersonalExportData['manualRaceCommandResults'] = [],
+  occurrenceIdentity: 'aggregate_anchor' | 'versioned_anchor' = 'aggregate_anchor',
+) {
   const requireFact = (found: boolean, message: string) => {
     if (!found) exportIssue34(context, message);
   };
@@ -333,7 +359,15 @@ export function validateGenericRecoveryExportTuples34(
   unique(data.genericRoutineScheduleVersions.map((r) => r.version_id));
   unique(data.genericRoutineScheduleHeads.map((r) => r.schedule_id));
   unique(data.genericRoutineOccurrences.map((r) => r.id));
-  unique(data.genericRoutineOccurrences.map((r) => JSON.stringify([r.schedule_id, r.anchor_key])));
+  unique(
+    data.genericRoutineOccurrences.map((r) =>
+      JSON.stringify(
+        occurrenceIdentity === 'versioned_anchor'
+          ? [r.schedule_id, r.schedule_version_id, r.anchor_key]
+          : [r.schedule_id, r.anchor_key],
+      ),
+    ),
+  );
   unique(data.genericRoutineRuns.map((r) => r.id));
   unique(data.genericRoutineRunRevisions.map((r) => JSON.stringify([r.run_id, r.revision])));
   unique(data.genericRoutineChecklistConfirmations.map((r) => r.id));
@@ -363,6 +397,24 @@ export function validateGenericRecoveryExportTuples34(
   const approvals = new Map(
     data.referencedIntegratedApprovalFacts.map((row) => [row.approval_id, row]),
   );
+  const manualApprovals = new Map<
+    string,
+    Extract<
+      Extract<
+        RaceManualPersonalExportData['manualRaceCommandResults'][number],
+        { operation: 'approve' }
+      >['result'],
+      { status: 'committed' }
+    >
+  >();
+  for (const command of manualCommands) {
+    if (command.operation !== 'approve' || command.result.status !== 'committed') continue;
+    requireFact(
+      !approvals.has(command.result.approvalId) && !manualApprovals.has(command.result.approvalId),
+      'Approval identity cannot alias different producer families',
+    );
+    manualApprovals.set(command.result.approvalId, command.result);
+  }
   for (const row of data.genericRoutineBlueprintVersions) {
     requireFact(
       sameInstant34(row.record_json.createdAt, row.created_at),
@@ -523,6 +575,7 @@ export function validateGenericRecoveryExportTuples34(
     for (const history of rows) {
       referenced.add(history.approval_id);
       const approval = approvals.get(history.approval_id);
+      const manual = manualApprovals.get(history.approval_id);
       const version =
         domain === 'recovery'
           ? strategies.get(history.version_id)
@@ -530,14 +583,13 @@ export function validateGenericRecoveryExportTuples34(
       const aggregateId =
         version && ('strategy_id' in version ? version.strategy_id : version.schedule_id);
       requireFact(
-        approval !== undefined &&
-          version !== undefined &&
-          approval.result_json.versions.some(
+        version !== undefined &&
+          (approval?.result_json ?? manual)?.versions.some(
             (item) =>
               item.domain === domain &&
               item.versionId === history.version_id &&
               item.aggregateId === aggregateId,
-          ),
+          ) === true,
         'Approval history committed version tuple absent',
       );
     }

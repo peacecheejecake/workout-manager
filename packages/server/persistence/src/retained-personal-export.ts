@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { trainingPlanAggregateExportSchema } from '@workout/contracts/operations';
 import {
   checkInTemplateExportDataSchema,
   type CheckInTemplateExportData,
@@ -92,14 +93,17 @@ const manualEnvelope = z.strictObject({
   sources: z.array(raceManualPublicPreviewSourceSchema).max(1000),
   approvalHistory: z.array(raceManualPersonalApprovalHistorySchema).max(1000),
   commandResults: z.array(raceManualPersonalCommandResultSchema).max(1000),
+  trainingAggregateMappings: z.array(trainingPlanAggregateExportSchema).max(1000),
 });
 export function mapCheckInTemplatePersonalExportV1(raw: unknown): CheckInTemplateExportData {
   return decode(templateEnvelope, raw).data;
 }
-export function mapRaceManualPersonalExportV1(raw: unknown): RaceManualPersonalExportData {
+export function mapRaceManualPersonalExportV1(raw: unknown): RaceManualPersonalExportData & {
+  trainingPlanAggregates: z.infer<typeof trainingPlanAggregateExportSchema>[];
+} {
   const envelope = decode(manualEnvelope, raw);
   try {
-    return decode(raceManualPersonalExportDataSchema, {
+    const publicFacts = decode(raceManualPersonalExportDataSchema, {
       manualRaceReviews: envelope.sources.map((source) => {
         const projected = projectRaceManualPublicPreview(source);
         return {
@@ -112,6 +116,12 @@ export function mapRaceManualPersonalExportV1(raw: unknown): RaceManualPersonalE
       manualRaceApprovalHistory: envelope.approvalHistory,
       manualRaceCommandResults: envelope.commandResults,
     });
+    const seen = new Set<string>();
+    for (const row of envelope.trainingAggregateMappings) {
+      if (seen.has(row.version_id)) fail('CORRUPT');
+      seen.add(row.version_id);
+    }
+    return { ...publicFacts, trainingPlanAggregates: envelope.trainingAggregateMappings };
   } catch (error) {
     if (error instanceof RetainedPersonalExportError) throw error;
     if (error instanceof RaceManualPublicPreviewError && error.code === 'PUBLIC_PREVIEW_LIMIT')
@@ -138,6 +148,7 @@ async function read<T>(
     | 'public.read_race_manual_personal_export_v1($1::integer)',
   byteLimit: number,
   map: (raw: unknown) => T,
+  measuredResponse?: (bytes: number) => void,
 ): Promise<T> {
   if (!Number.isSafeInteger(byteLimit) || byteLimit < 1 || byteLimit > maximum) fail('CORRUPT');
   try {
@@ -162,6 +173,8 @@ async function read<T>(
     if (!row.success) fail('CORRUPT');
     if (BigInt(row.data.bytes) > BigInt(byteLimit)) fail('TOO_LARGE');
     if (row.data.source === null) fail('CORRUPT');
+    // Trusted request-local accounting only, never an authority or ownership port.
+    measuredResponse?.(Number(row.data.bytes));
     bound(row.data.source, byteLimit);
     return map(row.data.source);
   } catch (error) {
@@ -181,21 +194,31 @@ async function read<T>(
     fail('CORRUPT');
   }
 }
-export function readCheckInTemplatePersonalExportV1In(tx: Transaction, byteLimit = maximum) {
+export function readCheckInTemplatePersonalExportV1In(
+  tx: Transaction,
+  byteLimit = maximum,
+  measuredResponse?: (bytes: number) => void,
+) {
   return read(
     tx,
     'public.read_check_in_template_personal_export_v1(integer)',
     'public.read_check_in_template_personal_export_v1($1::integer)',
     byteLimit,
     mapCheckInTemplatePersonalExportV1,
+    measuredResponse,
   );
 }
-export function readRaceManualPersonalExportV1In(tx: Transaction, byteLimit = maximum) {
+export function readRaceManualPersonalExportV1In(
+  tx: Transaction,
+  byteLimit = maximum,
+  measuredResponse?: (bytes: number) => void,
+) {
   return read(
     tx,
     'public.read_race_manual_personal_export_v1(integer)',
     'public.read_race_manual_personal_export_v1($1::integer)',
     byteLimit,
     mapRaceManualPersonalExportV1,
+    measuredResponse,
   );
 }

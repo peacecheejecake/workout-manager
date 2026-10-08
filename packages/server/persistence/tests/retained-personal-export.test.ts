@@ -62,6 +62,7 @@ function manual() {
   return {
     schemaVersion: 1,
     status: 'ready',
+    trainingAggregateMappings: [],
     sources: [{ reference, bodyState: 'purged', candidate: null, preparation: null }],
     approvalHistory: [],
     commandResults: [
@@ -270,4 +271,50 @@ it('sanitizes SQL failures and propagates failure for rollback', async () => {
     });
     expect(calls).toHaveLength(1);
   }
+});
+it('debits measured raw JSONB response exactly once before projection', async () => {
+  const { tx } = transaction({ source: manual(), bytes: '1000' });
+  const measured: number[] = [];
+  expect(await readRaceManualPersonalExportV1In(tx, 2000, (bytes) => measured.push(bytes))).toEqual(
+    mapRaceManualPersonalExportV1(manual()),
+  );
+  expect(measured).toEqual([1000]);
+});
+it('does not debit rejected NULL gate and callback failure aborts the read', async () => {
+  const measured: number[] = [];
+  await expect(
+    readRaceManualPersonalExportV1In(transaction({ bytes: '65', source: null }).tx, 64, (bytes) =>
+      measured.push(bytes),
+    ),
+  ).rejects.toThrow('TOO_LARGE');
+  expect(measured).toEqual([]);
+  await expect(
+    readRaceManualPersonalExportV1In(transaction({ source: manual() }).tx, 8388608, () => {
+      throw Error('private callback');
+    }),
+  ).rejects.toThrow('CORRUPT');
+});
+
+it('retains exact immutable training mapping and rejects duplicate/absent mapping roster', () => {
+  const input = manual();
+  const mappings = [{ version_id: id(9), aggregate_id: id(10) }];
+  expect(
+    mapRaceManualPersonalExportV1({ ...input, trainingAggregateMappings: mappings })
+      .trainingPlanAggregates,
+  ).toEqual(mappings);
+  corrupt(() =>
+    mapRaceManualPersonalExportV1({
+      ...input,
+      trainingAggregateMappings: [...mappings, ...mappings],
+    }),
+  );
+  corrupt(() => mapRaceManualPersonalExportV1({ ...input, trainingAggregateMappings: undefined }));
+});
+
+it('preserves explicit measured reservation exhaustion as TOO_LARGE for producer mapping', async () => {
+  await expect(
+    readRaceManualPersonalExportV1In(transaction({ source: manual() }).tx, 8388608, () => {
+      throw new RetainedPersonalExportError('TOO_LARGE');
+    }),
+  ).rejects.toThrowError(new RetainedPersonalExportError('TOO_LARGE'));
 });

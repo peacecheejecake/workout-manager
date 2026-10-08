@@ -3,11 +3,17 @@ import { z } from 'zod';
 import {
   accountExportSchema,
   accountExportV35Schema,
+  accountExportV36Schema,
   operationsStatusSchema,
   type AccountExport,
   type OperationsStatus,
 } from '@workout/contracts/operations';
 import type { Database } from './database.js';
+import {
+  readCheckInTemplatePersonalExportV1In,
+  readRaceManualPersonalExportV1In,
+  RetainedPersonalExportError,
+} from './retained-personal-export.js';
 
 export class OperationsError extends Error {
   constructor(readonly code: 'EXPORT_TOO_LARGE' | 'ACCOUNT_ERASED') {
@@ -771,6 +777,85 @@ export function createOperationsRepository(database: Database): OperationsReposi
 /** Explicit retained V35 facts; this wire does not grant restore or approval authority. */
 export function createOperationsV35Repository(database: Database): OperationsV35Repository {
   return createOperationsRepositoryWithExportSchema(database, accountExportV35Schema, 35);
+}
+
+export interface OperationsV36Repository extends Omit<OperationsRepository, 'exportAccount'> {
+  exportAccount(athleteId: string): Promise<z.infer<typeof accountExportV36Schema>>;
+}
+
+/** Explicit personal retained facts. Snapshot coherence is mandatory; this
+ * artifact does not authenticate an operational archive or grant approval. */
+export function createOperationsV36Repository(database: Database): OperationsV36Repository {
+  const historical = createOperationsRepository(database);
+  return {
+    eraseAccount: historical.eraseAccount,
+    status: historical.status,
+    exportAccount(athleteId) {
+      if (!database.snapshotTenant) throw new Error('OPERATIONS_SNAPSHOT_REQUIRED');
+      return database.snapshotTenant(athleteId, async (tx) => {
+        await tx.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [athleteId]);
+        await tx.query('SELECT pg_advisory_xact_lock(hashtextextended($1,77209))', [athleteId]);
+        const result = await tx.query(
+          `WITH base AS MATERIALIZED (${exportSql}) SELECT ok,data,octet_length(data::text)::text AS bytes FROM base`,
+          [athleteId],
+        );
+        const row = z
+          .object({
+            ok: z.boolean(),
+            bytes: z
+              .string()
+              .regex(/^(0|[1-9]\d*)$/)
+              .max(16),
+            data: z.record(z.string(), z.array(z.record(z.string(), z.json()))),
+          })
+          .parse(result.rows[0]);
+        if (!row.ok) throw new OperationsError('EXPORT_TOO_LARGE');
+        const base = Object.fromEntries(collections.map(([name]) => [name, row.data[name] ?? []]));
+        const exportedAt = new Date().toISOString();
+        // Conservatively reserve metadata separately from measured JSONB response
+        // UTF8. This is not a measurement of driver/protocol/network bytes.
+        let reserved = BigInt(row.bytes) + 1024n;
+        const remaining = () => {
+          const bytes = BigInt(maxBytes) - reserved;
+          if (bytes < 1n) throw new OperationsError('EXPORT_TOO_LARGE');
+          return Number(bytes);
+        };
+        const debit = (bytes: number) => {
+          reserved += BigInt(bytes);
+          if (reserved >= BigInt(maxBytes)) throw new RetainedPersonalExportError('TOO_LARGE');
+        };
+        const loadRetained = async <T>(operation: () => Promise<T>): Promise<T> => {
+          try {
+            return await operation();
+          } catch (error) {
+            if (error instanceof RetainedPersonalExportError && error.code === 'TOO_LARGE')
+              throw new OperationsError('EXPORT_TOO_LARGE');
+            throw error;
+          }
+        };
+        const templates = await loadRetained(() =>
+          readCheckInTemplatePersonalExportV1In(tx, remaining(), debit),
+        );
+        const withTemplates = { ...base, ...templates };
+        const manual = await loadRetained(() =>
+          readRaceManualPersonalExportV1In(tx, remaining(), debit),
+        );
+        const artifact = accountExportV36Schema.parse({
+          schemaVersion: 36,
+          athleteId,
+          exportedAt,
+          data: { ...withTemplates, ...manual },
+        });
+        if (Buffer.byteLength(JSON.stringify(artifact), 'utf8') > maxBytes)
+          throw new OperationsError('EXPORT_TOO_LARGE');
+        await tx.query(
+          "INSERT INTO operations_audit(athlete_id,id,action) VALUES($1,$2,'export_requested')",
+          [athleteId, randomUUID()],
+        );
+        return artifact;
+      });
+    },
+  };
 }
 
 function createOperationsRepositoryWithExportSchema<T extends AccountExport>(

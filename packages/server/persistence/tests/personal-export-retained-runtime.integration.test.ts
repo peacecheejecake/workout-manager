@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { Pool } from 'pg';
 import { z } from 'zod';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { trainingPlanAggregateExportSchema } from '@workout/contracts/operations';
 import { checkInTemplateExportDataSchema } from '@workout/contracts/check-in-template-export';
 import { raceManualPersonalExportFields } from '@workout/contracts/race-manual-personal-export';
 import { planDraftSchema } from '@workout/contracts/planning';
@@ -154,6 +155,7 @@ describe('SQL128 retained personal export sources', () => {
     sources: z.array(raceManualPublicPreviewSourceSchema).max(1000),
     approvalHistory: raceManualPersonalExportFields.manualRaceApprovalHistory,
     commandResults: raceManualPersonalExportFields.manualRaceCommandResults,
+    trainingAggregateMappings: z.array(trainingPlanAggregateExportSchema).max(1000),
   });
   async function templates(athlete: string, limit = 8388608) {
     return snapshot(athlete, async (tx) =>
@@ -298,6 +300,13 @@ describe('SQL128 retained personal export sources', () => {
       committed,
     );
     expect(value.manualRaceApprovalHistory.map((r) => r.domain)).toEqual(['training']);
+    if (committed.status !== 'committed') throw Error('COMMITTED_REQUIRED');
+    const training = committed.versions.find((row) => row.domain === 'training');
+    if (!training) throw Error('TRAINING_VERSION_REQUIRED');
+    expect(value.trainingPlanAggregates).toContainEqual({
+      version_id: training.versionId,
+      aggregate_id: training.aggregateId,
+    });
     const output = JSON.stringify(value);
     expect(output).not.toContain('basis_json');
     expect(output).not.toContain('request_digest');
@@ -336,6 +345,7 @@ describe('SQL128 retained personal export sources', () => {
       manualRaceReviews: [],
       manualRaceApprovalHistory: [],
       manualRaceCommandResults: [],
+      trainingPlanAggregates: [],
     });
     expect((await templates(other)).data).toEqual({
       checkInTemplateVersions: [],

@@ -3,11 +3,22 @@ import { garminConnectionStateSchema } from './garmin.js';
 import {
   genericRecoveryExportFields34,
   validateGenericRecoveryExportTuples34,
+  validateGenericRecoveryExportTuples36,
 } from './generic-recovery-export.js';
 import {
   raceNutritionExportFields35,
   validateRaceNutritionExportTuples35,
 } from './race-nutrition-export.js';
+
+import {
+  checkInTemplateExportFields,
+  validateCheckInTemplateExportTuples,
+} from './check-in-template-export.js';
+import {
+  raceManualPersonalExportFields,
+  validateRaceManualPersonalExportTuples,
+} from './race-manual-personal-export.js';
+import { planSnapshotSchema } from './planning.js';
 
 const count = z.number().int().nonnegative();
 const rows = z.array(z.record(z.string(), z.json())).max(1000);
@@ -556,6 +567,161 @@ export const accountExportV35Schema = z.strictObject({
     .superRefine(validateGenericRecoveryExportTuples34)
     .superRefine(validateRaceNutritionExportTuples35),
 });
+/** V36 adds user-retained templates and normalized manual public successes.
+ * Existing V35 checks remain intact. This is portable structural correspondence,
+ * never source authentication, current permission or restored admission. */
+export const trainingPlanAggregateExportSchema = z.strictObject({
+  version_id: planSnapshotSchema.shape.id.transform((value) =>
+    z.uuid().safeParse(value).success ? value.toLowerCase() : value,
+  ),
+  aggregate_id: z.uuid().transform((value) => value.toLowerCase()),
+});
+export const trainingPlanAggregateExportFields = {
+  trainingPlanAggregates: z.array(trainingPlanAggregateExportSchema).max(1000),
+};
+const retainedExportData36 = z
+  .strictObject({
+    ...accountExportV35Schema.shape.data.shape,
+    ...checkInTemplateExportFields,
+    ...raceManualPersonalExportFields,
+    ...trainingPlanAggregateExportFields,
+  })
+  .superRefine(validateRaceNutritionExportTuples35)
+  .superRefine(validateCheckInTemplateExportTuples)
+  .superRefine(validateRaceManualPersonalExportTuples)
+  .superRefine(validateGenericRecoveryExportTuples36);
+type RetainedExportData36 = z.infer<typeof retainedExportData36>;
+const trainingExportSnapshot36 = z.strictObject({
+  id: planSnapshotSchema.shape.id,
+  version: planSnapshotSchema.shape.version,
+  created_at: planSnapshotSchema.shape.createdAt,
+  draft: planSnapshotSchema.shape.draft,
+});
+const normalizedExportId36 = (value: string) =>
+  z.uuid().safeParse(value).success ? value.toLowerCase() : value;
+function sameExportInstant36(left: string, right: string) {
+  const parts = (value: string) => {
+    const match = /^(.*:\d{2})(?:\.(\d+))?(Z|[+-]\d{2}:\d{2})$/.exec(value);
+    if (!match?.[1] || !match[3]) return null;
+    const seconds = Date.parse(match[1] + match[3]);
+    return Number.isSafeInteger(seconds)
+      ? `${seconds}:${(match[2] ?? '').replace(/0+$/, '')}`
+      : null;
+  };
+  const a = parts(left);
+  return a !== null && a === parts(right);
+}
+function validateManualDomainVersions36(data: RetainedExportData36, ctx: z.RefinementCtx) {
+  const fail = (message: string) => ctx.addIssue({ code: 'custom', message });
+  const sameId = (left: string, right: string) =>
+    normalizedExportId36(left) === normalizedExportId36(right);
+  const mappings = new Map<string, string>();
+  for (const mapping of data.trainingPlanAggregates) {
+    const key = normalizedExportId36(mapping.version_id);
+    if (mappings.has(key)) fail('Duplicate training version aggregate mapping');
+    mappings.set(key, mapping.aggregate_id);
+    const rows = data.planSnapshots.filter(
+      (row) => typeof row['id'] === 'string' && sameId(row['id'], mapping.version_id),
+    );
+    if (rows.length !== 1 || !trainingExportSnapshot36.safeParse(rows[0]).success)
+      fail('Training mapping requires its exact exported snapshot/body');
+  }
+  for (const history of data.manualRaceApprovalHistory) {
+    const command = data.manualRaceCommandResults.find(
+      (row) => row.operation === 'approve' && row.candidateId === history.candidateId,
+    );
+    if (!command || command.operation !== 'approve' || command.result.status !== 'committed')
+      continue;
+    const committed = command.result.versions.find(
+      (row) =>
+        row.domain === history.domain &&
+        sameId(row.aggregateId, history.aggregateId) &&
+        sameId(row.versionId, history.versionId),
+    );
+    if (!committed) continue; // The exact manual tuple validator reports this mismatch.
+    switch (history.domain) {
+      case 'training': {
+        const matches = data.planSnapshots.filter(
+          (row) => typeof row['id'] === 'string' && sameId(row['id'], history.versionId),
+        );
+        const snapshot =
+          matches.length === 1 ? trainingExportSnapshot36.safeParse(matches[0]) : null;
+        if (
+          !snapshot?.success ||
+          committed.domain !== 'training' ||
+          snapshot.data.version !== committed.version ||
+          mappings.get(normalizedExportId36(history.versionId)) !==
+            normalizedExportId36(history.aggregateId) ||
+          !data.planHistory.some(
+            (row) =>
+              typeof row['version_id'] === 'string' &&
+              sameId(row['version_id'], history.versionId) &&
+              row['action'] === 'candidate_approved',
+          )
+        )
+          fail('Manual training approval requires its exact immutable snapshot/body/history');
+        break;
+      }
+      case 'nutrition': {
+        const matches = data.nutritionPlanVersions.filter(
+          (row) =>
+            sameId(row.plan_id, history.aggregateId) && sameId(row.version_id, history.versionId),
+        );
+        if (
+          matches.length !== 1 ||
+          committed.domain !== 'nutrition' ||
+          matches[0]?.version !== committed.version ||
+          !matches[0] ||
+          !sameExportInstant36(matches[0].approved_at, history.approvedAt) ||
+          !data.nutritionPlanHistory.some(
+            (row) =>
+              sameId(row.plan_id, history.aggregateId) &&
+              sameId(row.version_id, history.versionId) &&
+              sameId(row.approval_id, matches[0]?.approval_id ?? '') &&
+              sameExportInstant36(row.created_at, history.approvedAt),
+          )
+        )
+          fail('Manual nutrition approval requires its exact stored body and domain history');
+        break;
+      }
+      case 'recovery': {
+        const matches = data.recoveryStrategyVersions.filter(
+          (row) =>
+            sameId(row.strategy_id, history.aggregateId) &&
+            sameId(row.version_id, history.versionId),
+        );
+        if (
+          matches.length !== 1 ||
+          committed.domain !== 'recovery' ||
+          matches[0]?.version !== committed.version ||
+          matches[0]?.record_json.status !== 'user_confirmed'
+        )
+          fail(
+            'Manual recovery approval requires its exact stored body and original manual history',
+          );
+        break;
+      }
+      case 'routine_schedule': {
+        const matches = data.genericRoutineScheduleVersions.filter(
+          (row) =>
+            sameId(row.schedule_id, history.aggregateId) &&
+            sameId(row.version_id, history.versionId),
+        );
+        if (matches.length !== 1)
+          fail(
+            'Manual routine approval requires its exact stored body and original manual history',
+          );
+        break;
+      }
+    }
+  }
+}
+export const accountExportV36Schema = z.strictObject({
+  ...accountExportV35Schema.shape,
+  schemaVersion: z.literal(36),
+  data: retainedExportData36.superRefine(validateManualDomainVersions36),
+});
+export type AccountExportV36 = z.infer<typeof accountExportV36Schema>;
 // Read historical artifacts unchanged; never manufacture absent collections.
 export const accountExportSchema = z.discriminatedUnion('schemaVersion', [
   accountExportV2Schema,
@@ -592,6 +758,7 @@ export const accountExportSchema = z.discriminatedUnion('schemaVersion', [
   accountExportV33Schema,
   accountExportV34Schema,
   accountExportV35Schema,
+  accountExportV36Schema,
 ]);
 export const operationsStatusSchema = z.strictObject({
   checkedAt: z.iso.datetime({ offset: true }),

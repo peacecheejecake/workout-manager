@@ -31,8 +31,8 @@ REVOKE ALL ON FUNCTION public.read_check_in_template_personal_export_v1(integer)
 
 CREATE FUNCTION public.read_race_manual_personal_export_v1(byte_limit integer) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,pg_temp SET TimeZone='UTC' SET DateStyle='ISO,YMD' AS $$
-DECLARE t text:=public.race_manual_public_scope_v1(); reviews bigint; histories bigint; commands bigint; bytes bigint;
- export_candidate_row record; source jsonb; sources jsonb:='[]'; history jsonb; results jsonb; result jsonb;
+DECLARE t text:=public.race_manual_public_scope_v1(); reviews bigint; histories bigint; commands bigint; mappings bigint; mapping_bytes bigint; bytes bigint;
+ export_candidate_row record; source jsonb; sources jsonb:='[]'; history jsonb; results jsonb; aggregate_mappings jsonb; result jsonb;
 BEGIN
  PERFORM pg_advisory_xact_lock(hashtextextended(t,0));
  PERFORM pg_advisory_xact_lock(hashtextextended(t,77209));
@@ -46,7 +46,9 @@ BEGIN
  WHERE h.athlete_id=t AND EXISTS(SELECT 1 FROM public.race_manual_public_receipt_v1 p WHERE p.athlete_id=t AND p.candidate_id=h.candidate_id AND p.operation='review');
  SELECT reviews+count(*) INTO commands FROM public.race_manual_application_receipt_v1 a
  WHERE a.athlete_id=t AND EXISTS(SELECT 1 FROM public.race_manual_public_receipt_v1 p WHERE p.athlete_id=t AND p.candidate_id=a.candidate_id AND p.operation='review');
- IF reviews>1000 OR histories>1000 OR commands>1000 THEN RAISE EXCEPTION 'PERSONAL_EXPORT_TOO_LARGE'; END IF;
+ SELECT count(*),coalesce(sum(octet_length(jsonb_build_object('version_id',a.version_id,'aggregate_id',a.aggregate_id)::text)),0) INTO mappings,mapping_bytes
+ FROM public.plan_snapshot_aggregate a WHERE a.athlete_id=t;
+ IF reviews>1000 OR histories>1000 OR commands>1000 OR mappings>1000 THEN RAISE EXCEPTION 'PERSONAL_EXPORT_TOO_LARGE'; END IF;
  -- Never dedupe unequal aliases. Compare JSONB results before choosing a key.
  IF EXISTS(SELECT 1 FROM public.race_manual_public_receipt_v1 a JOIN public.race_manual_public_receipt_v1 b
   ON b.athlete_id=a.athlete_id AND b.candidate_id=a.candidate_id AND b.operation=a.operation
@@ -65,7 +67,7 @@ BEGIN
  JOIN public.manual_race_evidence_v2 e ON e.athlete_id=c.athlete_id AND e.id=c.evidence_id
  LEFT JOIN public.race_manual_application_receipt_v1 a ON a.athlete_id=c.athlete_id AND a.candidate_id=c.id
  WHERE c.athlete_id=t AND EXISTS(SELECT 1 FROM public.race_manual_public_receipt_v1 p WHERE p.athlete_id=t AND p.candidate_id=c.id AND p.operation='review');
- bytes:=bytes+histories*1024+1024;
+ bytes:=bytes+histories*1024+mapping_bytes+1024;
  IF bytes>byte_limit THEN RAISE EXCEPTION 'PERSONAL_EXPORT_TOO_LARGE'; END IF;
  FOR export_candidate_row IN SELECT id FROM public.race_manual_application_candidate_v1 c WHERE c.athlete_id=t
   AND EXISTS(SELECT 1 FROM public.race_manual_public_receipt_v1 p WHERE p.athlete_id=t AND p.candidate_id=c.id AND p.operation='review') ORDER BY c.id
@@ -92,7 +94,9 @@ BEGIN
  )x;
  -- Fresh successful review was necessarily present (122 provenance guard).
  -- This is original success, not the current bodyState of a later replay.
- result:=jsonb_build_object('schemaVersion',1,'status','ready','sources',sources,'approvalHistory',history,'commandResults',results);
+ SELECT coalesce(jsonb_agg(jsonb_build_object('version_id',a.version_id,'aggregate_id',a.aggregate_id) ORDER BY a.version_id),'[]') INTO aggregate_mappings
+ FROM public.plan_snapshot_aggregate a WHERE a.athlete_id=t;
+ result:=jsonb_build_object('schemaVersion',1,'status','ready','sources',sources,'approvalHistory',history,'commandResults',results,'trainingAggregateMappings',aggregate_mappings);
  IF octet_length(result::text)>byte_limit THEN RAISE EXCEPTION 'PERSONAL_EXPORT_TOO_LARGE'; END IF;
  RETURN result;
 END $$;
