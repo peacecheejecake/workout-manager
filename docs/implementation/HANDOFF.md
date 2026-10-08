@@ -878,9 +878,7 @@ Root 메타데이터 전용 실제 진단은 sourceproof verified/coldcatalog_mi
 
 전체unit R4는7failed/580passed/1skippedfiles,9failed/9488passed/12skippedtests(9509),267.31s·exit1였다. 원로그 `wm-m2-02-full-test-root-r4-20261008.log`를 보존한다. 기존roster5001 timeout은 이번R4 실패에 없지만 전체pass가 아니다. 별도 actor 집중7파일120/120 R1(16.56s)은 원조건의 독립 재실행이며 R4를 통과로 치환하지 않는다. 로딩 중 management 버튼이 아직disabled인 시점의 즉시enabled 검사와 나머지timeout/후속실패를 분리하고 해당조건을 실제 기다리는 최소fixture 수정만 검토 중이다. 전체gate/phase 독립review/main/push와 external gate는 여전히 미완료다.
 
-
 HealthKit27case fixture의 즉시enabled 검사를 원assertion의 waitFor로 바꾼 뒤 actor27/27·identityTS/lint/format0, Root 실제27/27·exit0(2.38s)을 확인했다. timeout·제품소스·동의loadingguard는 변경0이다. 원7파일 집중 재검증 R1/R2는 각각120/120(16.56s/17.93s)이며 full R4를 소급 통과시키지 않는다. 현재 sourceclosure/pin을 고정한 채 독립freshHTTP12 실행·고유DB/role/storage/identity포트 정리를 native agent에 배정했다. Root는 공통증거asset 통합·검토·커밋·phase판정을 맡고 동시공통AWS/iPhone/sourceclosure 변이를 허용하지 않는다.
-
 
 ### 2026-10-08 full copied roster 비용 교정과 새 소스 동결
 
@@ -889,3 +887,11 @@ full copied inventory의 반복 위치 검색이 동일source의복사위치 수
 소스변경직후 기존bootstrap proof의실제source_drift를확인했다(`wm-full-copied-set-stale-proof-root-20261008.log`). originalstage와모든historical execution scope를보존하고 실제33typed-unit/45full-copy-unit을분리한 Root bootstrapR2 candidate/compile/noargsverified는exit0였다. manifest SHA `d550080e0ef86b90cc5cbf70659a2295c8d7f520a2544d0b0ae2c55b9a14d63d`,385files/257선언labels(257개신규실행이아님), bootstrap asset SHA `8d341998637bec24f29f80df73e17c5f03e14d3942fd7f00b3fc37b743679b23`다. 앞bootstrap1 normal5/HTTP시작실패R1/R2는원입력의기록이며 새runtime 수용으로치환하지않는다. 새sourcefreeze후 actualnormal5→HTTP12→최종compile/pin은nativeagent가진행하며 공통source/asset/pin은고정했다. sourceproof는소스호환검증이고 latest239 whole archive/restore/admission권한이아니다.
 
 Native orchestration의검증도독립소유로분리했다. 기존shared17.6의소유불명 workerroles2는삭제하지않았고, 새localhost-only exact170006/dockerimage고정/빈합성tmpfs cluster를별도agent가생성해lifecycle소유한다. HTTPagent는run별DB/role/storage/identity포트와정리를소유한다. 공개/AWS/iPhone/공통파일동시변이는없다. M0-06b는자기phase의정확frozen의존성준비후7focusedfiles28/28·exit0를확인했으며 원WIP/입력hash불변이었다. 원sandbox DNS설치실패는보존했고 실제운영ODbL/전체로그회전·보존/실기기측정은여전히not_executed다. 전체unit새회차/fullintegration/identity두회차/최종staticgate/독립phase검토/main/push는미완료다.
+
+### 2026-10-08 독립 HTTP 실패와 legacy 버전 경계 실제 진단
+
+동결한 bootstrapR2 입력에서 별도 exact PostgreSQL170006 normalconfigured5/5·exit0(32.32s)을 확인했다. 실제 로그 `wm-fullcopy-bootstrap-r2-configured-pg176-actual-r1-20261008.log` SHA1834416a…15410이다. 이어 fresh HTTP R1은12개 중10pass/2fail/0skip·exit1이었다. 실패는 nutrition-new-plan-review의 두 Host이며 passing 요약이나 최종 수용 자산을 생성하지 않았다. 실제 record `/private/tmp/wm-fresh-profile25-http12-bootstrap-r2-r1/record.json`은 current360/archive385 및 asset의 실행 전후 불변을 기록한다. run DB·역할·slot·identity포트·새 임시 경로 정리는 완료했다. raw 출력은 폐기되어 오류 상세/전체 duration/worker 수를 재추출할 수 없다. 별도 R2는 실제 JSON의 유한 메타데이터와 허용된 오류 분류를 보존해 재현하며 원 R1을 유지한다.
+
+동시에 두 번째 독립 exact170006 임시 클러스터에서 legacy preparation/inventory 원fixture를 실제 실행해14개 중6pass/8fail/0skip을 재현했다. 원fixture를 보존한 임시 진단복사본에서도 같은 결과였고,12개 유한 관측 모두 V4 projection 성공 후 strict legacyV1 assembly의 invalid_input이었다. retainedUnplannedRuns/retainedHistoricalRoutines 두 ownfields가 실제 존재함을 확인했다. 이는 최신 public CompatibleV4 경로의 실패로 일반화하지 않는다. V4 필드 삭제·V1 decoder 완화 없이 명시적 버전 소비자 경계 수정을 준비한다. 진단 임시파일과 두 번째 클러스터는 정리했으며 첫 HTTP 클러스터는 전용 lane으로 유지했다. source333개 SHA와 asset 불변, 원14개 단언·8실패를 보존했다. 보고서 `/private/tmp/wm-legacy2-actual-diagnosis-20261008.md`는 원 R1/R2·stage·cleanup 기록을 연결한다. 실제 수정/재검증 전 완료 상태로 바꾸지 않는다.
+
+HTTP R2도 실제10pass/2fail/0skip·exit1이었다. 원 R1을 유지하며 R2 JSON reporter에서 workers=1, duration=77975.845ms를 직접 기록했다. 두 실패는 영양 새 계획의 저장 응답 파싱 codeframe 위치155였으나 HTTP 상태나 schema issue는 아직 확인되지 않았다. 다음 진단은 오류 메시지의 유한 코드·허용된 필드 경로만 보존하며 payload 원문은 폐기한다. 실행/브라우저 종료와 자체 DB·역할·slot·포트 정리를 확인한 뒤 입력 동결을 해제했다. exact record `/private/tmp/wm-fresh-profile25-http12-bootstrap-r2-r2/record.json` SHAa16efa6c…67307 및 `/private/tmp/wm-fullcopy-bootstrap-r2-normal-http-actual-report-20261008.md`를 따른다. Root는 서로 다른5개 integration fixture의 명시 V4 소비경계 및 current/history·baseline reader 상태 교정을 두 native agent에 배정했다. 실제 DB 검증과 정리도 각 독립 클러스터 lane이 소유한다. source/SQL/contracts/asset/pin 변경0이며 수정/재검증 결과를 검토하기 전 완료나 원실패 통과로 표시하지 않는다.
