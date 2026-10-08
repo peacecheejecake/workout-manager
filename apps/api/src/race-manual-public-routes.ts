@@ -45,6 +45,8 @@ const finiteError = z.object({
   ]),
 });
 function translate(error: unknown): ProductRequestError | undefined {
+  if (error instanceof RacePlanImpactPreviewError && error.code === 'APP_CONSENT_REQUIRED')
+    return new ProductRequestError(409, error.code);
   if (!(error instanceof Error)) return undefined;
   const known = finiteError.safeParse(error);
   if (!known.success) return undefined;

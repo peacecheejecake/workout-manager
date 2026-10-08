@@ -683,3 +683,26 @@ it('advertises impact support only when the separate processing method is inject
   });
   expect(repo.impact).not.toHaveBeenCalled();
 });
+
+it('maps the actual preview app-consent error from fresh review without exposing its message', async () => {
+  const { app, repo } = setup();
+  const error = new RacePlanImpactPreviewError('APP_CONSENT_REQUIRED');
+  error.message = 'PRIVATE_PREVIEW_MESSAGE';
+  vi.mocked(repo.review).mockRejectedValue(error);
+  const reply = await app.inject({ method: 'POST', url: reviewUrl, headers, payload: prepare });
+  expect(reply.statusCode).toBe(409);
+  expect(reply.json().error).toEqual({ code: 'APP_CONSENT_REQUIRED' });
+  expect(reply.body).not.toContain('PRIVATE_PREVIEW_MESSAGE');
+  expect(repo.approve).not.toHaveBeenCalled();
+});
+it('does not promote a foreign error carrying the preview app-consent code', async () => {
+  const { app, repo } = setup();
+  vi.mocked(repo.review).mockRejectedValue(
+    Object.assign(new Error('PRIVATE_FOREIGN_MESSAGE'), { code: 'APP_CONSENT_REQUIRED' }),
+  );
+  const reply = await app.inject({ method: 'POST', url: reviewUrl, headers, payload: prepare });
+  expect(reply.statusCode).toBe(500);
+  expect(reply.json().error).toEqual({ code: 'INTERNAL_ERROR' });
+  expect(reply.body).not.toContain('PRIVATE_FOREIGN_MESSAGE');
+  expect(repo.approve).not.toHaveBeenCalled();
+});

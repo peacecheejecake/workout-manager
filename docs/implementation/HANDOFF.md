@@ -705,3 +705,7 @@ Calendar root 판단 후 기존 fullcollector로 이어지는 변경은 Root uni
 ## 2026-10-08 Current22 실제 두 Host 검증 후속
 
 Root는 profile22의 기존 두Host identity12경로 통과를 확인했다. 신규 V38 HTTP2는 시험용 회복 draft 입력400으로 중단돼 agent가 fixture만 교정한다. 검증한 parent의 capture-local 재사용은 unit52/52·기존 inventory 실제15/15 통과다. Dense 승인400은 decoded_bytes를 넘어 실제 영양 쓰기 시간제한57014, 혼합 저장400/400/30은 INPUT_BOUND가 남아 전체 수용은 미완료다. Native 읽기 조사는 두 병목을 별개로 진행한다. source 변경0·실제 시험DB/roles/slots 잔존0, I/J/phase·main/push0·외부not_executed를 유지한다.
+
+## 2026-10-08 공개 export38·동의 철회 최종 로컬 수용
+
+회복 fixture 필수항목과 실제 typed preview 동의오류 API 번역을 교정해 Root route unit56/56 및 Next/Vite V38 HTTP2/2를 확인했다. 앞선 기존12와 신규2는 별도 실행이다. 동의 철회 뒤 retained 내보내기·동일key replay는 유지하고 fresh 처리는409로 거절한다. mixed400/400/30 저장은 actual retained JSONB4272405byte로4MiB초과가 확인됐고, 승인400 쓰기deadline 실패와 함께 별도 미완료다. 두 개선은 native agent가 준비하며 cap/수량/규칙 변경0이다. 전체 phase 검토·main·운영/native/provider/restore 수용은 여전히 미완료다.
