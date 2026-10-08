@@ -361,7 +361,10 @@ export function validateRaceManualInternalPersonalExportTuples(data: Data, c: z.
       fail('History requires original committed version');
   }
 }
-export const raceManualInternalPersonalExportSchema = wholePlain().pipe(
+/** Whole-account consumers reuse the exact compact JSON bound, without changing
+ * the independent planned-body/source semantic limits. */
+export const raceManualInternalWholePlainSchema = wholePlain();
+export const raceManualInternalPersonalExportSchema = raceManualInternalWholePlainSchema.pipe(
   z
     .strictObject({
       schemaVersion: z.literal(1),

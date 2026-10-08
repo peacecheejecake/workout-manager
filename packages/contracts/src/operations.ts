@@ -4,6 +4,7 @@ import {
   genericRecoveryExportFields34,
   validateGenericRecoveryExportTuples34,
   validateGenericRecoveryExportTuples36,
+  validateGenericRecoveryExportWithManualResults,
 } from './generic-recovery-export.js';
 import {
   raceNutritionExportFields35,
@@ -18,6 +19,12 @@ import {
   raceManualPersonalExportFields,
   validateRaceManualPersonalExportTuples,
 } from './race-manual-personal-export.js';
+import {
+  raceManualInternalPersonalExportFields,
+  raceManualInternalWholePlainSchema,
+  validateRaceManualInternalPersonalExportTuples,
+} from './race-manual-internal-personal-export.js';
+import type { raceManualApprovalResultSchema } from './race-manual-approval.js';
 import { planSnapshotSchema } from './planning.js';
 
 const count = z.number().int().nonnegative();
@@ -611,7 +618,29 @@ function sameExportInstant36(left: string, right: string) {
   const a = parts(left);
   return a !== null && a === parts(right);
 }
+type ManualCommittedResult = Extract<
+  z.infer<typeof raceManualApprovalResultSchema>,
+  { status: 'committed' }
+>;
+function publicManualResults(data: RetainedExportData36): ManualCommittedResult[] {
+  return data.manualRaceCommandResults.flatMap((row) =>
+    row.operation === 'approve' && row.result.status === 'committed' ? [row.result] : [],
+  );
+}
 function validateManualDomainVersions36(data: RetainedExportData36, ctx: z.RefinementCtx) {
+  validateManualDomainVersions(
+    data,
+    ctx,
+    publicManualResults(data),
+    data.manualRaceApprovalHistory,
+  );
+}
+function validateManualDomainVersions(
+  data: RetainedExportData36,
+  ctx: z.RefinementCtx,
+  results: readonly ManualCommittedResult[],
+  histories: RetainedExportData36['manualRaceApprovalHistory'],
+) {
   const fail = (message: string) => ctx.addIssue({ code: 'custom', message });
   const sameId = (left: string, right: string) =>
     normalizedExportId36(left) === normalizedExportId36(right);
@@ -626,13 +655,10 @@ function validateManualDomainVersions36(data: RetainedExportData36, ctx: z.Refin
     if (rows.length !== 1 || !trainingExportSnapshot36.safeParse(rows[0]).success)
       fail('Training mapping requires its exact exported snapshot/body');
   }
-  for (const history of data.manualRaceApprovalHistory) {
-    const command = data.manualRaceCommandResults.find(
-      (row) => row.operation === 'approve' && row.candidateId === history.candidateId,
-    );
-    if (!command || command.operation !== 'approve' || command.result.status !== 'committed')
-      continue;
-    const committed = command.result.versions.find(
+  for (const history of histories) {
+    const result = results.find((row) => row.candidateId === history.candidateId);
+    if (!result) continue; // Each source's exact tuple verifier reports missing originals.
+    const committed = result.versions.find(
       (row) =>
         row.domain === history.domain &&
         sameId(row.aggregateId, history.aggregateId) &&
@@ -722,6 +748,237 @@ export const accountExportV36Schema = z.strictObject({
   data: retainedExportData36.superRefine(validateManualDomainVersions36),
 });
 export type AccountExportV36 = z.infer<typeof accountExportV36Schema>;
+/** V37 adds every retained internal family, without changing V36's public-only
+ * producer policy or converting portable observations to authorization. */
+const retainedExportShape37 = z
+  .strictObject({
+    ...accountExportV35Schema.shape.data.shape,
+    ...checkInTemplateExportFields,
+    ...raceManualPersonalExportFields,
+    ...trainingPlanAggregateExportFields,
+  })
+  .safeExtend({
+    ...raceManualInternalPersonalExportFields,
+    sourceProvenanceCoverage: z.literal('not_exported_policy_unresolved'),
+  });
+type RetainedExportData37 = z.infer<typeof retainedExportShape37>;
+function sameRetainedFact37(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (Array.isArray(a) || Array.isArray(b))
+    return (
+      Array.isArray(a) &&
+      Array.isArray(b) &&
+      a.length === b.length &&
+      a.every((value: unknown, index) => sameRetainedFact37(value, b[index]))
+    );
+  if (a === null || b === null || typeof a !== 'object' || typeof b !== 'object') return false;
+  const left = Object.entries(a),
+    right = new Map(Object.entries(b));
+  return (
+    left.length === right.size &&
+    left.every(([key, value]) => right.has(key) && sameRetainedFact37(value, right.get(key)))
+  );
+}
+/** Arrays representing ordered planned content remain ordered. Only explicitly
+ * keyed factual rosters are compared as sets. */
+function sameRetainedRoster37<T>(a: readonly T[], b: readonly T[], key: (row: T) => string) {
+  const left = new Map(a.map((row) => [key(row), row]));
+  const right = new Map(b.map((row) => [key(row), row]));
+  return (
+    left.size === a.length &&
+    right.size === b.length &&
+    left.size === right.size &&
+    [...left].every(([id, row]) => right.has(id) && sameRetainedFact37(row, right.get(id)))
+  );
+}
+function validateRetainedOverlap37(data: RetainedExportData37, ctx: z.RefinementCtx) {
+  const fail = (message: string) => ctx.addIssue({ code: 'custom', message });
+  const candidates = new Map(data.manualInternalCandidates.map((v) => [v.candidateId, v]));
+  for (const review of data.manualRaceReviews) {
+    const internal = candidates.get(review.reference.candidateId);
+    if (
+      !internal ||
+      internal.chain.evidenceId !== review.reference.chain.evidenceId ||
+      internal.chain.decisionId !== review.reference.chain.decisionId ||
+      internal.chain.proposalId !== review.reference.chain.proposalId ||
+      !sameExportInstant36(internal.createdAt, review.createdAt) ||
+      internal.body.state !== review.bodyState
+    ) {
+      fail('Public review requires exact internal candidate/state/chain');
+      continue;
+    }
+    // Public purge DTO deliberately contains no purge event/time. Internal tuple
+    // validation checks that provenance; no missing public facts are invented.
+    if (internal.body.state !== 'present' || review.preview?.status !== 'present') continue;
+    if (internal.body.storedApplicationState !== 'ready_for_explicit_approval')
+      fail('Public ready review requires original ready candidate');
+    const a = review.preview,
+      b = internal.body.planned;
+    if (
+      !sameRetainedFact37(a.race, b.race) ||
+      !sameRetainedRoster37(a.affected, b.affected, (v) =>
+        JSON.stringify([v.domain, v.aggregateId]),
+      ) ||
+      !sameRetainedRoster37(a.retainedUnplanned, b.retainedUnplanned, (v) => v.runId)
+    )
+      fail('Exact overlapping race/affected/retained run facts required');
+    for (const domain of ['training', 'nutrition', 'recovery', 'routines'] as const) {
+      const x = a[domain],
+        y = b[domain];
+      if (x.state !== y.state) fail('Exact overlapping domain roster required');
+    }
+    if (
+      a.training.state === 'present' &&
+      b.training.state === 'present' &&
+      !sameRetainedRoster37(a.training.members, b.training.members, (v) => v.aggregateId)
+    )
+      fail('Exact overlapping training facts required');
+    if (a.nutrition.state === 'present' && b.nutrition.state === 'present') {
+      const publicRows = a.nutrition.members.map((m) => ({
+        aggregateId: m.aggregateId,
+        before: {
+          ...m.before,
+          plan: {
+            ...m.before.plan,
+            items: m.before.plan.items.map((i) => ({
+              ...i,
+              targets: i.targets.map((t) => ({
+                metric: t.metric,
+                amount: {
+                  min: t.amount.min,
+                  max: t.amount.max,
+                  unit: t.amount.unit,
+                  basis: t.amount.basis,
+                },
+              })),
+            })),
+          },
+        },
+        after: {
+          plan: {
+            ...m.after.plan,
+            items: m.after.plan.items.map((i) => ({
+              ...i,
+              targets: i.targets.map((t) => ({
+                metric: t.metric,
+                amount: {
+                  min: t.amount.min,
+                  max: t.amount.max,
+                  unit: t.amount.unit,
+                  basis: t.amount.basis,
+                },
+              })),
+            })),
+          },
+          linkedTraining: m.after.linkedTraining,
+        },
+        timings: m.timings,
+      }));
+      const internalRows = b.nutrition.members.map((m) => ({
+        aggregateId: m.aggregateId,
+        before: m.before,
+        after: m.after,
+        timings: m.timings.map(({ itemId, state, before, after }) => ({
+          itemId,
+          state,
+          before,
+          after,
+        })),
+      }));
+      if (!sameRetainedRoster37(publicRows, internalRows, (v) => v.aggregateId))
+        fail('Exact overlapping nutrition content/timing/link required');
+    }
+    if (a.recovery.state === 'present' && b.recovery.state === 'present') {
+      const publicRows = a.recovery.members.map((m) => ({
+        aggregateId: m.aggregateId,
+        before: m.before,
+        after: {
+          plan: m.after.plan,
+          status: m.after.status,
+          selectedOptionId: m.after.selectedOptionId,
+          planLinks: m.after.planLinks,
+        },
+      }));
+      const internalRows = b.recovery.members.map((m) => ({
+        aggregateId: m.aggregateId,
+        before: m.before,
+        after: m.after,
+      }));
+      if (!sameRetainedRoster37(publicRows, internalRows, (v) => v.aggregateId))
+        fail('Exact overlapping recovery content/link required');
+    }
+    if (a.routines.state === 'present' && b.routines.state === 'present') {
+      const publicRows = a.routines.members.map((m) => ({
+        aggregateId: m.aggregateId,
+        blueprint: m.blueprint,
+        before: { schedule: m.before.schedule, expansion: m.before.expansion },
+        after: { schedule: m.after.schedule, expansion: m.after.expansion },
+        retainedStarted: m.retainedStarted,
+      }));
+      const internalRows = b.routines.members.map((m) => ({
+        aggregateId: m.aggregateId,
+        blueprint: m.blueprint,
+        before: { schedule: m.before.schedule, expansion: m.before.expansion },
+        after: { schedule: m.after.schedule, expansion: m.after.expansion },
+        retainedStarted: m.retainedStarted,
+      }));
+      if (!sameRetainedRoster37(publicRows, internalRows, (v) => v.aggregateId))
+        fail('Exact overlapping frozen routine facts required');
+    }
+  }
+  const results = new Map(data.manualInternalApprovalResults.map((v) => [v.candidateId, v]));
+  for (const result of publicManualResults(data)) {
+    const internal = results.get(result.candidateId);
+    if (!internal || !sameRetainedFact37(result, internal))
+      fail('Public approval requires identical internal original result');
+    const publicHistory = data.manualRaceApprovalHistory.filter(
+      (v) => v.candidateId === result.candidateId,
+    );
+    const internalHistory = data.manualInternalApprovalHistory.filter(
+      (v) => v.candidateId === result.candidateId,
+    );
+    if (
+      !sameRetainedRoster37(publicHistory, internalHistory, (v) =>
+        JSON.stringify([v.approvalId, v.domain, v.aggregateId]),
+      )
+    )
+      fail('Public approval requires identical complete internal history');
+  }
+}
+function validateRetainedData37(data: RetainedExportData37, ctx: z.RefinementCtx) {
+  validateRaceNutritionExportTuples35(data, ctx);
+  validateCheckInTemplateExportTuples(data, ctx);
+  validateRaceManualPersonalExportTuples(data, ctx);
+  validateRaceManualInternalPersonalExportTuples(data, ctx);
+  validateRetainedOverlap37(data, ctx);
+  // Internal ALL already contains public originals. Exact overlap is validated
+  // above, so each successful approval is fed to common verifiers only once.
+  validateGenericRecoveryExportWithManualResults(data, ctx, data.manualInternalApprovalResults);
+  validateManualDomainVersions(
+    data,
+    ctx,
+    data.manualInternalApprovalResults,
+    data.manualInternalApprovalHistory,
+  );
+}
+export const accountExportV37Schema = z
+  .strictObject({
+    ...accountExportV36Schema.shape,
+    schemaVersion: z.literal(37),
+    data: retainedExportShape37.superRefine(validateRetainedData37),
+  })
+  .superRefine((raw, ctx) => {
+    if (!raceManualInternalWholePlainSchema.safeParse(raw).success)
+      ctx.addIssue({ code: 'custom', message: 'Bounded whole-account V37 artifact required' });
+  });
+export type AccountExportV37 = z.infer<typeof accountExportV37Schema>;
+/** Unknown transport callers must bound plain input before nested parsing. The
+ * object schema remains available for the historical discriminated union. */
+export function parseAccountExportV37(raw: unknown): AccountExportV37 {
+  raceManualInternalWholePlainSchema.parse(raw);
+  return accountExportV37Schema.parse(raw);
+}
+
 // Read historical artifacts unchanged; never manufacture absent collections.
 export const accountExportSchema = z.discriminatedUnion('schemaVersion', [
   accountExportV2Schema,
@@ -759,6 +1016,7 @@ export const accountExportSchema = z.discriminatedUnion('schemaVersion', [
   accountExportV34Schema,
   accountExportV35Schema,
   accountExportV36Schema,
+  accountExportV37Schema,
 ]);
 export const operationsStatusSchema = z.strictObject({
   checkedAt: z.iso.datetime({ offset: true }),

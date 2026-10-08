@@ -16,6 +16,7 @@ import {
   recoveryStrategyVersionSchema,
   recoveryActionRecordSchema,
 } from './recovery-core.js';
+import type { raceManualApprovalResultSchema } from './race-manual-approval.js';
 import { integratedApprovalResultV4Schema } from './integrated-coaching.js';
 
 const exportUuid34 = z.uuid();
@@ -336,14 +337,25 @@ export function validateGenericRecoveryExportTuples36(
   validateGenericRecoveryExportTuples(
     data,
     context,
-    data.manualRaceCommandResults,
+    data.manualRaceCommandResults.flatMap((v) =>
+      v.operation === 'approve' && v.result.status === 'committed' ? [v.result] : [],
+    ),
     'versioned_anchor',
   );
+}
+/** Genuine already decoded manual successes, shared by explicit V37 only.
+ * Historical wrappers retain their original source policy. */
+export function validateGenericRecoveryExportWithManualResults(
+  data: GenericRecoveryExportData34,
+  context: z.RefinementCtx,
+  results: readonly z.infer<typeof raceManualApprovalResultSchema>[],
+) {
+  validateGenericRecoveryExportTuples(data, context, results, 'versioned_anchor');
 }
 function validateGenericRecoveryExportTuples(
   data: GenericRecoveryExportData34,
   context: z.RefinementCtx,
-  manualCommands: RaceManualPersonalExportData['manualRaceCommandResults'] = [],
+  manualResults: readonly z.infer<typeof raceManualApprovalResultSchema>[] = [],
   occurrenceIdentity: 'aggregate_anchor' | 'versioned_anchor' = 'aggregate_anchor',
 ) {
   const requireFact = (found: boolean, message: string) => {
@@ -407,13 +419,13 @@ function validateGenericRecoveryExportTuples(
       { status: 'committed' }
     >
   >();
-  for (const command of manualCommands) {
-    if (command.operation !== 'approve' || command.result.status !== 'committed') continue;
+  for (const result of manualResults) {
+    if (result.status !== 'committed') continue;
     requireFact(
-      !approvals.has(command.result.approvalId) && !manualApprovals.has(command.result.approvalId),
+      !approvals.has(result.approvalId) && !manualApprovals.has(result.approvalId),
       'Approval identity cannot alias different producer families',
     );
-    manualApprovals.set(command.result.approvalId, command.result);
+    manualApprovals.set(result.approvalId, result);
   }
   for (const row of data.genericRoutineBlueprintVersions) {
     requireFact(
