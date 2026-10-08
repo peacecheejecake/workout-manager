@@ -635,3 +635,23 @@ phase commit4d92e59a는 V36/source128, df30fec8는 closed owner catalog observer
 다음 native 병렬은 source27/SQL110 safe provenance 계약과 신규130 좁은 reader/mapper, 명시profile19의 typed whole-catalog 관측 보강이다. Root는130 `130_retained_source_provenance_export.sql`만 직렬 배정했으며 normalregistry/profile 편입은 아직 없다. Safe projection이 다른 external sourceRecordId를 같은 값으로 축약할 때 저장ordinal을 지키는 보완과 개별planned/C/S/B JSON visits 용량 조사도 진행 중이다. current root catalog witness의 원body·v1 의미는 export-only 재사용 seam 외에 변경하지 않는다. source-authentication/caller wire/dynamic/effective recipe·cold/configured·전체복원·phase 전체 gate/독립검토/main·운영/native/provider gate는 미완료다.
 
 AWS 관리자 STS는 현재 `Token has expired and refresh failed`로 거절돼 새 로그인 가능 여부를 사용자에게 다시 질문했다. FUT-09 원문은 사용자가 전달 예정이라고 답했고, 이후 원문 없이 신규 시작 가능 여부를 질문했다. 신규 시작은 가능하며 기존 원문 이식 범위 변경 여부를 질문한 상태다. 답변 전 원문 이식을 완료/제외로 바꾸지 않는다. I/J/phase·graph 상태와 외부 not_executed는 유지하고 push는 사용자 작업이다.
+
+## 출처 계약 커밋·실제 catalog/130 발견 후속 · 2026-10-08
+
+`6189aa95`는 새 safe source provenance 계약/subpath와 exact tuple Map 최적화다. Root 현재46/46·persistence consumerTS0·API import0를 확인했으며 [I 기록](progress/M2-02i.md)에 남겼다. 비수동 external sourceRecordId redaction의 noninjective ordinal을 유지하고 source/event authentication을 주장하지 않는다.
+
+Named profile19 catalog v3의 Root 첫PG는 alias 오류로1PASS/5FAIL이었다. 실제 공통 CTE의 description 컬럼에 맞춰 교정한 R2는4PASS/2 testcase timeout·exit1,360.55초이며 전체통과가 아니다. 실제 domain/type/view 및 FORCE RLS/unknown ACL testcase가90초를 넘었고 afterAll DB접속 잔존으로 실패했다. Root가 R2의 정확한 owned DB/roles whitelist만 정리한 뒤 inspector DB/roles/slots0를 확인했다. cleanup 출력의2/5는 대상 whitelist 크기이며 실제 삭제된 개수 계측이 아니다. unit35/35는 실제 전체PG 완료를 대체하지 않는다. 반복 whole metadata 계산을 줄이되 query30초/16MiB/250000visits/depth32를 유지하는 보완을 native actor에 배정했다. 지원false·dynamic/strict caller/effective recipe/실제cold gate는 유지한다.
+
+SQL130 실제R1은5PASS/3FAIL·exit1,17.21초다. 두번째race삭제 뒤 역사 nutrition lineage 검증 CORRUPT, escapedID fixture의 실제V2command 계약 오류, RR/delete barrier locktimeout을 교정 중이다. Root 실제 정리0를 확인했다. 130 설치/구문이 실행됐다고 전체27 producer/출처census/계정V38/정상profile 설치·grant·최신restore를 완료로 세지 않는다. source/event fact를 현재 resolver로 재작성하거나 guard를 삭제하지 않는다.
+
+정상400항목 planned presentation의 generic JSON5000-node 거절은 source 참조/array/512KiB 정책과 독립적인 검사 결함이었다. 같은 exact UTF8 plain helper로4MiB/8MiB를 검증하는 수정은 actor9파일 동결이며 Root 집중단위145/145와 별도 V37/renderer/reader58/58을 확인했다. 처음 Root 명령의 존재하지 않는 두 파일명은 실행 증거가 아니며 올바른 남은 파일을 별도로 실행했다. 실제 nutrition400 publicproducer→stored chain→129→V37 fixture는 native actor 준비 중이며 실제PG 미실행이다.
+
+Root는 실제DB lane·sharedgraph/Git 통합, agent들은 비중복 구현/fixture/closure 감사를 병렬 진행한다. normalregistry107·현재 profile19·default34·graph I/J in_progress·main/push0, 운영503/외부native/provider not_executed와 AWS로그인/FUT09 범위 답변 대기를 유지한다.
+
+## Catalog R3 성공·source130 R2 후속 · 2026-10-08
+
+Root catalog R3는6/6 PASS·skip0·exit0,35.09초이며 unit36/36·정리0다. 반복계산을 MATERIALIZED 한 번으로 바꾸고 callback terminal 이후 정리해 한도 상향 없이 수용했다. `f1cbe784`에 관측기/시험/기록5파일만 phase 커밋했다. trusted compiled expected/dynamic/caller/effective recipe/cold 활성화는 아직없다. actual two-DB metadata artifact capture 준비를 native actor에 배정했으며 compiler/supporttrue를 자동생성하지 않는다.
+
+Root SQL130 R2 실제8/8 PASS·skip0·exit0,13.70초 및 정리0를 확인했다. 새race삭제의 원origin과 과거lineage를 함께 보존하는 SQL 교정/V2fixture/RR 실제첫tenantlock barrier가 input이다. 이후 Root reader검토에서 reportedbytes보다 실제 compact body가 큰 응답을 shareddebit으로 받아들이는 경계 결함을 발견해 source/unit에 min(remaining,reported) exact byte 선guard를 배정했다. 새로운 public bounded-plain-json subpath는 Root manifest WIP이며 수정된 reader의 새검증 전 전체130완료/커밋하지 않는다.
+
+Root dense actual public400 fixture R1은 live(세션54422)였으며 결과 전 PASS로 세지 않는다. 에이전트는 서로 겹치지 않는 V38계약2파일, source130reader2파일, private metadata capture script를 계속 준비한다. graph I/J·phase in_progress, main/push0·AWS/FUT09결정대기 및 외부not_executed 유지다.
