@@ -5,10 +5,12 @@ import {
 } from './race-manual-review-chain-v2.js';
 import {
   prepareRaceManualPooledApprovalIn,
+  prepareRaceManualPooledDeltaApprovalIn,
+  approveRaceManualPooledDeltaApplicationFromStoredCaptureIn,
   prepareRaceManualPooledSameTxApprovalIn,
   approveRaceManualPooledApplicationFromStoredCaptureIn,
 } from './race-manual-approval.js';
-type Protocol = 'legacy' | 'pooled';
+type Protocol = 'legacy' | 'pooled' | 'pooled-delta';
 import {
   createRaceManualSameTxApprovalContinuation,
   raceManualStoredApprovalReadSchema,
@@ -206,7 +208,7 @@ async function reviewPublic(
     return { status: 'reviewed' as const, reference, bodyState: read.bodyState };
   }
   const continuation =
-    protocol === 'pooled' || (await hasRaceManualSameTxReviewCapabilityIn(tx, budget))
+    protocol !== 'legacy' || (await hasRaceManualSameTxReviewCapabilityIn(tx, budget))
       ? await captureRaceManualSameTxReviewContinuationIn(tx, command.intent, budget)
       : null;
   const current =
@@ -236,11 +238,11 @@ async function reviewPublic(
     );
     const chainStore =
       handle === null
-        ? protocol === 'pooled'
+        ? protocol !== 'legacy'
           ? storeRaceManualPooledReviewChainV1In
           : storeRaceManualReviewChainV2In
         : (tx: Transaction, raw: unknown, budget: SourceBudget, ids: () => string) =>
-            (protocol === 'pooled'
+            (protocol !== 'legacy'
               ? storeRaceManualPooledReviewSameTxChainV1In
               : storeRaceManualReviewSameTxChainIn)(tx, raw, handle, budget, ids);
     const chain = await chainStore(
@@ -270,18 +272,22 @@ async function reviewPublic(
     const application =
       handle !== null && chain.status === 'stored'
         ? await (
-            protocol === 'pooled'
+            protocol !== 'legacy'
               ? prepareRaceManualPooledSameTxApprovalIn
               : prepareRaceManualSameTxApprovalIn
           )(tx, applicationInput, handle, budget, options)
         : await (
-            protocol === 'pooled' ? prepareRaceManualPooledApprovalIn : prepareRaceManualApprovalIn
+            protocol === 'pooled-delta'
+              ? prepareRaceManualPooledDeltaApprovalIn
+              : protocol === 'pooled'
+                ? prepareRaceManualPooledApprovalIn
+                : prepareRaceManualApprovalIn
           )(tx, applicationInput, budget, options);
     if (application.status !== 'prepared') throw new ReviewBlocked('application');
     const reference = checkedReference(
       await sql(
         tx,
-        protocol === 'pooled'
+        protocol !== 'legacy'
           ? 'public.finish_race_manual_pooled_public_review_v1($1::text,$2::jsonb,$3::uuid)'
           : 'public.finish_race_manual_public_review_v1($1::text,$2::jsonb,$3::uuid)',
         [command.idempotencyKey, request, application.candidate.candidateId],
@@ -359,9 +365,11 @@ async function approvePublic(
       confirmed: true,
     });
     const result = await (
-      protocol === 'pooled'
-        ? approveRaceManualPooledApplicationFromStoredCaptureIn
-        : approveRaceManualApplicationFromStoredCaptureIn
+      protocol === 'pooled-delta'
+        ? approveRaceManualPooledDeltaApplicationFromStoredCaptureIn
+        : protocol === 'pooled'
+          ? approveRaceManualPooledApplicationFromStoredCaptureIn
+          : approveRaceManualApplicationFromStoredCaptureIn
     )(tx, internal, continuation, read.handle, budget, options);
     const committed = raceManualApprovalResultSchema.parse(
       await sql(
@@ -530,7 +538,7 @@ function createPublicRepository(protocol: Protocol, database: Database, options:
     async readPreview(athleteId: string, rawId: unknown) {
       const id = uuid.parse(rawId);
       return snapshot(athleteId, (tx) =>
-        (protocol === 'pooled'
+        (protocol !== 'legacy'
           ? readRaceManualPooledPublicPreviewIn
           : readRaceManualPublicPreviewIn)(tx, id),
       );
@@ -552,4 +560,12 @@ export function createRaceManualPooledPublicRepositoryForBundle(
   options: Options = {},
 ) {
   return createPublicRepository('pooled', database, options);
+}
+
+/** Explicit server composition only; no caller DTO selects delta transport. */
+export function createRaceManualPooledDeltaPublicRepositoryForBundle(
+  database: Database,
+  options: Options = {},
+) {
+  return createPublicRepository('pooled-delta', database, options);
 }

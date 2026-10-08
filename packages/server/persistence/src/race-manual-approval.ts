@@ -1,8 +1,9 @@
+import { readRaceManualPooledParentDeltaTransportV1In } from './race-manual-pooled-parent-delta-transport-v1.js';
 import { validateRaceSourceResponseBudget } from './race-plan-impact-context.js';
 import { readRaceManualPooledChainTransportV1In } from './race-manual-pooled-chain-transport-v1.js';
 import { encodeRaceManualReviewPooledRetainedPayloadV1 } from './race-manual-review-pooled-retained-payload-v1.js';
 import { toRaceManualReviewPooledDatabaseEnvelopeV1 } from './race-manual-review-pooled-database-envelope-v1.js';
-type Protocol = 'legacy' | 'pooled';
+type Protocol = 'legacy' | 'pooled' | 'pooled-delta';
 import {
   assertRaceManualSameTxApprovalContinuation,
   type RaceManualSameTxApprovalContinuation,
@@ -406,7 +407,26 @@ function recipes(
 /** Real persisted parent + fresh same-transaction full-owned/purpose capture.
  * The readonly parent's missing5/applyfalse remain untouched. The new SQL118
  * boundary binds actual sources and a new basis, never a caller Boolean seal. */
-async function readParent(protocol: Protocol, tx: Transaction, id: unknown, budget: SourceBudget) {
+async function readParent(
+  protocol: Protocol,
+  tx: Transaction,
+  id: unknown,
+  budget: SourceBudget,
+  current?: Current,
+) {
+  if (protocol === 'pooled-delta') {
+    if (!current) throw new RaceManualApprovalError('INVALID_CONTEXT');
+    const { retained } = contextOf(current);
+    const read = await readRaceManualPooledParentDeltaTransportV1In(
+      tx,
+      id,
+      encodePrepared(protocol, retained),
+      budget,
+    );
+    return read.status === 'read'
+      ? { schemaVersion: 2 as const, result: read.result, payload: read.payload }
+      : null;
+  }
   if (protocol === 'legacy') return readRaceManualReviewCompatibleChainIn(tx, id, budget);
   const read = await readRaceManualPooledChainTransportV1In(tx, id, budget);
   return read.status === 'read'
@@ -414,7 +434,7 @@ async function readParent(protocol: Protocol, tx: Transaction, id: unknown, budg
     : null;
 }
 function encodePrepared(protocol: Protocol, retained: Current['prepared']['retained']) {
-  return protocol === 'pooled'
+  return protocol !== 'legacy'
     ? toRaceManualReviewPooledDatabaseEnvelopeV1(
         encodeRaceManualReviewPooledRetainedPayloadV1(retained),
       )
@@ -428,7 +448,19 @@ async function prepareApproval(
   options: { now?: () => Date; createId?: () => string } = {},
 ) {
   const input = raceManualApprovalPrepareSchema.parse(unknownInput);
-  const parent = await readParent(protocol, tx, input.chain.evidenceId, budget);
+  const captured =
+    protocol === 'pooled-delta'
+      ? await prepareRaceManualSemanticBasisV2In(tx, input.intent, input.expectedBasis, budget)
+      : null;
+  if (captured !== null && captured.status !== 'current_dependencies_captured')
+    return { status: 'blocked' as const, reason: 'current_basis_unavailable' as const };
+  const parent = await readParent(
+    protocol,
+    tx,
+    input.chain.evidenceId,
+    budget,
+    captured ?? undefined,
+  );
   if (
     !parent ||
     parent.payload === null ||
@@ -437,12 +469,9 @@ async function prepareApproval(
     parent.result.candidateDigest !== input.chain.readonlyCandidateDigest
   )
     throw new RaceManualApprovalError('PARENT_UNAVAILABLE');
-  const current = await prepareRaceManualSemanticBasisV2In(
-    tx,
-    input.intent,
-    input.expectedBasis,
-    budget,
-  );
+  const current =
+    captured ??
+    (await prepareRaceManualSemanticBasisV2In(tx, input.intent, input.expectedBasis, budget));
   if (current.status !== 'current_dependencies_captured')
     return { status: 'blocked' as const, reason: 'current_basis_unavailable' as const };
   parentRoots(current, parent);
@@ -537,7 +566,7 @@ async function prepareApplicationFromCurrent(
   const stored = raceManualApprovalCandidateSchema.parse(
     await call(
       tx,
-      protocol === 'pooled'
+      protocol !== 'legacy'
         ? 'public.prepare_race_manual_pooled_application_v1($1::jsonb,$2::jsonb,$3::jsonb,$4::jsonb)'
         : 'public.prepare_race_manual_application_v1($1::jsonb,$2::jsonb,$3::jsonb,$4::jsonb)',
       [
@@ -655,14 +684,23 @@ async function applyStoredRaceManualApplicationIn(
     !same(candidate.expectation, command.expectation)
   )
     throw new RaceManualApprovalError('APPLICATION_UNAVAILABLE');
-  const parent = await readParent(protocol, tx, candidate.chain.evidenceId, budget);
-  if (!parent || parent.payload === null) throw new RaceManualApprovalError('PARENT_UNAVAILABLE');
-  const current = await prepareRaceManualSemanticBasisV2In(
+  const captured =
+    protocol === 'pooled-delta'
+      ? await prepareRaceManualSemanticBasisV2In(tx, stored.basis.intent, stored.basis, budget)
+      : null;
+  if (captured !== null && captured.status !== 'current_dependencies_captured')
+    throw new RaceManualApprovalError('STALE_BASIS');
+  const parent = await readParent(
+    protocol,
     tx,
-    stored.basis.intent,
-    stored.basis,
+    candidate.chain.evidenceId,
     budget,
+    captured ?? undefined,
   );
+  if (!parent || parent.payload === null) throw new RaceManualApprovalError('PARENT_UNAVAILABLE');
+  const current =
+    captured ??
+    (await prepareRaceManualSemanticBasisV2In(tx, stored.basis.intent, stored.basis, budget));
   if (current.status !== 'current_dependencies_captured')
     throw new RaceManualApprovalError('STALE_BASIS');
   parentRoots(current, parent);
@@ -693,7 +731,7 @@ async function applyStoredRaceManualApplicationIn(
   const contextId = uuid.parse(
     await call(
       tx,
-      protocol === 'pooled'
+      protocol !== 'legacy'
         ? 'public.begin_race_manual_pooled_application_v1($1::jsonb,$2::jsonb,$3::jsonb,$4::jsonb)'
         : 'public.begin_race_manual_application_v1($1::jsonb,$2::jsonb,$3::jsonb,$4::jsonb)',
       [
@@ -945,4 +983,20 @@ export function createRaceManualPooledApprovalRepositoryForBundle(
   options: { now?: () => Date; createId?: () => string } = {},
 ) {
   return createApprovalRepository('pooled', database, options);
+}
+
+/** Explicit delta protocol; the fresh capture is the only reconstruction base. */
+export function prepareRaceManualPooledDeltaApprovalIn(...args: PrepareArguments) {
+  return prepareApproval('pooled-delta', ...args);
+}
+export function approveRaceManualPooledDeltaApplicationFromStoredCaptureIn(
+  ...args: CapturedApproveArguments
+) {
+  return approveApplicationFromStoredCapture('pooled-delta', ...args);
+}
+export function createRaceManualPooledDeltaApprovalRepositoryForBundle(
+  database: Database,
+  options: { now?: () => Date; createId?: () => string } = {},
+) {
+  return createApprovalRepository('pooled-delta', database, options);
 }
