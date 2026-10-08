@@ -746,3 +746,7 @@ export function parseCurrentRuntimeCatalogWitnessV3(
     fail('CATALOG_WITNESS_INVALID');
   return observation === undefined ? expected : { ...expected, observation };
 }
+
+// Shared metadata query only. Profile-specific installation/context verification
+// and observation counts remain in each named successor; this export is no seal.
+export { sql as currentRuntimeCatalogMetadataQueryV3 };
