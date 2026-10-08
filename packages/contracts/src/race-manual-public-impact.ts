@@ -420,6 +420,64 @@ const plannedFactsShape = z.strictObject({
   resolutionRequirements: z.array(requirement).max(1000),
   notices: z.array(notice).max(5000),
 });
+type ExactDerivedRosterMember =
+  z.infer<typeof target> | z.infer<typeof requirement> | z.infer<typeof notice>;
+function targetTuple(row: z.infer<typeof target>): string {
+  return JSON.stringify([row.domain, row.aggregateId]);
+}
+function requirementTuple(row: z.infer<typeof requirement>): string {
+  switch (row.domain) {
+    case 'nutrition':
+      return JSON.stringify([
+        row.domain,
+        row.aggregateId,
+        row.planVersionId,
+        row.itemId,
+        row.reason,
+        row.editor,
+      ]);
+    case 'recovery':
+      return JSON.stringify([
+        row.domain,
+        row.aggregateId,
+        row.strategyVersionId,
+        row.reason,
+        row.editor,
+      ]);
+    case 'routine_schedule':
+      return JSON.stringify([
+        row.domain,
+        row.aggregateId,
+        row.scheduleVersionId,
+        row.reason,
+        row.editor,
+      ]);
+  }
+}
+function noticeTuple(row: z.infer<typeof notice>): string {
+  return JSON.stringify([row.domain, row.aggregateId, row.itemId, row.code]);
+}
+// Only already parsed, finite derived-roster DTOs enter this local helper.
+// Tuple encoding is an index, not a digest or source/approval authority.
+function exactDerivedRoster<T extends ExactDerivedRosterMember>(
+  actual: readonly T[],
+  expected: readonly T[],
+  tuple: (row: T) => string,
+  c: z.RefinementCtx,
+) {
+  const actualTuples = actual.map(tuple);
+  unique(actualTuples, c);
+  const expectedByTuple = new Map(expected.map((row) => [tuple(row), row]));
+  if (
+    actual.length !== expected.length ||
+    actual.some((row, index) => {
+      const key = actualTuples[index];
+      const candidate = key === undefined ? undefined : expectedByTuple.get(key);
+      return candidate === undefined || !same(row, candidate);
+    })
+  )
+    c.addIssue({ code: 'custom', message: 'Exact derived roster required' });
+}
 function validatePlannedFacts(
   p: Omit<z.infer<typeof plannedFactsShape>, 'persistence' | 'beforeBasis'>,
   c: z.RefinementCtx,
@@ -580,14 +638,6 @@ function validatePlannedFacts(
       )
     ))
       c.addIssue({ code: 'custom', message: 'Resolution requires affected owned tuple' });
-  function exact(a: readonly unknown[], b: readonly unknown[]) {
-    unique(
-      a.map((v) => JSON.stringify(v)),
-      c,
-    );
-    if (a.length !== b.length || a.some((v) => !b.some((w) => same(v, w))))
-      c.addIssue({ code: 'custom', message: 'Exact derived roster required' });
-  }
   const changedTraining = new Set(
     expectedAffected.filter((t) => t.domain === 'training').map((t) => t.aggregateId),
   );
@@ -636,9 +686,9 @@ function validatePlannedFacts(
     ))
       c.addIssue({ code: 'custom', message: 'Move requires exact current training period' });
   }
-  exact(p.affected, expectedAffected);
-  exact(p.resolutionRequirements, expectedRequirements);
-  exact(p.notices, expectedNotices);
+  exactDerivedRoster(p.affected, expectedAffected, targetTuple, c);
+  exactDerivedRoster(p.resolutionRequirements, expectedRequirements, requirementTuple, c);
+  exactDerivedRoster(p.notices, expectedNotices, noticeTuple, c);
   unique(
     [
       ...p.retainedUnplanned.map((r) => r.runId),

@@ -833,3 +833,132 @@ it('still rejects5001 planned items by the semantic roster limit below4MiB', () 
     result.error.issues.some((issue) => issue.message === 'Bounded plain impact required'),
   ).toBe(false);
 });
+
+function indexedNoticeFixture(count: number) {
+  const p = fixture(),
+    n = member(p),
+    item = first(n.before.plan.items),
+    t = first(n.timings);
+  n.before.plan.items = Array.from({ length: count }, (_, i) => ({
+    ...structuredClone(item),
+    id: `食|"\\:${i}`,
+    foods: [],
+  }));
+  n.after.plan.items = structuredClone(n.before.plan.items);
+  n.timings = n.before.plan.items.map((x) => ({ ...structuredClone(t), itemId: x.id }));
+  p.notices = n.before.plan.items.map((x) => ({
+    domain: 'nutrition',
+    aggregateId: n.aggregateId,
+    itemId: x.id,
+    code: 'UNCHANGED_UNRESOLVED',
+  }));
+  return p;
+}
+function indexedRequirementFixture() {
+  const p = raceManualPublicImpactSchema.parse(indexedNoticeFixture(2));
+  if (p.status !== 'projected' || p.nutrition.state !== 'present') throw Error('fixture');
+  const m = first(p.nutrition.members);
+  for (const t of m.timings) {
+    t.state = 'affected';
+    t.requirement = 'resolve_before_review';
+  }
+  p.notices = [];
+  p.affected = [{ domain: 'nutrition', aggregateId: m.aggregateId }];
+  p.resolutionRequirements = m.timings.map((t) => ({
+    domain: 'nutrition',
+    aggregateId: m.aggregateId,
+    planVersionId: m.before.ref.versionId,
+    itemId: t.itemId,
+    reason: 'affected_timing_unresolved',
+    editor: 'replace_anchor',
+  }));
+  return p;
+}
+describe('exact typed derived roster correspondence', () => {
+  it('accepts reversed notice order and reordered object keys with Unicode quotes and separators', () => {
+    const p = indexedNoticeFixture(8);
+    p.notices = [...p.notices].reverse().map((row) => ({
+      code: row.code,
+      itemId: row.itemId,
+      aggregateId: row.aggregateId,
+      domain: row.domain,
+    }));
+    expect(raceManualPublicImpactSchema.safeParse(p).success).toBe(true);
+  });
+  it('rejects duplicate, missing, extraneous and foreign notice tuples', () => {
+    const p = indexedNoticeFixture(2),
+      a = first(p.notices);
+    for (const notices of [
+      [a, a],
+      p.notices.slice(1),
+      [...p.notices, a],
+      [{ ...a, aggregateId: id(999) }, ...p.notices.slice(1)],
+      [{ ...a, itemId: a.itemId + 'extra' }, ...p.notices.slice(1)],
+    ])
+      expect(raceManualPublicImpactSchema.safeParse({ ...p, notices }).success).toBe(false);
+  });
+  it('preserves null distinct from string null and empty string in routine notices', () => {
+    const p = routineFixture();
+    expect(raceManualPublicImpactSchema.safeParse(p).success).toBe(true);
+    for (const value of ['null', '']) {
+      const notices = p.notices.map((row) =>
+        row.itemId === null ? { ...row, itemId: value } : row,
+      );
+      expect(raceManualPublicImpactSchema.safeParse({ ...p, notices }).success).toBe(false);
+    }
+  });
+  it('rejects unknown non-finite or undefined notice fields before tuple indexing', () => {
+    const p = indexedNoticeFixture(1),
+      a = first(p.notices);
+    for (const bad of [
+      { ...a, itemId: undefined },
+      { ...a, itemId: NaN },
+      { ...a, aggregateId: null },
+      { ...a, code: 'foreign' },
+      { ...a, privateProof: true },
+    ])
+      expect(raceManualPublicImpactSchema.safeParse({ ...p, notices: [bad] }).success).toBe(false);
+  });
+  it('keeps affected tuple order independent and rejects duplicate or foreign target', () => {
+    const p = linkedOnlyFixture();
+    expect(
+      raceManualPublicImpactSchema.safeParse({ ...p, affected: [...p.affected].reverse() }).success,
+    ).toBe(true);
+    const a = first(p.affected);
+    expect(raceManualPublicImpactSchema.safeParse({ ...p, affected: [a, a] }).success).toBe(false);
+    expect(
+      raceManualPublicImpactSchema.safeParse({
+        ...p,
+        affected: [{ ...a, aggregateId: id(999) }, ...p.affected.slice(1)],
+      }).success,
+    ).toBe(false);
+  });
+  it('keeps requirement order independent and checks every exact item and version field', () => {
+    const p = indexedRequirementFixture(),
+      a = first(p.resolutionRequirements);
+    expect(
+      raceManualPublicImpactSchema.safeParse({
+        ...p,
+        resolutionRequirements: [...p.resolutionRequirements].reverse(),
+      }).success,
+    ).toBe(true);
+    for (const requirements of [
+      [a, a],
+      p.resolutionRequirements.slice(1),
+      [...p.resolutionRequirements, a],
+      [{ ...a, planVersionId: id(999) }, ...p.resolutionRequirements.slice(1)],
+      [{ ...a, itemId: 'foreign' }, ...p.resolutionRequirements.slice(1)],
+      [{ ...a, editor: 'replace_rule' }, ...p.resolutionRequirements.slice(1)],
+    ])
+      expect(
+        raceManualPublicImpactSchema.safeParse({ ...p, resolutionRequirements: requirements })
+          .success,
+      ).toBe(false);
+  });
+  it('accepts the existing semantic maximum5000 without enlarging transport or deadline', () => {
+    const p = indexedNoticeFixture(5000);
+    expect(new TextEncoder().encode(JSON.stringify(p)).byteLength).toBeLessThan(4194304);
+    expect(raceManualPublicImpactSchema.safeParse(p).success).toBe(true);
+  });
+});
+// Keep the existing 400/null0 positive and exact 5001 too_big negative untouched.

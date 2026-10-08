@@ -848,3 +848,18 @@ Root가 canonical full identity를 general baseline107 → app-consent → ai-se
 Root 실제 `pnpm test:identity --full --list` exit0: general331시험/117등록파일, app4/1, AI1/1, current22/10으로 총358시험/129등록파일이다. 차이1파일 `course-provider-isolation.spec.ts`는 기존 `PROVIDER_PROOF_MODE=missing-data|no-webgl`일 때만 등록되며 unset이면0건이다. 해당 별도 mode의 현재 실행과 full browser 두 회차는 아직 not_executed다. 목록 조회를 브라우저 pass로 세지 않는다. 순수 배정/신호 종료/첫 실패 중단 검사와 root TypeScript·scoped ESLint·Prettier·diff check는 exit0이다. 실제 전체 PG17 integration session71990은 아직 실행 중이며 중간 복원·worker/media 등 실패를 보존하고 종료 결과를 기다린다.
 
 정확 두 소스 SHA: launcher `5e5cccccbfd91e606817180d07e41521f23afac636701aa5f9817775111bc0e3`, config `0fe883c588f8636bb8e02d943ad0f441d0e2e6729cedb77719b9b59d3f711a29`. 실제 discovery/scoped checks는 `/private/tmp/wm-canonical-identity-{roster,pure,ts,lint,format}-root-r1-20261008.log`, 등록0 진단은 `/private/tmp/wm-canonical-identity-zero-registration-audit-20261008.{md,json}`이다. 원 출력은 commit하지 않는다. 전체 phase gate/독립 검토/main 및 외부 운영 gate는 미완료이며 EXT-HOSTING의 기존4lines WIP는 보존한다. EXT-RESTOREa는 승인된 phase schema 확정이 필요한 scope이므로 현재 inventory/실행 흐름 준비와 실제 구현·복원 수용을 구분한다.
+
+
+## 2026-10-08 전체 검증 실패 분류·native PG17 및 roster 비용 교정
+
+Docker PG17 fullnormal R1은 실제 exit1/cleanuptrue: 248파일 pass·51fail·3skip, 2823시험 pass·229fail·30skip,2539.52s. 원로그와 원driver 결과를 보존한다. 읽기분류상 directauth174·maskedauth9·미확정46이며 canonical harness의 `initdb -A trust`/private Unix socket 전제와 Docker SCRAM의 passwordless fixture 역할이 다르다. 이를 제품 권한·인증 완화나 fail→pass로 치환하지 않는다. 나머지 collation/fixture history/PG17 charcast 및 production 후보는 실제 재검증이 필요하다.
+
+전체 unit R3는9489pass/1fail/12skip(9502),154.16s였다. 1건은5001 roster 거절 시험의 기본5s timeout이다. unchanged 단독26/26 두 회차에서는5001case3518ms가 기록됐다. Root는 typed tuple index로 중첩 exact roster 비교를 줄였고, 기존 deep correspondence·순서 독립·중복/foreign/null/Unicode·5000상한·4MiB·기본timeout을 유지한다. 추가7행동시험 포함 Root33/33 R2,5001거절572ms·5000허용679ms; 전체 consumerTS36/36 fresh 및 scopedlint/format/diff0. 신규 시험의 `toReversed` ES2023 TS 실패는 기존 ES2022 copy.reverse로 교정하고33/33·TS0을 다시 확인했다. 비용 비교는 서로 다른 실행의 관찰값이며 독립 성능 benchmark 주장이나 전체 unit 통과가 아니다.
+
+Native PostgreSQL17.11을 Homebrew skip-link/skip-post-install로 설치했다(필요 krb5/xz 의존성 갱신 포함). 기본17DB/서비스는 생성하지 않았고, 기존에 없던17전용 include/lib/share 경로만 matching keg에 연결했다. 전역14도구는14.15를 유지한다. 최초 foundation은 SysV 공유메모리 한도로 initdb 실패했으며 시험 실행0이었다. 사용자가 정확32개1회 스크립트 SHA854b0acc…dae2fbb를 명시 승인해 Root가32개의 식별값/미연결 상태를 재검사 후 삭제했다. 승인은 소진됐고 새정리에 재사용하지 않는다.
+
+이후 canonical private Unix socket PG17 foundation13/13, logical1/1, pgoutput6파일24/24 exit0 및 server stop/임시경로 cleanup을 확인했다. 공유메모리 남은 항목0이다. 이는 해당107/historical 계약 수용이며 latest239-family 전체복원/운영admission 증거가 아니다. native 전체normal 재실행·fullunit R4·fullidentity 두 회차는 아직 남아 있다. 원 실패/skip을 보존한다. 실제 로그는 `/private/tmp/wm-native-pg17-{foundation-root-r2,logical-root-r1,pgoutput-root-r1}-20261008.log`, typed 수정은 `/private/tmp/wm-public-impact-linear-{root-r2,consumers-ts-root,lint-root-r2,format-root-r2}-20261008.log`다.
+
+새 계약 source로 기존 V9 source-proof를 실제 noargs 검사해 unavailable/source_drift를 확인했다(`/private/tmp/wm-typed-linear-stale-source-proof-root-20261008.log`). 기존 HTTP12/normal5는 original inputs의 historical 증거이며 새소스 통과로 재표시하지 않는다. 다음은 historical 범위를 정확히 보존하고 genuine 새33unit을 추가한 bootstrap compile/pin→실제normal5와 freshHTTP12→최종compile/pin/cold검증이다. bootstrap을 최종 수용으로 부르지 않는다. sourceproof/phase/fullgate·독립review/main은 미완료다.
+
+사용자의 새 iPhone 연결 이후 wired/connected 및 exact 기존 합성bundle 한 번 launch success를 확인했다. 지도 표시/화면 유지 응답·20loads/pan·retained heap은 아직 없으므로 성능 passed가 아니다. synthetic-only이며 설치/서명/HealthKit/제품로그인0. 원문 없는 신규 계획 개발은 계속하고 FUT-09역사이식만 별도 대기한다. EXT-HOSTING 기존4lines WIP·main·사용자push·AWS/provider 운영 gate는 유지한다.
