@@ -163,6 +163,45 @@ export function projectRaceManualPublicPreview(raw: unknown): RaceManualPublicPr
       reason: 'review_body_purged',
       preview: null,
     });
+  if (
+    read.candidate.candidateId !== read.reference.candidateId ||
+    read.candidate.applicationDigest !== read.reference.applicationDigest ||
+    read.candidate.createdAt !== read.reference.createdAt ||
+    !same(read.candidate.chain, read.reference.chain)
+  )
+    invalid();
+  const out = {
+    ...projectRaceManualReadyPlannedSource({
+      candidate: read.candidate,
+      preparation: read.preparation,
+    }),
+    reference: read.reference,
+  };
+  const result = raceManualPublicPreviewSchema.safeParse(out);
+  if (!result.success) {
+    if (result.error.issues.some((issue) => issue.message === 'Bounded plain preview required'))
+      throw new RaceManualPublicPreviewError('PUBLIC_PREVIEW_LIMIT');
+    invalid();
+  }
+  return result.data;
+}
+/** Reference-free pure planned projection. All existing frozen C/S/B, recipe,
+ * immutable source, heads and occurrence checks are shared with the public wire
+ * projector. This validates correspondence, never authentication or permission. */
+export function projectRaceManualReadyPlannedSource(raw: unknown) {
+  try {
+    assertRaceManualPlainV2(raw);
+  } catch {
+    invalid();
+  }
+  const parsed = z
+    .strictObject({
+      candidate: raceManualApprovalCandidateSchema,
+      preparation: raceManualPublicPreviewSourceSchema.options[0].shape.preparation,
+    })
+    .safeParse(raw);
+  if (!parsed.success) invalid();
+  const read = parsed.data;
   const { context: c, sourceInput: input, candidate: readonly } = read.preparation;
   const app = read.candidate;
   const normalized = normalizedSource(input);
@@ -172,10 +211,6 @@ export function projectRaceManualPublicPreview(raw: unknown): RaceManualPublicPr
   )
     invalid();
   if (
-    app.candidateId !== read.reference.candidateId ||
-    app.applicationDigest !== read.reference.applicationDigest ||
-    app.createdAt !== read.reference.createdAt ||
-    !same(app.chain, read.reference.chain) ||
     app.chain.readonlyCandidateDigest !== readonly.digest ||
     !same(readonly.body.projectionInput, normalized.projectionInput) ||
     !same(readonly.body.binding, input.binding) ||
@@ -613,7 +648,6 @@ export function projectRaceManualPublicPreview(raw: unknown): RaceManualPublicPr
   const out = {
     schemaVersion: 1,
     status: 'present',
-    reference: read.reference,
     storedCandidateState: app.applicationState,
     beforeBasis: 'frozen_review',
     afterBasis: 'hypothetical_on_approval',
@@ -633,11 +667,5 @@ export function projectRaceManualPublicPreview(raw: unknown): RaceManualPublicPr
     affected: app.affected,
     notices,
   };
-  const result = raceManualPublicPreviewSchema.safeParse(out);
-  if (!result.success) {
-    if (result.error.issues.some((issue) => issue.message === 'Bounded plain preview required'))
-      throw new RaceManualPublicPreviewError('PUBLIC_PREVIEW_LIMIT');
-    invalid();
-  }
-  return result.data;
+  return out;
 }

@@ -403,4 +403,118 @@ describe('internal retained personal facts', () => {
       }).success,
     ).toBe(false);
   });
+  it.each([13, 29, 76])(
+    'accepts %s valid retained chains beyond the former whole5000 token limit',
+    (count) => {
+      const v = parsed(),
+        original = chain(v);
+      v.manualInternalCandidates = [];
+      v.manualInternalApprovalResults = [];
+      v.manualInternalApprovalHistory = [];
+      v.manualInternalChains = Array.from({ length: count }, (_, index) => ({
+        ...structuredClone(original),
+        evidenceId: id(1000 + index * 3),
+        decisionId: id(1001 + index * 3),
+        proposalId: id(1002 + index * 3),
+      }));
+      expect(new TextEncoder().encode(JSON.stringify(v)).byteLength).toBeLessThan(8388608);
+      expect(raceManualInternalPersonalExportSchema.safeParse(v).success).toBe(true);
+      const duplicate = v.manualInternalChains[0];
+      if (!duplicate) throw Error('fixture');
+      v.manualInternalChains.push(duplicate);
+      expect(raceManualInternalPersonalExportSchema.safeParse(v).success).toBe(false);
+    },
+  );
+  it.each([
+    { escaped: '\u0000\b\t\n\f\r"\\한😀\ud800\udfff', number: 1e21, bool: false, nullable: null },
+    { escaped: '', number: -1.25e-7, bool: true, nullable: null },
+  ])(
+    'charges exact JSON syntax, keys, escapes, UTF8 and scalar bytes at the whole limit',
+    (values) => {
+      const raw = { ['key"\\\u0001한\ud800']: values, padding: '' };
+      const base = new TextEncoder().encode(JSON.stringify(raw)).byteLength;
+      for (const delta of [-1, 0, 1]) {
+        raw.padding = 'x'.repeat(8388608 - base + delta);
+        expect(new TextEncoder().encode(JSON.stringify(raw)).byteLength).toBe(8388608 + delta);
+        const result = raceManualInternalPersonalExportSchema.safeParse(raw);
+        expect(result.success).toBe(false); // not a domain envelope; inspect only the ingress guard
+        if (result.success) throw Error('fixture');
+        const bound = result.error.issues.some(
+          (issue) => issue.message === 'Bounded plain internal export required',
+        );
+        expect(bound).toBe(delta > 0);
+      }
+    },
+  );
+  it('charges array brackets, commas, null and numbers without charging index keys', () => {
+    const raw = { values: [null, false, true, 0, -0, 1e-7, 1e21], padding: '' };
+    const base = new TextEncoder().encode(JSON.stringify(raw)).byteLength;
+    raw.padding = 'x'.repeat(8388608 - base);
+    const result = raceManualInternalPersonalExportSchema.safeParse(raw);
+    if (result.success) throw Error('fixture');
+    expect(
+      result.error.issues.some(
+        (issue) => issue.message === 'Bounded plain internal export required',
+      ),
+    ).toBe(false);
+    raw.padding += 'x';
+    const over = raceManualInternalPersonalExportSchema.safeParse(raw);
+    if (over.success) throw Error('fixture');
+    expect(
+      over.error.issues.some((issue) => issue.message === 'Bounded plain internal export required'),
+    ).toBe(true);
+  });
+  it('keeps symbol, sparse array, nonplain, nonenumerable and getter rejection before access', () => {
+    let accessed = 0;
+    const getter = Object.defineProperty({}, 'field', {
+      enumerable: true,
+      get() {
+        accessed++;
+        return 'x';
+      },
+    });
+    const hidden = Object.defineProperty({}, 'field', { value: 'x' });
+    for (const raw of [
+      getter,
+      hidden,
+      { [Symbol('s')]: 'x' },
+      new Array(3),
+      new Date(),
+      Infinity,
+    ]) {
+      const result = raceManualInternalPersonalExportSchema.safeParse(raw);
+      if (result.success) throw Error('fixture');
+      expect(
+        result.error.issues.some(
+          (issue) => issue.message === 'Bounded plain internal export required',
+        ),
+      ).toBe(true);
+    }
+    expect(accessed).toBe(0);
+  });
+  it('preserves the individual planned-body5000 guard after expanding only the family envelope', () => {
+    const v = parsed(),
+      b = chain(v).body;
+    if (b.state !== 'present') throw Error('fixture');
+    const result = raceManualInternalPersonalExportSchema.safeParse({
+      ...v,
+      manualInternalChains: [
+        {
+          ...chain(v),
+          body: {
+            ...b,
+            planned: { ...b.planned, extra: Array.from({ length: 5001 }, () => null) },
+          },
+        },
+      ],
+    });
+    if (result.success) throw Error('fixture');
+    expect(
+      result.error.issues.some(
+        (issue) =>
+          issue.message === 'Bounded plain internal export required' &&
+          issue.path.join('.') === 'manualInternalChains.0.body.planned',
+      ),
+    ).toBe(true);
+  });
 });

@@ -88,48 +88,16 @@ function output(raw: unknown): RaceManualPublicImpact {
   }
   return p.data;
 }
-/** Internal pure projection from an owned snapshot capture. The JSON boundary
- * checks correspondence only; the calling service must obtain the capture in
- * its fenced transaction. No supplied projection, candidate or boolean is used. */
-export function projectRaceManualPublicImpact(raw: unknown): RaceManualPublicImpact {
+/** Strict structural normalization only; this neither captures nor authenticates source rows. */
+export function normalizeRaceManualImpactProjectionCapture(raw: unknown) {
   try {
     assertRaceManualPlainV2(raw);
   } catch {
     throw new RaceManualPublicImpactError('PUBLIC_IMPACT_LIMIT');
   }
-  const parsed = input.safeParse(raw);
+  const parsed = raceImpactConsumedCaptureSchema.safeParse(raw);
   if (!parsed.success) invalid();
-  const { context: c, intent } = parsed.data;
-  if (
-    !c.calendarIntent ||
-    !same(c.calendarIntent, intent) ||
-    c.event.id.toLowerCase() !== intent.expectedEvent.id.toLowerCase() ||
-    c.event.revision !== intent.expectedEvent.revision ||
-    c.manualBasis.app.state !== 'present' ||
-    !c.manualBasis.app.granted
-  )
-    invalid();
-  const { status, coverage, readSetDigest, affected, ...readSet } = c;
-  void status;
-  void coverage;
-  void affected;
-  if (
-    impactDependencyDigest({
-      ...readSet,
-      coreDependencies: { ...c.coreDependencies, capturedAt: null },
-    }) !== readSetDigest
-  )
-    invalid();
-  const observedEvent = c.consumedSources.races.find((r) => r.id === c.event.id);
-  if (!observedEvent || !same(observedEvent, c.event)) invalid();
-  for (const domain of ['nutrition', 'recovery', 'routine'] as const) {
-    const rows = domain === 'routine' ? c.routines : c[domain];
-    const expected = c.rosters[domain]
-      .map((r) => JSON.stringify([r.aggregateId, r.versionId]))
-      .sort();
-    const actual = rows.map((r) => JSON.stringify([r.aggregateId, r.versionId])).sort();
-    if (new Set(actual).size !== actual.length || !same(expected, actual)) invalid();
-  }
+  const c = parsed.data;
   const checkedCoverage = z
     .strictObject({
       complete: z.literal(false),
@@ -151,7 +119,7 @@ export function projectRaceManualPublicImpact(raw: unknown): RaceManualPublicImp
     })
     .safeParse(c.coverage);
   if (!checkedCoverage.success) invalid();
-  const capture = {
+  return {
     ...c,
     coverage: checkedCoverage.data,
     routineActualManifest: {
@@ -211,6 +179,51 @@ export function projectRaceManualPublicImpact(raw: unknown): RaceManualPublicImp
       }),
     })),
   };
+}
+
+/** Internal pure projection from an owned snapshot capture. The JSON boundary
+ * checks correspondence only; the calling service must obtain the capture in
+ * its fenced transaction. No supplied projection, candidate or boolean is used. */
+export function projectRaceManualPublicImpact(raw: unknown): RaceManualPublicImpact {
+  try {
+    assertRaceManualPlainV2(raw);
+  } catch {
+    throw new RaceManualPublicImpactError('PUBLIC_IMPACT_LIMIT');
+  }
+  const parsed = input.safeParse(raw);
+  if (!parsed.success) invalid();
+  const { context: c, intent } = parsed.data;
+  if (
+    !c.calendarIntent ||
+    !same(c.calendarIntent, intent) ||
+    c.event.id.toLowerCase() !== intent.expectedEvent.id.toLowerCase() ||
+    c.event.revision !== intent.expectedEvent.revision ||
+    c.manualBasis.app.state !== 'present' ||
+    !c.manualBasis.app.granted
+  )
+    invalid();
+  const { status, coverage, readSetDigest, affected, ...readSet } = c;
+  void status;
+  void coverage;
+  void affected;
+  if (
+    impactDependencyDigest({
+      ...readSet,
+      coreDependencies: { ...c.coreDependencies, capturedAt: null },
+    }) !== readSetDigest
+  )
+    invalid();
+  const observedEvent = c.consumedSources.races.find((r) => r.id === c.event.id);
+  if (!observedEvent || !same(observedEvent, c.event)) invalid();
+  for (const domain of ['nutrition', 'recovery', 'routine'] as const) {
+    const rows = domain === 'routine' ? c.routines : c[domain];
+    const expected = c.rosters[domain]
+      .map((r) => JSON.stringify([r.aggregateId, r.versionId]))
+      .sort();
+    const actual = rows.map((r) => JSON.stringify([r.aggregateId, r.versionId])).sort();
+    if (new Set(actual).size !== actual.length || !same(expected, actual)) invalid();
+  }
+  const capture = normalizeRaceManualImpactProjectionCapture(c);
   const built = buildRacePlanImpactProjectionInput(capture, intent);
   const fixed = {
     schemaVersion: 1,
