@@ -2,6 +2,7 @@ import { createPlanningRepository } from '../src/planning.js';
 import { createRacePlanImpactSnapshotPreviewService } from '../src/race-plan-impact-preview.js';
 import { createSupplementaryRepository } from '../src/supplementary-core.js';
 import { createActivityRepository } from '../src/activities.js';
+import { activityValuesSchema } from '@workout/contracts/activity';
 import { captureCourseReadSources } from '../src/race-plan-impact-course-sources.js';
 import { createCourseRepository, type PreparedCourseContent } from '../src/courses.js';
 import { courseContentDigest } from '@workout/server-courses/digest';
@@ -2145,9 +2146,10 @@ it('B preserves requested Activity revision after same-count correction/deletion
     blueprint = await bSeedBlueprint(
       athlete,
       bBlueprint({ kind: 'workout_template', ref: { id: randomUUID(), versionId: randomUUID() } }),
-    ),
-    activityId = randomUUID();
-  const original = {
+    );
+  const activities = createActivityRepository(database);
+  const sourceId = randomUUID();
+  const original = activityValuesSchema.parse({
     title: 'Synthetic actual',
     kind: 'strength',
     startedAt: '2026-01-01T00:00:00Z',
@@ -2155,17 +2157,19 @@ it('B preserves requested Activity revision after same-count correction/deletion
     durationKind: 'unknown',
     timezone: 'UTC',
     distanceMeters: 0,
-  };
-  await owned(athlete, async (client) => {
-    await client.query(
-      'INSERT INTO activity_canonical(athlete_id,id,revision,original) VALUES($1,$2,1,$3::jsonb)',
-      [athlete, activityId, JSON.stringify(original)],
-    );
-    await client.query(
-      "INSERT INTO activity_source_head(athlete_id,kind,source_id,source_revision,content_hash,activity_id) VALUES($1,'fixture',$2,1,$3,$4)",
-      [athlete, randomUUID(), 'a'.repeat(64), activityId],
-    );
   });
+  const imported = await activities.importActivity(athlete, {
+    idempotencyKey: randomUUID(),
+    source: {
+      kind: 'fixture',
+      sourceId,
+      revision: 1,
+      contentHash: createHash('sha256').update(JSON.stringify(original)).digest('hex'),
+    },
+    activity: original,
+  });
+  expect(imported).toMatchObject({ outcome: 'imported', revision: 1 });
+  const activityId = imported.activityId;
   const requested = {
     kind: 'activity',
     id: activityId,
@@ -2179,12 +2183,18 @@ it('B preserves requested Activity revision after same-count correction/deletion
     state: 'current',
     content: { original: { distanceMeters: 0, durationSeconds: null } },
   });
-  await owned(athlete, (client) =>
-    client.query(
-      'UPDATE activity_canonical SET revision=2,original=$3::jsonb WHERE athlete_id=$1 AND id=$2',
-      [athlete, activityId, JSON.stringify({ ...original, distanceMeters: 10 })],
-    ),
-  );
+  const correctedOriginal = { ...original, distanceMeters: 10 };
+  const correctedImport = await activities.importActivity(athlete, {
+    idempotencyKey: randomUUID(),
+    source: {
+      kind: 'fixture',
+      sourceId,
+      revision: 2,
+      contentHash: createHash('sha256').update(JSON.stringify(correctedOriginal)).digest('hex'),
+    },
+    activity: correctedOriginal,
+  });
+  expect(correctedImport).toEqual({ outcome: 'imported', activityId, revision: 2 });
   const corrected = await capture(athlete, event.id);
   expect(corrected.routineActualManifest.runs[0]?.actuals[0]?.fact).toEqual({
     requested,
@@ -2194,12 +2204,7 @@ it('B preserves requested Activity revision after same-count correction/deletion
     content: null,
   });
   expect(corrected.readSetDigest).not.toBe(first.readSetDigest);
-  await owned(athlete, (client) =>
-    client.query(
-      'UPDATE activity_canonical SET revision=3,deleted=true WHERE athlete_id=$1 AND id=$2',
-      [athlete, activityId],
-    ),
-  );
+  await activities.deleteActivity(athlete, activityId, { expectedRevision: 2 });
   const deleted = await capture(athlete, event.id);
   expect(deleted.routineActualManifest.runs[0]?.actuals[0]?.fact).toMatchObject({
     requested,
@@ -3740,17 +3745,35 @@ it('E consumed source body changes alter readSet digest while immutable historic
     other = await create(athlete);
   await seedNutrition(athlete, [nutrition(historical, [{ entity: 'race', entityId: other.id }])]);
   const before = await capture(athlete, event.id);
+  const exactPriorRace = await races.getRaceEvent(athlete, other.id);
+  const rejectedKey = randomUUID();
+  await expect(
+    races.updateRaceEvent(athlete, other.id, {
+      expectedRevision: 1,
+      idempotencyKey: rejectedKey,
+      values: { ...values(), localDate: '2026-10-09' },
+    }),
+  ).rejects.toMatchObject({ code: 'RACE_PLAN_IMPACT_REQUIRED' });
+  expect(await races.getRaceEvent(athlete, other.id)).toEqual(exactPriorRace);
+  const rejectedReceipts = await database.tenant(athlete, (tx) =>
+    tx.query(
+      'SELECT count(*)::int AS count FROM race_command_receipt WHERE athlete_id=$1 AND idempotency_key=$2',
+      [athlete, rejectedKey],
+    ),
+  );
+  expect(rejectedReceipts.rows).toEqual([{ count: 0 }]);
+  expect((await capture(athlete, event.id)).readSetDigest).toBe(before.readSetDigest);
   await races.updateRaceEvent(athlete, other.id, {
     expectedRevision: 1,
     idempotencyKey: randomUUID(),
-    values: { ...values(), title: 'Changed synthetic anchor', localDate: '2026-10-09' },
+    values: { ...values(), title: 'Changed synthetic anchor' },
   });
   const after = await capture(athlete, event.id);
   expect(after.consumedSources.plans).toEqual(before.consumedSources.plans);
   expect(after.consumedSources.races.find((race) => race.id === other.id)).toMatchObject({
     revision: 2,
     title: 'Changed synthetic anchor',
-    localDate: '2026-10-09',
+    localDate: values().localDate,
   });
   expect(after.readSetDigest).not.toBe(before.readSetDigest);
 });
