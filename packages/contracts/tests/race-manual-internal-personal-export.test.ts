@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { raceManualInternalPersonalExportSchema } from '../src/race-manual-internal-personal-export.js';
+import {
+  raceManualInternalPersonalExportSchema,
+  raceManualInternalPlannedContentSchema,
+} from '../src/race-manual-internal-personal-export.js';
 const id = (n: number) => `abcdefab-abcd-4abc-8abc-${String(n).padStart(12, '0')}`;
 const at = '2026-10-08T00:00:00.123456Z';
 function planned() {
@@ -492,7 +495,7 @@ describe('internal retained personal facts', () => {
     }
     expect(accessed).toBe(0);
   });
-  it('preserves the individual planned-body5000 guard after expanding only the family envelope', () => {
+  it('retains strict planned fields even when an unknown array fits the byte budget', () => {
     const v = parsed(),
       b = chain(v).body;
     if (b.state !== 'present') throw Error('fixture');
@@ -512,9 +515,32 @@ describe('internal retained personal facts', () => {
     expect(
       result.error.issues.some(
         (issue) =>
-          issue.message === 'Bounded plain internal export required' &&
+          issue.code === 'unrecognized_keys' &&
           issue.path.join('.') === 'manualInternalChains.0.body.planned',
       ),
     ).toBe(true);
   });
+});
+
+it('accepts400 exact planned items below4MiB while preserving unresolved, quantities and opaque IDs', () => {
+  const v = planned();
+  if (v.nutrition.state !== 'present') throw Error('fixture');
+  const n = v.nutrition.members[0];
+  if (!n) throw Error('fixture');
+  const item = n.before.plan.items[0],
+    timing = n.timings[0];
+  if (!item || !timing) throw Error('fixture');
+  n.before.plan.items = Array.from({ length: 400 }, (_, i) => ({
+    ...structuredClone(item),
+    id: `食-"\\-${i}`,
+  }));
+  n.after.plan.items = structuredClone(n.before.plan.items);
+  n.timings = n.before.plan.items.map((x) => ({ ...structuredClone(timing), itemId: x.id }));
+  v.notices = n.before.plan.items.map((x) => ({
+    domain: 'nutrition',
+    aggregateId: n.aggregateId,
+    itemId: x.id,
+    code: 'UNCHANGED_UNRESOLVED',
+  }));
+  expect(raceManualInternalPlannedContentSchema.parse(v)).toEqual(v);
 });

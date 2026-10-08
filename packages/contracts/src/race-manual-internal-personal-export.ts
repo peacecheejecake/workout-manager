@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { createBoundedPlainJsonSchema } from './bounded-plain-json.js';
 import { instantSchema } from './primitives.js';
 import { raceManualStoredPlannedFactsSchema } from './race-manual-public-impact.js';
 import {
@@ -14,133 +15,17 @@ const chainIds = z
     if (new Set([v.evidenceId, v.decisionId, v.proposalId]).size !== 3)
       c.addIssue({ code: 'custom', message: 'Distinct chain identities required' });
   });
-/** Plain portable JSON only; bounds precede nested runtime parsing. */
-function plain(maximum: number) {
-  return z.unknown().superRefine((raw, c) => {
-    const ancestors = new Set<object>();
-    let visits = 0,
-      bytes = 0;
-    function charge(s: string) {
-      if (s.length > maximum - bytes) throw Error('bound');
-      bytes += new TextEncoder().encode(s).byteLength;
-      if (bytes > maximum) throw Error('bound');
-    }
-    function visit(v: unknown, depth: number): void {
-      if (++visits > 5000 || depth > 64) throw Error('bound');
-      if (typeof v === 'string') return charge(v);
-      if (v === null || typeof v === 'boolean') return;
-      if (typeof v === 'number' && Number.isFinite(v)) return;
-      if (typeof v !== 'object' || ancestors.has(v)) throw Error('plain');
-      const array = Array.isArray(v),
-        proto: unknown = Object.getPrototypeOf(v);
-      if (array ? proto !== Array.prototype : proto !== Object.prototype && proto !== null)
-        throw Error('plain');
-      const keys = Reflect.ownKeys(v);
-      if (keys.length > 5001 || (array && keys.length !== v.length + 1)) throw Error('plain');
-      ancestors.add(v);
-      for (const key of keys) {
-        if (array && key === 'length') continue;
-        if (
-          typeof key !== 'string' ||
-          (array && (!/^(0|[1-9]\d*)$/.test(key) || Number(key) >= v.length))
-        )
-          throw Error('plain');
-        const property = Object.getOwnPropertyDescriptor(v, key);
-        if (!property?.enumerable || !Object.hasOwn(property, 'value')) throw Error('plain');
-        charge(key);
-        visit(property.value, depth + 1);
-      }
-      ancestors.delete(v);
-    }
-    try {
-      visit(raw, 0);
-      if (new TextEncoder().encode(JSON.stringify(raw)).byteLength > maximum) throw Error('bound');
-    } catch {
-      c.addIssue({ code: 'custom', message: 'Bounded plain internal export required' });
-    }
-  });
-}
-/** Whole retained-family transport guard. JSON token visits are bounded by
- * encoded bytes, separately from each planned body's historical semantic bounds. */
-function wholePlain() {
-  const maximum = 8388608;
-  return z.unknown().superRefine((raw, c) => {
-    let bytes = 0,
-      visits = 0;
-    const ancestors = new Set<object>();
-    function charge(n: number) {
-      bytes += n;
-      if (bytes > maximum) throw Error('bound');
-    }
-    // Count JSON.stringify string bytes without creating an escaped copy.
-    function string(value: string) {
-      charge(2);
-      for (let i = 0; i < value.length; i++) {
-        const code = value.charCodeAt(i);
-        if (code === 34 || code === 92) charge(2);
-        else if (code <= 31)
-          charge(code === 8 || code === 9 || code === 10 || code === 12 || code === 13 ? 2 : 6);
-        else if (code < 128) charge(1);
-        else if (code < 2048) charge(2);
-        else if (code >= 0xd800 && code <= 0xdbff) {
-          const next = value.charCodeAt(i + 1);
-          if (next >= 0xdc00 && next <= 0xdfff) {
-            charge(4);
-            i++;
-          } else charge(6);
-        } else if (code >= 0xdc00 && code <= 0xdfff) charge(6);
-        else charge(3);
-      }
-    }
-    function visit(value: unknown, depth: number): void {
-      // Every plain JSON value contributes at least one distinct encoded byte.
-      if (++visits > maximum || depth > 64) throw Error('bound');
-      if (typeof value === 'string') return string(value);
-      if (value === null) return charge(4);
-      if (typeof value === 'boolean') return charge(value ? 4 : 5);
-      if (typeof value === 'number' && Number.isFinite(value))
-        return charge(JSON.stringify(value).length);
-      if (typeof value !== 'object' || ancestors.has(value)) throw Error('plain');
-      const array = Array.isArray(value),
-        proto: unknown = Object.getPrototypeOf(value);
-      if (array ? proto !== Array.prototype : proto !== Object.prototype && proto !== null)
-        throw Error('plain');
-      if (array && value.length > maximum) throw Error('bound');
-      const keys = Reflect.ownKeys(value);
-      if (keys.length > maximum + 1 || (array && keys.length !== value.length + 1))
-        throw Error('plain');
-      ancestors.add(value);
-      charge(2);
-      let members = 0;
-      for (const key of keys) {
-        if (array && key === 'length') continue;
-        if (
-          typeof key !== 'string' ||
-          (array && (!/^(0|[1-9]\d*)$/.test(key) || Number(key) >= value.length))
-        )
-          throw Error('plain');
-        const property = Object.getOwnPropertyDescriptor(value, key);
-        if (!property?.enumerable || !Object.hasOwn(property, 'value')) throw Error('plain');
-        if (members++) charge(1);
-        if (!array) {
-          string(key);
-          charge(1);
-        }
-        visit(property.value, depth + 1);
-      }
-      ancestors.delete(value);
-    }
-    try {
-      visit(raw, 0);
-    } catch {
-      c.addIssue({ code: 'custom', message: 'Bounded plain internal export required' });
-    }
-  });
-}
+/** Individual presentation transport retains its4MiB budget; semantic source
+ * and member limits are enforced by the strict planned schema below. */
+const plannedPlain = createBoundedPlainJsonSchema(
+  4194304,
+  'Bounded plain internal export required',
+);
+const wholePlain = createBoundedPlainJsonSchema(8388608, 'Bounded plain internal export required');
 /** Reuses the safe five-domain planned codecs and all exact timing/notice
  * refinements. This is a stored historical presentation, not a transient response
  * and not an executable application candidate. No public reference is invented. */
-export const raceManualInternalPlannedContentSchema = plain(4194304).pipe(
+export const raceManualInternalPlannedContentSchema = plannedPlain.pipe(
   raceManualStoredPlannedFactsSchema,
 );
 const purge = { state: z.literal('purged'), purgedAt: instantSchema, purgeEventId: uuid };
@@ -363,7 +248,7 @@ export function validateRaceManualInternalPersonalExportTuples(data: Data, c: z.
 }
 /** Whole-account consumers reuse the exact compact JSON bound, without changing
  * the independent planned-body/source semantic limits. */
-export const raceManualInternalWholePlainSchema = wholePlain();
+export const raceManualInternalWholePlainSchema = wholePlain;
 export const raceManualInternalPersonalExportSchema = raceManualInternalWholePlainSchema.pipe(
   z
     .strictObject({

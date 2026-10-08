@@ -809,16 +809,27 @@ describe('public preview pure stored projection', () => {
     raw.preparation.context.coreDependencies.activities.count = '1';
     expect(() => projectRaceManualPublicPreview(raw)).toThrow();
   });
-  it('rejects a schema-valid large stored plan at the aggregate public visit cap without truncation', () => {
+  it('renders the exact160-item frozen plan below4MiB without truncating or exposing private evidence', () => {
+    // The existing strict version and actual builder/assembler fixture supply
+    // the frozen retained source. JSON value count is not a source-ref count.
     const raw = inputFixture(false, false, false, true);
-    try {
-      projectRaceManualPublicPreview(raw);
-      throw Error('Expected public visit rejection');
-    } catch (error) {
-      expect(error).toBeInstanceOf(RaceManualPublicPreviewError);
-      if (error instanceof RaceManualPublicPreviewError)
-        expect(error.code).toBe('PUBLIC_PREVIEW_LIMIT');
-    }
+    const out = projectRaceManualPublicPreview(raw);
+    if (out.status !== 'present' || out.nutrition.state !== 'present')
+      throw Error('Exact nutrition preview required');
+    const row = out.nutrition.members[0];
+    if (!row) throw Error('Exact nutrition member required');
+    const expected = Array.from({ length: 160 }, (_, i) => `item-${i}`);
+    expect(row.before.plan.items.map((item) => item.id)).toEqual(expected);
+    expect(row.after.plan.items).toEqual(row.before.plan.items);
+    // Timing rows are an indexed roster normalized by the existing assembler;
+    // ordered planned items above remain in their original source order.
+    expect(row.timings.map((item) => item.itemId)).toEqual([...expected].sort());
+    for (const item of row.before.plan.items)
+      expect(item.foods.map((food) => food.quantity)).toEqual([0, null]);
+    expect(out.reference).toEqual(raw.reference);
+    for (const field of ['context', 'basis', 'lifecycle', 'sourceInput', 'sqlObservations'])
+      expect(out).not.toHaveProperty(field);
+    expect(JSON.stringify(out)).not.toContain('private-evidence');
     expect(raw.preparation.context.nutrition[0]?.record.items).toHaveLength(160);
   });
   it('accepts assembler set normalization while preserving ordered unchanged nutrition items', () => {

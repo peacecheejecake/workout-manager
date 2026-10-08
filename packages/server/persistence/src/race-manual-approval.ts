@@ -1,3 +1,4 @@
+import { prepareRaceManualSameTxReviewApplicationIn } from './race-manual-same-tx-review-continuation.js';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import {
@@ -376,7 +377,7 @@ export async function prepareRaceManualApprovalIn(
   if (current.status !== 'current_dependencies_captured')
     return { status: 'blocked' as const, reason: 'current_basis_unavailable' as const };
   parentRoots(current, parent);
-  const { c, retained, projection } = contextOf(current);
+  const { retained } = contextOf(current);
   if (current.prepared.consumedScope?.status !== 'validated_read_scope')
     return { status: 'blocked' as const, reason: 'incomplete_affected_scope' as const };
   const lifecycle = await captureRaceManualReviewCompatibleLifecycleInventoryIn(
@@ -386,6 +387,26 @@ export async function prepareRaceManualApprovalIn(
   );
   if (lifecycle.status !== 'dependency_correspondence')
     return { status: 'blocked' as const, reason: 'source_lifecycle_unavailable' as const };
+  return prepareApplicationFromCurrent(tx, input, current, lifecycle, budget, options);
+}
+type ApplicationCurrent = Extract<
+  Awaited<ReturnType<typeof prepareRaceManualSemanticBasisV2In>>,
+  { status: 'current_dependencies_captured' }
+>;
+type ApplicationLifecycle = Awaited<
+  ReturnType<typeof captureRaceManualReviewCompatibleLifecycleInventoryIn>
+>;
+async function prepareApplicationFromCurrent(
+  tx: Transaction,
+  input: z.infer<typeof raceManualApprovalPrepareSchema>,
+  current: ApplicationCurrent,
+  lifecycle: ApplicationLifecycle,
+  budget: SourceBudget,
+  options: { now?: () => Date; createId?: () => string },
+) {
+  const { c, retained, projection } = contextOf(current);
+  if (current.prepared.consumedScope?.status !== 'validated_read_scope')
+    return { status: 'blocked' as const, reason: 'incomplete_affected_scope' as const };
   const candidateId = uuid.parse((options.createId ?? randomUUID)());
   let writes: RaceManualApprovalWrite[];
   try {
@@ -460,6 +481,27 @@ export async function prepareRaceManualApprovalIn(
   return { status: 'prepared' as const, candidate: stored };
 }
 
+/** Same-tx stored-parent ACK is required before using the first actual capture.
+ * SQL118 still revalidates persisted parents, actual sources, purpose and recipes. */
+export async function prepareRaceManualSameTxApprovalIn(
+  tx: Transaction,
+  unknownInput: unknown,
+  handle: unknown,
+  budget: SourceBudget,
+  options: { now?: () => Date; createId?: () => string } = {},
+) {
+  const input = raceManualApprovalPrepareSchema.parse(unknownInput);
+  return prepareRaceManualSameTxReviewApplicationIn(
+    tx,
+    handle,
+    input.intent,
+    input.expectedBasis,
+    input.chain,
+    budget,
+    (current, lifecycle) =>
+      prepareApplicationFromCurrent(tx, input, current, lifecycle, budget, options),
+  );
+}
 /** Outer successful receipt precedes all new processing checks. The persisted
  * candidate is locked/applied once by SQL118, even under a different outer key. */
 export async function approveRaceManualApplicationIn(

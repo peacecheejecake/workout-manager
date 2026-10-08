@@ -781,3 +781,55 @@ it('requires exact ended and unresolved notices without fabricating a frozen edi
   m.after.schedule.window.endDateExclusive = '2026-10-13';
   expect(raceManualPublicImpactSchema.safeParse(p).success).toBe(false);
 });
+
+it('accepts400 unchanged unresolved planned items without deleting zero/null foods', () => {
+  const p = fixture(),
+    n = first(p.nutrition.members),
+    item = first(n.before.plan.items),
+    t = first(n.timings);
+  n.before.plan.items = Array.from({ length: 400 }, (_, i) => ({
+    ...structuredClone(item),
+    id: `食-"\\-${i}`,
+  }));
+  n.after.plan.items = structuredClone(n.before.plan.items);
+  n.timings = n.before.plan.items.map((x) => ({ ...structuredClone(t), itemId: x.id }));
+  p.notices = n.before.plan.items.map((x) => ({
+    domain: 'nutrition',
+    aggregateId: n.aggregateId,
+    itemId: x.id,
+    code: 'UNCHANGED_UNRESOLVED',
+  }));
+  const out = raceManualPublicImpactSchema.parse(p);
+  expect(out).toEqual(p);
+  expect(first(n.before.plan.items).foods.map((f) => f.quantity)).toEqual([0, null]);
+});
+
+it('still rejects5001 planned items by the semantic roster limit below4MiB', () => {
+  const p = fixture(),
+    n = first(p.nutrition.members),
+    item = first(n.before.plan.items),
+    timing = first(n.timings);
+  n.before.plan.items = Array.from({ length: 5001 }, (_, i) => ({
+    ...structuredClone(item),
+    id: String(i),
+    foods: [],
+    instructions: 'Action',
+  }));
+  n.after.plan.items = structuredClone(n.before.plan.items);
+  n.timings = n.before.plan.items.map((x) => ({ ...structuredClone(timing), itemId: x.id }));
+  p.notices = n.before.plan.items.map((x) => ({
+    domain: 'nutrition',
+    aggregateId: n.aggregateId,
+    itemId: x.id,
+    code: 'UNCHANGED_UNRESOLVED',
+  }));
+  expect(new TextEncoder().encode(JSON.stringify(p)).byteLength).toBeLessThan(4194304);
+  const result = raceManualPublicImpactSchema.safeParse(p);
+  if (result.success) throw Error('Expected semantic roster rejection');
+  expect(
+    result.error.issues.some((issue) => issue.code === 'too_big' && issue.path.includes('items')),
+  ).toBe(true);
+  expect(
+    result.error.issues.some((issue) => issue.message === 'Bounded plain impact required'),
+  ).toBe(false);
+});

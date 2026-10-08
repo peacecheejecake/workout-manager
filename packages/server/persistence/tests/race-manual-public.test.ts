@@ -180,6 +180,7 @@ describe('public manual service boundary plumbing (mocked sources are not owners
       query = vi
         .fn<Transaction['query']>()
         .mockResolvedValueOnce(response(null))
+        .mockResolvedValueOnce(response({ installed: false, executable: false }))
         .mockResolvedValueOnce(response(hash))
         .mockResolvedValueOnce(response(ref)),
       a = adapter(query);
@@ -212,6 +213,7 @@ describe('public manual service boundary plumbing (mocked sources are not owners
       const query = vi
           .fn<Transaction['query']>()
           .mockResolvedValueOnce(response(null))
+          .mockResolvedValueOnce(response({ installed: false, executable: false }))
           .mockResolvedValueOnce(response(hash)),
         a = adapter(query),
         ref = reference();

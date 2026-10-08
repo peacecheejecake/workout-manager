@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { createBoundedPlainJsonSchema } from './bounded-plain-json.js';
 import { idSchema, instantSchema } from './primitives.js';
 import { validateNutritionPlanItem } from './nutrition-core.js';
 import { raceManualProjectionIntentSchema } from './race-manual-public.js';
@@ -676,56 +677,8 @@ const blocked = z
   .superRefine((p, c) => unique(p.domains, c));
 /** Strict transient presentation only: no stored candidate, reference, source
  * authentication or current approval permission is represented. */
-const plain = z.unknown().superRefine((raw, c) => {
-  let visits = 0;
-  let bytes = 0;
-  function charge(text: string) {
-    if (text.length > 4194304 - bytes) throw Error('bytes');
-    bytes += new TextEncoder().encode(text).byteLength;
-    if (bytes > 4194304) throw Error('bytes');
-  }
-  const ancestors = new Set<object>();
-  function visit(v: unknown, depth: number): void {
-    if (++visits > 5000 || depth > 64) throw Error('limit');
-    if (v === null || typeof v === 'boolean') return;
-    if (typeof v === 'string') {
-      charge(v);
-      return;
-    }
-    if (typeof v === 'number' && Number.isFinite(v)) return;
-    if (typeof v !== 'object' || ancestors.has(v)) throw Error('plain');
-    const array = Array.isArray(v);
-    if (
-      array
-        ? Object.getPrototypeOf(v) !== Array.prototype
-        : ![Object.prototype, null].includes(Object.getPrototypeOf(v))
-    )
-      throw Error('plain');
-    const keys = Reflect.ownKeys(v);
-    if (keys.length > 5001) throw Error('limit');
-    ancestors.add(v);
-    let count = 0;
-    for (const key of keys) {
-      if (typeof key !== 'string') throw Error('plain');
-      if (array && key === 'length') continue;
-      const d = Object.getOwnPropertyDescriptor(v, key);
-      if (!d?.enumerable || !('value' in d)) throw Error('plain');
-      if (array && (!/^(0|[1-9][0-9]*)$/.test(key) || Number(key) >= v.length))
-        throw Error('dense');
-      charge(key);
-      count++;
-      visit(d.value, depth + 1);
-    }
-    if (array && count !== v.length) throw Error('dense');
-    ancestors.delete(v);
-  }
-  try {
-    visit(raw, 0);
-    if (new TextEncoder().encode(JSON.stringify(raw)).byteLength > 4194304) throw Error('bytes');
-  } catch {
-    c.addIssue({ code: 'custom', message: 'Bounded plain impact required' });
-  }
-});
+const plain = createBoundedPlainJsonSchema(4194304, 'Bounded plain impact required');
+
 export const raceManualPublicImpactSchema = plain.pipe(
   z.discriminatedUnion('status', [projected, blocked]),
 );

@@ -482,12 +482,20 @@ describe('whole public frozen/hypothetical preview', () => {
     first(value.notices).itemId = long;
     expect(parse(value)).toBe(true);
   });
-  it('bounds complete global node visits even for individually valid arrays', () => {
+  it('accepts dense planned sessions while retaining the canonical1000 session cap', () => {
     const { value, training } = available();
     training.before.plan.sessions = Array.from({ length: 600 }, (_, index) => ({
       ...first(training.before.plan.sessions),
       id: String(index),
     }));
+    training.after.plan = structuredClone(training.before.plan);
+    expect(parse(value)).toBe(true);
+    training.before.plan.sessions.push(
+      ...Array.from({ length: 401 }, (_, i) => ({
+        ...first(training.before.plan.sessions),
+        id: `extra-${i}`,
+      })),
+    );
     training.after.plan = structuredClone(training.before.plan);
     expect(parse(value)).toBe(false);
   });
@@ -616,4 +624,28 @@ it('requires explicit unplanned roster and rejects overlap with a started schedu
       ],
     }),
   ).toBe(false);
+});
+
+it('accepts a400-item frozen ready preview with exact suspended notices and minimal original reference', () => {
+  const { value, nutrition: n } = available(),
+    item = first(n.before.plan.items),
+    t = first(n.timings);
+  n.before.plan.items = Array.from({ length: 400 }, (_, i) => ({
+    ...structuredClone(item),
+    id: `食-"\\-${i}`,
+  }));
+  n.after.plan.items = structuredClone(n.before.plan.items);
+  n.timings = n.before.plan.items.map((x) => ({ ...structuredClone(t), itemId: x.id }));
+  value.notices = value.notices.filter((v) => v.domain !== 'nutrition');
+  value.notices.push(
+    ...n.before.plan.items.map((x) => ({
+      domain: 'nutrition' as const,
+      aggregateId: n.aggregateId,
+      itemId: x.id,
+      code: 'DISCONNECTED_RETAINED' as const,
+    })),
+  );
+  expect(raceManualPublicPreviewSchema.parse(value)).toEqual(value);
+  expect(first(n.before.plan.items).foods.map((f) => f.quantity)).toEqual([0, null]);
+  expect(value.reference.createdAt).toBe(stamp);
 });

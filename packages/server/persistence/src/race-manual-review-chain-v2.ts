@@ -1,3 +1,4 @@
+import { storeRaceManualSameTxReviewContinuationIn } from './race-manual-same-tx-review-continuation.js';
 import { selectRaceManualOwnedProtocolIn } from './race-manual-review-full-owned-binding-consumer-v2.js';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
@@ -164,6 +165,36 @@ export async function storeRaceManualReviewChainV2In(
       storage: 'not_persisted' as const,
       ...limits,
     };
+  return persistPreparedChain(tx, input, prepared, lifecycle, budget, ids, store);
+}
+type CurrentChainPreparation = Extract<
+  Awaited<ReturnType<typeof prepareRaceManualSemanticBasisV2In>>,
+  { status: 'current_dependencies_captured' }
+>;
+type CurrentChainLifecycle = Awaited<
+  ReturnType<typeof captureRaceManualReviewCompatibleLifecycleInventoryIn>
+>;
+async function persistPreparedChain(
+  tx: Transaction,
+  input: RaceManualReviewChainCommandV2,
+  prepared: CurrentChainPreparation,
+  lifecycle: CurrentChainLifecycle,
+  budget: SourceBudget,
+  ids: () => string,
+  store: Awaited<ReturnType<typeof selectRaceManualOwnedProtocolIn>>,
+) {
+  const request = JSON.stringify(input);
+  const retained = (
+    store === 'public.store_manual_race_multi_owned_chain_v3'
+      ? raceManualReviewMultiOwnedRetainedPayloadV3Schema
+      : raceManualReviewRetainedPayloadV2Schema
+  ).parse(prepared.prepared.retained);
+  if (
+    retained.state !== 'present' ||
+    retained.status !== 'structurally_corresponding' ||
+    retained.payload.preparation.candidate.status !== 'assembled_readonly'
+  )
+    throw new RaceImpactDependencyError('INVALID_CONTEXT');
   const minted = {
     evidenceId: uuid.parse(ids()),
     decisionId: uuid.parse(ids()),
@@ -195,6 +226,42 @@ export async function storeRaceManualReviewChainV2In(
     result.candidateDigest !== retained.payload.preparation.candidate.digest
   )
     throw new RaceImpactDependencyError('INVALID_CONTEXT');
+  return { status: 'stored' as const, result, storage: 'persisted' as const, ...limits };
+}
+/** Private actual-capture continuation; SQL store and protected parent ACK remain mandatory. */
+export async function storeRaceManualReviewSameTxChainIn(
+  tx: Transaction,
+  rawCommand: unknown,
+  handle: unknown,
+  budget: SourceBudget,
+  ids: () => string = randomUUID,
+) {
+  const input = command(rawCommand);
+  const replay = await boundedCall(
+    tx,
+    'public.read_manual_race_chain_receipt_v2($1::text,$2::jsonb)',
+    [input.idempotencyKey, JSON.stringify(input)],
+    budget,
+  );
+  if (replay !== null)
+    return {
+      status: 'replayed' as const,
+      result: raceManualReviewChainResultV2Schema.parse(replay),
+      storage: 'persisted' as const,
+      ...limits,
+    };
+  const result = await storeRaceManualSameTxReviewContinuationIn(
+    tx,
+    handle,
+    input.intent,
+    input.expectedBasis,
+    budget,
+    async (prepared, lifecycle) => {
+      const store = await selectRaceManualOwnedProtocolIn(tx, budget, 'store');
+      return (await persistPreparedChain(tx, input, prepared, lifecycle, budget, ids, store))
+        .result;
+    },
+  );
   return { status: 'stored' as const, result, storage: 'persisted' as const, ...limits };
 }
 /** Retained read has no fresh processing gate; source purge returns no copied

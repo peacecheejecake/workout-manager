@@ -1,3 +1,10 @@
+import {
+  captureRaceManualSameTxReviewContinuationIn,
+  hasRaceManualSameTxReviewCapabilityIn,
+  invalidateRaceManualSameTxReviewContinuation,
+} from './race-manual-same-tx-review-continuation.js';
+import { storeRaceManualReviewSameTxChainIn } from './race-manual-review-chain-v2.js';
+import { prepareRaceManualSameTxApprovalIn } from './race-manual-approval.js';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import {
@@ -163,56 +170,85 @@ export async function reviewRaceManualPublicIn(
       throw new RaceManualPublicError('PUBLIC_INVALID_RESPONSE');
     return { status: 'reviewed' as const, reference, bodyState: read.bodyState };
   }
-  const current = await prepareRaceManualSemanticBasisV2In(tx, command.intent, null, budget);
-  if (current.status !== 'current_dependencies_captured') throw new ReviewBlocked('semantic');
-  // SQL jsonb canonical namespace hash, not JSON.stringify digest or credential.
-  const namespace = digest.parse(
-    await sql(
+  const continuation = (await hasRaceManualSameTxReviewCapabilityIn(tx, budget))
+    ? await captureRaceManualSameTxReviewContinuationIn(tx, command.intent, budget)
+    : null;
+  const current =
+    continuation === null
+      ? await prepareRaceManualSemanticBasisV2In(tx, command.intent, null, budget)
+      : null;
+  if (continuation?.status === 'blocked') throw new ReviewBlocked(continuation.stage);
+  if (current !== null && current.status !== 'current_dependencies_captured')
+    throw new ReviewBlocked('semantic');
+  const basis =
+    continuation?.status === 'captured'
+      ? continuation.basis
+      : current?.status === 'current_dependencies_captured'
+        ? current.basis
+        : null;
+  if (basis === null) throw new ReviewBlocked('semantic');
+  const handle = continuation?.status === 'captured' ? continuation.handle : null;
+  try {
+    // SQL jsonb canonical namespace hash, not JSON.stringify digest or credential.
+    const namespace = digest.parse(
+      await sql(
+        tx,
+        "encode(sha256(convert_to(jsonb_build_object('tenant',$1::text,'operation','review','publicKey',$2::text)::text,'UTF8')),'hex')",
+        [tx.athleteId, command.idempotencyKey],
+        budget,
+      ),
+    );
+    const chainStore =
+      handle === null
+        ? storeRaceManualReviewChainV2In
+        : (tx: Transaction, raw: unknown, budget: SourceBudget, ids: () => string) =>
+            storeRaceManualReviewSameTxChainIn(tx, raw, handle, budget, ids);
+    const chain = await chainStore(
       tx,
-      "encode(sha256(convert_to(jsonb_build_object('tenant',$1::text,'operation','review','publicKey',$2::text)::text,'UTF8')),'hex')",
-      [tx.athleteId, command.idempotencyKey],
+      {
+        schemaVersion: 2,
+        idempotencyKey: `race_public_review_v1_${namespace}`,
+        intent: command.intent,
+        expectedBasis: basis,
+      },
       budget,
-    ),
-  );
-  const chain = await storeRaceManualReviewChainV2In(
-    tx,
-    {
-      schemaVersion: 2,
-      idempotencyKey: `race_public_review_v1_${namespace}`,
+      options.createId ?? randomUUID,
+    );
+    if (chain.status === 'blocked') throw new ReviewBlocked('chain');
+    const refs = {
+      evidenceId: chain.result.evidenceId,
+      decisionId: chain.result.decisionId,
+      proposalId: chain.result.proposalId,
+      readonlyCandidateDigest: chain.result.candidateDigest,
+    };
+    const applicationInput = {
+      schemaVersion: 1,
+      chain: refs,
       intent: command.intent,
-      expectedBasis: current.basis,
-    },
-    budget,
-    options.createId ?? randomUUID,
-  );
-  if (chain.status === 'blocked') throw new ReviewBlocked('chain');
-  const refs = {
-    evidenceId: chain.result.evidenceId,
-    decisionId: chain.result.decisionId,
-    proposalId: chain.result.proposalId,
-    readonlyCandidateDigest: chain.result.candidateDigest,
-  };
-  const application = await prepareRaceManualApprovalIn(
-    tx,
-    { schemaVersion: 1, chain: refs, intent: command.intent, expectedBasis: current.basis },
-    budget,
-    options,
-  );
-  if (application.status !== 'prepared') throw new ReviewBlocked('application');
-  const reference = checkedReference(
-    await sql(
-      tx,
-      'public.finish_race_manual_public_review_v1($1::text,$2::jsonb,$3::uuid)',
-      [command.idempotencyKey, request, application.candidate.candidateId],
-      budget,
-    ),
-  );
-  if (
-    reference.candidateId !== application.candidate.candidateId ||
-    reference.applicationDigest !== application.candidate.applicationDigest
-  )
-    throw new RaceManualPublicError('PUBLIC_INVALID_RESPONSE');
-  return { status: 'reviewed' as const, reference, bodyState: 'present' as const };
+      expectedBasis: basis,
+    };
+    const application =
+      handle !== null && chain.status === 'stored'
+        ? await prepareRaceManualSameTxApprovalIn(tx, applicationInput, handle, budget, options)
+        : await prepareRaceManualApprovalIn(tx, applicationInput, budget, options);
+    if (application.status !== 'prepared') throw new ReviewBlocked('application');
+    const reference = checkedReference(
+      await sql(
+        tx,
+        'public.finish_race_manual_public_review_v1($1::text,$2::jsonb,$3::uuid)',
+        [command.idempotencyKey, request, application.candidate.candidateId],
+        budget,
+      ),
+    );
+    if (
+      reference.candidateId !== application.candidate.candidateId ||
+      reference.applicationDigest !== application.candidate.applicationDigest
+    )
+      throw new RaceManualPublicError('PUBLIC_INVALID_RESPONSE');
+    return { status: 'reviewed' as const, reference, bodyState: 'present' as const };
+  } finally {
+    invalidateRaceManualSameTxReviewContinuation(handle);
+  }
 }
 export async function approveRaceManualPublicIn(
   tx: Transaction,

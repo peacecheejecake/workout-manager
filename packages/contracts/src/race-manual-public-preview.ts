@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { createBoundedPlainJsonSchema } from './bounded-plain-json.js';
 import {
   idSchema,
   instantSchema,
@@ -36,62 +37,9 @@ export const raceManualPublicPreviewReferenceSchema = z.strictObject({
   createdAt: instantSchema,
 });
 
-/** Pre-parse ingress guard. All JSON nodes (including scalar values) count toward
- * the complete 5000-visit budget; individual array limits do not override it. */
-function assertPreviewEnvelope(value: unknown) {
-  let visits = 0;
-  let bytes = 0;
-  const ancestors = new Set<object>();
-  const charge = (text: string) => {
-    if (text.length > 4194304 - bytes) throw Error('Preview byte limit');
-    bytes += new TextEncoder().encode(text).byteLength;
-    if (bytes > 4194304) throw Error('Preview byte limit');
-  };
-  function visit(v: unknown, depth: number): void {
-    if (++visits > 5000 || depth > 64) throw Error('Preview visit limit');
-    if (typeof v === 'string') return charge(v);
-    if (v === null || typeof v === 'boolean') return;
-    if (typeof v === 'number' && Number.isFinite(v)) return;
-    if (typeof v !== 'object' || v === null || ancestors.has(v))
-      throw Error('Plain preview required');
-    const array = Array.isArray(v);
-    if (
-      array
-        ? Object.getPrototypeOf(v) !== Array.prototype
-        : ![Object.prototype, null].includes(Object.getPrototypeOf(v))
-    )
-      throw Error('Plain preview required');
-    if (array && v.length > 5000) throw Error('Preview visit limit');
-    const keys = Reflect.ownKeys(v);
-    if (keys.length > 5001) throw Error('Preview visit limit');
-    ancestors.add(v);
-    let count = 0;
-    for (const key of keys) {
-      if (typeof key !== 'string') throw Error('Plain preview required');
-      if (array && key === 'length') continue;
-      const descriptor = Object.getOwnPropertyDescriptor(v, key);
-      if (!descriptor?.enumerable || !('value' in descriptor))
-        throw Error('Plain preview required');
-      if (array && (!/^(0|[1-9][0-9]*)$/.test(key) || Number(key) >= v.length))
-        throw Error('Dense array required');
-      charge(key);
-      count++;
-      visit(descriptor.value, depth + 1);
-    }
-    if (array && count !== v.length) throw Error('Dense array required');
-    ancestors.delete(v);
-  }
-  visit(value, 0);
-  if (new TextEncoder().encode(JSON.stringify(value)).byteLength > 4194304)
-    throw Error('Preview byte limit');
-}
-const plain = z.unknown().superRefine((value, context) => {
-  try {
-    assertPreviewEnvelope(value);
-  } catch {
-    context.addIssue({ code: 'custom', message: 'Bounded plain preview required' });
-  }
-});
+/** Exact4MiB encoded transport budget, independent of semantic source visits.
+ * Strict planned member/array limits below remain unchanged. */
+const plain = createBoundedPlainJsonSchema(4194304, 'Bounded plain preview required');
 // Object key spelling/order is not a semantic change; ordered arrays remain
 // ordered. Both values reach this helper only after the bounded strict decode.
 function same(left: unknown, right: unknown): boolean {
