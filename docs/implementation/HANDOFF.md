@@ -667,3 +667,13 @@ Dense400 전체R1 1PASS/5FAIL 뒤 계측 단일R2도1FAIL/5filteredskip·test60�
 Native 병렬 현재: agent1 V38 sameRR producer/composer/unit/실제PG준비(operations src+NEWtests), agent2 historical sourcePlan을현재frozen before로 표시하지 않는 mapper/unit/PG, agent3 dense record검증/frozen calculation context 재사용6파일. Root는 actualDBlane·sharedmanifest·graph/Git통합을 직렬소유한다. profile20 grant/wholecatalog/expected compiler/dynamic·effective·strictwire/coldconfigured·최신전체restore·phase전체gate/독립검토/main 및 운영503/native/provider수용은 미완료다. graph I/J/phase in_progress·main/push0·외부not_executed 유지다.
 
 사용자에게 원문 없이 신규계획으로 시작 가능하다고 답했으며 기존FUT09원문 이식을자동제외/완료로바꾸지 않는다. 원문이식범위 변경 및 AWS새로그인 가능여부 답변은 여전히 별도대기이며 로컬ready구현을 이어간다.
+
+## Profile20 관측·대용량 검토·V38 실제 실패 후속 · 2026-10-08
+
+최신 phase HEAD `7b161527`까지 Root가 검증해 커밋했다. source130/ended historical actual12/12, immutable nutrition batch unit207/207와 Root changed unit80, grant-v4 actual18/18, catalog-v4 actual8/8을 확인했다. 이전 실패와 검사 범위는 [I 기록](progress/M2-02i.md)에 보존한다. grant31·catalog20 관측은 compiled expected/caller/effective production recipe/cold 활성화·최신 전체 복원 지원을 뜻하지 않는다.
+
+Dense400 actual R3는19.97초에 timeout 대신 공개검토 source-response **4MiB** 누적 한도에서 실패했다. 개인export8MiB와 별개이며 한도·400수량을 바꾸지 않는다. SQL131의 보호된 same-transaction parent ACK와 process-private continuation을 별도 actor가 준비 중이며 기존 SQL118 freshness 검증·실제 store·명시 승인은 유지한다. normalprofile 편입·actual131/dense 수용은 아직 미완료다.
+
+V38 wholeexport actual R1은14PASS/2FAIL이다. 역사2의 R2 실제 진단은2FAIL/14filtered skip,5.53초이며 정확 training before tuple/physical codec은 true, runtime codec은 false였다. 실제 `created_at` wire를 `createdAt` runtime codec으로 읽는 계약 오류의 최소 수정·회귀를 병렬 배정했다. 역사 source를 현재 before로 재작성하지 않는다. 실제 정리 DB/roles/slots0이다. Root는 실제 DB lane·공통 manifests/graph/Git를 직렬 소유한다.
+
+원문 없이 신규 계획 개발은 가능하다고 답했다. FUT-09 원문 이식은 원문 전달 예정 상태로 별도 보류하며 자동 완료/범위 제외하지 않는다. I/J/phase in_progress·main/push0·운영/native/provider not_executed 및 AWS 인증 대기는 유지한다.
