@@ -741,3 +741,9 @@ Node transport 및 pooled 전체 승인/export 통합은 native agent와 병행 
 Root의 정확한 두 파일 단위17/17과 실제 transport PG8/8을 확인했다. 공개 합성 producer의 저장·same-xid ACK·lossless 읽기·원 receipt 재생, foreign·다른transaction·budget·timeout·rollback·철회·삭제 경계를 검증했고 시험 DB/roles/slots잔존0이다. 원source/header/receipt는 보존한다. 상세 SHA와 collection/lint 준비 실패는 [I 기록](progress/M2-02i.md)에 남겼다.
 
 Root는 새 migration137 application 및138 finish/preview를 예약해 두 native agent에 비중복으로 맡겼으며 다른 agent는 coherent Node bundle을 구현한다. DB lane·공통 파일/graph/Git 통합은 Root가 직렬 소유한다. 전체 혼합 승인/export·정상 지원/복원/phase 검토/main·출시는 미완료이고 FUT-09 원문 이식·AWS 인증·외부 not_executed를 유지한다.
+
+## 2026-10-08 신규 계획 승인·미리보기 부분 검증 후속
+
+원문 없는 신규 계획 생성·사용 개발을 계속한다. Root actual SQL137은 R1 8pass/1fail·R2 7pass/2fail·R3 collection 실패를 보존하고, JSON scalar 크기 측정 교정 뒤 R4 9/9를 확인했다. SQL138은 SAVEPOINT xmin/metadata 연결 fixture 실패(R1 5pass/8fail)를 보존하고 R2 13/13를 확인했다. Node 정확7파일 단위123/123와 시험 DB/roles/slots잔존0이다. 세부 증거는 [I 기록](progress/M2-02i.md)에 남겼다.
+
+대량 혼합400/400/30 승인/export 및 정상 설치·복원·전체 phase 수용은 아직 미완료다. SQL139 export와 consumer 설계를 native agent가 병렬 준비한다. FUT-09 원문 이식·AWS 인증·외부 not_executed·독립 phase 검토/main·사용자 push 대기는 유지한다.

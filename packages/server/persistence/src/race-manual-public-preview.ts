@@ -1,3 +1,5 @@
+import { decodeRaceManualReviewPooledDatabaseEnvelopeV1 } from './race-manual-review-pooled-database-envelope-v1.js';
+import { raceManualReviewMultiOwnedRetainedPayloadV3Schema } from './race-manual-review-retained-payload-v2.js';
 import { z } from 'zod';
 import { raceManualApprovalCandidateSchema } from '@workout/contracts/race-manual-approval';
 import {
@@ -154,7 +156,11 @@ export function projectRaceManualPublicPreview(raw: unknown): RaceManualPublicPr
   }
   const decoded = raceManualPublicPreviewSourceSchema.safeParse(raw);
   if (!decoded.success) invalid();
-  const read = decoded.data;
+  return projectPublicSource(decoded.data);
+}
+function projectPublicSource(
+  read: z.infer<typeof raceManualPublicPreviewSourceSchema>,
+): RaceManualPublicPreview {
   if (read.bodyState === 'purged')
     return raceManualPublicPreviewSchema.parse({
       schemaVersion: 1,
@@ -171,7 +177,7 @@ export function projectRaceManualPublicPreview(raw: unknown): RaceManualPublicPr
   )
     invalid();
   const out = {
-    ...projectRaceManualReadyPlannedSource({
+    ...projectReadySource({
       candidate: read.candidate,
       preparation: read.preparation,
     }),
@@ -194,14 +200,15 @@ export function projectRaceManualReadyPlannedSource(raw: unknown) {
   } catch {
     invalid();
   }
-  const parsed = z
-    .strictObject({
-      candidate: raceManualApprovalCandidateSchema,
-      preparation: raceManualPublicPreviewSourceSchema.options[0].shape.preparation,
-    })
-    .safeParse(raw);
+  const parsed = readySourceSchema.safeParse(raw);
   if (!parsed.success) invalid();
-  const read = parsed.data;
+  return projectReadySource(parsed.data);
+}
+const readySourceSchema = z.strictObject({
+  candidate: raceManualApprovalCandidateSchema,
+  preparation: raceManualPublicPreviewSourceSchema.options[0].shape.preparation,
+});
+function projectReadySource(read: z.infer<typeof readySourceSchema>) {
   const { context: c, sourceInput: input, candidate: readonly } = read.preparation;
   const app = read.candidate;
   const normalized = normalizedSource(input);
@@ -668,4 +675,70 @@ export function projectRaceManualReadyPlannedSource(raw: unknown) {
     notices,
   };
   return out;
+}
+
+/** Encoded SQL138 transport boundary. Decoding checks logical roots independently;
+ * the expanded frame is not serialized and rechecked as a legacy 4MiB wire.
+ * Structure and hashes never authenticate ownership, sources or permission. */
+export function projectRaceManualPooledPublicPreviewV1(
+  raw: unknown,
+  expectedAthleteId: string,
+): RaceManualPublicPreview {
+  try {
+    assertRaceManualPlainV2(raw);
+  } catch {
+    invalid();
+  }
+  const wire = z
+    .discriminatedUnion('bodyState', [
+      z.strictObject({
+        readerVersion: z.literal(2),
+        reference: raceManualPublicPreviewReferenceSchema,
+        bodyState: z.literal('present'),
+        candidate: raceManualApprovalCandidateSchema,
+        payloadEncoding: z.enum(['legacy-retained-v2', 'pooled-database-envelope-v1']),
+        payload: z.unknown(),
+      }),
+      z.strictObject({
+        readerVersion: z.literal(2),
+        reference: raceManualPublicPreviewReferenceSchema,
+        bodyState: z.literal('purged'),
+        candidate: z.null(),
+        payloadEncoding: z.null(),
+        payload: z.null(),
+      }),
+    ])
+    .safeParse(raw);
+  if (!wire.success) invalid();
+  const read = wire.data;
+  if (read.bodyState === 'purged')
+    return projectPublicSource({
+      reference: read.reference,
+      bodyState: 'purged',
+      candidate: null,
+      preparation: null,
+    });
+  let retained: z.infer<typeof raceManualReviewMultiOwnedRetainedPayloadV3Schema>;
+  try {
+    retained =
+      read.payloadEncoding === 'pooled-database-envelope-v1'
+        ? decodeRaceManualReviewPooledDatabaseEnvelopeV1(read.payload)
+        : raceManualReviewMultiOwnedRetainedPayloadV3Schema.parse(read.payload);
+  } catch {
+    invalid();
+  }
+  if (
+    retained.state !== 'present' ||
+    retained.minimalAudit.candidateDigest !== read.reference.chain.readonlyCandidateDigest
+  )
+    invalid();
+  if (retained.payload.preparation.context.athleteId !== expectedAthleteId) invalid();
+  const source = raceManualPublicPreviewSourceSchema.safeParse({
+    reference: read.reference,
+    bodyState: 'present',
+    candidate: read.candidate,
+    preparation: retained.payload.preparation,
+  });
+  if (!source.success) invalid();
+  return projectPublicSource(source.data);
 }

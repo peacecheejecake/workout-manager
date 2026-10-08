@@ -1,3 +1,4 @@
+import { ackRaceManualPooledChainTransportV1In } from './race-manual-pooled-chain-transport-v1.js';
 import { z } from 'zod';
 import type { Transaction } from './database.js';
 import { prepareRaceManualSemanticBasisV2In } from './race-manual-review-semantic-basis-v2.js';
@@ -179,7 +180,8 @@ async function checked(
   }
   return e;
 }
-export async function storeRaceManualSameTxReviewContinuationIn(
+async function storeContinuation(
+  protocol: 'legacy' | 'pooled',
   tx: Transaction,
   handle: unknown,
   intent: unknown,
@@ -190,58 +192,66 @@ export async function storeRaceManualSameTxReviewContinuationIn(
   const e = await checked(tx, handle, 'captured', intent, basis, budget);
   try {
     const result = raceManualReviewChainResultV2Schema.parse(await persist(e.current, e.lifecycle));
-    assertRaceManualPlainV2(e.current.prepared.retained);
+    // The pooled ACK transport performs the frozen strict logical-to-encoded
+    // codec checks. Its individually bounded logical roots are not a legacy
+    // whole-frame 4MiB transport. Legacy ingress remains unchanged.
+    if (protocol === 'legacy') assertRaceManualPlainV2(e.current.prepared.retained);
     const candidate = e.current.prepared.retained.payload.preparation.candidate;
     if (candidate.status !== 'assembled_readonly' || result.candidateDigest !== candidate.digest)
       invalid();
-    validateRaceSourceResponseBudget(budget);
-    const remaining = 4194304n - budget.bytes;
-    // Actual protected store context/current xid must be acknowledged by SQL131.
-    // The driver receives only a measured minimal ACK, never a second parent body.
-    const rows = (
-      await tx.query(
-        `WITH observed AS MATERIALIZED (
+    if (protocol === 'pooled') {
+      await ackRaceManualPooledChainTransportV1In(tx, result, e.current.prepared.retained, budget);
+    } else {
+      validateRaceSourceResponseBudget(budget);
+      const remaining = 4194304n - budget.bytes;
+      // Actual protected store context/current xid must be acknowledged by SQL131.
+      // The driver receives only a measured minimal ACK, never a second parent body.
+      const rows = (
+        await tx.query(
+          `WITH observed AS MATERIALIZED (
  SELECT public.ack_manual_race_same_tx_parent_v1($1::uuid,$2::uuid,$3::uuid,$4::text,$5::jsonb) value),
  measured AS MATERIALIZED (SELECT value,octet_length(coalesce(value::text,'null'))::bigint bytes FROM observed)
  SELECT bytes::text bytes,CASE WHEN bytes <= $6::bigint THEN value ELSE NULL END value FROM measured`,
-        [
-          result.evidenceId,
-          result.decisionId,
-          result.proposalId,
-          result.candidateDigest,
-          JSON.stringify(e.current.prepared.retained),
-          remaining.toString(),
-        ],
+          [
+            result.evidenceId,
+            result.decisionId,
+            result.proposalId,
+            result.candidateDigest,
+            JSON.stringify(e.current.prepared.retained),
+            remaining.toString(),
+          ],
+        )
+      ).rows;
+      assertRaceManualPlainV2(rows);
+      const response = z
+        .strictObject({ bytes: z.string().regex(/^(0|[1-9][0-9]*)$/), value: z.unknown() })
+        .safeParse(rows[0]);
+      if (rows.length !== 1 || !response.success) invalid();
+      if (BigInt(response.data.bytes) > remaining)
+        throw new RaceImpactDependencyError('CONTEXT_UNAVAILABLE', 'decoded_bytes');
+      assertRaceManualPlainV2(response.data.value);
+      if (
+        Buffer.byteLength(JSON.stringify(response.data.value), 'utf8') > Number(response.data.bytes)
       )
-    ).rows;
-    assertRaceManualPlainV2(rows);
-    const response = z
-      .strictObject({ bytes: z.string().regex(/^(0|[1-9][0-9]*)$/), value: z.unknown() })
-      .safeParse(rows[0]);
-    if (rows.length !== 1 || !response.success) invalid();
-    if (BigInt(response.data.bytes) > remaining)
-      throw new RaceImpactDependencyError('CONTEXT_UNAVAILABLE', 'decoded_bytes');
-    assertRaceManualPlainV2(response.data.value);
-    if (
-      Buffer.byteLength(JSON.stringify(response.data.value), 'utf8') > Number(response.data.bytes)
-    )
-      invalid();
-    reserveSourceBudget(budget, BigInt(response.data.bytes));
-    const ack = z
-      .strictObject({
-        ackVersion: z.literal(1),
-        result: raceManualReviewChainResultV2Schema,
-        bodyState: z.literal('present'),
-        payloadDigestMethod: z.literal('postgres-jsonb-v1'),
-        payloadSqlDigest: z.string().regex(/^[a-f0-9]{64}$/),
-        correspondence: z.literal('same_tx_stored_parent'),
-      })
-      .parse(response.data.value);
-    if (
-      impactDependencyDigest(ack.result) !== impactDependencyDigest(result) ||
-      contentDigest(e) !== e.fingerprint
-    )
-      invalid();
+        invalid();
+      reserveSourceBudget(budget, BigInt(response.data.bytes));
+      const ack = z
+        .strictObject({
+          ackVersion: z.literal(1),
+          result: raceManualReviewChainResultV2Schema,
+          bodyState: z.literal('present'),
+          payloadDigestMethod: z.literal('postgres-jsonb-v1'),
+          payloadSqlDigest: z.string().regex(/^[a-f0-9]{64}$/),
+          correspondence: z.literal('same_tx_stored_parent'),
+        })
+        .parse(response.data.value);
+      if (
+        impactDependencyDigest(ack.result) !== impactDependencyDigest(result) ||
+        contentDigest(e) !== e.fingerprint
+      )
+        invalid();
+    }
+    if (contentDigest(e) !== e.fingerprint) invalid();
     // Recheck the actual backend identity after the asynchronous store/ACK.
     if (impactDependencyDigest(await anchor(tx, budget)) !== impactDependencyDigest(e.anchor))
       invalid();
@@ -252,6 +262,23 @@ export async function storeRaceManualSameTxReviewContinuationIn(
     e.phase = 'invalid';
     throw error;
   }
+}
+type StoreContinuationArguments = [
+  tx: Transaction,
+  handle: unknown,
+  intent: unknown,
+  basis: unknown,
+  budget: SourceBudget,
+  persist: (current: Current, lifecycle: Lifecycle) => Promise<RaceManualReviewChainResultV2>,
+];
+export function storeRaceManualSameTxReviewContinuationIn(...args: StoreContinuationArguments) {
+  return storeContinuation('legacy', ...args);
+}
+/** Fixed private successor selection. Caller JSON cannot select the ACK codec. */
+export function storeRaceManualPooledSameTxReviewContinuationIn(
+  ...args: StoreContinuationArguments
+) {
+  return storeContinuation('pooled', ...args);
 }
 export async function prepareRaceManualSameTxReviewApplicationIn<T>(
   tx: Transaction,

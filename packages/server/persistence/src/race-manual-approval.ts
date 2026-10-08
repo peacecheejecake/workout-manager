@@ -1,3 +1,8 @@
+import { validateRaceSourceResponseBudget } from './race-plan-impact-context.js';
+import { readRaceManualPooledChainTransportV1In } from './race-manual-pooled-chain-transport-v1.js';
+import { encodeRaceManualReviewPooledRetainedPayloadV1 } from './race-manual-review-pooled-retained-payload-v1.js';
+import { toRaceManualReviewPooledDatabaseEnvelopeV1 } from './race-manual-review-pooled-database-envelope-v1.js';
+type Protocol = 'legacy' | 'pooled';
 import {
   assertRaceManualSameTxApprovalContinuation,
   type RaceManualSameTxApprovalContinuation,
@@ -74,21 +79,66 @@ type Current = Extract<
   Awaited<ReturnType<typeof prepareRaceManualSemanticBasisV2In>>,
   { status: 'current_dependencies_captured' }
 >;
+function strictResponseRow(rows: unknown) {
+  try {
+    if (
+      !Array.isArray(rows) ||
+      Object.getPrototypeOf(rows) !== Array.prototype ||
+      rows.length !== 1 ||
+      Object.getOwnPropertySymbols(rows).length
+    )
+      throw Error('row');
+    const entries = Object.getOwnPropertyDescriptors(rows);
+    if (
+      Object.keys(entries).length !== 2 ||
+      !entries['0'] ||
+      !entries['0'].enumerable ||
+      !('value' in entries['0'])
+    )
+      throw Error('row');
+    const row: unknown = entries['0'].value;
+    if (
+      row === null ||
+      typeof row !== 'object' ||
+      Object.getPrototypeOf(row) !== Object.prototype ||
+      Object.getOwnPropertySymbols(row).length
+    )
+      throw Error('row');
+    const fields = Object.getOwnPropertyDescriptors(row);
+    if (
+      Object.keys(fields).length !== 2 ||
+      !fields['bytes'] ||
+      !fields['value'] ||
+      !('value' in fields['bytes']) ||
+      !('value' in fields['value']) ||
+      !fields['bytes'].enumerable ||
+      !fields['value'].enumerable
+    )
+      throw Error('row');
+    assertRaceManualPlainV2(fields['bytes'].value);
+    assertRaceManualPlainV2(fields['value'].value);
+    return z
+      .strictObject({ bytes: z.string().regex(/^(0|[1-9][0-9]*)$/), value: z.unknown() })
+      .parse({ bytes: fields['bytes'].value, value: fields['value'].value });
+  } catch {
+    throw new RaceManualApprovalError('INVALID_CONTEXT');
+  }
+}
 async function call(tx: Transaction, expression: string, args: unknown[], budget: SourceBudget) {
+  validateRaceSourceResponseBudget(budget);
   const remaining = 4194304n - budget.bytes;
-  const row = z
-    .strictObject({ bytes: z.string().regex(/^\d+$/), value: z.unknown() })
-    .parse(
-      (
-        await tx.query(
-          `WITH v AS MATERIALIZED (SELECT ${expression} AS value), n AS MATERIALIZED (SELECT value,octet_length(coalesce(value::text,'null'))::bigint AS bytes FROM v) SELECT bytes::text,CASE WHEN bytes <= $${args.length + 1}::bigint THEN value ELSE NULL END AS value FROM n`,
-          [...args, remaining.toString()],
-        )
-      ).rows[0],
-    );
+  const row = strictResponseRow(
+    (
+      await tx.query(
+        `WITH v AS MATERIALIZED (SELECT ${expression} AS value), n AS MATERIALIZED (SELECT value,octet_length(coalesce(to_jsonb(value)::text,'null'))::bigint AS bytes FROM v) SELECT bytes::text,CASE WHEN bytes <= $${args.length + 1}::bigint THEN value ELSE NULL END AS value FROM n`,
+        [...args, remaining.toString()],
+      )
+    ).rows,
+  );
   if (BigInt(row.bytes) > remaining) throw new RaceManualApprovalError('INVALID_CONTEXT');
+  if (Buffer.byteLength(JSON.stringify(row.value), 'utf8') > Number(row.bytes))
+    throw new RaceManualApprovalError('INVALID_CONTEXT');
   reserveSourceBudget(budget, BigInt(row.bytes), 0);
-  assertRaceManualPlainV2(row.value);
   return row.value;
 }
 function contextOf(current: Current) {
@@ -356,14 +406,29 @@ function recipes(
 /** Real persisted parent + fresh same-transaction full-owned/purpose capture.
  * The readonly parent's missing5/applyfalse remain untouched. The new SQL118
  * boundary binds actual sources and a new basis, never a caller Boolean seal. */
-export async function prepareRaceManualApprovalIn(
+async function readParent(protocol: Protocol, tx: Transaction, id: unknown, budget: SourceBudget) {
+  if (protocol === 'legacy') return readRaceManualReviewCompatibleChainIn(tx, id, budget);
+  const read = await readRaceManualPooledChainTransportV1In(tx, id, budget);
+  return read.status === 'read'
+    ? { schemaVersion: 2 as const, result: read.result, payload: read.payload }
+    : null;
+}
+function encodePrepared(protocol: Protocol, retained: Current['prepared']['retained']) {
+  return protocol === 'pooled'
+    ? toRaceManualReviewPooledDatabaseEnvelopeV1(
+        encodeRaceManualReviewPooledRetainedPayloadV1(retained),
+      )
+    : retained;
+}
+async function prepareApproval(
+  protocol: Protocol,
   tx: Transaction,
   unknownInput: unknown,
   budget: SourceBudget = { bytes: 0n, sources: 0 },
   options: { now?: () => Date; createId?: () => string } = {},
 ) {
   const input = raceManualApprovalPrepareSchema.parse(unknownInput);
-  const parent = await readRaceManualReviewCompatibleChainIn(tx, input.chain.evidenceId, budget);
+  const parent = await readParent(protocol, tx, input.chain.evidenceId, budget);
   if (
     !parent ||
     parent.payload === null ||
@@ -391,7 +456,7 @@ export async function prepareRaceManualApprovalIn(
   );
   if (lifecycle.status !== 'dependency_correspondence')
     return { status: 'blocked' as const, reason: 'source_lifecycle_unavailable' as const };
-  return prepareApplicationFromCurrent(tx, input, current, lifecycle, budget, options);
+  return prepareApplicationFromCurrent(protocol, tx, input, current, lifecycle, budget, options);
 }
 type ApplicationCurrent = Extract<
   Awaited<ReturnType<typeof prepareRaceManualSemanticBasisV2In>>,
@@ -401,6 +466,7 @@ type ApplicationLifecycle = Awaited<
   ReturnType<typeof captureRaceManualReviewCompatibleLifecycleInventoryIn>
 >;
 async function prepareApplicationFromCurrent(
+  protocol: Protocol,
   tx: Transaction,
   input: z.infer<typeof raceManualApprovalPrepareSchema>,
   current: ApplicationCurrent,
@@ -471,11 +537,13 @@ async function prepareApplicationFromCurrent(
   const stored = raceManualApprovalCandidateSchema.parse(
     await call(
       tx,
-      'public.prepare_race_manual_application_v1($1::jsonb,$2::jsonb,$3::jsonb,$4::jsonb)',
+      protocol === 'pooled'
+        ? 'public.prepare_race_manual_pooled_application_v1($1::jsonb,$2::jsonb,$3::jsonb,$4::jsonb)'
+        : 'public.prepare_race_manual_application_v1($1::jsonb,$2::jsonb,$3::jsonb,$4::jsonb)',
       [
         JSON.stringify(candidate),
         JSON.stringify(current.basis),
-        JSON.stringify(retained),
+        JSON.stringify(encodePrepared(protocol, retained)),
         JSON.stringify(lifecycle),
       ],
       budget,
@@ -487,7 +555,8 @@ async function prepareApplicationFromCurrent(
 
 /** Same-tx stored-parent ACK is required before using the first actual capture.
  * SQL118 still revalidates persisted parents, actual sources, purpose and recipes. */
-export async function prepareRaceManualSameTxApprovalIn(
+async function prepareSameTxApproval(
+  protocol: Protocol,
   tx: Transaction,
   unknownInput: unknown,
   handle: unknown,
@@ -503,12 +572,13 @@ export async function prepareRaceManualSameTxApprovalIn(
     input.chain,
     budget,
     (current, lifecycle) =>
-      prepareApplicationFromCurrent(tx, input, current, lifecycle, budget, options),
+      prepareApplicationFromCurrent(protocol, tx, input, current, lifecycle, budget, options),
   );
 }
 /** Outer successful receipt precedes all new processing checks. The persisted
  * candidate is locked/applied once by SQL118, even under a different outer key. */
-export async function approveRaceManualApplicationIn(
+async function approveApplication(
+  protocol: Protocol,
   tx: Transaction,
   unknownCommand: unknown,
   budget: SourceBudget = { bytes: 0n, sources: 0 },
@@ -535,11 +605,12 @@ export async function approveRaceManualApplicationIn(
         budget,
       ),
     );
-  return applyStoredRaceManualApplicationIn(tx, command, stored, budget, options);
+  return applyStoredRaceManualApplicationIn(protocol, tx, command, stored, budget, options);
 }
 /** Internal entry consumes only the actual protected-reader factory handle.
  * The original receipt is checked before consuming fresh approval state. */
-export async function approveRaceManualApplicationFromStoredCaptureIn(
+async function approveApplicationFromStoredCapture(
+  protocol: Protocol,
   tx: Transaction,
   unknownCommand: unknown,
   continuation: RaceManualSameTxApprovalContinuation,
@@ -558,13 +629,14 @@ export async function approveRaceManualApplicationFromStoredCaptureIn(
     );
     if (replay !== null) return raceManualApprovalResultSchema.parse(replay);
     return await continuation.consume(tx, handle, command, budget, (stored) =>
-      applyStoredRaceManualApplicationIn(tx, command, stored, budget, options),
+      applyStoredRaceManualApplicationIn(protocol, tx, command, stored, budget, options),
     );
   } finally {
     continuation.invalidate(handle);
   }
 }
 async function applyStoredRaceManualApplicationIn(
+  protocol: Protocol,
   tx: Transaction,
   command: z.infer<typeof raceManualApprovalCommandSchema>,
   stored: {
@@ -583,11 +655,7 @@ async function applyStoredRaceManualApplicationIn(
     !same(candidate.expectation, command.expectation)
   )
     throw new RaceManualApprovalError('APPLICATION_UNAVAILABLE');
-  const parent = await readRaceManualReviewCompatibleChainIn(
-    tx,
-    candidate.chain.evidenceId,
-    budget,
-  );
+  const parent = await readParent(protocol, tx, candidate.chain.evidenceId, budget);
   if (!parent || parent.payload === null) throw new RaceManualApprovalError('PARENT_UNAVAILABLE');
   const current = await prepareRaceManualSemanticBasisV2In(
     tx,
@@ -625,11 +693,13 @@ async function applyStoredRaceManualApplicationIn(
   const contextId = uuid.parse(
     await call(
       tx,
-      'public.begin_race_manual_application_v1($1::jsonb,$2::jsonb,$3::jsonb,$4::jsonb)',
+      protocol === 'pooled'
+        ? 'public.begin_race_manual_pooled_application_v1($1::jsonb,$2::jsonb,$3::jsonb,$4::jsonb)'
+        : 'public.begin_race_manual_application_v1($1::jsonb,$2::jsonb,$3::jsonb,$4::jsonb)',
       [
         JSON.stringify(command),
         JSON.stringify(current.basis),
-        JSON.stringify(retained),
+        JSON.stringify(encodePrepared(protocol, retained)),
         JSON.stringify(lifecycle),
       ],
       budget,
@@ -791,7 +861,55 @@ async function applyStoredRaceManualApplicationIn(
   if (!same(committed, result)) throw new RaceManualApprovalError('INVALID_CONTEXT');
   return committed;
 }
-export function createRaceManualApprovalRepository(
+type PrepareArguments = [
+  tx: Transaction,
+  input: unknown,
+  budget?: SourceBudget,
+  options?: { now?: () => Date; createId?: () => string },
+];
+type SameTxPrepareArguments = [
+  tx: Transaction,
+  input: unknown,
+  handle: unknown,
+  budget: SourceBudget,
+  options?: { now?: () => Date; createId?: () => string },
+];
+type CapturedApproveArguments = [
+  tx: Transaction,
+  command: unknown,
+  continuation: RaceManualSameTxApprovalContinuation,
+  handle: unknown,
+  budget: SourceBudget,
+  options?: { now?: () => Date; createId?: () => string },
+];
+export function prepareRaceManualApprovalIn(...args: PrepareArguments) {
+  return prepareApproval('legacy', ...args);
+}
+export function prepareRaceManualPooledApprovalIn(...args: PrepareArguments) {
+  return prepareApproval('pooled', ...args);
+}
+export function prepareRaceManualSameTxApprovalIn(...args: SameTxPrepareArguments) {
+  return prepareSameTxApproval('legacy', ...args);
+}
+export function prepareRaceManualPooledSameTxApprovalIn(...args: SameTxPrepareArguments) {
+  return prepareSameTxApproval('pooled', ...args);
+}
+export function approveRaceManualApplicationIn(...args: PrepareArguments) {
+  return approveApplication('legacy', ...args);
+}
+export function approveRaceManualPooledApplicationIn(...args: PrepareArguments) {
+  return approveApplication('pooled', ...args);
+}
+export function approveRaceManualApplicationFromStoredCaptureIn(...args: CapturedApproveArguments) {
+  return approveApplicationFromStoredCapture('legacy', ...args);
+}
+export function approveRaceManualPooledApplicationFromStoredCaptureIn(
+  ...args: CapturedApproveArguments
+) {
+  return approveApplicationFromStoredCapture('pooled', ...args);
+}
+function createApprovalRepository(
+  protocol: Protocol,
   database: Database,
   options: { now?: () => Date; createId?: () => string } = {},
 ) {
@@ -803,14 +921,28 @@ export function createRaceManualApprovalRepository(
     prepare(athleteId: string, input: unknown) {
       const parsed = raceManualApprovalPrepareSchema.parse(input);
       return snapshot()(athleteId, (tx) =>
-        prepareRaceManualApprovalIn(tx, parsed, { bytes: 0n, sources: 0 }, options),
+        prepareApproval(protocol, tx, parsed, { bytes: 0n, sources: 0 }, options),
       );
     },
     approve(athleteId: string, input: unknown) {
       const parsed = raceManualApprovalCommandSchema.parse(input);
       return snapshot()(athleteId, (tx) =>
-        approveRaceManualApplicationIn(tx, parsed, { bytes: 0n, sources: 0 }, options),
+        approveApplication(protocol, tx, parsed, { bytes: 0n, sources: 0 }, options),
       );
     },
   };
+}
+
+export function createRaceManualApprovalRepository(
+  database: Database,
+  options: { now?: () => Date; createId?: () => string } = {},
+) {
+  return createApprovalRepository('legacy', database, options);
+}
+/** Internal composition entry; not registered as an HTTP/version selector. */
+export function createRaceManualPooledApprovalRepositoryForBundle(
+  database: Database,
+  options: { now?: () => Date; createId?: () => string } = {},
+) {
+  return createApprovalRepository('pooled', database, options);
 }

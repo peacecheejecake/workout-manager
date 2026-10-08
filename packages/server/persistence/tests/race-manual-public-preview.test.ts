@@ -1,3 +1,6 @@
+import { createRaceManualPooledTransportFixtureV1 } from './race-manual-pooled-test-fixtures-v1.js';
+import { encodeRaceManualReviewPooledRetainedPayloadV1 } from '../src/race-manual-review-pooled-retained-payload-v1.js';
+import { toRaceManualReviewPooledDatabaseEnvelopeV1 } from '../src/race-manual-review-pooled-database-envelope-v1.js';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { raceEventSchema } from '@workout/contracts/races';
@@ -30,6 +33,7 @@ import {
 import { assembleRaceManualReviewCandidateCompatibleV4 } from '@workout/server-coaching/race-manual-review-candidate-v2';
 import {
   projectRaceManualPublicPreview,
+  projectRaceManualPooledPublicPreviewV1,
   RaceManualPublicPreviewError,
 } from '../src/race-manual-public-preview.js';
 const athlete = 'synthetic-manual',
@@ -913,4 +917,181 @@ describe('public preview pure stored projection', () => {
     expect(calls).toBe(0);
     expect(() => projectRaceManualPublicPreview('x'.repeat(4194305))).toThrow();
   });
+});
+
+describe('SQL138 encoded preview structural boundary', () => {
+  it('preserves contentless purge through explicit null unknown encoding', () => {
+    const raw = inputFixture();
+    const legacy = {
+      reference: raw.reference,
+      bodyState: 'purged',
+      candidate: null,
+      preparation: null,
+    };
+    const encoded = {
+      readerVersion: 2,
+      reference: raw.reference,
+      bodyState: 'purged',
+      candidate: null,
+      payloadEncoding: null,
+      payload: null,
+    };
+    expect(projectRaceManualPooledPublicPreviewV1(encoded, athlete)).toEqual(
+      projectRaceManualPublicPreview(legacy),
+    );
+    for (const payloadEncoding of ['legacy-retained-v2', 'pooled-database-envelope-v1', 'future'])
+      expect(() =>
+        projectRaceManualPooledPublicPreviewV1({ ...encoded, payloadEncoding }, athlete),
+      ).toThrow();
+  });
+  it('never treats malformed/legacy-shaped present data as pooled or authenticates a flag', () => {
+    const raw = inputFixture();
+    for (const payload of [null, raw.preparation, { ...raw.preparation, authenticated: true }])
+      expect(() =>
+        projectRaceManualPooledPublicPreviewV1(
+          {
+            readerVersion: 2,
+            reference: raw.reference,
+            bodyState: 'present',
+            candidate: raw.candidate,
+            payloadEncoding: 'pooled-database-envelope-v1',
+            payload,
+          },
+          athlete,
+        ),
+      ).toThrow();
+  });
+  it('rejects accessors and oversized encoded ingress before unwrapping', () => {
+    let visited = 0;
+    const getter = Object.defineProperty({}, 'payload', {
+      enumerable: true,
+      get() {
+        visited++;
+        throw Error('PRIVATE');
+      },
+    });
+    expect(() => projectRaceManualPooledPublicPreviewV1(getter, athlete)).toThrow();
+    expect(visited).toBe(0);
+    expect(() =>
+      projectRaceManualPooledPublicPreviewV1({ padding: 'x'.repeat(4194305) }, athlete),
+    ).toThrow();
+  });
+});
+
+it('encoded and legacy retained frames project identical frozen planned values', () => {
+  const f = createRaceManualPooledTransportFixtureV1(),
+    retained = f.logical;
+  if (retained.state !== 'present') throw Error('PRESENT_REQUIRED');
+  const { context: c, sourceInput, candidate: readonly } = retained.payload.preparation;
+  if (readonly.status !== 'assembled_readonly') throw Error('ASSEMBLED_REQUIRED');
+  const chain = {
+    evidenceId: id(90),
+    decisionId: id(91),
+    proposalId: id(92),
+    readonlyCandidateDigest: readonly.digest,
+  };
+  const reference = {
+    schemaVersion: 1,
+    candidateId: id(93),
+    applicationDigest: hash,
+    chain,
+    createdAt: now,
+  };
+  const application = {
+    schemaVersion: 1,
+    candidateId: reference.candidateId,
+    chain,
+    applicationDigest: hash,
+    createdAt: now,
+    raceChange: {
+      eventId: c.event.id,
+      expectedRevision: c.event.revision,
+      newLocalDate: sourceInput.projectionInput.newLocalDate,
+    },
+    expectation: {
+      restoreGeneration: c.restoreGeneration,
+      appRevision: sourceInput.binding.appRevision,
+      manualPolicy: c.manualBasis.policy,
+      semanticDigest: hash,
+      heads: {
+        training: c.currentTraining
+          ? {
+              state: 'present',
+              members: [
+                {
+                  aggregateId: c.currentTraining.aggregateId,
+                  head: {
+                    kind: 'exists',
+                    versionId: c.currentTraining.snapshot.id,
+                    version: c.currentTraining.snapshot.version,
+                  },
+                },
+              ],
+            }
+          : absent(),
+        nutrition: c.nutrition.length
+          ? {
+              state: 'present',
+              members: c.nutrition.map((n) => ({
+                aggregateId: n.aggregateId,
+                head: { kind: 'exists', versionId: n.versionId, version: n.record.version },
+              })),
+            }
+          : absent(),
+        recovery: c.recovery.length
+          ? {
+              state: 'present',
+              members: c.recovery.map((r) => ({
+                aggregateId: r.aggregateId,
+                head: { kind: 'exists', versionId: r.versionId, version: r.record.version },
+              })),
+            }
+          : absent(),
+        routine_schedule: c.routines.length
+          ? {
+              state: 'present',
+              members: c.routines.map((r) => ({
+                aggregateId: r.aggregateId,
+                head: { kind: 'exists', versionId: r.versionId },
+              })),
+            }
+          : absent(),
+      },
+    },
+    authority: 'server_revalidation_required',
+    applicationState: 'ready_for_explicit_approval',
+    scope: 'whole_affected',
+    affected: [],
+    writes: [],
+    notices: [],
+  };
+  const legacy = {
+    reference,
+    bodyState: 'present',
+    candidate: application,
+    preparation: retained.payload.preparation,
+  };
+  const wire = {
+    readerVersion: 2,
+    reference,
+    bodyState: 'present',
+    candidate: application,
+    payloadEncoding: 'pooled-database-envelope-v1',
+    payload: toRaceManualReviewPooledDatabaseEnvelopeV1(
+      encodeRaceManualReviewPooledRetainedPayloadV1(retained),
+    ),
+  };
+  expect(projectRaceManualPooledPublicPreviewV1(wire, c.athleteId)).toEqual(
+    projectRaceManualPublicPreview(legacy),
+  );
+  expect(() => projectRaceManualPooledPublicPreviewV1(wire, 'foreign')).toThrow();
+  expect(() =>
+    projectRaceManualPooledPublicPreviewV1(
+      {
+        ...wire,
+        reference: { ...reference, chain: { ...chain, readonlyCandidateDigest: 'f'.repeat(64) } },
+      },
+      c.athleteId,
+    ),
+  ).toThrow();
 });

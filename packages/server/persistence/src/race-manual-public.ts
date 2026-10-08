@@ -1,3 +1,14 @@
+import { projectRaceManualPooledPublicPreviewV1 } from './race-manual-public-preview.js';
+import {
+  storeRaceManualPooledReviewChainV1In,
+  storeRaceManualPooledReviewSameTxChainV1In,
+} from './race-manual-review-chain-v2.js';
+import {
+  prepareRaceManualPooledApprovalIn,
+  prepareRaceManualPooledSameTxApprovalIn,
+  approveRaceManualPooledApplicationFromStoredCaptureIn,
+} from './race-manual-approval.js';
+type Protocol = 'legacy' | 'pooled';
 import {
   createRaceManualSameTxApprovalContinuation,
   raceManualStoredApprovalReadSchema,
@@ -79,6 +90,51 @@ class ReviewBlocked extends Error {
   }
 }
 type Options = { now?: () => Date; createId?: () => string };
+function strictResponseRow(rows: unknown) {
+  try {
+    if (
+      !Array.isArray(rows) ||
+      Object.getPrototypeOf(rows) !== Array.prototype ||
+      rows.length !== 1 ||
+      Object.getOwnPropertySymbols(rows).length
+    )
+      throw Error('row');
+    const entries = Object.getOwnPropertyDescriptors(rows);
+    if (
+      Object.keys(entries).length !== 2 ||
+      !entries['0'] ||
+      !entries['0'].enumerable ||
+      !('value' in entries['0'])
+    )
+      throw Error('row');
+    const row: unknown = entries['0'].value;
+    if (
+      row === null ||
+      typeof row !== 'object' ||
+      Object.getPrototypeOf(row) !== Object.prototype ||
+      Object.getOwnPropertySymbols(row).length
+    )
+      throw Error('row');
+    const fields = Object.getOwnPropertyDescriptors(row);
+    if (
+      Object.keys(fields).length !== 2 ||
+      !fields['bytes'] ||
+      !fields['value'] ||
+      !('value' in fields['bytes']) ||
+      !('value' in fields['value']) ||
+      !fields['bytes'].enumerable ||
+      !fields['value'].enumerable
+    )
+      throw Error('row');
+    assertRaceManualPlainV2(fields['bytes'].value);
+    assertRaceManualPlainV2(fields['value'].value);
+    return z
+      .strictObject({ bytes: z.string().regex(/^(0|[1-9][0-9]*)$/), value: z.unknown() })
+      .parse({ bytes: fields['bytes'].value, value: fields['value'].value });
+  } catch {
+    throw new RaceManualPublicError('PUBLIC_INVALID_RESPONSE');
+  }
+}
 async function sql(
   tx: Transaction,
   expression: string,
@@ -88,20 +144,19 @@ async function sql(
   validateRaceSourceResponseBudget(budget);
   reserveSourceBudget(budget, 0n, 1);
   const remaining = 4194304n - budget.bytes;
-  const response = z
-    .strictObject({ bytes: z.string().regex(/^(0|[1-9][0-9]*)$/), value: z.unknown() })
-    .parse(
-      (
-        await tx.query(
-          `WITH observed AS MATERIALIZED (SELECT ${expression} AS value), measured AS MATERIALIZED (SELECT value,octet_length(COALESCE(value::text,'null'))::bigint AS bytes FROM observed) SELECT bytes::text AS bytes,CASE WHEN bytes <= $${args.length + 1}::bigint THEN value ELSE NULL END AS value FROM measured`,
-          [...args, remaining.toString()],
-        )
-      ).rows[0],
-    );
+  const response = strictResponseRow(
+    (
+      await tx.query(
+        `WITH observed AS MATERIALIZED (SELECT ${expression} AS value), measured AS MATERIALIZED (SELECT value,octet_length(COALESCE(to_jsonb(value)::text,'null'))::bigint AS bytes FROM observed) SELECT bytes::text AS bytes,CASE WHEN bytes <= $${args.length + 1}::bigint THEN value ELSE NULL END AS value FROM measured`,
+        [...args, remaining.toString()],
+      )
+    ).rows,
+  );
   const bytes = BigInt(response.bytes);
   if (bytes > remaining) throw new RaceManualPublicError('PUBLIC_RESPONSE_LIMIT');
+  if (Buffer.byteLength(JSON.stringify(response.value), 'utf8') > Number(bytes))
+    throw new RaceManualPublicError('PUBLIC_INVALID_RESPONSE');
   reserveSourceBudget(budget, bytes, 0);
-  assertRaceManualPlainV2(response.value);
   return response.value;
 }
 function checkedReference(raw: unknown): RaceManualPublicReference {
@@ -126,7 +181,8 @@ async function stored(tx: Transaction, id: string, budget: SourceBudget) {
 }
 /** Internal-only command combines trusted header/path scalars with the strict
  * public DTO. Unknown basis/context/recipe fields are never accepted. */
-export async function reviewRaceManualPublicIn(
+async function reviewPublic(
+  protocol: Protocol,
   tx: Transaction,
   raw: unknown,
   budget: SourceBudget = { bytes: 0n, sources: 0 },
@@ -149,9 +205,10 @@ export async function reviewRaceManualPublicIn(
       throw new RaceManualPublicError('PUBLIC_INVALID_RESPONSE');
     return { status: 'reviewed' as const, reference, bodyState: read.bodyState };
   }
-  const continuation = (await hasRaceManualSameTxReviewCapabilityIn(tx, budget))
-    ? await captureRaceManualSameTxReviewContinuationIn(tx, command.intent, budget)
-    : null;
+  const continuation =
+    protocol === 'pooled' || (await hasRaceManualSameTxReviewCapabilityIn(tx, budget))
+      ? await captureRaceManualSameTxReviewContinuationIn(tx, command.intent, budget)
+      : null;
   const current =
     continuation === null
       ? await prepareRaceManualSemanticBasisV2In(tx, command.intent, null, budget)
@@ -179,9 +236,13 @@ export async function reviewRaceManualPublicIn(
     );
     const chainStore =
       handle === null
-        ? storeRaceManualReviewChainV2In
+        ? protocol === 'pooled'
+          ? storeRaceManualPooledReviewChainV1In
+          : storeRaceManualReviewChainV2In
         : (tx: Transaction, raw: unknown, budget: SourceBudget, ids: () => string) =>
-            storeRaceManualReviewSameTxChainIn(tx, raw, handle, budget, ids);
+            (protocol === 'pooled'
+              ? storeRaceManualPooledReviewSameTxChainV1In
+              : storeRaceManualReviewSameTxChainIn)(tx, raw, handle, budget, ids);
     const chain = await chainStore(
       tx,
       {
@@ -208,13 +269,21 @@ export async function reviewRaceManualPublicIn(
     };
     const application =
       handle !== null && chain.status === 'stored'
-        ? await prepareRaceManualSameTxApprovalIn(tx, applicationInput, handle, budget, options)
-        : await prepareRaceManualApprovalIn(tx, applicationInput, budget, options);
+        ? await (
+            protocol === 'pooled'
+              ? prepareRaceManualPooledSameTxApprovalIn
+              : prepareRaceManualSameTxApprovalIn
+          )(tx, applicationInput, handle, budget, options)
+        : await (
+            protocol === 'pooled' ? prepareRaceManualPooledApprovalIn : prepareRaceManualApprovalIn
+          )(tx, applicationInput, budget, options);
     if (application.status !== 'prepared') throw new ReviewBlocked('application');
     const reference = checkedReference(
       await sql(
         tx,
-        'public.finish_race_manual_public_review_v1($1::text,$2::jsonb,$3::uuid)',
+        protocol === 'pooled'
+          ? 'public.finish_race_manual_pooled_public_review_v1($1::text,$2::jsonb,$3::uuid)'
+          : 'public.finish_race_manual_public_review_v1($1::text,$2::jsonb,$3::uuid)',
         [command.idempotencyKey, request, application.candidate.candidateId],
         budget,
       ),
@@ -229,7 +298,8 @@ export async function reviewRaceManualPublicIn(
     invalidateRaceManualSameTxReviewContinuation(handle);
   }
 }
-export async function approveRaceManualPublicIn(
+async function approvePublic(
+  protocol: Protocol,
   tx: Transaction,
   raw: unknown,
   budget: SourceBudget = { bytes: 0n, sources: 0 },
@@ -288,14 +358,11 @@ export async function approveRaceManualPublicIn(
       expectation: candidate.expectation,
       confirmed: true,
     });
-    const result = await approveRaceManualApplicationFromStoredCaptureIn(
-      tx,
-      internal,
-      continuation,
-      read.handle,
-      budget,
-      options,
-    );
+    const result = await (
+      protocol === 'pooled'
+        ? approveRaceManualPooledApplicationFromStoredCaptureIn
+        : approveRaceManualApplicationFromStoredCaptureIn
+    )(tx, internal, continuation, read.handle, budget, options);
     const committed = raceManualApprovalResultSchema.parse(
       await sql(
         tx,
@@ -310,6 +377,24 @@ export async function approveRaceManualPublicIn(
   } finally {
     if (read?.bodyState === 'present') continuation.invalidate(read.handle);
   }
+}
+type PublicCommandArguments = [
+  tx: Transaction,
+  raw: unknown,
+  budget?: SourceBudget,
+  options?: Options,
+];
+export function reviewRaceManualPublicIn(...args: PublicCommandArguments) {
+  return reviewPublic('legacy', ...args);
+}
+export function reviewRaceManualPooledPublicIn(...args: PublicCommandArguments) {
+  return reviewPublic('pooled', ...args);
+}
+export function approveRaceManualPublicIn(...args: PublicCommandArguments) {
+  return approvePublic('legacy', ...args);
+}
+export function approveRaceManualPooledPublicIn(...args: PublicCommandArguments) {
+  return approvePublic('pooled', ...args);
 }
 /** Internal SQL body is validated but never returned through this public-facing
  * service. Retained read makes no fresh processing/admission claim. */
@@ -347,6 +432,24 @@ export async function readRaceManualPublicPreviewIn(
   )
     throw new RaceManualPublicError('PUBLIC_INVALID_RESPONSE');
   return projectRaceManualPublicPreview(raw);
+}
+export async function readRaceManualPooledPublicPreviewIn(
+  tx: Transaction,
+  rawId: unknown,
+  budget: SourceBudget = { bytes: 0n, sources: 0 },
+) {
+  const id = uuid.parse(rawId);
+  const raw = await sql(
+    tx,
+    'public.read_race_manual_pooled_public_preview_source_v1($1::uuid)',
+    [id],
+    budget,
+  );
+  if (raw === null) return null;
+  const preview = projectRaceManualPooledPublicPreviewV1(raw, tx.athleteId);
+  if (preview.reference.candidateId !== id)
+    throw new RaceManualPublicError('PUBLIC_INVALID_RESPONSE');
+  return preview;
 }
 /** Fresh processing diagnostic in the caller's fenced snapshot. It creates no
  * review, receipt, candidate, plan version or approval authority. */
@@ -393,7 +496,7 @@ export async function impactRaceManualPublicIn(
     throw error;
   }
 }
-export function createRaceManualPublicRepository(database: Database, options: Options = {}) {
+function createPublicRepository(protocol: Protocol, database: Database, options: Options = {}) {
   function snapshot<T>(athleteId: string, apply: (tx: Transaction) => Promise<T>) {
     if (!database.snapshotTenant) throw new RaceManualPublicError('PUBLIC_PORT_UNAVAILABLE');
     return database.snapshotTenant(athleteId, apply);
@@ -409,7 +512,7 @@ export function createRaceManualPublicRepository(database: Database, options: Op
       const command = prepareCommand.parse(raw);
       try {
         return await snapshot(athleteId, (tx) =>
-          reviewRaceManualPublicIn(tx, command, { bytes: 0n, sources: 0 }, options),
+          reviewPublic(protocol, tx, command, { bytes: 0n, sources: 0 }, options),
         );
       } catch (error) {
         if (error instanceof ReviewBlocked)
@@ -421,16 +524,32 @@ export function createRaceManualPublicRepository(database: Database, options: Op
       assertRaceManualPlainV2(raw);
       const command = approveCommand.parse(raw);
       return snapshot(athleteId, (tx) =>
-        approveRaceManualPublicIn(tx, command, { bytes: 0n, sources: 0 }, options),
+        approvePublic(protocol, tx, command, { bytes: 0n, sources: 0 }, options),
       );
     },
     async readPreview(athleteId: string, rawId: unknown) {
       const id = uuid.parse(rawId);
-      return snapshot(athleteId, (tx) => readRaceManualPublicPreviewIn(tx, id));
+      return snapshot(athleteId, (tx) =>
+        (protocol === 'pooled'
+          ? readRaceManualPooledPublicPreviewIn
+          : readRaceManualPublicPreviewIn)(tx, id),
+      );
     },
     read(athleteId: string, rawId: unknown) {
       const id = uuid.parse(rawId);
       return database.tenant(athleteId, (tx) => readRaceManualPublicCandidateIn(tx, id));
     },
   };
+}
+
+export function createRaceManualPublicRepository(database: Database, options: Options = {}) {
+  return createPublicRepository('legacy', database, options);
+}
+
+/** Internal named factory composition. No HTTP/client feature flag selects this protocol. */
+export function createRaceManualPooledPublicRepositoryForBundle(
+  database: Database,
+  options: Options = {},
+) {
+  return createPublicRepository('pooled', database, options);
 }

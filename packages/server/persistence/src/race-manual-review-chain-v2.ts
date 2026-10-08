@@ -1,4 +1,8 @@
-import { storeRaceManualSameTxReviewContinuationIn } from './race-manual-same-tx-review-continuation.js';
+import { storeRaceManualPooledChainTransportV1In } from './race-manual-pooled-chain-transport-v1.js';
+import {
+  storeRaceManualSameTxReviewContinuationIn,
+  storeRaceManualPooledSameTxReviewContinuationIn,
+} from './race-manual-same-tx-review-continuation.js';
 import { selectRaceManualOwnedProtocolIn } from './race-manual-review-full-owned-binding-consumer-v2.js';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
@@ -111,7 +115,8 @@ async function boundedCall(
 /** Trusted transaction entry. SQL116 must itself validate actual sources,
  * semantic basis, lifecycle edges and privacy closure before storing. Neither
  * these preparation observations nor caller JSON grant admission. */
-export async function storeRaceManualReviewChainV2In(
+async function storeChain(
+  protocol: 'legacy' | 'pooled',
   tx: Transaction,
   rawCommand: unknown,
   budget: SourceBudget,
@@ -140,7 +145,10 @@ export async function storeRaceManualReviewChainV2In(
   );
   if (prepared.status !== 'current_dependencies_captured')
     return { status: 'blocked' as const, prepared, storage: 'not_persisted' as const, ...limits };
-  const store = await selectRaceManualOwnedProtocolIn(tx, budget, 'store');
+  const store =
+    protocol === 'pooled'
+      ? ('public.store_manual_race_multi_owned_chain_v3' as const)
+      : await selectRaceManualOwnedProtocolIn(tx, budget, 'store');
   const retainedSchema =
     store === 'public.store_manual_race_multi_owned_chain_v3'
       ? raceManualReviewMultiOwnedRetainedPayloadV3Schema
@@ -165,7 +173,29 @@ export async function storeRaceManualReviewChainV2In(
       storage: 'not_persisted' as const,
       ...limits,
     };
+  if (protocol === 'pooled')
+    return storeRaceManualPooledChainTransportV1In(
+      tx,
+      input,
+      prepared.prepared.retained,
+      prepared.basis,
+      lifecycle,
+      budget,
+      ids,
+    );
   return persistPreparedChain(tx, input, prepared, lifecycle, budget, ids, store);
+}
+type StoreChainArguments = [
+  tx: Transaction,
+  rawCommand: unknown,
+  budget: SourceBudget,
+  ids?: () => string,
+];
+export function storeRaceManualReviewChainV2In(...args: StoreChainArguments) {
+  return storeChain('legacy', ...args);
+}
+export function storeRaceManualPooledReviewChainV1In(...args: StoreChainArguments) {
+  return storeChain('pooled', ...args);
 }
 type CurrentChainPreparation = Extract<
   Awaited<ReturnType<typeof prepareRaceManualSemanticBasisV2In>>,
@@ -229,7 +259,8 @@ async function persistPreparedChain(
   return { status: 'stored' as const, result, storage: 'persisted' as const, ...limits };
 }
 /** Private actual-capture continuation; SQL store and protected parent ACK remain mandatory. */
-export async function storeRaceManualReviewSameTxChainIn(
+async function storeSameTxChain(
+  protocol: 'legacy' | 'pooled',
   tx: Transaction,
   rawCommand: unknown,
   handle: unknown,
@@ -250,19 +281,48 @@ export async function storeRaceManualReviewSameTxChainIn(
       storage: 'persisted' as const,
       ...limits,
     };
-  const result = await storeRaceManualSameTxReviewContinuationIn(
+  const continuationStore =
+    protocol === 'pooled'
+      ? storeRaceManualPooledSameTxReviewContinuationIn
+      : storeRaceManualSameTxReviewContinuationIn;
+  const result = await continuationStore(
     tx,
     handle,
     input.intent,
     input.expectedBasis,
     budget,
     async (prepared, lifecycle) => {
+      if (protocol === 'pooled') {
+        const stored = await storeRaceManualPooledChainTransportV1In(
+          tx,
+          input,
+          prepared.prepared.retained,
+          prepared.basis,
+          lifecycle,
+          budget,
+          ids,
+        );
+        return stored.result;
+      }
       const store = await selectRaceManualOwnedProtocolIn(tx, budget, 'store');
       return (await persistPreparedChain(tx, input, prepared, lifecycle, budget, ids, store))
         .result;
     },
   );
   return { status: 'stored' as const, result, storage: 'persisted' as const, ...limits };
+}
+type StoreSameTxArguments = [
+  tx: Transaction,
+  rawCommand: unknown,
+  handle: unknown,
+  budget: SourceBudget,
+  ids?: () => string,
+];
+export function storeRaceManualReviewSameTxChainIn(...args: StoreSameTxArguments) {
+  return storeSameTxChain('legacy', ...args);
+}
+export function storeRaceManualPooledReviewSameTxChainV1In(...args: StoreSameTxArguments) {
+  return storeSameTxChain('pooled', ...args);
 }
 /** Retained read has no fresh processing gate; source purge returns no copied
  * body. Exact ownership/privacy enforcement remains in the SQL116 reader. */
