@@ -961,3 +961,13 @@ Worktree의 누락된 .geo-build 연결을 main의 기존 디렉터리로 복구
 Canonical `pnpm test` R6는 실제588파일 통과·skip파일0, 9,506시험 통과·5시험 skip·실패0·exit0, 실행시간117,131ms였다. 입력2,917개 전후 동일과 Java17.0.15/JAR SHA 불변, 합성 Java TMP 잔존0을 확인했다. 실제 결과 SHA `8201e8bf…58d40`, 유한 보고서 `wm-full-unit-r6-finite-report-20261009.json` SHA `76a7a2ad…6ad49`를 따른다. 원 출력은 hash 후 폐기했으며 보존한 실행기에는 raw byte count 기록이 없어 not_recorded로 명시한다. R5의9,499통과·12skip는 원 환경의 결과로 보존한다. Root가 JSON·SHA와 새 환경 의존성을 직접 확인했고 추가 retry는 없었다.
 
 Fixture·문서 교정 뒤에도 전체 normal R2의1,091개 입력은 모두 기존 SHA와 일치했다. 제품/API/클라이언트 소스·빌드와 sourceproof333은 변경하지 않았다. 실제 scoped fixture TS/lint/format와 Root diff/문서 format 검사도 exit0이었다. 다음은 최종 source/build·별도 geo 환경을 고정한 전체 identity 두 회차이며, 아직 미실행이다. 전체 단위 결과를 identity·외부 운영·실기기·최신 인증 복원 또는 phase 독립 승인으로 확대하지 않는다.
+
+### 2026-10-09 corrected identity 두 회차 실패와 전환 진단
+
+고정한 입력4,219개와 별도 geo 환경에서 canonical 전체 identity 두 회차를 실제 실행했다. 첫 회차는 general319통과·12skip, app-consent4/4, AI lifecycle1/1, current-manual22/22로 exit0이었다. 두 번째는 general319통과·12skip, app-consent4/4, AI1/1 뒤 current-manual webServer 시작에 실패해 exit1이었다. 마지막 모음의 등록 시험·실행 단언은0이며 통과가 아니다. 두 실제 실행의 aggregate SHA `7e8fab4205ff026a915ea7363e3567b241ca8da67b0695fb3890470a8581d5d5`, 보고서 SHA `c17a3d3e2393ebb176c62b342bcdc2cf7e580360ef023939b09d7263fe5e4d4d`를 보존한다. 원 startup 오류의 구체적인 코드와 원인은 기록되지 않아 미확정이다. 입력·빌드와 geo SHA는 전후 불변이었다.
+
+두 번째 실행 뒤 DB0·suite 역할5·slot0·포트0·새 TMP1을 실제 관측했다. 정확한 소유 tmpfs 클러스터의 postgres DB1·전체 역할6·사용자 relation0·client0·영구 volume0을 읽기 전용으로 확인했다. 자동 승인 검토의 첫 삭제 거절을 보존하고 이 실제 소유권·위험 자료를 추가한 재검토에서 승인받아 클러스터와 handoff만 제거했다. cleanup SHA `6e53094b0f147c83b5b50b93a13df505492d6a7ad4255e18dad89586d8ac29ea`다. 기존 varfolders의 해당 TMP는 빈 resources 하위 디렉터리를 포함한 상태로 보존했고 삭제했다고 표시하지 않는다. 개별 역할 DROP·다른 클러스터 접근·SHM 재정리는 수행하지 않았다.
+
+별도 새 소유 PostgreSQL170006에서 canonical AI lifecycle1건→current-manual10spec22건을 순서대로 실제 실행했다. 23/23·skip0·retry0·exit0이며 각 모음 전후 DB/역할/slot/포트/새 TMP 잔존0과 입력 불변을 확인했다. 이 진단은 원 시작 실패를 재현하지 못했으며 전체 두 회차 통과를 대체하지 않는다. aggregate SHA `666497bb144ef5f9d8b1ce87937ffd36ca483afeeeddf29641fdbe16143940ca`, 보고서 SHA `ee65ee07e9b55fab712362a24a4e4a504b45dc6bc33a5b337ab4cba1c0241169`를 따른다. 진단 전용 정리 guard를 검증한 뒤 정확한 소유 컨테이너와 handoff를 제거했다. cleanup SHA `53afde488ad6b0503263d84ff7ea170490cc874f9148946fa62c4da2b6057edb`·exit0이며 원 실패 기록은 불변이다.
+
+현재 로컬 합성 성능 앱은 codesign 실제검사에서 unsigned·exit1이었다. entitlement 디코딩도 실패해 HealthKit/location 여부는 unknown이다. 연결 조회는 paired지만 tunnel disconnected였고 새 실기기 실행·측정은 미실행이다. 이전 설치된 artifact와 현재 로컬 artifact가 같다는 증거는 없다. 서명·연결 확인 전에 이를 실행하거나 실기기 수용을 통과시키지 않는다. 공유 메모리32개 정확한 1회 정리는 이미 실행돼 대상 잔여0이고 해당 승인은 소비됐다. main·graph·EXT-HOSTING WIP·stash는 그대로이며 전체 identity 재검증·독립 phase 검토·main 병합과 운영/최신 인증 복원 gate가 남아 있다.
