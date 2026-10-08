@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { sessionCompletionSchema } from '@workout/contracts/session-completion';
 import type { Transaction } from '../src/database.js';
 import {
@@ -795,5 +796,59 @@ it('rejects a null race body without an exact deleted identity', async () => {
       code: 'CONTEXT_UNAVAILABLE',
       bound: 'decoded_bytes',
     });
+  }
+});
+
+it('decoded nutrition parent is returned only after actual relational and body correspondence', async () => {
+  const candidate = fullCandidate();
+  const ref = required(
+    enumerateRaceManualReviewCopiedSourcesV2(candidate).refs.find(
+      (r) => r.identity.kind === 'nutrition-plan-version',
+    ),
+  );
+  const m = transaction(candidate, (kind, row) =>
+    kind === 'nutrition-plan-version'
+      ? { ...row, source_stamp: '42', source_digest: 'c'.repeat(64) }
+      : row,
+  );
+  const { captureRaceManualReviewOwnedSourceRefDecodedV2In: decoded } =
+    await import('../src/race-manual-review-owned-source-inventory-v2.js');
+  const result = await decoded(
+    m.tx,
+    { identity: ref.identity, dtoDigest: ref.dtoDigest },
+    emptyBudget(),
+  );
+  expect(result.fact.state).toBe('matched');
+  expect(result.nutritionParent?.record).toEqual(
+    candidate.body.projectionInput.nutrition[0]?.record,
+  );
+  expect(result.nutritionParent?.sourceStamp).toBe('42');
+  expect(m.queries.at(-1)?.sql).toContain('r.xmin::text');
+  expect(m.queries.at(-1)?.sql).toContain('sha256(convert_to(r.record_json::text');
+  for (const metadataChange of [
+    { approvalId: '30000000-0000-4000-8000-000000000099' },
+    { approvedAt: '2026-03-01T00:00:00.000001Z' },
+    { linkedPlanVersionId: null },
+  ]) {
+    const bad = transaction(candidate, (kind, row) =>
+      kind === 'nutrition-plan-version'
+        ? {
+            ...row,
+            source_stamp: '42',
+            source_digest: 'c'.repeat(64),
+            metadata: {
+              ...z.record(z.string(), z.unknown()).parse(row.metadata),
+              ...metadataChange,
+            },
+          }
+        : row,
+    );
+    const rejected = await decoded(
+      bad.tx,
+      { identity: ref.identity, dtoDigest: ref.dtoDigest },
+      emptyBudget(),
+    );
+    expect(rejected.fact).toMatchObject({ state: 'unavailable', reason: 'source_tuple_mismatch' });
+    expect(rejected.nutritionParent).toBeNull();
   }
 });

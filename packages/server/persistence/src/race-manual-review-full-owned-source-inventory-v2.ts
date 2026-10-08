@@ -8,7 +8,10 @@ import {
   impactDependencyDigest,
 } from './race-plan-impact-dependencies.js';
 import type { Transaction } from './database.js';
-import { captureRaceManualReviewOwnedSourceRefV2In } from './race-manual-review-owned-source-inventory-v2.js';
+import {
+  captureRaceManualReviewOwnedSourceRefDecodedV2In,
+  captureRaceManualReviewOwnedSourceRefV2In,
+} from './race-manual-review-owned-source-inventory-v2.js';
 const coreIdentitySchema =
   raceManualReviewSourceInventoryV2Schema.out.shape.refs.element.shape.identity;
 const uuid = z.uuid().transform((v) => v.toLowerCase()),
@@ -238,11 +241,74 @@ async function versionRecord(
     ? observed(body)
     : missing('source_tuple_mismatch');
 }
+type DecodedNutritionParent = NonNullable<
+  Awaited<ReturnType<typeof captureRaceManualReviewOwnedSourceRefDecodedV2In>>['nutritionParent']
+>;
+const anchorSchema = z.strictObject({
+  xid: decimal,
+  role: z.string(),
+  sessionRole: z.string(),
+  tenant: z.string(),
+  isolation: z.string(),
+});
+type ParentCache = {
+  parents: Map<string, DecodedNutritionParent>;
+  anchor: z.infer<typeof anchorSchema> | null;
+};
+const parentKey = (planId: string, versionId: string) => JSON.stringify([planId, versionId]);
+async function readCacheAnchor(tx: Transaction, budget: SourceBudget, id: FullIdentity) {
+  const row = await readBounded(
+    tx,
+    budget,
+    id,
+    `SELECT current_setting('app.athlete_id',true) AS athlete_id,jsonb_build_object('xid',txid_current()::text,'role',current_user,'sessionRole',session_user,'tenant',current_setting('app.athlete_id',true),'isolation',current_setting('transaction_isolation')) AS metadata,NULL::jsonb AS record_json`,
+    [],
+    16384,
+  );
+  if (!row) throw new RaceImpactDependencyError('INVALID_CONTEXT');
+  return parse(anchorSchema, row.metadata);
+}
+async function cachedNutritionParent(
+  tx: Transaction,
+  budget: SourceBudget,
+  id: FullIdentity,
+  planId: string,
+  versionId: string,
+  cache: ParentCache,
+): Promise<DecodedNutritionParent | null> {
+  const parent = cache.parents.get(parentKey(planId, versionId));
+  if (!parent || !cache.anchor) return null;
+  const current = await readCacheAnchor(tx, budget, id);
+  if (impactDependencyDigest(current) !== impactDependencyDigest(cache.anchor)) return null;
+  // Even in the same RR snapshot, own writes are visible. Compare actual row state,
+  // including JSONB bytes, before reusing the previously decoded immutable body.
+  const row = await readBounded(
+    tx,
+    budget,
+    id,
+    `SELECT v.athlete_id,jsonb_build_object('id',v.plan_id,'versionId',v.version_id,'version',v.version,'linkedPlanVersionId',v.linked_training_plan_version_id,'approvalId',v.approval_id,'approvedAt',to_char(v.approved_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"')) AS metadata,jsonb_build_object('sourceStamp',v.xmin::text,'sourceDigest',encode(sha256(convert_to(v.record_json::text,'UTF8')),'hex')) AS record_json FROM nutrition_plan_version v WHERE v.athlete_id=$1 AND v.plan_id::text=$2 AND v.version_id::text=$3`,
+    [tx.athleteId, planId, versionId],
+    16384,
+  );
+  if (!row) return null;
+  const stamp = parse(
+    z.strictObject({ sourceStamp: decimal, sourceDigest: hash.nullable() }),
+    row.record_json,
+  );
+  if (
+    stamp.sourceStamp !== parent.sourceStamp ||
+    stamp.sourceDigest !== parent.sourceDigest ||
+    impactDependencyDigest(row.metadata) !== impactDependencyDigest(parent.metadata)
+  )
+    return null;
+  return parent;
+}
 async function readAdditional(
   tx: Transaction,
   ref: FullRef,
   p: Preparation,
   budget: SourceBudget,
+  parentCache: ParentCache,
 ): Promise<Read> {
   const id = ref.identity;
   switch (id.kind) {
@@ -600,17 +666,30 @@ async function readAdditional(
         ...p.sourceInput.projectionInput.nutrition,
         ...(p.context.recoveryNutritionSources?.records.map((record) => ({ record })) ?? []),
       ]) {
-        const row = await readBounded(
+        const cached = await cachedNutritionParent(
           tx,
           budget,
           id,
-          `SELECT v.athlete_id,jsonb_build_object('id',v.plan_id,'versionId',v.version_id) AS metadata,v.record_json FROM nutrition_plan_version v WHERE v.athlete_id=$1 AND v.plan_id::text=$2 AND v.version_id::text=$3`,
-          [tx.athleteId, n.record.planId, n.record.versionId],
-          524800,
+          n.record.planId,
+          n.record.versionId,
+          parentCache,
         );
-        if (!row) continue;
-        const meta = parse(z.strictObject({ id: uuid, versionId: uuid }), row.metadata);
-        const record = parse(nutritionPlanVersionCompatibleV4Schema, row.record_json);
+        const row = cached
+          ? null
+          : await readBounded(
+              tx,
+              budget,
+              id,
+              `SELECT v.athlete_id,jsonb_build_object('id',v.plan_id,'versionId',v.version_id) AS metadata,v.record_json FROM nutrition_plan_version v WHERE v.athlete_id=$1 AND v.plan_id::text=$2 AND v.version_id::text=$3`,
+              [tx.athleteId, n.record.planId, n.record.versionId],
+              524800,
+            );
+        if (!cached && !row) continue;
+        const record =
+          cached?.record ?? parse(nutritionPlanVersionCompatibleV4Schema, row?.record_json);
+        const meta = cached
+          ? { id: record.planId, versionId: record.versionId }
+          : parse(z.strictObject({ id: uuid, versionId: uuid }), row?.metadata);
         if (record.planId !== meta.id || record.versionId !== meta.versionId)
           throw new RaceImpactDependencyError('INVALID_CONTEXT');
         if ('raceTimingPins' in record) {
@@ -667,16 +746,35 @@ export async function captureRaceManualReviewFullOwnedSourceInventoryV2In(
     0n,
     inventory.refs.reduce((n, r) => n + r.copiedLocations.length, 0),
   );
+  // Private to this invocation; no incoming context or serialized capability can populate it.
+  const parentCache: ParentCache = { parents: new Map(), anchor: null };
+  const hasPinFragments = inventory.refs.some(
+    (ref) => ref.identity.kind === 'race-timing-pin-fragment',
+  );
   const facts: z.infer<typeof fullFactSchema>[] = [];
   for (const ref of inventory.refs) {
     const core = coreIdentitySchema.safeParse(ref.identity);
     if (core.success) {
-      const result = await captureRaceManualReviewOwnedSourceRefV2In(
+      const decoded = await captureRaceManualReviewOwnedSourceRefDecodedV2In(
         tx,
         { identity: core.data, dtoDigest: ref.dtoDigest },
         budget,
       );
-      if (!result) throw new RaceImpactDependencyError('INVALID_CONTEXT');
+      const result = decoded.fact;
+      if (hasPinFragments && decoded.nutritionParent !== null) {
+        const anchor = await readCacheAnchor(tx, budget, ref.identity);
+        if (
+          anchor.tenant === tx.athleteId &&
+          anchor.role === anchor.sessionRole &&
+          ['repeatable read', 'serializable'].includes(anchor.isolation) &&
+          (parentCache.anchor === null ||
+            impactDependencyDigest(anchor) === impactDependencyDigest(parentCache.anchor))
+        ) {
+          parentCache.anchor = anchor;
+          const parent = decoded.nutritionParent;
+          parentCache.parents.set(parentKey(parent.record.planId, parent.record.versionId), parent);
+        }
+      }
       facts.push({
         identity: ref.identity,
         representation: ref.representation,
@@ -686,7 +784,7 @@ export async function captureRaceManualReviewFullOwnedSourceInventoryV2In(
       });
       continue;
     }
-    const read = await readAdditional(tx, ref, p, budget);
+    const read = await readAdditional(tx, ref, p, budget, parentCache);
     const digest = read.reason === null ? impactDependencyDigest(read.body) : null;
     const reason = read.reason ?? (digest === ref.dtoDigest ? null : 'copied_body_mismatch');
     facts.push({

@@ -149,6 +149,15 @@ const rowSchema = plainGuard.pipe(
     metadata: z.unknown(),
     record_json: z.unknown(),
     current_record_json: z.unknown(),
+    source_stamp: z
+      .string()
+      .regex(/^(0|[1-9][0-9]*)$/)
+      .optional(),
+    source_digest: z
+      .string()
+      .regex(/^[a-f0-9]{64}$/)
+      .nullable()
+      .optional(),
   }),
 );
 const uuid = z.uuid().transform((v) => v.toLowerCase());
@@ -445,7 +454,7 @@ function correspondence(
 }
 /** One strict ref, actual same-tx owned row/DTO correspondence only. No seal,
  * permission or admission. Caller counts original source visits before dedup. */
-export async function captureRaceManualReviewOwnedSourceRefV2In(
+export async function captureRaceManualReviewOwnedSourceRefDecodedV2In(
   tx: Transaction,
   unknownRef: unknown,
   budget: SourceBudget,
@@ -461,6 +470,12 @@ export async function captureRaceManualReviewOwnedSourceRefV2In(
     plainGuard.pipe(z.strictObject({ identity: identitySchema, dtoDigest: hash })),
     unknownRef,
   );
+  let nutritionParent: {
+    record: z.infer<typeof nutritionPlanVersionCompatibleV4Schema>;
+    metadata: unknown;
+    sourceStamp: string;
+    sourceDigest: string;
+  } | null = null;
   const refs = [ref];
   const facts: z.infer<typeof factSchema>[] = [];
   for (const ref of refs) {
@@ -496,7 +511,7 @@ export async function captureRaceManualReviewOwnedSourceRefV2In(
       throw new RaceImpactDependencyError('CONTEXT_UNAVAILABLE', 'decoded_bytes');
     const rows = (
       await tx.query(
-        `/* manual_review_owned_v2 body ${id.kind} */ SELECT r.athlete_id,${s.metadata} AS metadata,CASE WHEN octet_length((${s.record})::text)<=${s.maximum} THEN ${s.record} ELSE NULL END AS record_json,CASE WHEN coalesce(octet_length((${s.current})::text),0)<=${s.maximum} THEN ${s.current} ELSE NULL END AS current_record_json FROM ${s.from} WHERE ${s.where} LIMIT 2`,
+        `/* manual_review_owned_v2 body ${id.kind} */ SELECT r.athlete_id,${s.metadata} AS metadata,CASE WHEN octet_length((${s.record})::text)<=${s.maximum} THEN ${s.record} ELSE NULL END AS record_json,CASE WHEN coalesce(octet_length((${s.current})::text),0)<=${s.maximum} THEN ${s.current} ELSE NULL END AS current_record_json${id.kind === 'nutrition-plan-version' ? ",r.xmin::text AS source_stamp,encode(sha256(convert_to(r.record_json::text,'UTF8')),'hex') AS source_digest" : ''} FROM ${s.from} WHERE ${s.where} LIMIT 2`,
         s.values,
       )
     ).rows;
@@ -533,10 +548,30 @@ export async function captureRaceManualReviewOwnedSourceRefV2In(
       unavailable('copied_body_mismatch');
       continue;
     }
+    if (
+      id.kind === 'nutrition-plan-version' &&
+      row.source_stamp !== undefined &&
+      typeof row.source_digest === 'string'
+    ) {
+      nutritionParent = {
+        record: parse(nutritionPlanVersionCompatibleV4Schema, checked.body),
+        metadata: row.metadata,
+        sourceStamp: row.source_stamp,
+        sourceDigest: row.source_digest,
+      };
+    }
     facts.push({ identity: id, state: 'matched', dtoDigest: digest, reason: null });
   }
   if (facts.length !== 1) throw new RaceImpactDependencyError('INVALID_CONTEXT');
-  return parse(factSchema, facts[0]);
+  return { fact: parse(factSchema, facts[0]), nutritionParent };
+}
+/** Compatibility boundary: only the original fact leaves the retained read API. */
+export async function captureRaceManualReviewOwnedSourceRefV2In(
+  tx: Transaction,
+  unknownRef: unknown,
+  budget: SourceBudget,
+) {
+  return (await captureRaceManualReviewOwnedSourceRefDecodedV2In(tx, unknownRef, budget)).fact;
 }
 /** Retained correspondence only. Caller must use its authenticated fenced snapshot
  * transaction. No injected read callback, processing permission or SQL seal exists. */

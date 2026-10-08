@@ -701,3 +701,7 @@ Public 승인 continuation의 legacy actual 회귀36/36과 rootunit59를 확인�
 ## 2026-10-08 Calendar 수집 실제 회귀와 다음 작업
 
 Calendar root 판단 후 기존 fullcollector로 이어지는 변경은 Root unit47/47, 실제 preview/budget23/23 및 기존 승인36/36을 통과했다. 기존 cap·parent/history/freshness 검증은 유지한다. Dense400은 R9 4pass/2fail로 additional nutrition parent 재읽기와 혼합 저장 입력 한도가 남아 있으며 완료가 아니다. Native agent가 동일 capture 내 엄격 검증된 parent 재사용과 profile22 실제 HTTP export 시험을 각각 준비한다. Root harness unit83/83·TS0, 실제DB 정리0이며 HTTP/current default/cold/security/restore/phase/출시는 별도 미완료다. 상세 실패와 최종 증거는 I 기록에 보존한다. 신규 계획 사용 개발을 계속하며 FUT-09 원문 이식만 별도 대기한다.
+
+## 2026-10-08 Current22 실제 두 Host 검증 후속
+
+Root는 profile22의 기존 두Host identity12경로 통과를 확인했다. 신규 V38 HTTP2는 시험용 회복 draft 입력400으로 중단돼 agent가 fixture만 교정한다. 검증한 parent의 capture-local 재사용은 unit52/52·기존 inventory 실제15/15 통과다. Dense 승인400은 decoded_bytes를 넘어 실제 영양 쓰기 시간제한57014, 혼합 저장400/400/30은 INPUT_BOUND가 남아 전체 수용은 미완료다. Native 읽기 조사는 두 병목을 별개로 진행한다. source 변경0·실제 시험DB/roles/slots 잔존0, I/J/phase·main/push0·외부not_executed를 유지한다.

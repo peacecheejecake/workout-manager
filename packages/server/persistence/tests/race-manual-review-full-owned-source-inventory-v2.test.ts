@@ -866,3 +866,238 @@ it('reserves capability scalar before SQL when inherited remaining bytes are bel
   expect(queries).toEqual([]);
   expect(queries.some((q) => q.includes('has_table_privilege'))).toBe(false);
 });
+
+function nutritionPinPreparation() {
+  return input((c) => {
+    const record = nutritionPlanVersionCompatibleV4Schema.parse({
+      schemaVersion: 4,
+      planId: '30000000-0000-4000-8000-000000000001',
+      versionId: '30000000-0000-4000-8000-000000000002',
+      version: 1,
+      previousVersionId: null,
+      period: { from: '2026-10-01', toInclusive: '2026-10-31' },
+      timezone: c.event.timezone,
+      purpose: 'Synthetic',
+      linkedTrainingPlanVersionId: null,
+      approvedAt: now,
+      approvalId: '30000000-0000-4000-8000-000000000003',
+      items: [
+        {
+          id: 'pin-item',
+          planVersionId: '30000000-0000-4000-8000-000000000002',
+          category: 'before',
+          title: 'Synthetic',
+          anchor: {
+            kind: 'relative',
+            entity: 'race',
+            entityId: race,
+            point: 'start',
+            offsetMinutes: 0,
+          },
+          foods: [],
+          targets: [],
+          instructions: 'Synthetic explicit action',
+          evidenceIds: [],
+          source: 'user_confirmed',
+        },
+      ],
+      raceTimingPins: [
+        {
+          pinVersion: 1,
+          namespace: 'race-event-revision',
+          eventId: race,
+          eventRevision: 1,
+          sourceDigestVersion: 'race-event-values-canonical-v1',
+          sourceDigest: hash,
+          localDate: c.event.localDate,
+          localStartTime: null,
+          timezone: c.event.timezone,
+          start: { state: 'unknown', reason: 'start_time_not_recorded' },
+          end: { state: 'unknown', reason: 'race_end_not_recorded' },
+        },
+      ],
+      itemRaceTimingBindings: [
+        { itemId: 'pin-item', binding: { state: 'captured', eventId: race, eventRevision: 1 } },
+      ],
+    });
+    c.nutrition = [
+      {
+        aggregateId: record.planId,
+        versionId: record.versionId,
+        record,
+        sourceRelation: 'absent',
+        relativeItems: [],
+      },
+    ];
+    c.rosters.nutrition = [{ aggregateId: record.planId, versionId: record.versionId }];
+  });
+}
+function parentQueries(
+  p: ReturnType<typeof input>,
+  isolation = 'repeatable read',
+  mutation = false,
+) {
+  const record = p.context.nutrition[0]?.record;
+  if (!record) throw Error('fixture');
+  const metadata = {
+    id: record.planId,
+    versionId: record.versionId,
+    version: record.version,
+    linkedPlanVersionId: record.linkedTrainingPlanVersionId,
+    approvalId: record.approvalId,
+    approvedAt: '2026-10-07T00:00:00.000000Z',
+  };
+  return (sql: string): Record<string, unknown>[] => {
+    if (sql.includes('scalar'))
+      return [
+        {
+          count: '1',
+          bytes: '10000',
+          maximum: '10000',
+          bodyMaximum: '9000',
+          currentMaximum: '0',
+          metadataMaximum: '1000',
+        },
+      ].map((row) =>
+        sql.includes('full_owned_v2')
+          ? { count: row.count, bytes: row.bytes, maximum: row.maximum }
+          : {
+              count: row.count,
+              bytes: row.bytes,
+              bodyMaximum: row.bodyMaximum,
+              currentMaximum: row.currentMaximum,
+              metadataMaximum: row.metadataMaximum,
+            },
+      );
+    if (sql.includes('txid_current'))
+      return [
+        {
+          athlete_id: athlete,
+          metadata: {
+            xid: '42',
+            role: 'runtime',
+            sessionRole: 'runtime',
+            tenant: athlete,
+            isolation,
+          },
+          record_json: null,
+        },
+      ];
+    if (sql.includes('manual_review_owned_v2 body nutrition-plan-version'))
+      return [
+        {
+          athlete_id: athlete,
+          metadata,
+          record_json: record,
+          current_record_json: null,
+          source_stamp: '42',
+          source_digest: 'c'.repeat(64),
+        },
+      ];
+    if (sql.includes("jsonb_build_object('sourceStamp'"))
+      return [
+        {
+          athlete_id: athlete,
+          metadata,
+          record_json: { sourceStamp: '42', sourceDigest: (mutation ? 'd' : 'c').repeat(64) },
+        },
+      ];
+    if (sql.includes('full_owned_v2 body race-timing-pin-fragment'))
+      return [
+        {
+          athlete_id: athlete,
+          metadata: { id: record.planId, versionId: record.versionId },
+          record_json: record,
+        },
+      ];
+    throw Error('Unexpected parent query');
+  };
+}
+it('uses only the actual decoded parent for a pin, with actual anchor and parent-state recheck', async () => {
+  const p = nutritionPinPreparation();
+  const observed = await observe(p, parentQueries(p));
+  expect(
+    observed.result.facts.find((f) => f.identity.kind === 'race-timing-pin-fragment'),
+  ).toMatchObject({ state: 'matched' });
+  const fullReads = observed.queries.filter(
+    (q) =>
+      q.includes('full_owned_v2 body race-timing-pin-fragment') &&
+      q.includes('AS metadata,v.record_json'),
+  );
+  expect(fullReads).toHaveLength(0);
+  expect(observed.queries.some((q) => q.includes("jsonb_build_object('sourceStamp'"))).toBe(true);
+  expect(observed.budget.sources).toBe(
+    enumerate(p).refs.reduce((n, r) => n + r.copiedLocations.length, 0),
+  );
+});
+for (const [isolation, mutation] of [
+  ['read committed', false],
+  ['repeatable read', true],
+] as const) {
+  it(`retains actual full parent read for ${isolation} / changed body ${mutation}`, async () => {
+    const p = nutritionPinPreparation();
+    const result = await observe(p, parentQueries(p, isolation, mutation));
+    expect(result.queries.some((q) => q.includes('AS metadata,v.record_json'))).toBe(true);
+    expect(
+      result.result.facts.find((f) => f.identity.kind === 'race-timing-pin-fragment'),
+    ).toMatchObject({ state: 'matched' });
+  });
+}
+
+for (const mode of ['role', 'missing_parent', 'metadata', 'purged'] as const) {
+  it(`never masks ${mode} with a decoded parent cache`, async () => {
+    const p = nutritionPinPreparation(),
+      base = parentQueries(p);
+    const result = await observe(p, (sql) => {
+      if (sql.includes('scalar')) {
+        if (mode === 'missing_parent' && sql.includes("jsonb_build_object('sourceStamp'"))
+          return [{ count: '0', bytes: '0', maximum: '0' }];
+        return base(sql);
+      }
+      const rows = base(sql);
+      if (mode === 'role' && sql.includes('txid_current'))
+        return rows.map((row) => ({
+          ...row,
+          metadata: {
+            ...z.record(z.string(), z.unknown()).parse(row.metadata),
+            sessionRole: 'other',
+          },
+        }));
+      if (sql.includes("jsonb_build_object('sourceStamp'")) {
+        if (mode === 'missing_parent') return [];
+        if (mode === 'metadata')
+          return rows.map((row) => ({
+            ...row,
+            metadata: {
+              ...z.record(z.string(), z.unknown()).parse(row.metadata),
+              approvalId: generation,
+            },
+          }));
+        if (mode === 'purged')
+          return rows.map((row) => ({
+            ...row,
+            record_json: { sourceStamp: '42', sourceDigest: null },
+          }));
+      }
+      return rows;
+    });
+    expect(result.queries.some((q) => q.includes('AS metadata,v.record_json'))).toBe(true);
+    expect(
+      result.result.facts.find((f) => f.identity.kind === 'race-timing-pin-fragment'),
+    ).toMatchObject({ state: 'matched' });
+  });
+}
+it('cache remains local to one capture and does not mutate the supplied preparation', async () => {
+  const p = nutritionPinPreparation(),
+    before = structuredClone(p);
+  const first = await observe(p, parentQueries(p));
+  const second = await observe(p, parentQueries(p));
+  expect(p).toEqual(before);
+  expect(first.result).toEqual(second.result);
+  for (const result of [first, second])
+    expect(
+      result.queries.filter((q) =>
+        q.includes('manual_review_owned_v2 body nutrition-plan-version'),
+      ),
+    ).toHaveLength(1);
+});
