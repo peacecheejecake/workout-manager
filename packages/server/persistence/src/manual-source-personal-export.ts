@@ -208,6 +208,19 @@ export function mapManualSourcePersonalExportV1(
     raceManualInternalWholePlainSchema.parse({ rawManual, rawNutrition });
     const manual = manualSchema.parse(rawManual),
       nutrition = nutritionSchema.parse(rawNutrition);
+    return mapManualSourcePersonalExportDecodedV2(manual, nutrition);
+  } catch (error) {
+    if (error instanceof RetainedPersonalExportError) throw error;
+    fail('CORRUPT');
+  }
+}
+/** Internal typed port following bounded wire validation and per-chain decode.
+ * Existing source ordinal, inventory and privacy checks remain mandatory. */
+export function mapManualSourcePersonalExportDecodedV2(
+  manual: z.infer<typeof manualSchema>,
+  nutrition: z.infer<typeof nutritionSchema>,
+): ManualSourcePersonalExport {
+  try {
     const parents = manual.parents.map((p) => ({
       evidenceId: p.evidenceId,
       ordinal: p.ordinal,

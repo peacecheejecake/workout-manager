@@ -755,3 +755,7 @@ Root SQL139 actual PG R1 9pass/7fail을 보존하고, 단일 PoolClient transact
 ## 2026-10-08 mixed 대량 승인 실측 후속
 
 정식 named23과 pooled134..138로 genuine400훈련/400영양/30루틴을 시험한 Root R1은2pass/4fail이었다. 첫 저장 SQL135의 timeout으로 승인·철회·삭제 후속3사례가 실행되지 못했다. 작은 SQL139 16/16 결과로 이 실패를 덮지 않는다. 입력 수·상한·timeout은 유지하며 lookup의 반복 전체 검증 비용을 native agent가 분석 중이다. Node export composer도 병렬 준비한다. Named23+raw134..139의 실제 함수20개/기존33개 불변 관측 artifact를 확보했으나 최신 profile 설치·지원·복원·mixed 수용은 미완료다. 자세한 실제 로그·SHA는 [I 기록](progress/M2-02i.md)에 보존한다.
+
+## 2026-10-08 Node export 교정 수용·대량 병목 계측
+
+Root 새 Node V38 export R2 실제7/7와 별도 단위147/147을 확인했다. 기존 R1 4pass/3fail은 보존했고 exact evidenceId 연결·실제 RR blocked writer·audit/no-fallback 수용을 검증했다. 대량 첫 사례 계측은1fail/5skip이며 actual store5013ms/57014였다. Genuine refs8/copiedLocations436/pool6/substitutions30을 확인했다. SQL140으로 동일 호출의 반복 전체 검증을 줄이는 개선을 native agent가 준비한다. 수량·상한·deadline·원134..139 입력은 유지한다. 작은 export 통과를 혼합 전체 승인/export·정상 설치/복원/phase/main 완료로 확대하지 않는다. 상세 로그·SHA는 [I 기록](progress/M2-02i.md)을 따른다.

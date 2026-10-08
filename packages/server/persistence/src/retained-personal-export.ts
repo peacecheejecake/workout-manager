@@ -116,18 +116,30 @@ export function mapRaceManualPersonalExportV1(raw: unknown): RaceManualPersonalE
       manualRaceApprovalHistory: envelope.approvalHistory,
       manualRaceCommandResults: envelope.commandResults,
     });
-    const seen = new Set<string>();
-    for (const row of envelope.trainingAggregateMappings) {
-      if (seen.has(row.version_id)) fail('CORRUPT');
-      seen.add(row.version_id);
-    }
-    return { ...publicFacts, trainingPlanAggregates: envelope.trainingAggregateMappings };
+    return mapRaceManualPersonalExportProjectedV2(publicFacts, envelope.trainingAggregateMappings);
   } catch (error) {
     if (error instanceof RetainedPersonalExportError) throw error;
     if (error instanceof RaceManualPublicPreviewError && error.code === 'PUBLIC_PREVIEW_LIMIT')
       fail('TOO_LARGE');
     fail('CORRUPT');
   }
+}
+/** Internal safe projection port; public facts and immutable aggregate mappings
+ * are validated again. It cannot manufacture a review or processing authority. */
+export function mapRaceManualPersonalExportProjectedV2(
+  rawFacts: unknown,
+  rawMappings: unknown,
+): RaceManualPersonalExportData & {
+  trainingPlanAggregates: z.infer<typeof trainingPlanAggregateExportSchema>[];
+} {
+  const publicFacts = decode(raceManualPersonalExportDataSchema, rawFacts);
+  const mappings = decode(z.array(trainingPlanAggregateExportSchema).max(1000), rawMappings);
+  const seen = new Set<string>();
+  for (const row of mappings) {
+    if (seen.has(row.version_id)) fail('CORRUPT');
+    seen.add(row.version_id);
+  }
+  return { ...publicFacts, trainingPlanAggregates: mappings };
 }
 const capability = z.strictObject({ installed: z.boolean(), executable: z.boolean() });
 const response = z.strictObject({

@@ -208,6 +208,18 @@ const readySourceSchema = z.strictObject({
   candidate: raceManualApprovalCandidateSchema,
   preparation: raceManualPublicPreviewSourceSchema.options[0].shape.preparation,
 });
+/** Internal typed port: the batch reader bounds the encoded frame and decodes
+ * each retained chain before invoking this shared structural projection. */
+export function projectRaceManualDecodedReadyPlannedSource(
+  read: z.infer<typeof readySourceSchema>,
+) {
+  return projectReadySource(read);
+}
+export function projectRaceManualDecodedPublicPreview(
+  read: z.infer<typeof raceManualPublicPreviewSourceSchema>,
+): RaceManualPublicPreview {
+  return projectPublicSource(read);
+}
 function projectReadySource(read: z.infer<typeof readySourceSchema>) {
   const { context: c, sourceInput: input, candidate: readonly } = read.preparation;
   const app = read.candidate;

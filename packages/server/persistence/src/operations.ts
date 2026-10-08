@@ -824,11 +824,17 @@ export function createOperationsV38BatchRepository(database: Database): Operatio
   return createRetainedOperationsRepository(database, 38, parseAccountExportV38, 'batch');
 }
 
+/** Explicit one-copy pooled export. Capability failure never selects an old
+ * whole-body reader; runtime support and restore authority remain unverified. */
+export function createOperationsV38PooledRepository(database: Database): OperationsV38Repository {
+  return createRetainedOperationsRepository(database, 38, parseAccountExportV38, 'pooled');
+}
+
 function createRetainedOperationsRepository<T>(
   database: Database,
   version: 36 | 37 | 38,
   parse: (raw: unknown) => T,
-  sourceTransport: 'separate' | 'batch' = 'separate',
+  sourceTransport: 'separate' | 'batch' | 'pooled' = 'separate',
 ): Omit<OperationsRepository, 'exportAccount'> & { exportAccount(athleteId: string): Promise<T> } {
   const historical = createOperationsRepository(database);
   return {
@@ -881,9 +887,17 @@ function createRetainedOperationsRepository<T>(
           readCheckInTemplatePersonalExportV1In(tx, remaining(), debit),
         );
         const withTemplates = { ...base, ...templates };
-        const manual = await loadRetained(() =>
-          readRaceManualPersonalExportV1In(tx, remaining(), debit),
-        );
+        const pooled =
+          sourceTransport === 'pooled'
+            ? await loadRetained(async () => {
+                const { readManualPooledPersonalExportBatchV1In } =
+                  await import('./manual-pooled-personal-export-batch-reader-v1.js');
+                return readManualPooledPersonalExportBatchV1In(tx, remaining(), debit);
+              })
+            : null;
+        const manual =
+          pooled?.manual ??
+          (await loadRetained(() => readRaceManualPersonalExportV1In(tx, remaining(), debit)));
         const batch =
           sourceTransport === 'batch'
             ? await loadRetained(() =>
@@ -893,6 +907,7 @@ function createRetainedOperationsRepository<T>(
         let internal = {};
         if (version >= 37) {
           const observed =
+            pooled?.internal ??
             batch?.internal ??
             (await loadRetained(() =>
               readRaceManualInternalPersonalExportV1In(tx, remaining(), debit),
@@ -908,6 +923,7 @@ function createRetainedOperationsRepository<T>(
         let source = {};
         if (version === 38) {
           const observed =
+            pooled?.sources ??
             batch?.sources ??
             (await loadRetained(() => readManualSourcePersonalExportV1In(tx, remaining(), debit)));
           source = {

@@ -25,6 +25,7 @@ import {
 } from './race-manual-public-impact.js';
 import {
   projectRaceManualReadyPlannedSource,
+  projectRaceManualDecodedReadyPlannedSource,
   RaceManualPublicPreviewError,
 } from './race-manual-public-preview.js';
 import { impactDependencyDigest } from './race-plan-impact-dependencies.js';
@@ -224,7 +225,19 @@ function render(raw: unknown): RaceManualInternalPersonalExport {
   bounded(raw);
   const decoded = raceManualInternalPersonalExportSourceSchema.safeParse(raw);
   if (!decoded.success) invalid();
-  const data = decoded.data;
+  return renderDecoded(decoded.data, false);
+}
+/** Internal typed port after an encoded batch has been bounded and every chain
+ * decoded through the frozen retained codec. No authentication is implied. */
+export function renderRaceManualInternalPersonalExportDecodedV2(
+  data: z.infer<typeof raceManualInternalPersonalExportSourceSchema>,
+): RaceManualInternalPersonalExport {
+  return renderDecoded(data, true);
+}
+function renderDecoded(
+  data: z.infer<typeof raceManualInternalPersonalExportSourceSchema>,
+  pooled: boolean,
+): RaceManualInternalPersonalExport {
   const sources = new Map(data.chains.map((v) => [v.evidenceId, v]));
   if (sources.size !== data.chains.length) invalid();
   const chains = data.chains.map((v) => {
@@ -301,7 +314,9 @@ function render(raw: unknown): RaceManualInternalPersonalExport {
           blockers: app.blockers,
         },
       };
-    const ready = projectRaceManualReadyPlannedSource({ candidate: app, preparation: p });
+    const ready = (
+      pooled ? projectRaceManualDecodedReadyPlannedSource : projectRaceManualReadyPlannedSource
+    )({ candidate: app, preparation: p });
     if (!sameAffectedMembership(app.affected, content.affected)) invalid();
     if (content.routines.state === 'present') {
       const readyRoutines = ready.routines;
