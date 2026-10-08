@@ -1,7 +1,7 @@
 {
   "assetVersion": 1,
-  "sourceManifestSha256": "cd331ca20f2fb2e3115bffbb8bb5b17df5c7d031dcc073ef5ad94591e3b3bb95",
-  "manifestFileSha256": "25870c55a183a7c61461c31f24a8cd4bc944c2f95835c2e587f5a3ea0ef5254e",
+  "sourceManifestSha256": "39d2f7ccaf91f9c91aab07fab64e39cd77096fd474c84c30cfdae4686e17813a",
+  "manifestFileSha256": "241845e3d9cf441565f16179f690977ca090de2337c570e9fa7c8c956a5dea38",
   "manifestPath": "manifest.json",
   "profileVersion": 9,
   "runtimeStep": 25,
@@ -196,7 +196,7 @@
     },
     {
       "path": "packages/contracts/src/race-manual-public-impact.ts",
-      "sha256": "288ec06a08fcdd44aeb8ac20a772a81af083d85be3209b8bf1ed6ae69c1ffa86",
+      "sha256": "40d67042e8b8736fed04c2e58cf80da2617efc36aac2a0c0fe21b2723dd12c35",
       "role": "source"
     },
     {
@@ -1341,7 +1341,7 @@
     },
     {
       "path": "packages/server/persistence/src/race-manual-review-full-copied-inventory-v2.ts",
-      "sha256": "d44b1b7fc98558c4c628f29b237e481fbdbad0b059562a52aee2b3d983ee7ddd",
+      "sha256": "17f17c5259a19ed3cceb3c9bf32e460cd849d4b084c25d907d59813f5f74ef84",
       "role": "source"
     },
     {
@@ -1682,7 +1682,7 @@
       "label": "public training400/nutrition400/routine30 review stores one lossless pooled body and frozen preview without plan writes",
       "log": "evidence/logs/wm-pooled-dense-v2-root-pg-r8-20261008.log",
       "suitePassed": 8,
-      "scope": "latest_dense"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -1690,7 +1690,7 @@
       "label": "genuine reviewed dense chain exports full frozen planned/source census before approval without domain writes",
       "log": "evidence/logs/wm-pooled-dense-v2-root-pg-r8-20261008.log",
       "suitePassed": 8,
-      "scope": "latest_dense"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -1698,7 +1698,7 @@
       "label": "explicit approval commits all four dense heads atomically and original receipt replay creates no extra versions",
       "log": "evidence/logs/wm-pooled-dense-v2-root-pg-r8-20261008.log",
       "suitePassed": 8,
-      "scope": "latest_dense"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -1706,7 +1706,7 @@
       "label": "withdrawal permits original review/approval replay and frozen retained preview while refusing new processing",
       "log": "evidence/logs/wm-pooled-dense-v2-root-pg-r8-20261008.log",
       "suitePassed": 8,
-      "scope": "latest_dense"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -1714,7 +1714,7 @@
       "label": "approved dense chain exports original approval receipts and atomic heads after withdrawal with frozen source census",
       "log": "evidence/logs/wm-pooled-dense-v2-root-pg-r8-20261008.log",
       "suitePassed": 8,
-      "scope": "latest_dense"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -1722,7 +1722,7 @@
       "label": "genuine account erasure removes whole pooled payloads/candidates/receipts and prevents retained resurrection",
       "log": "evidence/logs/wm-pooled-dense-v2-root-pg-r8-20261008.log",
       "suitePassed": 8,
-      "scope": "latest_dense"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -1730,7 +1730,7 @@
       "label": "routine31/400 are rejected separately from the actual accepted30 blueprint without adding versions",
       "log": "evidence/logs/wm-pooled-dense-v2-root-pg-r8-20261008.log",
       "suitePassed": 8,
-      "scope": "latest_dense"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -1738,7 +1738,7 @@
       "label": "semantic5001 remains a codec negative and is never substituted for genuine accepted mixed400/400/30",
       "log": "evidence/logs/wm-pooled-dense-v2-root-pg-r8-20261008.log",
       "suitePassed": 8,
-      "scope": "latest_dense"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -1746,7 +1746,7 @@
       "label": "genuine public source preparation stores pooled parent and delta reconstructs exact old reader result",
       "log": "evidence/logs/wm-parent-delta142-root-pg-r2-20261008.log",
       "suitePassed": 9,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -1754,7 +1754,7 @@
       "label": "honest historical legacy parent remains explicit legacy and reconstructs losslessly",
       "log": "evidence/logs/wm-parent-delta142-root-pg-r2-20261008.log",
       "suitePassed": 9,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -1762,7 +1762,7 @@
       "label": "typed changed dictionary is compression only: exact prior parent is recovered with no current authorization",
       "log": "evidence/logs/wm-parent-delta142-root-pg-r2-20261008.log",
       "suitePassed": 9,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -1770,7 +1770,7 @@
       "label": "missing/foreign IDs return no parent; wrong dictionary ownership and malformed encoding reject",
       "log": "evidence/logs/wm-parent-delta142-root-pg-r2-20261008.log",
       "suitePassed": 9,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -1778,7 +1778,7 @@
       "label": "base and node/depth/whole response bounds are finite, and direct runtime private helper is denied",
       "log": "evidence/logs/wm-parent-delta142-root-pg-r2-20261008.log",
       "suitePassed": 9,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -1786,7 +1786,7 @@
       "label": "new reader refuses owner and non-snapshot runtime while old24 bodies/OIDs/security/ACL stay unchanged",
       "log": "evidence/logs/wm-parent-delta142-root-pg-r2-20261008.log",
       "suitePassed": 9,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -1794,7 +1794,7 @@
       "label": "installation repeat and valid predecessor body/config/ACL drift deny atomically with both new roots absent",
       "log": "evidence/logs/wm-parent-delta142-root-pg-r2-20261008.log",
       "suitePassed": 9,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -1802,7 +1802,7 @@
       "label": "successful new installation then transaction failure removes both new functions atomically",
       "log": "evidence/logs/wm-parent-delta142-root-pg-r2-20261008.log",
       "suitePassed": 9,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -1810,7 +1810,7 @@
       "label": "withdrawal retains owned parent reading and genuine race deletion purges delta without resurrection",
       "log": "evidence/logs/wm-parent-delta142-root-pg-r2-20261008.log",
       "suitePassed": 9,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -1818,7 +1818,7 @@
       "label": "normal107 public eight source families have exact ordered SQL relation observations without writes",
       "log": "evidence/logs/wm-full-owned-bindings-root-pg-r3-20261007.log",
       "suitePassed": 18,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -1826,7 +1826,7 @@
       "label": "strict all27 identities retain every absent fact rather than inventing sources or history",
       "log": "evidence/logs/wm-full-owned-bindings-root-pg-r3-20261007.log",
       "suitePassed": 18,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -1834,7 +1834,7 @@
       "label": "foreign populated sources and wrong tuple are contentless unavailable under runtime RLS",
       "log": "evidence/logs/wm-full-owned-bindings-root-pg-r3-20261007.log",
       "suitePassed": 18,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -1842,7 +1842,7 @@
       "label": "strict identity rejects malformed fields before any source facts ($kind)",
       "log": "evidence/logs/wm-full-owned-bindings-root-pg-r3-20261007.log",
       "suitePassed": 18,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -1850,7 +1850,7 @@
       "label": "rejects aliases/duplicate, oversized5001 refs, missingrace, RC and missingtenant without authority",
       "log": "evidence/logs/wm-full-owned-bindings-root-pg-r3-20261007.log",
       "suitePassed": 18,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -1858,7 +1858,7 @@
       "label": "invoker function keeps plain owner and PUBLIC execute revoked, no registry activation",
       "log": "evidence/logs/wm-full-owned-bindings-root-pg-r3-20261007.log",
       "suitePassed": 18,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -1866,7 +1866,7 @@
       "label": "public opaque food, recovery strategy and method, text versions retain exact historical relations",
       "log": "evidence/logs/wm-full-owned-bindings-root-pg-r3-20261007.log",
       "suitePassed": 18,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -1874,7 +1874,7 @@
       "label": "current/manual Activity, delta overlay, historical checkin and intake use distinct exact revision namespaces",
       "log": "evidence/logs/wm-full-owned-bindings-root-pg-r3-20261007.log",
       "suitePassed": 18,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -1882,7 +1882,7 @@
       "label": "public checklist and timer require exact frozen run/step membership and do not invent historical timers",
       "log": "evidence/logs/wm-full-owned-bindings-root-pg-r3-20261007.log",
       "suitePassed": 18,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -1890,7 +1890,7 @@
       "label": "public full workout and embedded strength session preserve exact target relational membership",
       "log": "evidence/logs/wm-full-owned-bindings-root-pg-r3-20261007.log",
       "suitePassed": 18,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -1898,7 +1898,7 @@
       "label": "gallery descriptor has explicit113 capability absence and normal ledger grant, no locator output",
       "log": "evidence/logs/wm-full-owned-bindings-root-pg-r3-20261007.log",
       "suitePassed": 18,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -1906,7 +1906,7 @@
       "label": "public course and track descriptors bind ordered exact lineage and retained historical revision",
       "log": "evidence/logs/wm-full-owned-bindings-root-pg-r3-20261007.log",
       "suitePassed": 18,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -1914,7 +1914,7 @@
       "label": "explicit V4 staging binds old/current pin fragments through exact saved nutrition membership, never a current-race substitute",
       "log": "evidence/logs/wm-full-owned-bindings-root-pg-r3-20261007.log",
       "suitePassed": 18,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -1922,7 +1922,7 @@
       "label": "all actual full-row bytes are preflight bounded before hashing or returning oversized groups",
       "log": "evidence/logs/wm-full-owned-bindings-root-pg-r3-20261007.log",
       "suitePassed": 18,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -2242,7 +2242,7 @@
       "label": "exports all saved refs and many-to-many parents with known frozen planned locations, no private paths",
       "log": "evidence/logs/wm-source130-root-pg-r6-20261008.log",
       "suitePassed": 12,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -2250,7 +2250,7 @@
       "label": "keeps historical nutrition copied training %s private and identifies only the frozen current before",
       "log": "evidence/logs/wm-source130-root-pg-r6-20261008.log",
       "suitePassed": 12,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -2258,7 +2258,7 @@
       "label": "exports genuine ended routine %s historical sources without claiming current before membership",
       "log": "evidence/logs/wm-source130-root-pg-r6-20261008.log",
       "suitePassed": 12,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -2266,7 +2266,7 @@
       "label": "retains all refs after genuine race deletion and exposes only matched original deletion facts",
       "log": "evidence/logs/wm-source130-root-pg-r6-20261008.log",
       "suitePassed": 12,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -2274,7 +2274,7 @@
       "label": "keeps retained reads after app withdrawal and never exposes another tenant rows",
       "log": "evidence/logs/wm-source130-root-pg-r6-20261008.log",
       "suitePassed": 12,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -2282,7 +2282,7 @@
       "label": "rejects genuine erased tenant and bounded source overflow rather than fabricating empty arrays",
       "log": "evidence/logs/wm-source130-root-pg-r6-20261008.log",
       "suitePassed": 12,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -2290,7 +2290,7 @@
       "label": "exports original SQL110 origin and retained/reconnected/carried versions without restoring deleted timing",
       "log": "evidence/logs/wm-source130-root-pg-r6-20261008.log",
       "suitePassed": 12,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -2298,7 +2298,7 @@
       "label": "reserves escaped opaque item-ID JSON bytes before origin aggregation",
       "log": "evidence/logs/wm-source130-root-pg-r6-20261008.log",
       "suitePassed": 12,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -2306,7 +2306,7 @@
       "label": "serializes genuine race deletion after a frozen retained-export snapshot without mixing postimages",
       "log": "evidence/logs/wm-source130-root-pg-r6-20261008.log",
       "suitePassed": 12,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -2314,7 +2314,7 @@
       "label": "has no PUBLIC execute/private table grants and refuses RC reads",
       "log": "evidence/logs/wm-source130-root-pg-r6-20261008.log",
       "suitePassed": 12,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "playwright",
@@ -2322,7 +2322,7 @@
       "label": "${host}: explicit date approval commits all four planned domains once and preserves actuals",
       "log": "evidence/logs/wm-profile25-gated-root-identity-r4-20261008.log",
       "suitePassed": 12,
-      "scope": "latest_http"
+      "scope": "historical_suite"
     },
     {
       "runner": "playwright",
@@ -2330,7 +2330,7 @@
       "label": "${host}: new nutrition draft requires preview then a separate confirmed save",
       "log": "evidence/logs/wm-profile25-gated-root-identity-r4-20261008.log",
       "suitePassed": 12,
-      "scope": "latest_http"
+      "scope": "historical_suite"
     },
     {
       "runner": "playwright",
@@ -2338,7 +2338,7 @@
       "label": "${shell.name}: default Chip preference, null-only Gun fallback, original actuals and responsive public replay/delete",
       "log": "evidence/logs/wm-profile25-gated-root-identity-r4-20261008.log",
       "suitePassed": 12,
-      "scope": "latest_http"
+      "scope": "historical_suite"
     },
     {
       "runner": "playwright",
@@ -2346,7 +2346,7 @@
       "label": "${host}: installed named profile HTTP V38 retains exact unapproved public/internal/source facts after app withdrawal",
       "log": "evidence/logs/wm-profile25-gated-root-identity-r4-20261008.log",
       "suitePassed": 12,
-      "scope": "latest_http"
+      "scope": "historical_suite"
     },
     {
       "runner": "playwright",
@@ -2354,7 +2354,7 @@
       "label": "${shell.name}: public PNG/PDF proof upload, immutable pin, actual-only edit and source removal",
       "log": "evidence/logs/wm-profile25-gated-root-identity-r4-20261008.log",
       "suitePassed": 12,
-      "scope": "latest_http"
+      "scope": "historical_suite"
     },
     {
       "runner": "playwright",
@@ -2362,7 +2362,7 @@
       "label": "${shell.name}: race deletion suspends nutrition until preview and separate reconnect approval",
       "log": "evidence/logs/wm-profile25-gated-root-identity-r4-20261008.log",
       "suitePassed": 12,
-      "scope": "latest_http"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -2554,7 +2554,7 @@
       "label": "preserves both final historical OIDs/body/config/ACL and owner-only named successors",
       "log": "evidence/logs/wm-pooled138-root-pg-r2-20261008.log",
       "suitePassed": 13,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -2562,7 +2562,7 @@
       "label": "genuine legacy review uses unchanged provenance and returns full retained envelope once",
       "log": "evidence/logs/wm-pooled138-root-pg-r2-20261008.log",
       "suitePassed": 13,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -2570,7 +2570,7 @@
       "label": "genuine pooled review keeps original reference and strict decoded frozen public projection",
       "log": "evidence/logs/wm-pooled138-root-pg-r2-20261008.log",
       "suitePassed": 13,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -2578,7 +2578,7 @@
       "label": "foreign and absent candidate reads are null, never a fabricated purge",
       "log": "evidence/logs/wm-pooled138-root-pg-r2-20261008.log",
       "suitePassed": 13,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -2586,7 +2586,7 @@
       "label": "existing stored candidates cannot be freshly attached to a new public key in a later xid",
       "log": "evidence/logs/wm-pooled138-root-pg-r2-20261008.log",
       "suitePassed": 13,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -2594,7 +2594,7 @@
       "label": "public command/private extra fields and changed stable-key intent are rejected",
       "log": "evidence/logs/wm-pooled138-root-pg-r2-20261008.log",
       "suitePassed": 13,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -2602,7 +2602,7 @@
       "label": "raw runtime table writes and migration installation remain denied",
       "log": "evidence/logs/wm-pooled138-root-pg-r2-20261008.log",
       "suitePassed": 13,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -2610,7 +2610,7 @@
       "label": "double installation preserves both old and new function metadata",
       "log": "evidence/logs/wm-pooled138-root-pg-r2-20261008.log",
       "suitePassed": 13,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -2618,7 +2618,7 @@
       "label": "exact predecessor/resolver drift rolls back the whole pair: ${drift.split(' ').at(-1)}",
       "log": "evidence/logs/wm-pooled138-root-pg-r2-20261008.log",
       "suitePassed": 13,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -2626,7 +2626,7 @@
       "label": "withdrawal keeps original minimal receipts and retained mixed previews without new processing",
       "log": "evidence/logs/wm-pooled138-root-pg-r2-20261008.log",
       "suitePassed": 13,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -2634,7 +2634,7 @@
       "label": "genuine race deletion purges encoded/legacy envelopes together and preserves original replay",
       "log": "evidence/logs/wm-pooled138-root-pg-r2-20261008.log",
       "suitePassed": 13,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -2642,7 +2642,7 @@
       "label": "exact historical OIDs/bodies/config/ACL unchanged; only ONE public batch root and owner-private helpers",
       "log": "evidence/logs/wm-pooled139-root-pg-r2-20261008.log",
       "suitePassed": 16,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -2650,7 +2650,7 @@
       "label": "genuine legacy + pooled + internal-only candidate + chain-only bodies are each emitted once, with strict hydration",
       "log": "evidence/logs/wm-pooled139-root-pg-r2-20261008.log",
       "suitePassed": 16,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -2658,7 +2658,7 @@
       "label": "public original success/results/history remain an exact internal subset; equal aliases never add approvals",
       "log": "evidence/logs/wm-pooled139-root-pg-r2-20261008.log",
       "suitePassed": 16,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -2666,7 +2666,7 @@
       "label": "foreign empty account is a true empty census, without leaked review/source metadata",
       "log": "evidence/logs/wm-pooled139-root-pg-r2-20261008.log",
       "suitePassed": 16,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -2674,7 +2674,7 @@
       "label": "invalid bound, insufficient actual response budget and runtime private access fail closed",
       "log": "evidence/logs/wm-pooled139-root-pg-r2-20261008.log",
       "suitePassed": 16,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -2682,7 +2682,7 @@
       "label": "repeat installation is rejected and old plus new full metadata remain unchanged",
       "log": "evidence/logs/wm-pooled139-root-pg-r2-20261008.log",
       "suitePassed": 16,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -2690,7 +2690,7 @@
       "label": "metadata/security drift rolls back ALL three new functions: ${drift.split(' ').at(-1)}",
       "log": "evidence/logs/wm-pooled139-root-pg-r2-20261008.log",
       "suitePassed": 16,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -2698,7 +2698,7 @@
       "label": "actual predecessor body drift denies and atomically leaves all successors absent",
       "log": "evidence/logs/wm-pooled139-root-pg-r2-20261008.log",
       "suitePassed": 16,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -2706,7 +2706,7 @@
       "label": "plain owner cannot impersonate a runtime tenant through the new definer reader",
       "log": "evidence/logs/wm-pooled139-root-pg-r2-20261008.log",
       "suitePassed": 16,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -2714,7 +2714,7 @@
       "label": "app withdrawal retains original histories/receipts and frozen bodies without new processing",
       "log": "evidence/logs/wm-pooled139-root-pg-r2-20261008.log",
       "suitePassed": 16,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -2722,7 +2722,7 @@
       "label": "genuine public deletion purges legacy/pool entirely; US6/event/NULL tuples and original successes survive",
       "log": "evidence/logs/wm-pooled139-root-pg-r2-20261008.log",
       "suitePassed": 16,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -2730,7 +2730,7 @@
       "label": "actual account erasure rejects retained enumeration instead of fabricated empty census",
       "log": "evidence/logs/wm-pooled139-root-pg-r2-20261008.log",
       "suitePassed": 16,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -2738,7 +2738,7 @@
       "label": "genuine all-four copied pooled parent prepares and begins with exact actual parent correspondence; rollback leaves plans/event unchanged",
       "log": "evidence/logs/wm-pooled141-root-pg-r1-20261008.log",
       "suitePassed": 27,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -2746,7 +2746,7 @@
       "label": "legacy immutable parent remains readable and fresh encoded begin drives actual four writes once",
       "log": "evidence/logs/wm-pooled141-root-pg-r1-20261008.log",
       "suitePassed": 27,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -2754,7 +2754,7 @@
       "label": "named pooled caller prepares and actually commits all four domains from genuine135 parent without JSON authority",
       "log": "evidence/logs/wm-pooled141-root-pg-r1-20261008.log",
       "suitePassed": 27,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -2762,7 +2762,7 @@
       "label": "pooled malformed discriminator fails without falling back to legacy",
       "log": "evidence/logs/wm-pooled141-root-pg-r1-20261008.log",
       "suitePassed": 27,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -2770,7 +2770,7 @@
       "label": "forged recipe with unchanged digest cannot mint a pooled application",
       "log": "evidence/logs/wm-pooled141-root-pg-r1-20261008.log",
       "suitePassed": 27,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -2778,7 +2778,7 @@
       "label": "SQL recipes reject a forged nutrition child receipt key even with a recomputed candidate digest",
       "log": "evidence/logs/wm-pooled141-root-pg-r1-20261008.log",
       "suitePassed": 27,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -2786,7 +2786,7 @@
       "label": "pooled begin refuses foreign immutable chain tuple and leaves event untouched",
       "log": "evidence/logs/wm-pooled141-root-pg-r1-20261008.log",
       "suitePassed": 27,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -2794,7 +2794,7 @@
       "label": "actual app withdrawal rejects a new pooled begin and retains previously frozen legacy parent",
       "log": "evidence/logs/wm-pooled141-root-pg-r1-20261008.log",
       "suitePassed": 27,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -2802,7 +2802,7 @@
       "label": "atomic installation refuses changed predecessor strict metadata before creating any successor",
       "log": "evidence/logs/wm-pooled141-root-pg-r1-20261008.log",
       "suitePassed": 27,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -2810,7 +2810,7 @@
       "label": "two authoritative OIDs and ACLs are preserved; private variants are invoker-only and direct runtime execution denies",
       "log": "evidence/logs/wm-pooled141-root-pg-r1-20261008.log",
       "suitePassed": 27,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -2818,7 +2818,7 @@
       "label": "installation ${label} drift rejects with no partial private creation or target metadata change",
       "log": "evidence/logs/wm-pooled141-root-pg-r1-20261008.log",
       "suitePassed": 27,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -2826,7 +2826,7 @@
       "label": "repeat installation rejects without changing targets or existing private variants",
       "log": "evidence/logs/wm-pooled141-root-pg-r1-20261008.log",
       "suitePassed": 27,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -2834,7 +2834,7 @@
       "label": "partial private successor and failed installation never change the two authoritative bodies",
       "log": "evidence/logs/wm-pooled141-root-pg-r1-20261008.log",
       "suitePassed": 27,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -2842,7 +2842,7 @@
       "label": "runtime cannot install an owner-only successor",
       "log": "evidence/logs/wm-pooled141-root-pg-r1-20261008.log",
       "suitePassed": 27,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -2850,7 +2850,7 @@
       "label": "actual predecessor body drift rejects before any new private helper exists",
       "log": "evidence/logs/wm-pooled141-root-pg-r1-20261008.log",
       "suitePassed": 27,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -2858,7 +2858,7 @@
       "label": "late diagnostic failure atomically rolls back all3 private creations and both target body transitions",
       "log": "evidence/logs/wm-pooled141-root-pg-r1-20261008.log",
       "suitePassed": 27,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -2866,7 +2866,7 @@
       "label": "fresh normal107 installs parent24 and one new receipts without activating runtime",
       "log": "evidence/logs/wm-install-v9-root-pg-r1-20261008.log",
       "suitePassed": 29,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -2874,7 +2874,7 @@
       "label": "upgrade retains genuine parent receipts and xmin and repeated install returns original one receipts",
       "log": "evidence/logs/wm-install-v9-root-pg-r1-20261008.log",
       "suitePassed": 29,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -2882,7 +2882,7 @@
       "label": "two genuine owner connections serialize one fresh installation and preserve same receipts",
       "log": "evidence/logs/wm-install-v9-root-pg-r1-20261008.log",
       "suitePassed": 29,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -2890,7 +2890,7 @@
       "label": "normal nongrantable direct EXECUTE permits verify/replay but private/helpers/ledger remain inaccessible",
       "log": "evidence/logs/wm-install-v9-root-pg-r1-20261008.log",
       "suitePassed": 29,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -2898,7 +2898,7 @@
       "label": "complete raw successor without receipt is rejected and never adopted",
       "log": "evidence/logs/wm-install-v9-root-pg-r1-20261008.log",
       "suitePassed": 29,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -2906,7 +2906,7 @@
       "label": "partial raw successor without receipt is rejected before installation writes",
       "log": "evidence/logs/wm-install-v9-root-pg-r1-20261008.log",
       "suitePassed": 29,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -2914,7 +2914,7 @@
       "label": "runtime/elevated principal cannot verify private installation provenance",
       "log": "evidence/logs/wm-install-v9-root-pg-r1-20261008.log",
       "suitePassed": 29,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -2922,7 +2922,7 @@
       "label": "actual ${label} drift fails closed and rollback restores original receipt",
       "log": "evidence/logs/wm-install-v9-root-pg-r1-20261008.log",
       "suitePassed": 29,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -2930,7 +2930,7 @@
       "label": "actual ${signature} body tamper rejects without rewriting original ledger",
       "log": "evidence/logs/wm-install-v9-root-pg-r1-20261008.log",
       "suitePassed": 29,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -2938,7 +2938,7 @@
       "label": "failure after applying actual ordered source DDL rolls back whole new ledger/schema to genuine parent24",
       "log": "evidence/logs/wm-install-v9-root-pg-r1-20261008.log",
       "suitePassed": 29,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -2946,7 +2946,7 @@
       "label": "fixed physical142 SQL files correspond exactly to the returned receipts",
       "log": "evidence/logs/wm-install-v9-root-pg-r1-20261008.log",
       "suitePassed": 29,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -2954,7 +2954,7 @@
       "label": "read-only verifier cannot turn normal107 or genuine parent8 into receipted profile9",
       "log": "evidence/logs/wm-install-v9-root-pg-r1-20261008.log",
       "suitePassed": 29,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -2962,7 +2962,7 @@
       "label": "normal107, parent23 and parent24/raw142 without child receipt cannot obtain V9 grants",
       "log": "evidence/logs/wm-grants-v9-root-pg-r1-20261008.log",
       "suitePassed": 20,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -2970,7 +2970,7 @@
       "label": "body drift is rejected before any grant",
       "log": "evidence/logs/wm-grants-v9-root-pg-r1-20261008.log",
       "suitePassed": 20,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -2978,7 +2978,7 @@
       "label": "owner membership, worker inheritance and built-in data roles fail closed",
       "log": "evidence/logs/wm-grants-v9-root-pg-r1-20261008.log",
       "suitePassed": 20,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -2986,7 +2986,7 @@
       "label": "BYPASSRLS runtime flag is refused",
       "log": "evidence/logs/wm-grants-v9-root-pg-r1-20261008.log",
       "suitePassed": 20,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -2994,7 +2994,7 @@
       "label": "unsafe deployment sessions and SET ROLE cannot issue grants",
       "log": "evidence/logs/wm-grants-v9-root-pg-r1-20261008.log",
       "suitePassed": 20,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -3002,7 +3002,7 @@
       "label": "a later GRANT fault rolls back every earlier grant",
       "log": "evidence/logs/wm-grants-v9-root-pg-r1-20261008.log",
       "suitePassed": 20,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -3010,7 +3010,7 @@
       "label": "exact42 grants serialize, preserve all old receipts and leave helpers/private tables inaccessible",
       "log": "evidence/logs/wm-grants-v9-root-pg-r1-20261008.log",
       "suitePassed": 20,
-      "scope": "same_body_suite"
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -3251,6 +3251,574 @@
       "log": "evidence/logs/wm-profile25-root-identity-r1-20261008.log",
       "suitePassed": 8,
       "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/contracts/tests/race-manual-public-impact.test.ts",
+      "label": "preserves long opaque item, zero/null and unchanged unresolved",
+      "log": "evidence/logs/wm-public-impact-linear-root-r2-20261008.log",
+      "suitePassed": 33,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/contracts/tests/race-manual-public-impact.test.ts",
+      "label": "requires exact unresolved affected tuple without pretending ready",
+      "log": "evidence/logs/wm-public-impact-linear-root-r2-20261008.log",
+      "suitePassed": 33,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/contracts/tests/race-manual-public-impact.test.ts",
+      "label": "rejects changed food on a date-only diagnostic",
+      "log": "evidence/logs/wm-public-impact-linear-root-r2-20261008.log",
+      "suitePassed": 33,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/contracts/tests/race-manual-public-impact.test.ts",
+      "label": "rejects dirty version/identity and extra authority",
+      "log": "evidence/logs/wm-public-impact-linear-root-r2-20261008.log",
+      "suitePassed": 33,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/contracts/tests/race-manual-public-impact.test.ts",
+      "label": "rejects duplicate and foreign requirements",
+      "log": "evidence/logs/wm-public-impact-linear-root-r2-20261008.log",
+      "suitePassed": 33,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/contracts/tests/race-manual-public-impact.test.ts",
+      "label": "preserves disconnected suspension and refuses auto resume",
+      "log": "evidence/logs/wm-public-impact-linear-root-r2-20261008.log",
+      "suitePassed": 33,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/contracts/tests/race-manual-public-impact.test.ts",
+      "label": "rejects unknown fields inside planned item",
+      "log": "evidence/logs/wm-public-impact-linear-root-r2-20261008.log",
+      "suitePassed": 33,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/contracts/tests/race-manual-public-impact.test.ts",
+      "label": "rejects aggregate bytes, deep, getter, sparse and excessive nodes before parse",
+      "log": "evidence/logs/wm-public-impact-linear-root-r2-20261008.log",
+      "suitePassed": 33,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/contracts/tests/race-manual-public-impact.test.ts",
+      "label": "keeps blocked contentless and rejects domain duplication",
+      "log": "evidence/logs/wm-public-impact-linear-root-r2-20261008.log",
+      "suitePassed": 33,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/contracts/tests/race-manual-public-impact.test.ts",
+      "label": "keeps ended unresolved frozen with notice only and no approval authority",
+      "log": "evidence/logs/wm-public-impact-linear-root-r2-20261008.log",
+      "suitePassed": 33,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/contracts/tests/race-manual-public-impact.test.ts",
+      "label": "rejects dirty routine parent and preserved run aliases",
+      "log": "evidence/logs/wm-public-impact-linear-root-r2-20261008.log",
+      "suitePassed": 33,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/contracts/tests/race-manual-public-impact.test.ts",
+      "label": "requires actual current training for move and refuses private resolution inputs",
+      "log": "evidence/logs/wm-public-impact-linear-root-r2-20261008.log",
+      "suitePassed": 33,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/contracts/tests/race-manual-public-impact.test.ts",
+      "label": "preserves exact started tuple and detects collision with unplanned runs",
+      "log": "evidence/logs/wm-public-impact-linear-root-r2-20261008.log",
+      "suitePassed": 33,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/contracts/tests/race-manual-public-impact.test.ts",
+      "label": "preserves historical started version instead of requiring the current head",
+      "log": "evidence/logs/wm-public-impact-linear-root-r2-20261008.log",
+      "suitePassed": 33,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/contracts/tests/race-manual-public-impact.test.ts",
+      "label": "accepts exact linked-only affected nutrition while keeping old unresolved timing notice",
+      "log": "evidence/logs/wm-public-impact-linear-root-r2-20261008.log",
+      "suitePassed": 33,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/contracts/tests/race-manual-public-impact.test.ts",
+      "label": "shows affected unconfirmed recovery without fabricating confirmation",
+      "log": "evidence/logs/wm-public-impact-linear-root-r2-20261008.log",
+      "suitePassed": 33,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/contracts/tests/race-manual-public-impact.test.ts",
+      "label": "accepts diagnostic goal definition without evidence IDs and rejects provenance injection",
+      "log": "evidence/logs/wm-public-impact-linear-root-r2-20261008.log",
+      "suitePassed": 33,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/contracts/tests/race-manual-public-impact.test.ts",
+      "label": "accepts unchanged ended frozen diagnostic and rejects an affected ended target",
+      "log": "evidence/logs/wm-public-impact-linear-root-r2-20261008.log",
+      "suitePassed": 33,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/contracts/tests/race-manual-public-impact.test.ts",
+      "label": "requires exact ended and unresolved notices without fabricating a frozen editor",
+      "log": "evidence/logs/wm-public-impact-linear-root-r2-20261008.log",
+      "suitePassed": 33,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/contracts/tests/race-manual-public-impact.test.ts",
+      "label": "accepts400 unchanged unresolved planned items without deleting zero/null foods",
+      "log": "evidence/logs/wm-public-impact-linear-root-r2-20261008.log",
+      "suitePassed": 33,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/contracts/tests/race-manual-public-impact.test.ts",
+      "label": "still rejects5001 planned items by the semantic roster limit below4MiB",
+      "log": "evidence/logs/wm-public-impact-linear-root-r2-20261008.log",
+      "suitePassed": 33,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/contracts/tests/race-manual-public-impact.test.ts",
+      "label": "accepts reversed notice order and reordered object keys with Unicode quotes and separators",
+      "log": "evidence/logs/wm-public-impact-linear-root-r2-20261008.log",
+      "suitePassed": 33,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/contracts/tests/race-manual-public-impact.test.ts",
+      "label": "rejects duplicate, missing, extraneous and foreign notice tuples",
+      "log": "evidence/logs/wm-public-impact-linear-root-r2-20261008.log",
+      "suitePassed": 33,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/contracts/tests/race-manual-public-impact.test.ts",
+      "label": "preserves null distinct from string null and empty string in routine notices",
+      "log": "evidence/logs/wm-public-impact-linear-root-r2-20261008.log",
+      "suitePassed": 33,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/contracts/tests/race-manual-public-impact.test.ts",
+      "label": "rejects unknown non-finite or undefined notice fields before tuple indexing",
+      "log": "evidence/logs/wm-public-impact-linear-root-r2-20261008.log",
+      "suitePassed": 33,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/contracts/tests/race-manual-public-impact.test.ts",
+      "label": "keeps affected tuple order independent and rejects duplicate or foreign target",
+      "log": "evidence/logs/wm-public-impact-linear-root-r2-20261008.log",
+      "suitePassed": 33,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/contracts/tests/race-manual-public-impact.test.ts",
+      "label": "keeps requirement order independent and checks every exact item and version field",
+      "log": "evidence/logs/wm-public-impact-linear-root-r2-20261008.log",
+      "suitePassed": 33,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/contracts/tests/race-manual-public-impact.test.ts",
+      "label": "accepts the existing semantic maximum5000 without enlarging transport or deadline",
+      "log": "evidence/logs/wm-public-impact-linear-root-r2-20261008.log",
+      "suitePassed": 33,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-full-copied-inventory-v2.test.ts",
+      "label": "indexes C/S/B exact source copies and preserves readonly uncertainty",
+      "log": "evidence/logs/wm-full-copied-set-root-unit-r1-20261008.log",
+      "suitePassed": 45,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-full-copied-inventory-v2.test.ts",
+      "label": "rejects %s correspondence tampering without source authority",
+      "log": "evidence/logs/wm-full-copied-set-root-unit-r1-20261008.log",
+      "suitePassed": 45,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-full-copied-inventory-v2.test.ts",
+      "label": "rejects a freshly recomputed context digest whose source bodies disagree with S/B",
+      "log": "evidence/logs/wm-full-copied-set-root-unit-r1-20261008.log",
+      "suitePassed": 45,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-full-copied-inventory-v2.test.ts",
+      "label": "indexes exact historical text while current access observation stays distinct",
+      "log": "evidence/logs/wm-full-copied-set-root-unit-r1-20261008.log",
+      "suitePassed": 45,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-full-copied-inventory-v2.test.ts",
+      "label": "deleted and unavailable source diagnostics are contentless, without invented parent refs",
+      "log": "evidence/logs/wm-full-copied-set-root-unit-r1-20261008.log",
+      "suitePassed": 45,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-full-copied-inventory-v2.test.ts",
+      "label": "text hash/paragraph/current tuple contradiction blocks mapped success",
+      "log": "evidence/logs/wm-full-copied-set-root-unit-r1-20261008.log",
+      "suitePassed": 45,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-full-copied-inventory-v2.test.ts",
+      "label": "indexes recovery exact method body and keeps user-recorded unreviewed provenance",
+      "log": "evidence/logs/wm-full-copied-set-root-unit-r1-20261008.log",
+      "suitePassed": 45,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-full-copied-inventory-v2.test.ts",
+      "label": "food parent opaque ID is preserved with exact immutable version/body digest",
+      "log": "evidence/logs/wm-full-copied-set-root-unit-r1-20261008.log",
+      "suitePassed": 45,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-full-copied-inventory-v2.test.ts",
+      "label": "media descriptor/ledger/cleanup are mutable observations, not immutable approval pins",
+      "log": "evidence/logs/wm-full-copied-set-root-unit-r1-20261008.log",
+      "suitePassed": 45,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-full-copied-inventory-v2.test.ts",
+      "label": "metadata JSON channels reject unknown body payloads instead of whitelisting them",
+      "log": "evidence/logs/wm-full-copied-set-root-unit-r1-20261008.log",
+      "suitePassed": 45,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-full-copied-inventory-v2.test.ts",
+      "label": "retains seeded candidate locations and every distinct repeated source copy without mutating input",
+      "log": "evidence/logs/wm-full-copied-set-root-unit-r1-20261008.log",
+      "suitePassed": 45,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-full-copied-inventory-v2.test.ts",
+      "label": "rejects divergent repeated source bodies at the projection boundary before inventory merging",
+      "log": "evidence/logs/wm-full-copied-set-root-unit-r1-20261008.log",
+      "suitePassed": 45,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-full-copied-inventory-v2.test.ts",
+      "label": "duplicate source copies are charged before deduplication",
+      "log": "evidence/logs/wm-full-copied-set-root-unit-r1-20261008.log",
+      "suitePassed": 45,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-full-copied-inventory-v2.test.ts",
+      "label": "rejects invalid ingress %j",
+      "log": "evidence/logs/wm-full-copied-set-root-unit-r1-20261008.log",
+      "suitePassed": 45,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-full-copied-inventory-v2.test.ts",
+      "label": "rejects getters/cycles/sparse arrays and oversized/overdeep envelopes before reading",
+      "log": "evidence/logs/wm-full-copied-set-root-unit-r1-20261008.log",
+      "suitePassed": 45,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-full-copied-inventory-v2.test.ts",
+      "label": "strict output rejects authority escalation, duplicate identities and mismatched mapped status",
+      "log": "evidence/logs/wm-full-copied-set-root-unit-r1-20261008.log",
+      "suitePassed": 45,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-full-copied-inventory-v2.test.ts",
+      "label": "indexes immutable course geometry and separate mutable head; no geometry copied into output",
+      "log": "evidence/logs/wm-full-copied-set-root-unit-r1-20261008.log",
+      "suitePassed": 45,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-full-copied-inventory-v2.test.ts",
+      "label": "indexes checklist immutable actual tuple and timer mutable descriptor/run copy",
+      "log": "evidence/logs/wm-full-copied-set-root-unit-r1-20261008.log",
+      "suitePassed": 45,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-full-copied-inventory-v2.test.ts",
+      "label": "indexes exact manual intake body twice, preserving zero and unknown",
+      "log": "evidence/logs/wm-full-copied-set-root-unit-r1-20261008.log",
+      "suitePassed": 45,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-full-copied-inventory-v2.test.ts",
+      "label": "manual Activity source correspondence and deleted contentless state %s",
+      "log": "evidence/logs/wm-full-copied-set-root-unit-r1-20261008.log",
+      "suitePassed": 45,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-full-copied-inventory-v2.test.ts",
+      "label": "indexes full workout/exercise catalogs and embedded session spec with exact namespace",
+      "log": "evidence/logs/wm-full-copied-set-root-unit-r1-20261008.log",
+      "suitePassed": 45,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-full-copied-inventory-v2.test.ts",
+      "label": "same immutable identity with different copied body is blocked, not latest selected",
+      "log": "evidence/logs/wm-full-copied-set-root-unit-r1-20261008.log",
+      "suitePassed": 45,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-full-copied-inventory-v2.test.ts",
+      "label": "indexes actual numeric checkin revision namespace %s",
+      "log": "evidence/logs/wm-full-copied-set-root-unit-r1-20261008.log",
+      "suitePassed": 45,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-full-copied-inventory-v2.test.ts",
+      "label": "V4 multipin full copies keep two immutable fragment revisions, only current full race body",
+      "log": "evidence/logs/wm-full-copied-set-root-unit-r1-20261008.log",
+      "suitePassed": 45,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-full-copied-inventory-v2.test.ts",
+      "label": "indexes current %s canonical Activity values as mutable observation only",
+      "log": "evidence/logs/wm-full-copied-set-root-unit-r1-20261008.log",
+      "suitePassed": 45,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-full-copied-inventory-v2.test.ts",
+      "label": "indexes independent unplanned copies across context/sourceInput/candidate and rejects omitted roster",
+      "log": "evidence/logs/wm-full-copied-set-root-unit-r1-20261008.log",
+      "suitePassed": 45,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-full-copied-inventory-v2.test.ts",
+      "label": "rejects rehashed omitted input/output unplanned roster while context retains the actual run",
+      "log": "evidence/logs/wm-full-copied-set-root-unit-r1-20261008.log",
+      "suitePassed": 45,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-full-copied-inventory-v2.test.ts",
+      "label": "rejects rehashed changed unplanned progress contents despite unchanged identity",
+      "log": "evidence/logs/wm-full-copied-set-root-unit-r1-20261008.log",
+      "suitePassed": 45,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-full-copied-inventory-v2.test.ts",
+      "label": "indexes actual camelCase current recovery nutrition tuple and exact original body/digest/location",
+      "log": "evidence/logs/wm-full-copied-set-root-unit-r1-20261008.log",
+      "suitePassed": 45,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-full-copied-inventory-v2.test.ts",
+      "label": "preserves historical frozen recovery nutrition with actual head %s",
+      "log": "evidence/logs/wm-full-copied-set-root-unit-r1-20261008.log",
+      "suitePassed": 45,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-full-copied-inventory-v2.test.ts",
+      "label": "rejects %s recovery nutrition wrong/foreign current head",
+      "log": "evidence/logs/wm-full-copied-set-root-unit-r1-20261008.log",
+      "suitePassed": 45,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-full-copied-inventory-v2.test.ts",
+      "label": "indexes exact historical schedule copies and rejects omitted retained history despite intact context",
+      "log": "evidence/logs/wm-full-copied-set-root-unit-r1-20261008.log",
+      "suitePassed": 45,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "playwright",
+      "fixture": "tests/identity/race-date-change-all-domains.spec.ts",
+      "label": "${host}: explicit date approval commits all four planned domains once and preserves actuals",
+      "log": "evidence/logs/wm-nutrition-persisted-read-http12-json-derived-20261008.log",
+      "suitePassed": 12,
+      "scope": "latest_http"
+    },
+    {
+      "runner": "playwright",
+      "fixture": "tests/identity/nutrition-new-plan-review.spec.ts",
+      "label": "${host}: new nutrition draft requires preview then a separate confirmed save",
+      "log": "evidence/logs/wm-nutrition-persisted-read-http12-json-derived-20261008.log",
+      "suitePassed": 12,
+      "scope": "latest_http"
+    },
+    {
+      "runner": "playwright",
+      "fixture": "tests/identity/race-pb-chip-preferred.spec.ts",
+      "label": "${shell.name}: default Chip preference, null-only Gun fallback, original actuals and responsive public replay/delete",
+      "log": "evidence/logs/wm-nutrition-persisted-read-http12-json-derived-20261008.log",
+      "suitePassed": 12,
+      "scope": "latest_http"
+    },
+    {
+      "runner": "playwright",
+      "fixture": "tests/identity/current-runtime-personal-export-v38.spec.ts",
+      "label": "${host}: installed named profile HTTP V38 retains exact unapproved public/internal/source facts after app withdrawal",
+      "log": "evidence/logs/wm-nutrition-persisted-read-http12-json-derived-20261008.log",
+      "suitePassed": 12,
+      "scope": "latest_http"
+    },
+    {
+      "runner": "playwright",
+      "fixture": "tests/identity/competition-result-proofs.spec.ts",
+      "label": "${shell.name}: public PNG/PDF proof upload, immutable pin, actual-only edit and source removal",
+      "log": "evidence/logs/wm-nutrition-persisted-read-http12-json-derived-20261008.log",
+      "suitePassed": 12,
+      "scope": "latest_http"
+    },
+    {
+      "runner": "playwright",
+      "fixture": "tests/identity/nutrition-race-reconnect.spec.ts",
+      "label": "${shell.name}: race deletion suspends nutrition until preview and separate reconnect approval",
+      "log": "evidence/logs/wm-nutrition-persisted-read-http12-json-derived-20261008.log",
+      "suitePassed": 12,
+      "scope": "latest_http"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "apps/api/tests/configured-runtime-v9.integration.test.ts",
+      "label": "normal configured profile25 reaches real health and closes only after actual runtime readiness",
+      "log": "evidence/logs/wm-fullcopy-bootstrap-r2-configured-pg176-actual-r1-20261008.log",
+      "suitePassed": 5,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "apps/api/tests/configured-runtime-v9.integration.test.ts",
+      "label": "actual final root body drift refuses configured startup without legacy fallback",
+      "log": "evidence/logs/wm-fullcopy-bootstrap-r2-configured-pg176-actual-r1-20261008.log",
+      "suitePassed": 5,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "apps/api/tests/configured-runtime-v9.integration.test.ts",
+      "label": "missing actual root EXECUTE refuses startup without auto-grant or fallback",
+      "log": "evidence/logs/wm-fullcopy-bootstrap-r2-configured-pg176-actual-r1-20261008.log",
+      "suitePassed": 5,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "apps/api/tests/configured-runtime-v9.integration.test.ts",
+      "label": "actual migration owner credential cannot become configured runtime",
+      "log": "evidence/logs/wm-fullcopy-bootstrap-r2-configured-pg176-actual-r1-20261008.log",
+      "suitePassed": 5,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "apps/api/tests/configured-runtime-v9.integration.test.ts",
+      "label": "baseline107 default configuration still starts without applying the profile25 cold gate",
+      "log": "evidence/logs/wm-fullcopy-bootstrap-r2-configured-pg176-actual-r1-20261008.log",
+      "suitePassed": 5,
+      "scope": "same_body_suite"
     }
   ],
   "authority": "none",
