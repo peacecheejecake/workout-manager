@@ -94,7 +94,7 @@ export async function startCertifiedOidc(
       rpInitiatedLogout: {
         enabled: true,
         // Same confirmation the default page asks, without its external font request.
-        logoutSource: (context: { body: string }, form: string) => {
+        logoutSource: (context, form) => {
           context.body = `<!doctype html><html lang="en"><head><title>Sign out of the identity provider</title></head><body><main><h1>Sign out of the certified identity provider?</h1>${form}<button type="submit" form="op.logoutForm" value="yes" name="logout">Yes, sign me out</button><button type="submit" form="op.logoutForm">No, stay signed in</button></main></body></html>`;
         },
       },
@@ -116,7 +116,7 @@ export async function startCertifiedOidc(
       IdToken: 300,
       AccessToken: 300,
     },
-    renderError: (context: { type: string; body: string }, output: { error: string }) => {
+    renderError: (context, output) => {
       context.type = 'html';
       context.body = `<!doctype html><html lang="en"><head><title>Identity provider error</title></head><body><main><h1>Identity provider error</h1><p>${escape(output.error)}</p></main></body></html>`;
     },
@@ -154,6 +154,9 @@ export async function startCertifiedOidc(
             accountId: details.session?.accountId,
             clientId: String(params['client_id']),
           });
+      // A referenced grant that expired/disappeared is not a new consent grant.
+      // The existing interaction error boundary returns its finite unavailable page.
+      if (grant === undefined) throw new Error('CERTIFIED_OIDC_GRANT_UNAVAILABLE');
       grant.addOIDCScope('openid');
       const grantId = await grant.save();
       await provider.interactionFinished(

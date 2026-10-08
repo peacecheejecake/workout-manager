@@ -709,3 +709,7 @@ Root는 profile22의 기존 두Host identity12경로 통과를 확인했다. 신
 ## 2026-10-08 공개 export38·동의 철회 최종 로컬 수용
 
 회복 fixture 필수항목과 실제 typed preview 동의오류 API 번역을 교정해 Root route unit56/56 및 Next/Vite V38 HTTP2/2를 확인했다. 앞선 기존12와 신규2는 별도 실행이다. 동의 철회 뒤 retained 내보내기·동일key replay는 유지하고 fresh 처리는409로 거절한다. mixed400/400/30 저장은 actual retained JSONB4272405byte로4MiB초과가 확인됐고, 승인400 쓰기deadline 실패와 함께 별도 미완료다. 두 개선은 native agent가 준비하며 cap/수량/규칙 변경0이다. 전체 phase 검토·main·운영/native/provider/restore 수용은 여전히 미완료다.
+
+## 2026-10-08 Profile22 시험 harness 검증 커밋 준비
+
+Explicit current22 harness는 Root unit83/83·전체harnessTS0·실제기존12경로와별도V38HTTP2경로를 확인했다. 정식 OIDC provider types와 missinggrant failclosed 수정은 actual local OP3/3 회귀도 통과했다. default/old17/productionactivation은 승격하지 않고 최종시험DB·roles·slots잔존0이다. 다음은 대량승인 writerdeadline과 retained JSONB 중복representation 개선 준비다. 전체 I/J/phase·보안/복원/운영/기기 제공자 수용은 미완료이고 AWS 로그인대기는 유지한다.

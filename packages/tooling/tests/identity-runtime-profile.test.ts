@@ -11,6 +11,7 @@ it('keeps the historical default and staged compositions independent', () => {
     stageCheckInTemplates: false,
     stageRaceManualPublic: false,
     installedRuntime: false,
+    installedCurrentRuntime: false,
     enableRaceResultsV2: false,
     enableRaceManualPublic: false,
     enableCheckInTemplates: false,
@@ -41,10 +42,50 @@ it('installed-runtime explicitly enables all installed public families without a
       stageCheckInTemplates: false,
       stageRaceManualPublic: false,
       installedRuntime: true,
+      installedCurrentRuntime: false,
       enableRaceResultsV2: true,
       enableRaceManualPublic: true,
       enableCheckInTemplates: true,
     },
+  );
+});
+it('profile22 is a separate installed path with all public families and no raw stages', () => {
+  expect(
+    parseIdentityRuntimeProfile({ ...normal, raceManualPublic: 'installed-current-profile22' }),
+  ).toEqual({
+    stageRaceResults: false,
+    stageCheckInTemplates: false,
+    stageRaceManualPublic: false,
+    installedRuntime: false,
+    installedCurrentRuntime: true,
+    enableRaceResultsV2: true,
+    enableRaceManualPublic: true,
+    enableCheckInTemplates: true,
+  });
+});
+it.each([
+  { raceResultsV2: 'staged-108-111' },
+  { checkInTemplates: 'staged-123' },
+  { raceResultsV2: 'staged-108-111', checkInTemplates: 'staged-123' },
+])('rejects current profile22/raw overlap before startup: %j', (overlap) => {
+  expect(() =>
+    parseIdentityRuntimeProfile({
+      ...normal,
+      ...overlap,
+      raceManualPublic: 'installed-current-profile22',
+    }),
+  ).toThrow('IDENTITY_RUNTIME_PROFILE_CONFLICT');
+});
+it.each([
+  'installed-current-profile21',
+  'installed-current-profile23',
+  ' installed-current-profile22',
+  'installed-current-profile22 ',
+  ['installed-runtime', 'installed-current-profile22'],
+  { installedRuntime: true, installedCurrentRuntime: true },
+])('rejects ambiguous or unsupported installed selectors %j', (raw) => {
+  expect(() => parseIdentityRuntimeProfile({ ...normal, raceManualPublic: raw })).toThrow(
+    'IDENTITY_RACE_MANUAL_STAGE_INVALID',
   );
 });
 it.each([

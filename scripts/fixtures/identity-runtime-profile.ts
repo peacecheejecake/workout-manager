@@ -12,22 +12,25 @@ export function parseIdentityRuntimeProfile(input: {
   if (
     input.raceManualPublic !== undefined &&
     input.raceManualPublic !== 'staged-manual' &&
-    input.raceManualPublic !== 'installed-runtime'
+    input.raceManualPublic !== 'installed-runtime' &&
+    input.raceManualPublic !== 'installed-current-profile22'
   )
     throw new Error('IDENTITY_RACE_MANUAL_STAGE_INVALID');
   const stageRaceResults = input.raceResultsV2 === 'staged-108-111';
   const stageCheckInTemplates = input.checkInTemplates === 'staged-123';
   const stageRaceManualPublic = input.raceManualPublic === 'staged-manual';
   const installedRuntime = input.raceManualPublic === 'installed-runtime';
-  if (installedRuntime && (stageRaceResults || stageCheckInTemplates))
+  const installedCurrentRuntime = input.raceManualPublic === 'installed-current-profile22';
+  if ((installedRuntime || installedCurrentRuntime) && (stageRaceResults || stageCheckInTemplates))
     throw new Error('IDENTITY_RUNTIME_PROFILE_CONFLICT');
   return {
     stageRaceResults,
     stageCheckInTemplates,
     stageRaceManualPublic,
     installedRuntime,
-    enableRaceResultsV2: stageRaceResults || installedRuntime,
-    enableRaceManualPublic: stageRaceManualPublic || installedRuntime,
-    enableCheckInTemplates: stageCheckInTemplates || installedRuntime,
+    installedCurrentRuntime,
+    enableRaceResultsV2: stageRaceResults || installedRuntime || installedCurrentRuntime,
+    enableRaceManualPublic: stageRaceManualPublic || installedRuntime || installedCurrentRuntime,
+    enableCheckInTemplates: stageCheckInTemplates || installedRuntime || installedCurrentRuntime,
   };
 }

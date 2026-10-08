@@ -1,5 +1,9 @@
 import { parseIdentityRuntimeProfile } from './fixtures/identity-runtime-profile.ts';
 import {
+  setupIdentityInstalledCurrentRuntimeV6,
+  composeIdentityInstalledCurrentRuntimeV6Ports,
+} from './identity-installed-current-runtime-v6.mjs';
+import {
   installCurrentRuntime,
   verifyCurrentRuntimeInstalledIn,
 } from '../packages/server/persistence/src/current-runtime-installation.ts';
@@ -208,6 +212,7 @@ const {
   stageCheckInTemplates,
   stageRaceManualPublic,
   installedRuntime,
+  installedCurrentRuntime,
   enableRaceResultsV2,
   enableRaceManualPublic,
   enableCheckInTemplates,
@@ -216,6 +221,8 @@ const {
   raceManualPublic: process.env['IDENTITY_E2E_RACE_MANUAL_PUBLIC'],
   checkInTemplates: process.env['IDENTITY_E2E_CHECK_IN_TEMPLATES'],
 });
+if (installedCurrentRuntime && externalPg === null)
+  throw new Error('IDENTITY_CURRENT_DISPOSABLE_TCP_REQUIRED');
 const checkInTemplateStageSha = '6d3ad2f18cb7b1c99d63ccff582214b6ba8f0318a72c1238092140a5ffc9444c';
 // Explicit disposable acceptance profile; this does not register migrations or
 // activate configured production repositories. Pin every raw predecessor.
@@ -594,6 +601,27 @@ try {
     if (installedRuntime) {
       await migrate(ownerUrl, 107);
       await installCurrentRuntime(ownerUrl);
+    } else if (installedCurrentRuntime) {
+      await migrate(ownerUrl, 107);
+      const profile = await setupIdentityInstalledCurrentRuntimeV6({
+        ownerConnectionString: ownerUrl,
+        runtimeRole: 'workout_runtime',
+      });
+      // Metadata-only acknowledgment; never print connection strings or source bodies.
+      console.log('Identity disposable installed current runtime', {
+        fixtureMode: profile.fixtureMode,
+        profileVersion: profile.profileVersion,
+        runtimeStep: profile.runtimeStep,
+        sourceDdlTip: profile.sourceDdlTip,
+        rpcCount: profile.rpcCount,
+        baselineRecipe: profile.baselineRecipe,
+        sourceExportBatch: profile.sourceExportBatch,
+        supported: profile.supported,
+        processingAuthority: profile.processingAuthority,
+        catalogSecurity: profile.catalogSecurity,
+        restore: profile.restore,
+        productionActivation: profile.productionActivation,
+      });
     } else await migrate(ownerUrl);
     if (stageRaceResults) {
       const owner = new Pool({ connectionString: ownerUrl, max: 1 });
@@ -832,8 +860,10 @@ try {
     );
     if (ownerRole.rows.length !== 1 || ownerRole.rows[0].rolsuper || ownerRole.rows[0].rolbypassrls)
       throw new Error('IDENTITY_MIGRATION_OWNER_INVALID');
-    await grantIdentityFunctions(adminUrl, 'workout_runtime');
-    await grantAiSettings(ownerUrl, 'workout_runtime');
+    if (!installedCurrentRuntime) {
+      await grantIdentityFunctions(adminUrl, 'workout_runtime');
+      await grantAiSettings(ownerUrl, 'workout_runtime');
+    }
     // Only synthetic unavailable catalog entries; no provider key, consent or activation.
     if (externalPg !== null) {
       const inspector = await admin.query(
@@ -859,28 +889,30 @@ try {
       });
     }
     await publishInitialAiSettingsCatalog(ownerUrl, aiSettingsExternalProof);
-    await grantOperations(adminUrl, 'workout_runtime');
-    await grantNutritionCore(adminUrl, 'workout_runtime');
-    await grantSupplementaryCore(adminUrl, 'workout_runtime');
-    await grantRoutineCore(adminUrl, 'workout_runtime');
-    await grantStretchingCore(adminUrl, 'workout_runtime');
-    await grantRecoveryCore(adminUrl, 'workout_runtime');
-    await grantCheckIns(adminUrl, 'workout_runtime');
-    await grantSessionCompletions(adminUrl, 'workout_runtime');
-    await grantPlanScenarios(adminUrl, 'workout_runtime');
-    await grantCoachingConstraints(adminUrl, 'workout_runtime');
-    await grantCoachingThreads(adminUrl, 'workout_runtime');
-    await grantCoreEvidenceSnapshots(adminUrl, 'workout_runtime');
-    await grantCoachingRuns(adminUrl, 'workout_runtime');
-    await grantCoachingCandidates(adminUrl, 'workout_runtime');
-    await grantIntegratedApprovalV4(adminUrl, 'workout_runtime');
-    await grantResources(adminUrl, 'workout_runtime');
-    await grantResourceRetrieval(adminUrl, 'workout_runtime');
-    await grantGalleryMedia(adminUrl, 'workout_runtime');
-    await grantActivityTracks(adminUrl, 'workout_runtime');
-    await grantCourses(adminUrl, 'workout_runtime');
-    await grantRaces(adminUrl, 'workout_runtime');
-    await grantCorePlanning(adminUrl, 'workout_runtime');
+    if (!installedCurrentRuntime) {
+      await grantOperations(adminUrl, 'workout_runtime');
+      await grantNutritionCore(adminUrl, 'workout_runtime');
+      await grantSupplementaryCore(adminUrl, 'workout_runtime');
+      await grantRoutineCore(adminUrl, 'workout_runtime');
+      await grantStretchingCore(adminUrl, 'workout_runtime');
+      await grantRecoveryCore(adminUrl, 'workout_runtime');
+      await grantCheckIns(adminUrl, 'workout_runtime');
+      await grantSessionCompletions(adminUrl, 'workout_runtime');
+      await grantPlanScenarios(adminUrl, 'workout_runtime');
+      await grantCoachingConstraints(adminUrl, 'workout_runtime');
+      await grantCoachingThreads(adminUrl, 'workout_runtime');
+      await grantCoreEvidenceSnapshots(adminUrl, 'workout_runtime');
+      await grantCoachingRuns(adminUrl, 'workout_runtime');
+      await grantCoachingCandidates(adminUrl, 'workout_runtime');
+      await grantIntegratedApprovalV4(adminUrl, 'workout_runtime');
+      await grantResources(adminUrl, 'workout_runtime');
+      await grantResourceRetrieval(adminUrl, 'workout_runtime');
+      await grantGalleryMedia(adminUrl, 'workout_runtime');
+      await grantActivityTracks(adminUrl, 'workout_runtime');
+      await grantCourses(adminUrl, 'workout_runtime');
+      await grantRaces(adminUrl, 'workout_runtime');
+      await grantCorePlanning(adminUrl, 'workout_runtime');
+    }
     if (installedRuntime) {
       await grantCurrentRuntimeProfile(ownerUrl, 'workout_runtime');
       const owner = new Pool({
@@ -926,12 +958,21 @@ try {
       )
         throw new Error('IDENTITY_RACE_RESULT_STAGE_ACL_INVALID');
     }
-    // This isolated, nonproduction fixture creates its own untrusted v3 analysis output.
+    // identity-analysis-output-v3-fixture: an isolated untrusted synthetic producer
+    // supplement, outside both the named core recipe and production authority.
     await admin.query('GRANT INSERT ON coaching_analysis_output TO workout_runtime');
+    if (installedCurrentRuntime)
+      console.log('Identity disposable supplement', {
+        fixture: 'identity-analysis-output-v3-fixture',
+        privilege: 'INSERT',
+        productionAuthority: 'none',
+      });
     await createFixtureRole(admin, 'workout_coaching_worker');
     await grantCoachingRunWorker(adminUrl, 'workout_coaching_worker');
-    await grantGarmin(adminUrl, 'workout_runtime');
-    await grantGarminUnofficial(adminUrl, 'workout_runtime');
+    if (!installedCurrentRuntime) {
+      await grantGarmin(adminUrl, 'workout_runtime');
+      await grantGarminUnofficial(adminUrl, 'workout_runtime');
+    }
     await createFixtureRole(admin, 'workout_garmin_worker');
     await grantGarminWorker(adminUrl, 'workout_garmin_worker');
     // The course thumbnail renderer (M2-01l) runs as its own role with EXECUTE on eight
@@ -941,9 +982,10 @@ try {
     await admin.query('GRANT USAGE ON SCHEMA public TO workout_course_thumbnail_worker');
     await admin.query('GRANT USAGE ON SCHEMA public TO workout_runtime');
     await admin.query('GRANT USAGE ON SCHEMA public TO workout_coaching_worker');
-    await admin.query(
-      'GRANT SELECT, INSERT, UPDATE, DELETE ON consent, outbox, command_receipt, plan_head, plan_snapshot, plan_history, activity_canonical, activity_source_head, activity_source_revision, activity_overlay, activity_overlay_revision, activity_suppression, activity_import_receipt TO workout_runtime',
-    );
+    if (!installedCurrentRuntime)
+      await admin.query(
+        'GRANT SELECT, INSERT, UPDATE, DELETE ON consent, outbox, command_receipt, plan_head, plan_snapshot, plan_history, activity_canonical, activity_source_head, activity_source_revision, activity_overlay, activity_overlay_revision, activity_suppression, activity_import_receipt TO workout_runtime',
+      );
   } finally {
     await admin.end();
   }
@@ -1021,6 +1063,9 @@ try {
   const store = createIdentityRepository({ connectionString: runtimeUrl });
   closers.push(() => store.close());
   const database = createDatabase({ connectionString: runtimeUrl });
+  const installedCurrentPorts = installedCurrentRuntime
+    ? composeIdentityInstalledCurrentRuntimeV6Ports(database)
+    : null;
 
   closers.push(() => database.close());
   const sharingMode = process.env['IDENTITY_E2E_COURSE_SHARING'] ?? 'off';
@@ -1156,7 +1201,7 @@ try {
   const garminUnofficialStore = createGarminUnofficialStore(database);
   const activities = createActivityRepository(database);
   const garminUnofficial =
-    unofficialInterpreter === null
+    unofficialInterpreter === null || installedCurrentRuntime
       ? undefined
       : createGarminUnofficialService({
           ownerAthleteId: unofficialOwner.athleteId,
@@ -1189,14 +1234,24 @@ try {
     aiSettings: createAiSettingsService(createAiSettingsRepository(database)),
     planning: createPlanningRepository(database),
     races: createRaceRepository(database),
-    ...(enableRaceManualPublic
+    ...(installedCurrentPorts !== null
       ? {
-          raceManualPublic: createRaceManualPublicRepository(database),
-          nutritionV4Writer: createNutritionRacePlanV4Writer(database),
-          nutritionV4Preview: createNutritionRacePlanV4PreviewRepository(database),
+          raceManualPublic: installedCurrentPorts.raceManualPublic,
+          nutritionV4Writer: installedCurrentPorts.nutritionV4Writer,
+          nutritionV4Preview: installedCurrentPorts.nutritionV4Preview,
         }
-      : {}),
-    ...(enableRaceResultsV2 ? { raceResultsV2: createRaceResultV2Repository(database) } : {}),
+      : enableRaceManualPublic
+        ? {
+            raceManualPublic: createRaceManualPublicRepository(database),
+            nutritionV4Writer: createNutritionRacePlanV4Writer(database),
+            nutritionV4Preview: createNutritionRacePlanV4PreviewRepository(database),
+          }
+        : {}),
+    ...(installedCurrentPorts !== null
+      ? { raceResultsV2: installedCurrentPorts.raceResultsV2 }
+      : enableRaceResultsV2
+        ? { raceResultsV2: createRaceResultV2Repository(database) }
+        : {}),
     nutrition: createNutritionRepository(database),
     nutritionV4: createNutritionPlanV4Reader(database),
     restoreGeneration: createRestoreGenerationRepository(database),
@@ -1232,7 +1287,7 @@ try {
     }),
     activities,
     activityContext: createActivityContextRepository(database),
-    operations: createOperationsRepository(database),
+    operations: installedCurrentPorts?.operations ?? createOperationsRepository(database),
     resources: createPrivateTextResourceRepository(database),
     resourceAccess: createResourceAccessRepository(database),
     resourceRetrieval: createResourceRetrievalRepository(database),
