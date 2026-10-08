@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defineConfig, devices } from '@playwright/test';
@@ -17,9 +17,59 @@ const repositoryDirectory = dirname(fileURLToPath(import.meta.url));
 const identitySuite = process.env['IDENTITY_E2E_SUITE'];
 if (
   identitySuite !== undefined &&
-  !['general', 'app-consent', 'ai-settings-lifecycle'].includes(identitySuite)
+  !['general', 'app-consent', 'ai-settings-lifecycle', 'current-manual'].includes(identitySuite)
 ) {
   throw new Error('Unknown isolated identity suite');
+}
+
+// Profile-dependent tests move intact to one current core fixture. This is suite
+// assignment, not skip/waiver; every discovered spec belongs to exactly one fixture.
+const currentManualSpecs = Object.freeze([
+  'check-in-template-routine.spec.ts',
+  'competition-result-proofs.spec.ts',
+  'current-runtime-personal-export-v38.spec.ts',
+  'nutrition-new-plan-review.spec.ts',
+  'nutrition-race-reconnect.spec.ts',
+  'race-date-change-all-domains.spec.ts',
+  'race-date-change-linked-nutrition.spec.ts',
+  'race-date-change-review.spec.ts',
+  'race-date-change-unresolved.spec.ts',
+  'race-pb-chip-preferred.spec.ts',
+]);
+const isolatedSpecs = ['app-consent.spec.ts', 'ai-settings-lifecycle.spec.ts'];
+function discoverIdentitySpecs(relative = ''): string[] {
+  return readdirSync(join(repositoryDirectory, 'tests/identity', relative), {
+    withFileTypes: true,
+  })
+    .flatMap((entry) => {
+      if (entry.isSymbolicLink() || (entry.isDirectory() && entry.name === 'node_modules'))
+        return [];
+      const path = relative ? `${relative}/${entry.name}` : entry.name;
+      return entry.isDirectory()
+        ? discoverIdentitySpecs(path)
+        : entry.isFile() &&
+            /\.(?:spec|test)\.[cm]?[jt]sx?$/i.test(entry.name) &&
+            /\.[cm]?[jt]sx?$/.test(entry.name)
+          ? [path]
+          : [];
+    })
+    .sort();
+}
+const fullIdentitySpecs = discoverIdentitySpecs();
+const movedSpecs = [...isolatedSpecs, ...currentManualSpecs];
+const generalSpecs = fullIdentitySpecs.filter((path) => !movedSpecs.includes(path));
+const assignedSpecs = [...generalSpecs, ...movedSpecs];
+if (
+  new Set(assignedSpecs).size !== assignedSpecs.length ||
+  JSON.stringify([...assignedSpecs].sort()) !== JSON.stringify(fullIdentitySpecs)
+)
+  throw new Error('Identity fixture roster is missing or duplicates a spec');
+function exactIdentitySpec(relative: string) {
+  const escaped = relative
+    .split('/')
+    .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    .join('[/\\\\]');
+  return new RegExp(`[/\\\\]tests[/\\\\]identity[/\\\\]${escaped}$`);
 }
 
 /**
@@ -87,10 +137,12 @@ if (diagnostics) {
 export default defineConfig({
   testDir: './tests/identity',
   ...(identitySuite === 'general'
-    ? { testIgnore: ['**/app-consent.spec.ts', '**/ai-settings-lifecycle.spec.ts'] }
-    : identitySuite
-      ? { testMatch: `**/${identitySuite}.spec.ts` }
-      : {}),
+    ? { testMatch: generalSpecs.map(exactIdentitySpec) }
+    : identitySuite === 'current-manual'
+      ? { testMatch: currentManualSpecs.map(exactIdentitySpec) }
+      : identitySuite
+        ? { testMatch: exactIdentitySpec(`${identitySuite}.spec.ts`) }
+        : {}),
   workers: 1,
   ...(diagnostics
     ? {

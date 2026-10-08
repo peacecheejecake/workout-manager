@@ -9,12 +9,14 @@ import {
 } from './fixtures/identity-ports.ts';
 
 // Focused commands retain the Playwright CLI. --full also permits a full run with
-// a caller's reporter/config flags while preserving three disposable fixtures.
+// a caller's reporter/config flags while preserving four disposable fixtures.
 const providedArgs = process.argv.slice(2);
 const fullRun = providedArgs.includes('--full');
 const args = providedArgs.filter((arg) => arg !== '--full');
 const focused = !fullRun && args.some((arg) => arg !== '--list');
-const suites = focused ? [null] : ['general', 'app-consent', 'ai-settings-lifecycle'];
+const suites = focused
+  ? [null]
+  : ['general', 'app-consent', 'ai-settings-lifecycle', 'current-manual'];
 let interrupted = false;
 
 async function run(suite) {
@@ -28,6 +30,12 @@ async function run(suite) {
     WORKOUT_IDENTITY_GARMIN_PORT: String(identityGarminPort),
   };
   if (suite) {
+    // Canonical fixtures have distinct fixed recipes. Focused CLI remains caller-selected.
+    delete env.IDENTITY_E2E_RACE_RESULTS_V2;
+    delete env.IDENTITY_E2E_CHECK_IN_TEMPLATES;
+    delete env.IDENTITY_E2E_RACE_MANUAL_PUBLIC;
+    if (suite === 'current-manual')
+      env.IDENTITY_E2E_RACE_MANUAL_PUBLIC = 'installed-current-profile25';
     env.IDENTITY_E2E_SUITE = suite;
     env.IDENTITY_E2E_AI_SETTINGS_LIFECYCLE = suite === 'ai-settings-lifecycle' ? 'on' : 'off';
     env.IDENTITY_E2E_AI_SETTINGS_LIFECYCLE_SPEC_ONLY =

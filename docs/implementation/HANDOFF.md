@@ -839,3 +839,12 @@ Root 자체 미커밋 legacy dense diagnosis(45029bytes/SHA701f0b4a…f544)를 `
 ### compatible-v3 단위 fixture 교정
 
 실패1건은 최신 builder가 V4-only `retainedUnplannedRuns`/`retainedHistoricalRoutines` 두 ownfields를 추가한 전체V4 input을 strictV3 positive fixture에 전달한 버전 불일치였다. 실제 두roster empty를 확인하고 해당 case만 exactV3 input으로 구성했다. strictV1 reject 및 fullV4→strictV3 invalid_input 음성도 유지·추가했다. 제품 schema/decoder/업무source/DBfixture/권한·정책은 변경0. unit fixture SHA42829ce9…386b, actor15/15·Root15/15(`/private/tmp/wm-compatible-v3-fixture-root-unit-r3-20261008.log`),persistenceTS/lint/format exit0. 원14pass1fail/fullunit9433/37/32와부분R2exit130은 그대로 보존하며 전체unit재실행 전 fullpass를 주장하지 않는다.
+
+
+## 2026-10-08 전체 identity fixture 배정 보완
+
+Root가 canonical full identity를 general baseline107 → app-consent → ai-settings-lifecycle → current-manual profile25의 네 disposable fixture로 연결했다. 최신 수용 경로10파일을 current25에 배정하며 기존 worker/analysis/비공식 Garmin 시험은 general에 보존한다. 개별 focused CLI는 caller profile을 유지하고 canonical fixture는 상속된 stage/profile selector를 정리한다. 하네스 권한·repository factory·제품 schema 및 시험 skip 조건은 변경하지 않았다. 파일 roster는130개가 정확히 한 fixture에만 배정되도록 검사한다.
+
+Root 실제 `pnpm test:identity --full --list` exit0: general331시험/117등록파일, app4/1, AI1/1, current22/10으로 총358시험/129등록파일이다. 차이1파일 `course-provider-isolation.spec.ts`는 기존 `PROVIDER_PROOF_MODE=missing-data|no-webgl`일 때만 등록되며 unset이면0건이다. 해당 별도 mode의 현재 실행과 full browser 두 회차는 아직 not_executed다. 목록 조회를 브라우저 pass로 세지 않는다. 순수 배정/신호 종료/첫 실패 중단 검사와 root TypeScript·scoped ESLint·Prettier·diff check는 exit0이다. 실제 전체 PG17 integration session71990은 아직 실행 중이며 중간 복원·worker/media 등 실패를 보존하고 종료 결과를 기다린다.
+
+정확 두 소스 SHA: launcher `5e5cccccbfd91e606817180d07e41521f23afac636701aa5f9817775111bc0e3`, config `0fe883c588f8636bb8e02d943ad0f441d0e2e6729cedb77719b9b59d3f711a29`. 실제 discovery/scoped checks는 `/private/tmp/wm-canonical-identity-{roster,pure,ts,lint,format}-root-r1-20261008.log`, 등록0 진단은 `/private/tmp/wm-canonical-identity-zero-registration-audit-20261008.{md,json}`이다. 원 출력은 commit하지 않는다. 전체 phase gate/독립 검토/main 및 외부 운영 gate는 미완료이며 EXT-HOSTING의 기존4lines WIP는 보존한다. EXT-RESTOREa는 승인된 phase schema 확정이 필요한 scope이므로 현재 inventory/실행 흐름 준비와 실제 구현·복원 수용을 구분한다.
