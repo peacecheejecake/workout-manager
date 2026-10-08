@@ -118,7 +118,8 @@
     },
     "./nutrition-race-plan-v4-preview": "./src/nutrition-race-plan-v4-preview.ts",
     "./current-runtime-installation-v6": "./src/current-runtime-installation-v6.ts",
-    "./current-runtime-grants-v6": "./src/current-runtime-grants-v6.ts"
+    "./current-runtime-grants-v6": "./src/current-runtime-grants-v6.ts",
+    "./current-runtime-catalog-witness-v6": "./src/current-runtime-catalog-witness-v6.ts"
   },
   "devDependencies": {
     "@types/pg": "8.23.1",
