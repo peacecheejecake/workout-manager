@@ -713,3 +713,9 @@ Root는 profile22의 기존 두Host identity12경로 통과를 확인했다. 신
 ## 2026-10-08 Profile22 시험 harness 검증 커밋 준비
 
 Explicit current22 harness는 Root unit83/83·전체harnessTS0·실제기존12경로와별도V38HTTP2경로를 확인했다. 정식 OIDC provider types와 missinggrant failclosed 수정은 actual local OP3/3 회귀도 통과했다. default/old17/productionactivation은 승격하지 않고 최종시험DB·roles·slots잔존0이다. 다음은 대량승인 writerdeadline과 retained JSONB 중복representation 개선 준비다. 전체 I/J/phase·보안/복원/운영/기기 제공자 수용은 미완료이고 AWS 로그인대기는 유지한다.
+
+## 2026-10-08 신규 계획 대량 승인·저장 개선 후속
+
+사용자의 원문 없는 신규 계획 개발 결정을 유지한다. Private lossless source pool과 inventory 경로를 유지하는 envelope은 Root 단위44/44·lint/format/typecheck를 통과했다. 실제 혼합400/400/30 자료의 PG JSONB는4272405→2301988byte이고 원본 왕복을 확인했지만 기존 store는 여전히 실패하므로 저장 수용은 미완료다. 전체 SQL 저장/읽기/ACK/승인/export 프로토콜을 준비한다.
+
+대량 영양 승인400은 진단용 OptionB에서 실제 통과했다. 정식 runtime profile에 등록되지 않은 disposable DB prototype 결과이며 기존 current22가 통과했다고 쓰지 않는다. 신규 SQL133 구현·회귀 준비를 native agent가 담당하고 Root는 DB lane·공통 installer/grants/graph/Git를 직렬 통합한다. FUT-09 원문 이식·외부 not_executed·phase 검토/main/push 대기는 유지한다. 세부 실패 및 실제 증거는 [I 기록](progress/M2-02i.md)에 보존한다.
