@@ -987,3 +987,19 @@ OIDC fixture의 보류 목록에 `/bff/v1/consents/app` 한 줄을 추가했다.
 앞선 로컬 unsigned build 결과는 보존한다. 별도의 보존된 `signed-scene-derived/Build/Products/Debug-iphoneos/SyntheticPerformance.app`는 읽기 전용 실제 strict/deep signature verify exit0·validtrue였고 실제 signed entitlement XML에 HealthKit/location 관련 key가 없었다. 결과 SHA `f46530d315193c58fcf28022288bc14a594f18700d8ec20564b0f014432bd492`다. 이 signed artifact의 제한된 환경 검사 실패 기록도 보존하며, 실행 환경을 달리한 후속 성공을 과거 실패 원인 확정으로 취급하지 않는다. Profile CMS는 실제 유효·wildcard bundle 포함, 공개 certificate3개의 현재 validity를 확인했다(SHA `1e3e86613ccbb6ea27420882df6d2ad3121c9a4f7cdff7e1e14ec96d761bd00d`). 앱4,849파일의 전후 SHA는 동일했다.
 
 실제 기기 조회는 pairedtrue/connectedfalse였으며 installed artifact 동일성·새 설치/실행·성능 측정은 not_executed다. Native RSS 측정 절차는 준비됐지만 값은 없으며 JS retained heap도 미측정이다. Keychain/trust/서명/기기 쓰기는 하지 않았다. 원32개 SHM 승인은 이미1회 소비됐고 추가 정리는 없다. main·graph·EXT-HOSTING 보호 WIP·stash·사용자 push 경계를 유지한다.
+
+### 2026-10-09 보호 구역 갱신 경합의 실제 재현
+
+`f26bc4a5`의 코드·빌드4,219개와 별도 geo 환경을 고정한 canonical 전체 identity 재실행은 general318통과·1실패·12skip·exit1이었다. 이번 실패는 OIDC timeout이 아닌 course-extras의 제거본 성공 표시 기대였다. 뒤 app-consent/AI/current-manual과 두 번째 전체 실행은 not_executed다. 실제 aggregate SHA `074ca75077163485600a113debd4e0f1f9bc5439d640eaf4520ffa0144efd722`, general SHA `76c104783a7f79bd1ae26f54fa80bafcd28855d1136ab184b2c49b00729d7a0c`를 보존한다. 즉시 DB/역할/slot/포트/새 TMP 잔존0·입력 불변을 확인했다. 원본 course focused1/1·skip0·exit0(SHA `b97b28dc82883b606ad8b1d6f13708ae7422150546e9ab003e4b41f2cd2f6e85`)은 별도 결과이며 전체 실패의 교정 증거가 아니다.
+
+원 실패의 DOM에는 정확한 stale 보호 구역 안내가 있었고 성공 문구는 없었다. 유한 projection SHA `4522e62e6ffde98119e5d9bde3cf96bf9c4ba300e5585742c8890c57074e6409`를 따른다. 원 실행의 HTTP409·요청 순서·동일 이름 구역의 사전 존재 여부는 이 DOM만으로 확인되지 않는다.
+
+별도 임시 사본에서 원 시험 본문과 도우미를 유지하고, 공개 API로 기존과 같은 이름의 합성 보호 구역 하나를 먼저 생성했다. 실제 list는1건·실행0이고 controlled 실행은1실패·통과0·skip0·retry0·exit1이었다. UI의 추가 POST200 뒤 새 목록 GET 완료 전에 제거본 PATCH가 발행됐으며 직후 버튼은 enabled였다. 서버는 실제 `409 COURSE_ZONE_ACKNOWLEDGEMENT_STALE`로 거절했고 원 수정본은 불변이었다. 원 성공 표시 기대는 실패한 그대로 보존한다. PATCH 발행 순서와 비동기 DOM 관측을 원 expect 순간 또는 브라우저 cache 소비 시점으로 확대하지 않는다. 이 경합은 재현됐지만 원 전체 실패와 원인 동일성은 미확정이다.
+
+실제 controlled general SHA `5e907268d30547e60825c79e6dbf33138ea751cc4c48c479f600f938d09a8dee`, aggregate SHA `48efd95ab0e95384c721825f0b1b14e3a5f5e5b1b9cd6a3fc72ccd028a5e24fc`, 보고서 `wm-course-trim-controlled-actual-one-20261009-report.md` SHA `85abaff8f236b4831db54db5aeb02064ae1cfd95243e4dd6b1140374720600ca`다. 직접 만든 구역2개만 DELETE200으로 정리했고 임시 spec 제거·원4,219개 입력 복구 및 DB/역할/slot/포트/새 TMP 잔존0을 실제 확인했다. 기존 소유 클러스터와 handoff는 유지한다. scoped 제품 수정은 agent에 배정됐지만 아직 검증·커밋 완료가 아니다. 서버 digest guard·전체 identity x2·phase 독립 검토·main 병합은 여전히 필요하다.
+
+### 2026-10-09 AWS 인증 복구와 iPhone 설치 후 잠금 중단
+
+사용자의 새 기기 연결 승인 뒤 `workout-admin` CLI SSO login은 실제 exit0, 서울 리전의 읽기 전용 STS는 exit0·기존 계정 일치였다. 기록 SHA `442022cfa63e8db70e0a0d706b5c4ced275c187f444d17e17cbd5646b274afb9`를 따른다. 세션 만료 시각은 미관측이며 로그인 유지 기간·IAM 정책·서버 배포 변경을 주장하지 않는다. 기존 public TLS503 관측은 그대로이고 공개 전환은 수행하지 않았다.
+
+사용자의 iPhone 연결 후 실제 paired/connected1개를 확인했다. 보존된 signed 합성 artifact4,849개 파일 SHA `810686ac7d51bc585ade9f4d2bd2b62487b1f5c384f71cd211f6a31d2b465d83`를 재확인하고 `org.workoutmanager.synthetic.performance` 정확 앱 설치는 exit0이었다. 설치 후 bundle/version/build는 일치했으나 원격 바이너리 SHA는 not_observed다. 이어 foreground 실행1회는 iPhone 잠금으로 exit1/LOCKED라 중단했고 재시도·record·성능 측정은 하지 않았다. 실제 기록 SHA `cdc9642d7d72126a168b12f7de6e4dc086e1363837e5a4a130d98e05c63aface`를 따른다. 사용자 잠금 해제 확인을 기다린다. 제품 앱·HealthKit·개인 기록에 접근하지 않았고 native RSS/JS heap/그리기·이동 수용은 not_executed다. 이전 unsigned artifact·미연결 관측은 과거 결과로 보존한다.
