@@ -237,7 +237,7 @@ for (const shell of shells) {
         events
           .getByRole('listitem')
           .filter({ hasText: prefix })
-          .getByRole('button', { name: '대회 상세 보기', exact: true })
+          .getByRole('button', { name: '대회 상세 · 날짜 변경 검토', exact: true })
           .click(),
       ]);
       expect(detailRead.status()).toBe(200);

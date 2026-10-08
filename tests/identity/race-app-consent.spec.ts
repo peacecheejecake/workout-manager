@@ -118,8 +118,8 @@ async function snapshot(page: Page, headers: Headers) {
   const response = await request(page, 'POST', '/bff/v1/operations/export', writeHeaders(headers));
   expect(response.status()).toBe(200);
   const exported = accountExportSchema.parse(await response.json());
-  assert.equal(exported.schemaVersion, 31);
-  if (exported.schemaVersion !== 31) throw new Error('RACE_EXPORT_VERSION_REQUIRED');
+  assert.equal(exported.schemaVersion, 34);
+  if (exported.schemaVersion !== 34) throw new Error('RACE_EXPORT_VERSION_REQUIRED');
   return {
     events: exported.data.raceEvents,
     revisions: exported.data.raceEventRevisions,
