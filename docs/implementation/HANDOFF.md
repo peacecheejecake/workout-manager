@@ -955,3 +955,9 @@ Native PG17.11의 baseline107 계약 갱신은 logical1(R2)와 pgoutput24·found
 최종 두 fixture는 실제 Next/Vite focused4/4·skip0·retry0·exit0, scoped TS/lint/format/diff0이었다. Root가 diff와 actual JSON을 확인했다. 시험 manifest SHA `bd56a213…04b715`와 기존 소유 PG bootstrap manifest `c5ad6cc2…62e7fe`는 별개로 기록한다. runtime333·자산 핀·API/클라이언트 빌드는 변경하지 않았다. 결과 SHA `3972e586…394a53`, 소유 클러스터 cleanup SHA `83d065e9…dce303`, 실제 수용 보고서 `wm-identity-race-consent-corrected-label-20261009-acceptance.md` SHA `9a2d37ea…e742c8`를 따른다. focused4를 전체 identity 통과로 표시하지 않는다.
 
 Worktree의 누락된 .geo-build 연결을 main의 기존 디렉터리로 복구했다. 실제 typed loader는 복구 전 자료없음과 기존 장소/고도 자료 로드 성공을 확인했지만 원 HTTP9실패의 직접 원인은 아직 별도 검증이 필요하다. 자료 SHA·소유권·버전은 전후 동일했고 기존 geo 고지는 undisclosed, basemap 라이선스는 not_checked다. 선택된 basemap4,829파일과 geo2파일의 별도 환경 snapshot SHA `82f0307e…86c6aa`를 고정했다. 이 ignored 환경은 코드/빌드4,219개 freeze와 구분한다. 링크 복구로 Java 시험 의존성도 생겨 현재 환경의 전체 unit 갱신을 진행한다. 수정 후 전체 identity 두 회·독립 phase 검토·main 병합과 외부 운영/실기기/최신 전체 복원은 아직 미완료다. graph의 a~m completed와 부모 M2-02 in_progress, EXT-HOSTING WIP·stash·사용자 push 경계는 유지한다.
+
+### 2026-10-09 복구한 환경의 전체 단위 갱신
+
+Canonical `pnpm test` R6는 실제588파일 통과·skip파일0, 9,506시험 통과·5시험 skip·실패0·exit0, 실행시간117,131ms였다. 입력2,917개 전후 동일과 Java17.0.15/JAR SHA 불변, 합성 Java TMP 잔존0을 확인했다. 실제 결과 SHA `8201e8bf…58d40`, 유한 보고서 `wm-full-unit-r6-finite-report-20261009.json` SHA `76a7a2ad…6ad49`를 따른다. 원 출력은 hash 후 폐기했으며 보존한 실행기에는 raw byte count 기록이 없어 not_recorded로 명시한다. R5의9,499통과·12skip는 원 환경의 결과로 보존한다. Root가 JSON·SHA와 새 환경 의존성을 직접 확인했고 추가 retry는 없었다.
+
+Fixture·문서 교정 뒤에도 전체 normal R2의1,091개 입력은 모두 기존 SHA와 일치했다. 제품/API/클라이언트 소스·빌드와 sourceproof333은 변경하지 않았다. 실제 scoped fixture TS/lint/format와 Root diff/문서 format 검사도 exit0이었다. 다음은 최종 source/build·별도 geo 환경을 고정한 전체 identity 두 회차이며, 아직 미실행이다. 전체 단위 결과를 identity·외부 운영·실기기·최신 인증 복원 또는 phase 독립 승인으로 확대하지 않는다.

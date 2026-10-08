@@ -70,3 +70,5 @@ Root의 최신 AWS non-root workout-admin STS 조회는 SSO token expired/refres
 전체 identity R1은 general302통과·13실패·16skip, 나머지 모음/전체 R2는 미실행이다. 실제 원본 focused 재현으로 오래된 대회 버튼 locator와 export31 기대의 drift를 확인했다. 최종 fixture는 대회 라벨 한곳·기본 export34만 교정하고 원 네트워크/DTO/URL/UI·CAS·tenant·동의 검증을 보존해 두 Host4/4·skip0을 실제 확인했다. 제품 navigation 결함이라는 최초 귀속은 철회했으며 과거 실패를 덮어쓰지 않는다.
 
 누락된 ignored .geo-build 링크를 복구하고 코드/빌드와 별도의4,831파일 환경 SHA를 고정했다. Geo undisclosed·basemap licence not_checked 및 실기기/provider/운영/최신 인증 복원 gate는 유지한다. 현재 환경의 전체 unit 갱신과 corrected whole identity 두 회차, 이후 독립 whole phase review가 남아 있다. 정확한 결과 SHA·시간·cleanup과 실패 정정은 [HANDOFF의 최신 기록](../HANDOFF.md#2026-10-09-전체-normal-통과와-identity-fixture-교정)에 따른다. main은1d557358, protected EXT-HOSTING WIP·stash는 보존하며 push는 사용자 작업이다.
+
+후속 실제 whole unit R6는9,506통과·5skip·실패0·588파일 통과·exit0이었다. source2,917개 전후 동일, Java/JAR 및 합성 TMP 정리를 확인했다. 이전 R5 skip를 소급 변경하지 않는다. 실제 결과 SHA `8201e8bf…58d40`와 HANDOFF의 [환경 갱신 기록](../HANDOFF.md#2026-10-09-복구한-환경의-전체-단위-갱신)을 따른다. Whole identity 두 회·독립 검토/main은 아직 미완료이며 sourceproof·normal R2 입력은 불변이다.
