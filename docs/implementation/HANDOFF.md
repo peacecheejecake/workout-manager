@@ -693,3 +693,7 @@ Root는 actualDB lane·operations/공통package/graph/Git 통합을 직렬 소�
 ## 2026-10-08 원문 없는 신규 영양 계획 로컬 수용
 
 M2-02m은 무저장 미리보기·편집 복귀·확인 초기화·명시 저장·재조회 경로를 구현했다. Root RTL44/44, Next/Vite build, 실제 합성 OIDC+PostgreSQL 두 Host Playwright2/2를 확인했다. Aside는 실행 불가, 추가 Chrome은 합성 로그인 경로의 ERR_BLOCKED_BY_CLIENT로 미완료이며 실기기 IME·운영/native/provider not_executed는 유지한다. FUT-09 원문 이식은 별도 대기다. M2-02 전체는 in_progress·미검토이며 main/push0이다. 상세는 progress/M2-02m.md.
+
+## 2026-10-08 승인·기본 권한 후속
+
+Public 승인 continuation의 legacy actual 회귀36/36과 rootunit59를 확인해 phase/m2-02 dc88c984에 기록했다. Dense400은 중복SQL118 하나를 제거한 뒤에도 fresh keep/calendar 두fullcapture의 decoded_bytes에서 실패하며 완료로 표시하지 않는다. NamedcoreV1은 optional-off Garmin 상태 읽기권한 누락42501이었고, 기존V1을 보존한 V2 정확5columnSELECT로 실제15/15 통과·secret/coremutation/foreign 접근 거절을 확인했다. Profile22 setup/5ports helper+기존helper/basicgrant Root 단위66/66이며 실제22 parser/HTTP/E2E는 준비 중이다. calendar root→fullcollector1회 개선과 explicit22 harness는 비중복 native 작업으로 병행한다. 전체I/J/phase·cold/security/fullrestore/출시는 미완료. 새 AWS STS 읽기조회도 expired/refreshfailed exit255이므로 관리자 새로그인 대기는 유지하며 외부변경0이다. FUT-09 이식은 별도대기, 신규계획M2-02m 로컬수용과 외부not_executed는 각각 유지한다.

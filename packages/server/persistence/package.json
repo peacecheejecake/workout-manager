@@ -49,6 +49,7 @@
     "./current-runtime-grants-v5": "./src/current-runtime-grants-v5.ts",
     "./current-runtime-catalog-witness-v5": "./src/current-runtime-catalog-witness-v5.ts",
     "./current-runtime-app-grants-v1": "./src/current-runtime-app-grants-v1.ts",
+    "./current-runtime-app-grants-v2": "./src/current-runtime-app-grants-v2.ts",
     "./current-runtime-grants": "./src/current-runtime-grants.ts",
     "./current-runtime-grants-v2": "./src/current-runtime-grants-v2.ts",
     "./current-runtime-grants-v3": "./src/current-runtime-grants-v3.ts",
