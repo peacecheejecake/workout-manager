@@ -12,6 +12,7 @@ import {
   projectRaceRelativeScheduleImpact,
   type RaceRelativeScheduleImpactInput,
   type RaceScheduleCalculationPorts,
+  type RaceScheduleCalculationPortsCompatibleV4,
 } from '../src/race-relative-schedule-impact.js';
 function required<T>(value: T | null | undefined): T {
   if (value === null || value === undefined) throw new Error('Missing synthetic fixture');
@@ -687,4 +688,114 @@ it('explicit ended rule resolution remains unsupported and never retimes its unr
   });
   expect(context).toEqual(original);
   expect(calculations.expandRoutine).not.toHaveBeenCalled();
+});
+
+it('compatible V4 prepares one exact proposed record context for400 items and preserves the single-item fallback result', async () => {
+  const { projectRaceRelativeScheduleImpactCompatibleV4 } =
+    await import('../src/race-relative-schedule-impact.js');
+  const { nutritionPlanVersionV4Schema } =
+    await import('@workout/contracts/nutrition-race-plan-v4');
+  const original = fixture();
+  const firstContext = required(original.nutrition[0]),
+    first = required(firstContext.record.items[0]);
+  const record = nutritionPlanVersionV4Schema.parse({
+    ...firstContext.record,
+    schemaVersion: 4,
+    items: Array.from({ length: 400 }, (_, index) => ({
+      ...first,
+      id: `dense-${index.toString().padStart(4, '0')}`,
+    })),
+    raceTimingPins: [
+      {
+        pinVersion: 1,
+        namespace: 'race-event-revision',
+        eventId,
+        eventRevision: 1,
+        sourceDigestVersion: 'race-event-values-canonical-v1',
+        sourceDigest: 'a'.repeat(64),
+        localDate: original.event.localDate,
+        localStartTime: original.event.localStartTime,
+        timezone: original.event.timezone,
+        start: { state: 'known', instant: '2026-03-07T12:00:00Z' },
+        end: { state: 'unknown', reason: 'race_end_not_recorded' },
+      },
+    ],
+    itemRaceTimingBindings: Array.from({ length: 400 }, (_, index) => ({
+      itemId: `dense-${index.toString().padStart(4, '0')}`,
+      binding: { state: 'captured', eventId, eventRevision: 1 },
+    })),
+  });
+  const input = {
+    ...original,
+    nutrition: [
+      {
+        record,
+        timings: record.items.map((item) => ({
+          itemId: item.id,
+          timing: { state: 'resolved', date: original.event.localDate, localTime: '07:00:00' },
+        })),
+      },
+    ],
+  };
+  const resolveNutrition = vi.fn(
+    (context: Parameters<RaceScheduleCalculationPortsCompatibleV4['resolveNutrition']>[0]) => ({
+      state: 'resolved',
+      date: context.event.localDate,
+      localTime: '07:00:00',
+    }),
+  );
+  const baseline = projectRaceRelativeScheduleImpactCompatibleV4(input, {
+    resolveNutrition,
+    expandRoutine: ports().expandRoutine,
+  });
+  expect(baseline.status).toBe('projected');
+  expect(resolveNutrition).toHaveBeenCalledTimes(400);
+  resolveNutrition.mockClear();
+  const selectors = vi.fn((_item: (typeof record.items)[number]) => ({
+    state: 'resolved',
+    date: input.newLocalDate,
+    localTime: '07:00:00',
+  }));
+  const prepareNutritionContext = vi.fn(
+    (context: Omit<Parameters<typeof resolveNutrition>[0], 'item'>) => {
+      expect(context).toEqual({
+        record,
+        sourcePlan: original.currentPlan?.draft,
+        event: { ...original.event, localDate: original.newLocalDate },
+        proposedFromEvent: original.event,
+      });
+      return { resolveNutrition: selectors };
+    },
+  );
+  const result = projectRaceRelativeScheduleImpactCompatibleV4(input, {
+    resolveNutrition,
+    expandRoutine: ports().expandRoutine,
+    prepareNutritionContext,
+  });
+  expect(result).toEqual(baseline);
+  expect(prepareNutritionContext).toHaveBeenCalledTimes(1);
+  expect(selectors).toHaveBeenCalledTimes(400);
+  expect(resolveNutrition).not.toHaveBeenCalled();
+  // Unit calculation ports above are not DB/source ownership proof.
+});
+it('optional batch factories cannot bypass output validation or make an unchanged item invoke calculation', async () => {
+  const { projectRaceRelativeScheduleImpactCompatibleV4 } =
+    await import('../src/race-relative-schedule-impact.js');
+  const factory = vi.fn(() => ({
+    resolveNutrition: () => ({ state: 'resolved', date: 'invalid', localTime: null }),
+  }));
+  const input = fixture();
+  const calculations = { ...ports(), prepareNutritionContext: factory };
+  expect(projectRaceRelativeScheduleImpactCompatibleV4(input, calculations)).toMatchObject({
+    status: 'rejected',
+    reason: 'invalid_port_result',
+  });
+  factory.mockClear();
+  expect(
+    projectRaceRelativeScheduleImpactCompatibleV4(
+      { ...input, newLocalDate: input.event.localDate },
+      calculations,
+    ).status,
+  ).toBe('projected');
+  expect(factory).not.toHaveBeenCalled();
 });

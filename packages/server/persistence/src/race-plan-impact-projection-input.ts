@@ -230,14 +230,16 @@ export function buildRacePlanImpactProjectionInput(
     }
     const records = capture.nutrition.map((row) => {
       const record = nutritionPlanVersionCompatibleV4Schema.parse(row.record);
+      const bindings = new Map(
+        'schemaVersion' in record
+          ? record.itemRaceTimingBindings.map((entry) => [entry.itemId, entry.binding])
+          : [],
+      );
       if (record.planId !== row.aggregateId || record.versionId !== row.versionId)
         throw new Error('source_identity_mismatch');
       for (const item of record.items)
         if (item.anchor.kind === 'relative' && item.anchor.entity === 'race') {
-          const binding =
-            'schemaVersion' in record
-              ? record.itemRaceTimingBindings.find((entry) => entry.itemId === item.id)?.binding
-              : undefined;
+          const binding = 'schemaVersion' in record ? bindings.get(item.id) : undefined;
           if (!binding || binding.state === 'legacy_unpinned')
             missingFacts.push({
               kind: 'immutable_race_pin',
@@ -246,7 +248,7 @@ export function buildRacePlanImpactProjectionInput(
           if (!races.has(item.anchor.entityId))
             fatal.push({ kind: 'race_anchor_body', id: item.anchor.entityId });
         }
-      return { record, sourcePlan: sourcePlan(record.linkedTrainingPlanVersionId) };
+      return { record, bindings, sourcePlan: sourcePlan(record.linkedTrainingPlanVersionId) };
     });
     unique(records, (row) => row.record.versionId);
     records.sort((a, b) => compare(a.record.versionId, b.record.versionId));
@@ -371,18 +373,20 @@ export function buildRacePlanImpactProjectionInput(
       sourcePlans: [...plans.values()].sort((a, b) => compare(a.id, b.id)),
       completionReports: completions,
       selection: intent.selection,
-      nutrition: records.map((row) => ({
-        record: row.record,
-        timings: row.record.items.map((item) => ({
-          itemId: item.id,
-          timing: ports.resolveNutrition({
-            item,
-            record: row.record,
-            sourcePlan: row.sourcePlan,
-            event,
-          }),
-        })),
-      })),
+      nutrition: records.map((row) => {
+        const prepared = ports.prepareNutritionContext({
+          record: row.record,
+          sourcePlan: row.sourcePlan,
+          event,
+        });
+        return {
+          record: row.record,
+          timings: row.record.items.map((item) => ({
+            itemId: item.id,
+            timing: prepared.resolveNutrition(item),
+          })),
+        };
+      }),
       routines,
       retainedUnplannedRuns,
       retainedHistoricalRoutines,
@@ -408,8 +412,7 @@ export function buildRacePlanImpactProjectionInput(
               itemId: item.id,
               binding:
                 'schemaVersion' in row.record
-                  ? (row.record.itemRaceTimingBindings.find((entry) => entry.itemId === item.id)
-                      ?.binding ?? { state: 'legacy_unpinned' as const })
+                  ? (row.bindings.get(item.id) ?? { state: 'legacy_unpinned' as const })
                   : { state: 'legacy_unpinned' as const },
             })),
         ),

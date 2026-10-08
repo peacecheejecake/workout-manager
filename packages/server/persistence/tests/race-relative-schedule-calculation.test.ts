@@ -629,3 +629,150 @@ it('applies one aggregate input byte budget to captured bodies plus each nutriti
     captured.expandRoutine({ schedule: schedule(), sourcePlan: input.sourcePlan }),
   ).toThrow('INVALID_CALCULATION_INPUT');
 });
+
+function frozenBatch(count = 400) {
+  const raw = nutrition();
+  const event = { ...raw.event, localDate: '2026-03-08', localStartTime: '01:30:00' };
+  const first = raw.record.items[0];
+  if (!first) throw Error('fixture');
+  const record = {
+    ...raw.record,
+    schemaVersion: 4,
+    items: Array.from({ length: count }, (_, index) => ({
+      ...first,
+      id: `meal-${index.toString().padStart(4, '0')}`,
+      anchor: {
+        kind: 'relative',
+        entity: 'race',
+        entityId: event.id,
+        point: 'start',
+        offsetMinutes: 0,
+      },
+    })),
+    raceTimingPins: [
+      {
+        pinVersion: 1,
+        namespace: 'race-event-revision',
+        eventId: event.id,
+        eventRevision: 1,
+        sourceDigestVersion: 'race-event-values-canonical-v1',
+        sourceDigest: 'a'.repeat(64),
+        localDate: event.localDate,
+        localStartTime: event.localStartTime,
+        timezone: event.timezone,
+        start: { state: 'known', instant: '2026-03-08T06:30:00Z' },
+        end: { state: 'unknown', reason: 'race_end_not_recorded' },
+      },
+    ],
+    itemRaceTimingBindings: Array.from({ length: count }, (_, index) => ({
+      itemId: `meal-${index.toString().padStart(4, '0')}`,
+      binding: { state: 'captured', eventId: event.id, eventRevision: 1 },
+    })),
+  };
+  return { record, sourcePlan: raw.sourcePlan, event };
+}
+it('one immutable batch reuses one frozen projector for400 exact selectors and matches the single-item boundary', async () => {
+  const { createRaceRelativeScheduleCalculationPortsCompatibleV4 } =
+    await import('../src/race-relative-schedule-calculation.js');
+  const frozen = await import('../src/nutrition-frozen-timing-projection.js');
+  const { vi } = await import('vitest');
+  const spy = vi.spyOn(frozen, 'createFrozenNutritionProjectorCompatibleV4');
+  try {
+    const input = frozenBatch();
+    const ports = createRaceRelativeScheduleCalculationPortsCompatibleV4([input.event]);
+    const batch = ports.prepareNutritionContext(input);
+    const values = input.record.items.map((item) => batch.resolveNutrition(item));
+    expect(values).toHaveLength(400);
+    expect(
+      values.every(
+        (value) =>
+          JSON.stringify(value) ===
+          JSON.stringify({ state: 'resolved', date: '2026-03-08', localTime: '01:30:00' }),
+      ),
+    ).toBe(true);
+    expect(spy).toHaveBeenCalledTimes(1);
+    for (const index of [0, 199, 399]) {
+      const item = input.record.items[index];
+      if (!item) throw Error('fixture');
+      expect(ports.resolveNutrition({ ...input, item })).toEqual(values[index]);
+    }
+  } finally {
+    spy.mockRestore();
+  }
+});
+it('batch owns a strict snapshot and preserves before/proposed facts after caller record/event/plan mutations', async () => {
+  const { createRaceRelativeScheduleCalculationPortsCompatibleV4 } =
+    await import('../src/race-relative-schedule-calculation.js');
+  const input = frozenBatch(2),
+    original = structuredClone(input);
+  const item = original.record.items[0];
+  if (!item) throw Error('fixture');
+  const ports = createRaceRelativeScheduleCalculationPortsCompatibleV4([input.event]);
+  const before = ports.prepareNutritionContext(input);
+  const after = ports.prepareNutritionContext({
+    ...input,
+    event: { ...input.event, localDate: '2026-03-10' },
+    proposedFromEvent: input.event,
+  });
+  input.record.items = [];
+  input.record.itemRaceTimingBindings = [];
+  input.event.localStartTime = '23:00:00';
+  input.sourcePlan.sessions = [];
+  expect(before.resolveNutrition(item)).toEqual({
+    state: 'resolved',
+    date: '2026-03-08',
+    localTime: '01:30:00',
+  });
+  expect(after.resolveNutrition(item)).toEqual({
+    state: 'resolved',
+    date: '2026-03-10',
+    localTime: '01:30:00',
+  });
+  expect(() => ports.prepareNutritionContext(input)).toThrow();
+  expect(() => before.resolveNutrition({ ...item, id: 'foreign' })).toThrow(
+    'INVALID_CALCULATION_INPUT',
+  );
+  expect(() =>
+    before.resolveNutrition({ ...item, planVersionId: '20000000-0000-4000-8000-000000000099' }),
+  ).toThrow('INVALID_CALCULATION_INPUT');
+  expect(before.resolveNutrition({ ...item, title: 'tampered' })).toEqual({
+    state: 'unresolved',
+    reason: 'unsupported_anchor_mapping',
+  });
+  expect(() =>
+    ports.prepareNutritionContext({
+      ...original,
+      record: { ...original.record, itemRaceTimingBindings: [] },
+    }),
+  ).toThrow();
+  const stale = ports.prepareNutritionContext({
+    ...original,
+    proposedFromEvent: { ...original.event, revision: 2 },
+  });
+  expect(() => stale.resolveNutrition(item)).toThrow('INVALID_CALCULATION_INPUT');
+});
+it('batch unknown guard refuses accessors, cycles, holes, unknown authority and oversized bodies without executing getters', async () => {
+  const { createRaceRelativeScheduleCalculationPortsCompatibleV4 } =
+    await import('../src/race-relative-schedule-calculation.js');
+  const ports = createRaceRelativeScheduleCalculationPortsCompatibleV4();
+  const input = frozenBatch(1);
+  let reads = 0;
+  const getter = Object.defineProperty({}, 'record', {
+    enumerable: true,
+    get() {
+      reads++;
+      return input.record;
+    },
+  });
+  const cyclic: Record<string, unknown> = {};
+  cyclic.self = cyclic;
+  for (const raw of [
+    getter,
+    cyclic,
+    { ...input, record: { ...input.record, items: new Array(2) } },
+    { ...input, authority: true },
+    { ...input, record: { ...input.record, purpose: 'x'.repeat(4194305) } },
+  ])
+    expect(() => ports.prepareNutritionContext(raw)).toThrow();
+  expect(reads).toBe(0);
+});

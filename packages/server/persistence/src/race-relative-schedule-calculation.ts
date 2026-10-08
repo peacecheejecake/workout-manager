@@ -143,12 +143,66 @@ const timingCompatibleV3 = z.union([
     reason: z.literal('unsupported_anchor_mapping'),
   }),
 ]);
+const nutritionContextCompatibleV4 = nutritionInputCompatibleV4.omit({ item: true });
+/** Bound before parsing or cloning; no accessors or mutable identity cache. */
+function boundedNutrition(raw: unknown): void {
+  const active = new Set<object>();
+  let bytes = 0,
+    nodes = 0;
+  function charge(value: string) {
+    if (value.length > 4194304) throw new Error('INVALID_CALCULATION_INPUT');
+    bytes += Buffer.byteLength(value, 'utf8');
+    if (bytes > 4194304) throw new Error('INVALID_CALCULATION_INPUT');
+  }
+  function visit(value: unknown, depth: number): void {
+    if (++nodes > 4194304 || depth > 64) throw new Error('INVALID_CALCULATION_INPUT');
+    if (typeof value === 'string') return charge(value);
+    if (
+      value === null ||
+      typeof value === 'boolean' ||
+      (typeof value === 'number' && Number.isFinite(value))
+    )
+      return;
+    if (typeof value !== 'object' || active.has(value))
+      throw new Error('INVALID_CALCULATION_INPUT');
+    const array = Array.isArray(value),
+      proto: unknown = Object.getPrototypeOf(value);
+    if (array ? proto !== Array.prototype : proto !== Object.prototype && proto !== null)
+      throw new Error('INVALID_CALCULATION_INPUT');
+    active.add(value);
+    const keys = Reflect.ownKeys(value);
+    if (keys.length > 4194304) throw new Error('INVALID_CALCULATION_INPUT');
+    let count = 0;
+    for (const key of keys) {
+      if (array && key === 'length') continue;
+      if (typeof key !== 'string') throw new Error('INVALID_CALCULATION_INPUT');
+      charge(key);
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      if (!descriptor?.enumerable || !('value' in descriptor) || (array && key !== String(count++)))
+        throw new Error('INVALID_CALCULATION_INPUT');
+      visit(descriptor.value, depth + 1);
+    }
+    if (array && count !== value.length) throw new Error('INVALID_CALCULATION_INPUT');
+    active.delete(value);
+  }
+  try {
+    visit(raw, 0);
+    bounded(raw);
+  } catch {
+    throw new Error('INVALID_CALCULATION_INPUT');
+  }
+}
+
 /** Internal preview adapter: saved timing and hypothetical event timing remain separate; no capture or write. */
 export interface RaceRelativeScheduleCalculationPortsCompatibleV3 extends RaceScheduleCalculationPortsCompatibleV3 {
   resolveNutrition(raw: unknown): z.infer<typeof timingCompatibleV3>;
 }
 export interface RaceRelativeScheduleCalculationPortsCompatibleV4 extends RaceScheduleCalculationPortsCompatibleV4 {
   resolveNutrition(raw: unknown): z.infer<typeof timingCompatibleV3>;
+  /** Private immutable calculation snapshot only; never source authority. */
+  prepareNutritionContext(raw: unknown): {
+    resolveNutrition(unknownItem: unknown): z.infer<typeof timingCompatibleV3>;
+  };
 }
 export function createRaceRelativeScheduleCalculationPortsCompatibleV3(
   knownRaceEvents: unknown = [],
@@ -174,66 +228,61 @@ export function createRaceRelativeScheduleCalculationPortsCompatibleV4(
       .map((event) => [event.id, event]),
   );
   const visible = new Set(currentEvents.keys());
-  return {
-    expandRoutine: (context) => legacy.expandRoutine(context),
-    resolveNutrition(raw) {
-      bounded(raw);
-      const { item, record, sourcePlan, event, proposedFromEvent } =
-        nutritionInputCompatibleV4.parse(raw);
-      if (
-        item.planVersionId !== record.versionId ||
-        !record.items.some((saved) => saved.id === item.id)
-      )
-        throw new Error('INVALID_CALCULATION_INPUT');
-      if (!('schemaVersion' in record))
-        return legacy.resolveNutrition({
-          sourcePlan,
-          event,
-          item: nutritionPlanItemCoreSchema.parse(item),
-          record,
-        });
-      if (item.anchor.kind === 'disconnected')
-        return { state: 'unresolved', reason: 'missing_anchor' };
-      if (item.anchor.kind === 'relative' && item.anchor.entity === 'race') {
-        const saved = record.items.find((saved) => saved.id === item.id);
-        if (!saved || JSON.stringify(saved) !== JSON.stringify(item))
-          return { state: 'unresolved', reason: 'unsupported_anchor_mapping' };
-        if (proposedFromEvent) {
-          const binding = record.itemRaceTimingBindings.find(
-            (entry) => entry.itemId === item.id,
-          )?.binding;
-          if (!binding || binding.state !== 'captured')
-            return { state: 'unresolved', reason: 'unsupported_anchor_mapping' };
-          const pin = record.raceTimingPins.find(
-            (entry) =>
-              entry.eventId === binding.eventId && entry.eventRevision === binding.eventRevision,
-          );
-          // Current facts can be newer than the immutable pin; an older or foreign
-          // event cannot stand in for its source. Only the proposed date changes.
-          if (
-            !pin ||
-            JSON.stringify(currentEvents.get(proposedFromEvent.id)) !==
-              JSON.stringify(proposedFromEvent) ||
-            binding.eventId !== item.anchor.entityId ||
-            event.id !== binding.eventId ||
-            proposedFromEvent.id !== event.id ||
-            proposedFromEvent.revision < binding.eventRevision ||
-            JSON.stringify({ ...event, localDate: proposedFromEvent.localDate }) !==
-              JSON.stringify(proposedFromEvent)
-          )
-            throw new Error('INVALID_CALCULATION_INPUT');
-          const calculationPlan = {
-            ...record,
-            items: record.items.flatMap((saved) =>
-              saved.anchor.kind === 'disconnected' ? [] : [{ ...saved, anchor: saved.anchor }],
-            ),
-          };
+  function preparedContext(context: z.infer<typeof nutritionContextCompatibleV4>) {
+    const { record, sourcePlan, event, proposedFromEvent } = context;
+    const legacyContextBytes = !('schemaVersion' in record)
+      ? Buffer.byteLength(
+          JSON.stringify({ capturedRaceEvents: [...currentEvents.values()], calculation: context }),
+          'utf8',
+        )
+      : null;
+    // These maps and views belong to this parsed snapshot. Never cache a caller's
+    // mutable record identity or select a body by version ID alone.
+    const items = new Map(record.items.map((item) => [item.id, item]));
+    const bindings = new Map(
+      'schemaVersion' in record
+        ? record.itemRaceTimingBindings.map((row) => [row.itemId, row.binding])
+        : [],
+    );
+    const pins = new Map(
+      'schemaVersion' in record
+        ? record.raceTimingPins.map((pin) => [
+            JSON.stringify([pin.eventId, pin.eventRevision]),
+            pin,
+          ])
+        : [],
+    );
+    const calculationPlan = {
+      ...record,
+      items: record.items.flatMap((saved) =>
+        saved.anchor.kind === 'disconnected' ? [] : [{ ...saved, anchor: saved.anchor }],
+      ),
+    };
+    const linked = new Map<string, z.infer<typeof planDraftSchema>>();
+    if (sourcePlan && record.linkedTrainingPlanVersionId)
+      linked.set(record.linkedTrainingPlanVersionId, sourcePlan);
+    const races = new Map(currentEvents);
+    races.set(event.id, event);
+    let projector: ReturnType<typeof createFrozenNutritionProjectorCompatibleV4> | undefined;
+    return {
+      resolveNutrition(unknownItem: unknown) {
+        boundedNutrition(unknownItem);
+        const item = nutritionInputCompatibleV4.shape.item.parse(unknownItem);
+        if (
+          legacyContextBytes !== null &&
+          legacyContextBytes + Buffer.byteLength(JSON.stringify(item), 'utf8') + 8 > 4194304
+        )
+          throw new Error('INVALID_CALCULATION_INPUT');
+        const saved = items.get(item.id);
+        if (item.planVersionId !== record.versionId || !saved)
+          throw new Error('INVALID_CALCULATION_INPUT');
+        if (!('schemaVersion' in record)) {
           const result = projectNutritionItem(
             nutritionPlanItemCoreSchema.parse(item),
-            calculationPlan,
-            new Map(),
+            record,
+            linked,
             record.timezone,
-            new Map([[event.id, event]]),
+            races,
           );
           return timingCompatibleV3.parse(
             'value' in result
@@ -241,53 +290,105 @@ export function createRaceRelativeScheduleCalculationPortsCompatibleV4(
               : { state: 'unresolved', reason: result.reason },
           );
         }
-        const projector = createFrozenNutritionProjectorCompatibleV4({
-          record,
-          targetTimezone: record.timezone,
-          linkedTraining:
-            sourcePlan && record.linkedTrainingPlanVersionId
-              ? { versionId: record.linkedTrainingPlanVersionId, draft: sourcePlan }
-              : null,
-        });
-        const result = projector.project({
-          itemId: item.id,
-          raceSourceVisibility:
-            visible.has(item.anchor.entityId) || item.anchor.entityId === event.id
-              ? 'available'
-              : 'unavailable',
-        });
-        return timingCompatibleV3.parse(
-          result.status === 'projected'
-            ? {
-                state: 'resolved',
-                date: result.projection.date,
-                localTime: result.projection.value.localTime,
-              }
-            : { state: 'unresolved', reason: result.item.reason },
+        if (item.anchor.kind === 'disconnected')
+          return { state: 'unresolved' as const, reason: 'missing_anchor' as const };
+        if (item.anchor.kind === 'relative' && item.anchor.entity === 'race') {
+          if (JSON.stringify(saved) !== JSON.stringify(item))
+            return { state: 'unresolved' as const, reason: 'unsupported_anchor_mapping' as const };
+          if (proposedFromEvent) {
+            const binding = bindings.get(item.id);
+            if (!binding || binding.state !== 'captured')
+              return {
+                state: 'unresolved' as const,
+                reason: 'unsupported_anchor_mapping' as const,
+              };
+            const pin = pins.get(JSON.stringify([binding.eventId, binding.eventRevision]));
+            if (
+              !pin ||
+              JSON.stringify(currentEvents.get(proposedFromEvent.id)) !==
+                JSON.stringify(proposedFromEvent) ||
+              binding.eventId !== item.anchor.entityId ||
+              event.id !== binding.eventId ||
+              proposedFromEvent.id !== event.id ||
+              proposedFromEvent.revision < binding.eventRevision ||
+              JSON.stringify({ ...event, localDate: proposedFromEvent.localDate }) !==
+                JSON.stringify(proposedFromEvent)
+            )
+              throw new Error('INVALID_CALCULATION_INPUT');
+            const result = projectNutritionItem(
+              nutritionPlanItemCoreSchema.parse(item),
+              calculationPlan,
+              new Map(),
+              record.timezone,
+              new Map([[event.id, event]]),
+            );
+            return timingCompatibleV3.parse(
+              'value' in result
+                ? { state: 'resolved', date: result.date, localTime: result.value.localTime }
+                : { state: 'unresolved', reason: result.reason },
+            );
+          }
+          projector ??= createFrozenNutritionProjectorCompatibleV4({
+            record,
+            targetTimezone: record.timezone,
+            linkedTraining:
+              sourcePlan && record.linkedTrainingPlanVersionId
+                ? { versionId: record.linkedTrainingPlanVersionId, draft: sourcePlan }
+                : null,
+          });
+          const result = projector.project({
+            itemId: item.id,
+            raceSourceVisibility:
+              visible.has(item.anchor.entityId) || item.anchor.entityId === event.id
+                ? 'available'
+                : 'unavailable',
+          });
+          return timingCompatibleV3.parse(
+            result.status === 'projected'
+              ? {
+                  state: 'resolved',
+                  date: result.projection.date,
+                  localTime: result.projection.value.localTime,
+                }
+              : { state: 'unresolved', reason: result.item.reason },
+          );
+        }
+        const result = projectNutritionItem(
+          nutritionPlanItemCoreSchema.parse(item),
+          calculationPlan,
+          linked,
+          record.timezone,
         );
+        return timingCompatibleV3.parse(
+          'value' in result
+            ? { state: 'resolved', date: result.date, localTime: result.value.localTime }
+            : { state: 'unresolved', reason: result.reason },
+        );
+      },
+    };
+  }
+  return {
+    expandRoutine: (context) => legacy.expandRoutine(context),
+    prepareNutritionContext(raw) {
+      boundedNutrition(raw);
+      return preparedContext(nutritionContextCompatibleV4.parse(raw));
+    },
+    resolveNutrition(raw) {
+      // The public unknown boundary still validates the entire tuple each call.
+      bounded(raw);
+      const { item, ...context } = nutritionInputCompatibleV4.parse(raw);
+      if (!('schemaVersion' in context.record)) {
+        if (
+          item.planVersionId !== context.record.versionId ||
+          !context.record.items.some((row) => row.id === item.id)
+        )
+          throw new Error('INVALID_CALCULATION_INPUT');
+        return legacy.resolveNutrition({
+          ...context,
+          item: nutritionPlanItemCoreSchema.parse(item),
+        });
       }
-      // Calculation-only typed view for the old non-race projector. The full
-      // V3 record remains in collector/digest/projection inputs; this is not a stored record.
-      const calculationPlan = {
-        ...record,
-        items: record.items.flatMap((saved) =>
-          saved.anchor.kind === 'disconnected' ? [] : [{ ...saved, anchor: saved.anchor }],
-        ),
-      };
-      const linked = new Map<string, z.infer<typeof planDraftSchema>>();
-      if (sourcePlan && record.linkedTrainingPlanVersionId)
-        linked.set(record.linkedTrainingPlanVersionId, sourcePlan);
-      const result = projectNutritionItem(
-        nutritionPlanItemCoreSchema.parse(item),
-        calculationPlan,
-        linked,
-        record.timezone,
-      );
-      return timingCompatibleV3.parse(
-        'value' in result
-          ? { state: 'resolved', date: result.date, localTime: result.value.localTime }
-          : { state: 'unresolved', reason: result.reason },
-      );
+      return preparedContext(context).resolveNutrition(item);
     },
   };
 }

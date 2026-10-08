@@ -265,6 +265,16 @@ export interface RaceScheduleCalculationPortsCompatibleV4 {
     event: z.infer<typeof raceEventSchema>;
     proposedFromEvent?: z.infer<typeof raceEventSchema>;
   }): unknown;
+  /** Calculation-only immutable batch snapshot; no source or approval authority.
+   * Single-item adapters remain supported with their existing full boundary. */
+  prepareNutritionContext?(
+    context: Omit<
+      Parameters<RaceScheduleCalculationPortsCompatibleV4['resolveNutrition']>[0],
+      'item'
+    >,
+  ): {
+    resolveNutrition(item: NutritionPlanVersionCompatibleV4['items'][number]): unknown;
+  };
   expandRoutine: RaceScheduleCalculationPorts['expandRoutine'];
 }
 export type RaceRelativeScheduleImpactInputCompatibleV3 = z.infer<typeof inputSchemaCompatibleV3>;
@@ -457,12 +467,38 @@ function projectRaceRelativeScheduleImpactInternal(
       const { record } = context;
       bound(record.items.length);
       unique(context.timings, (entry) => entry.itemId);
+      const recordItemIds = new Set(record.items.map((item) => item.id));
       if (
         context.timings.length !== record.items.length ||
-        context.timings.some((entry) => !record.items.some((item) => item.id === entry.itemId))
+        context.timings.some((entry) => !recordItemIds.has(entry.itemId))
       )
         return reject('source_identity_mismatch');
       const timings = new Map(context.timings.map((entry) => [entry.itemId, entry.timing]));
+      // Each context is strict-decoded before this loop. Factories own a new
+      // immutable snapshot; before/current and hypothetical race facts stay separate.
+      const preparedContexts = new Map<
+        boolean,
+        { resolveNutrition(item: NutritionPlanVersionCompatibleV4['items'][number]): unknown }
+      >();
+      const resolveNutrition = (item: NutritionPlanVersionCompatibleV4['items'][number]) => {
+        const race =
+          'schemaVersion' in record &&
+          item.anchor.kind === 'relative' &&
+          item.anchor.entity === 'race';
+        const calculation = {
+          record,
+          sourcePlan: sourcePlan(record.linkedTrainingPlanVersionId, true),
+          event: { ...input.event, localDate: input.newLocalDate },
+          ...(race ? { proposedFromEvent: input.event } : {}),
+        };
+        if (!ports.prepareNutritionContext) return ports.resolveNutrition({ ...calculation, item });
+        let prepared = preparedContexts.get(race);
+        if (!prepared) {
+          prepared = ports.prepareNutritionContext(calculation);
+          preparedContexts.set(race, prepared);
+        }
+        return prepared.resolveNutrition(item);
+      };
       const items = [];
       for (const item of [...record.items].sort((a, b) => a.id.localeCompare(b.id))) {
         const before = timings.get(item.id);
@@ -516,21 +552,7 @@ function projectRaceRelativeScheduleImpactInternal(
                 proposed.anchor.entityId === input.event.id &&
                 input.event.localStartTime === null
               ? { state: 'unresolved', reason: 'missing_race_time' }
-              : decoded(
-                  raceScheduleTimingSchema,
-                  ports.resolveNutrition({
-                    item: proposed,
-                    record,
-                    sourcePlan: sourcePlan(record.linkedTrainingPlanVersionId, true),
-                    event: { ...input.event, localDate: input.newLocalDate },
-                    ...('schemaVersion' in record &&
-                    proposed.anchor.kind === 'relative' &&
-                    proposed.anchor.entity === 'race'
-                      ? { proposedFromEvent: input.event }
-                      : {}),
-                  }),
-                  budget,
-                );
+              : decoded(raceScheduleTimingSchema, resolveNutrition(proposed), budget);
         items.push({
           itemId: item.id,
           state: 'affected' as const,

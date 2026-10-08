@@ -741,3 +741,36 @@ it('partitions current ended head and historical active schedule without repinni
   head.record = { ...head.record, state: 'paused' };
   expect(buildRacePlanImpactProjectionInput(wrong, intent(wrong, true)).status).toBe('blocked');
 });
+
+it('batch calculation preserves all400 captured nutrition items and the exact single-item before/proposed output', () => {
+  const capture = fixture();
+  const row = capture.nutrition[0];
+  if (!row || 'schemaVersion' in row.record) throw Error('fixture');
+  const original = row.record.items[0];
+  if (!original) throw Error('fixture');
+  row.record = {
+    ...row.record,
+    items: Array.from({ length: 400 }, (_, index) => ({
+      ...original,
+      id: `dense-${index.toString().padStart(4, '0')}`,
+    })),
+  };
+  const before = structuredClone(capture);
+  const projected = buildRacePlanImpactProjectionInput(capture, intent(capture, true));
+  expect(projected.status).toBe('projected');
+  if (projected.status !== 'projected') throw Error('fixture');
+  expect(projected.input.nutrition[0]?.timings).toHaveLength(400);
+  expect(projected.projection.nutrition[0]?.items).toHaveLength(400);
+  const ports = createRacePlanImpactCapturedCalculationPorts(capture);
+  const item = row.record.items[399];
+  if (!item) throw Error('fixture');
+  expect(projected.input.nutrition[0]?.timings[399]?.timing).toEqual(
+    ports.resolveNutrition({
+      item,
+      record: row.record,
+      sourcePlan: capture.currentTraining?.snapshot.draft ?? null,
+      event: capture.event,
+    }),
+  );
+  expect(capture).toEqual(before);
+});
