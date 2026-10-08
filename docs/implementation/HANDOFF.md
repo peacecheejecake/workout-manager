@@ -697,3 +697,7 @@ M2-02m은 무저장 미리보기·편집 복귀·확인 초기화·명시 저장
 ## 2026-10-08 승인·기본 권한 후속
 
 Public 승인 continuation의 legacy actual 회귀36/36과 rootunit59를 확인해 phase/m2-02 dc88c984에 기록했다. Dense400은 중복SQL118 하나를 제거한 뒤에도 fresh keep/calendar 두fullcapture의 decoded_bytes에서 실패하며 완료로 표시하지 않는다. NamedcoreV1은 optional-off Garmin 상태 읽기권한 누락42501이었고, 기존V1을 보존한 V2 정확5columnSELECT로 실제15/15 통과·secret/coremutation/foreign 접근 거절을 확인했다. Profile22 setup/5ports helper+기존helper/basicgrant Root 단위66/66이며 실제22 parser/HTTP/E2E는 준비 중이다. calendar root→fullcollector1회 개선과 explicit22 harness는 비중복 native 작업으로 병행한다. 전체I/J/phase·cold/security/fullrestore/출시는 미완료. 새 AWS STS 읽기조회도 expired/refreshfailed exit255이므로 관리자 새로그인 대기는 유지하며 외부변경0이다. FUT-09 이식은 별도대기, 신규계획M2-02m 로컬수용과 외부not_executed는 각각 유지한다.
+
+## 2026-10-08 Calendar 수집 실제 회귀와 다음 작업
+
+Calendar root 판단 후 기존 fullcollector로 이어지는 변경은 Root unit47/47, 실제 preview/budget23/23 및 기존 승인36/36을 통과했다. 기존 cap·parent/history/freshness 검증은 유지한다. Dense400은 R9 4pass/2fail로 additional nutrition parent 재읽기와 혼합 저장 입력 한도가 남아 있으며 완료가 아니다. Native agent가 동일 capture 내 엄격 검증된 parent 재사용과 profile22 실제 HTTP export 시험을 각각 준비한다. Root harness unit83/83·TS0, 실제DB 정리0이며 HTTP/current default/cold/security/restore/phase/출시는 별도 미완료다. 상세 실패와 최종 증거는 I 기록에 보존한다. 신규 계획 사용 개발을 계속하며 FUT-09 원문 이식만 별도 대기한다.

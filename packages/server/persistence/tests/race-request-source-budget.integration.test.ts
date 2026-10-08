@@ -306,7 +306,7 @@ const intent = (eventId: string) => ({
 });
 // Inherited counters represent earlier bounded source reservations, not fake
 // database facts. All source queries below still run against public owned rows.
-it('initial and recapture share the inherited response reservation and reject before the second root body', async () => {
+it('preliminary roots and the full collector share reservations and reject before the final root body', async () => {
   const f = await coherentSources(db);
   await snapshot(db, f.athlete, async (tx) => {
     const single: SourceBudget = { bytes: 0n, sources: 0 };
@@ -330,11 +330,18 @@ it('initial and recapture share the inherited response reservation and reject be
       previewRacePlanImpactTransaction(measured, intent(f.race.id), budget),
     ).rejects.toMatchObject({ code: 'CONTEXT_UNAVAILABLE', bound: 'decoded_bytes' });
     expect(
-      queries.filter((sql) => sql.includes('SELECT id,revision,values_json FROM race_event WHERE')),
+      queries.filter((sql) =>
+        sql.trimStart().startsWith('SELECT id,revision,values_json FROM race_event WHERE'),
+      ),
+    ).toHaveLength(1);
+    // The preliminary scalar includes a nested event SELECT, but transports no
+    // root body. Count direct body reads separately from scalar preflights.
+    expect(
+      queries.filter((sql) => sql.includes('bodies AS (SELECT to_jsonb(e) AS body FROM event e')),
     ).toHaveLength(1);
     expect(
       queries.filter((sql) => sql.includes('WITH\n    nutrition AS MATERIALIZED')),
-    ).toHaveLength(2);
+    ).toHaveLength(1);
     expect(budget.bytes).toBeGreaterThan(cap);
   });
 });
@@ -368,7 +375,9 @@ it('owned scalar consumes earlier capture reservations and blocks body/observer 
       prepareRaceManualReviewOwnedBindingV2In(measured, intent(f.race.id), budget),
     ).rejects.toMatchObject({ code: 'CONTEXT_UNAVAILABLE', bound: 'decoded_bytes' });
     expect(
-      queries.filter((sql) => sql.includes('SELECT id,revision,values_json FROM race_event WHERE')),
+      queries.filter((sql) =>
+        sql.trimStart().startsWith('SELECT id,revision,values_json FROM race_event WHERE'),
+      ),
     ).toHaveLength(2);
     expect(queries.some((sql) => sql.includes('manual_review_owned_v2 scalar'))).toBe(true);
     expect(queries.some((sql) => sql.includes('manual_review_owned_v2 body'))).toBe(false);

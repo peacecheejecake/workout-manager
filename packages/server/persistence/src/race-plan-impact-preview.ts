@@ -1,3 +1,5 @@
+import { projectRacePlanImpact } from '@workout/server-coaching/race-plan-impact';
+import { captureRacePlanImpactCalendarRootsIn } from './race-plan-impact-calendar-roots.js';
 import type { SourceBudget } from './race-plan-impact-nested-sources.js';
 import type { Database, Transaction } from './database.js';
 import { AppConsentRequiredError, requireAppAdmission } from './app-admission.js';
@@ -8,6 +10,7 @@ import {
 } from './race-plan-impact-context.js';
 import {
   buildRacePlanImpactProjectionInput,
+  deriveRacePlanImpactCollectorSelection,
   raceProjectionIntentSchema,
 } from './race-plan-impact-projection-input.js';
 
@@ -52,34 +55,42 @@ export async function previewRacePlanImpactTransaction(
       eventId: intent.expectedEvent.id,
       expectedRevision: intent.expectedEvent.revision,
     };
-    const initial = await captureRacePlanImpactContext(
-      tx,
-      {
-        ...captureInput,
-        selection: { kind: 'keep_plan' },
-      },
-      requestSourceBudget,
-    );
+    const roots = await captureRacePlanImpactCalendarRootsIn(tx, captureInput, requestSourceBudget);
     if (
       intent.selection.kind === 'move_period' &&
-      initial.currentTraining?.snapshot.id !== intent.selection.expectedCurrentPlanVersionId
+      roots.currentTraining?.snapshot.id !== intent.selection.expectedCurrentPlanVersionId
     )
       throw new RacePlanImpactPreviewError('REVISION_CONFLICT');
-    const first = buildRacePlanImpactProjectionInput(initial, intent);
-    // Reject an already oversized response before re-reading source bodies.
-    bounded({ context: initial, projection: first });
-    if (!('collectorSelection' in first)) return bounded({ context: initial, projection: first });
-    // Only the real calendar projector derives IDs; recapture in the same transaction.
+    const calendar = projectRacePlanImpact({
+      event: { localDate: roots.event.localDate, planVersionId: roots.event.planVersionId },
+      newLocalDate: intent.newLocalDate,
+      currentPlan: roots.currentTraining?.snapshot ?? null,
+      completionReports: roots.completions,
+      selection: intent.selection,
+    });
+    async function keepPlanFallback() {
+      const context = await captureRacePlanImpactContext(
+        tx,
+        { ...captureInput, selection: { kind: 'keep_plan' } },
+        requestSourceBudget,
+      );
+      return bounded({ context, projection: buildRacePlanImpactProjectionInput(context, intent) });
+    }
+    if (calendar.status === 'rejected') return await keepPlanFallback();
     const context = await captureRacePlanImpactContext(
       tx,
       {
         ...captureInput,
-        selection: first.collectorSelection,
+        selection: deriveRacePlanImpactCollectorSelection(calendar, intent.selection),
         calendarIntent: intent,
       },
       requestSourceBudget,
     );
-    return bounded({ context, projection: buildRacePlanImpactProjectionInput(context, intent) });
+    const projection = buildRacePlanImpactProjectionInput(context, intent);
+    // Relative/source blockers may have no collector selector. Preserve the old
+    // keep-plan blocked response, including its original read-set digest/flags.
+    if (!('collectorSelection' in projection)) return await keepPlanFallback();
+    return bounded({ context, projection });
   } catch (error) {
     throw previewError(error);
   }

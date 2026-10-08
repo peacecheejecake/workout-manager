@@ -15,6 +15,7 @@ import { captureRacePlanImpactContext } from '../src/race-plan-impact-context.js
 import { buildRacePlanImpactProjectionInput } from '../src/race-plan-impact-projection-input.js';
 import { createConsentRepository } from '../src/repositories.js';
 import {
+  previewRacePlanImpactTransaction,
   createRacePlanImpactPreviewService,
   createRacePlanImpactSnapshotPreviewService,
 } from '../src/race-plan-impact-preview.js';
@@ -780,5 +781,60 @@ it('binds original intent into the readonly digest and rejects a forged derived 
       }),
     ),
   ).rejects.toMatchObject({ code: 'REVISION_CONFLICT' });
+  expect(await counts(athlete)).toEqual(before);
+});
+
+it('uses a bounded preliminary root read and exactly one authoritative full collector in the same RR snapshot', async () => {
+  const athlete = await account(),
+    plan = await training(athlete),
+    event = await create(athlete, { planVersionId: plan }),
+    before = await counts(athlete);
+  const snapshot = database.snapshotTenant;
+  if (!snapshot) throw new Error('SNAPSHOT_REQUIRED');
+  await snapshot(athlete, async (tx) => {
+    const statements: string[] = [];
+    const counted = {
+      athleteId: tx.athleteId,
+      query: async (sql: string, values?: unknown[]) => {
+        statements.push(sql);
+        return tx.query(sql, values);
+      },
+    };
+    const budget = { bytes: 0n, sources: 0 };
+    const command = {
+      ...intent(event.id),
+      selection: {
+        kind: 'move_period',
+        expectedCurrentPlanVersionId: plan,
+        periodId: 'block',
+        newStartDate: '2026-10-03',
+        scope: 'descendants_and_sessions',
+      },
+    };
+    const result = await previewRacePlanImpactTransaction(counted, command, budget);
+    expect(result.projection.status).toBe('projected');
+    expect(result.context.calendarIntent).toMatchObject(command);
+    expect(result.context.collectorSelection).toMatchObject({
+      changedSessionIds: ['session'],
+      movedPeriodIds: ['block'],
+    });
+    expect(
+      statements.filter(
+        (sql) =>
+          sql.includes('completions AS MATERIALIZED') && sql.includes('count(*)::text AS sources'),
+      ),
+    ).toHaveLength(1);
+    expect(statements.filter((sql) => sql.includes('LIMIT 1001) n) AS nutrition'))).toHaveLength(1);
+    expect(budget.bytes > 512n).toBe(true);
+    expect(budget.sources >= 3).toBe(true);
+    const full = await captureRacePlanImpactContext(tx, {
+      eventId: event.id,
+      expectedRevision: event.revision,
+      selection: result.context.collectorSelection,
+      calendarIntent: command,
+    });
+    expect(result.context.readSetDigest).toBe(full.readSetDigest);
+    expect(result.projection).toEqual(buildRacePlanImpactProjectionInput(full, command));
+  });
   expect(await counts(athlete)).toEqual(before);
 });
