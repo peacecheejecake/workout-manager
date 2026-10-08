@@ -43,6 +43,7 @@
     "./migrate": "./src/migrate.ts",
     "./current-runtime-installation": "./src/current-runtime-installation.ts",
     "./current-runtime-installation-v2": "./src/current-runtime-installation-v2.ts",
+    "./current-runtime-installation-v3": "./src/current-runtime-installation-v3.ts",
     "./current-runtime-grants": "./src/current-runtime-grants.ts",
     "./current-runtime-grants-v2": "./src/current-runtime-grants-v2.ts",
     "./identity": "./src/identity.ts",
