@@ -821,3 +821,9 @@ Native agent는 source-bound proof/compiler, readiness successor, 정상 API rep
 Root source proof 실제 compile R2 exit0 및 noargs current-source 검증 verified, versioned security definition SHA03db2e47…c7272/326source pins을 고정했다. Literal lazy import를 finite closure에 포함하고 계산식/options/require를 거절하며 mixed pass/fail/skip summary를 허용하지 않는다. Root unit71/71·전체 consumerTS/lint/format0, normalconfigured 실제5/5로 최신 named25 real gate/factory→HTTP health 시작·body drift/권한 누락/owner 거절·기본107 유지 및 cleanup0을 확인했다. 원문 없는 신규 계획 개발을 계속하며 FUT-09 역사 이식만 별도 대기한다.
 
 다음은 latest normal factory gate의 두 Host 신규 계획 경로 수용과 I/J 남은 실제 조건 대조, 이후 전체 phase gate/독립 검토다. 소스 증거·실패·역사 scope·actual compile 및 boot의 정확 SHA/로그는 [I 기록](progress/M2-02i.md)에 보존한다. Boot의 localOIDC discovery network 실패를 운영 로그인으로 표시하지 않는다. 최신 복원/운영503/AWS/native/provider·main/push는 미완료다.
+
+## 2026-10-08 원문 없는 신규 계획 정상 두 Host 수용
+
+사용자 결정대로 역사 원문 없이 신규 계획 작성·사용 개발을 계속했다. 정상 profile25 closedfactory에 V4 writer/preview·V2 result ports를 연결하고 Root 실제 두Host12/12(최종R4),normalconfigured5/5,단위108/108 및 별도68/68·consumerTS/lint/format0·sourcecompile/noargsverified·cleanup0을 확인했다. R1/R2 catalog 거절과 formatter 교정 이력은 [I](progress/M2-02i.md)/[J](progress/M2-02j.md)에 별도 보존한다. I/J local acceptance는 completed, phase parent/fullphase gates/독립review/main/push는 미완료다.
+
+다음은 M2-02 fullphase gate와 독립 phase 검토, ready EXT-RESTOREa의 최종 inventory/full-family/tail/admission 작업이다. 기존 untracked legacy dense diagnostic은 보존돼 있고 fullintegration glob에 포함되므로 최신 pooled dense8의 통과로 소급 판정하지 않는다. 운영 AWS/503/native/provider와 FUT-09 역사 이식은 별도 대기다.

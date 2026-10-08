@@ -2257,7 +2257,7 @@
       "title": "대회 날짜 변경 Plan 영향 preview·명시 승인",
       "dependsOn": ["M2-02e"],
       "kind": "task",
-      "status": "in_progress",
+      "status": "completed",
       "scope": "S15 날짜 변경의 영향 preview와 별도 사용자 승인; RaceEvent/PlanVersion 현재근거·revision·consent·관련모든root freshness 및 원자적 명령/receipt/outbox. 실제PG concurrency/rollback과 UI/E2E 수용 필요.",
       "evidence": "docs/implementation/progress/M2-02i.md"
     },
@@ -2266,8 +2266,8 @@
       "title": "S16 PB 기준·거리별 최고 기록 수용",
       "dependsOn": ["M2-02g"],
       "kind": "task",
-      "status": "in_progress",
-      "scope": "2026-10-07 갱신 사용자 결정: 직접 입력 대회 기록도 PB 인정, 링크·인증 첨부 근거 마크와 실제 진위 검토를 분리. 거리·단위별 비교/결정론 동률·미상 처리와 실제 Host·삭제 갱신 수용. 기기 추정 split 자동 승격 금지. 2026-10-08 확정: 기본 Chip 우선·Chip null이면 Gun 비교, 공식 5km·10km·하프·풀 종목별 분류; 원값과 선택 시간 기준 보존. 새 기본 정책 실제 두 Host 4/4 수용; 정상 runtime 활성화·최신 closure 및 phase 검증은 별도 미완료.",
+      "status": "completed",
+      "scope": "2026-10-07 갱신 사용자 결정: 직접 입력 대회 기록도 PB 인정, 링크·인증 첨부 근거 마크와 실제 진위 검토를 분리. 거리·단위별 비교/결정론 동률·미상 처리와 실제 Host·삭제 갱신 수용. 기기 추정 split 자동 승격 금지. 2026-10-08 확정: 기본 Chip 우선·Chip null이면 Gun 비교, 공식 5km·10km·하프·풀 종목별 분류; 원값과 선택 시간 기준 보존. 새 기본 정책 두 Host 수용 및 정상 profile25 closedfactory6spec 두 Host12/12·normalconfigured5/5 완료; 전체 phase 검증/독립review와 후행 최신 복원은 별도 미완료.",
       "evidence": "docs/implementation/progress/M2-02j.md"
     },
     {

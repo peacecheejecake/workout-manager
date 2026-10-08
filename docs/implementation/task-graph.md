@@ -775,8 +775,8 @@ Native shell·collector는 M1c 통합과 native feasibility 이후 M2 Web 확장
 | M2-02c 대회·결과 원장 저장 거래 | M2-02b | [완료](progress/M2-02c.md); PostgreSQL 원장·RLS·CAS·멱등·export/계정 수명, API/UI는 후속 |
 | M2-02g 재사용 대회·기록 화면 | M2-02e, M2-02f | [로컬 수용 완료](progress/M2-02g.md); 실제 Host·PB·Plan 영향 승인은 후속 |
 | M2-02h 실제 대회·기록 Host | M2-02g | [완료](progress/M2-02h.md); canonical 경로·상세·인증 transport·실제 OIDC/DB 수용 |
-| M2-02i 날짜·Plan 영향 승인 | M2-02e | [진행 중](progress/M2-02i.md); affected manifest·명시적 원자 승인·동의 철회/원본 export·SQL133 실제400항목 승인 및 명명된 runtime23 설치/권한/metadata 관측 검증; 정상 cold/security/지원·혼합400/400/30 저장·최신 복원·전체 phase 검증은 미완료 |
-| M2-02j 거리별 PB | M2-02g | [진행 중](progress/M2-02j.md); 직접 입력 대회 기록도 PB; 링크·인증 첨부 근거 마크와 진위 검토 구분; Chip 우선·Chip null이면 Gun/공식 5km·10km·하프·풀 분류 확정·실제 두 Host 4/4; 정상 runtime·최신 closure/phase 검증 별도, 기기 추정 split 자동 승격 금지 |
+| M2-02i 날짜·Plan 영향 승인 | M2-02e | [로컬 수용 완료](progress/M2-02i.md); affected manifest·원자 승인/replay·동의/export·혼합400/400/30 실제8 및 정상 profile25 cold/source/factory·두 Host12/normalconfigured5; 후행 최신 복원·전체 phase 검증/독립review는 미완료 |
+| M2-02j 거리별 PB | M2-02g | [로컬 수용 완료](progress/M2-02j.md); 직접 입력·증빙/진위 구분·Chip 우선/null Gun·공식 거리·두 Host; 정상 profile25 V2 결과 조립/두 Host12 포함 수용; 기기 split 승격 금지, phase 검증/독립review 별도 |
 | M2-02k app 처리 동의 연결 | M2-02e, S22 v-a root 통합 | [완료](progress/M2-02k.md); 새 처리만 gate, 조회/삭제/성공 replay 유지 |
 | M2-02m 원문 없는 신규 영양 계획 검토 | M1b-01, M2-01k-v-d | [로컬 수용 완료](progress/M2-02m.md); 미저장 미리보기·편집 복귀·명시 저장·실제 두 Host 검증, FUT-09 이식은 별도 보류 |
 | M2-02 대회·기록 | M2-01, M2-02a, M2-02b, M2-02c | competitions; 코스 참조·결과. M2-01의 외부 gate는 그대로 선행 조건 |

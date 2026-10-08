@@ -2,6 +2,12 @@ import { beforeEach, expect, it, vi } from 'vitest';
 import type * as ReadinessModule from '@workout/server-persistence/current-runtime-readiness-v9';
 import type * as BundleModule from '@workout/server-persistence/race-manual-pooled-bundle-v2';
 import type * as OperationsModule from '@workout/server-persistence/operations';
+import type * as NutritionWriterModule from '@workout/server-persistence/nutrition-race-plan-v4-writer';
+import type * as NutritionPreviewModule from '@workout/server-persistence/nutrition-race-plan-v4-preview';
+import type * as RaceResultModule from '@workout/server-persistence/race-result-v2';
+import { createNutritionRacePlanV4Writer } from '@workout/server-persistence/nutrition-race-plan-v4-writer';
+import { createNutritionRacePlanV4PreviewRepository } from '@workout/server-persistence/nutrition-race-plan-v4-preview';
+import { createRaceResultV2Repository } from '@workout/server-persistence/race-result-v2';
 import type { Database, CatalogTransaction } from '@workout/server-persistence/database';
 import { createRaceManualPooledPublicRepositoryV2 } from '@workout/server-persistence/race-manual-pooled-bundle-v2';
 import { createOperationsV38PooledRepository } from '@workout/server-persistence/operations';
@@ -33,8 +39,41 @@ vi.mock('@workout/server-persistence/operations', async (original) => {
     createOperationsV38PooledRepository: vi.fn(actual.createOperationsV38PooledRepository),
   };
 });
+vi.mock('@workout/server-persistence/nutrition-race-plan-v4-writer', async (original) => {
+  const actual = await original<typeof NutritionWriterModule>();
+  return {
+    ...actual,
+    createNutritionRacePlanV4Writer: vi.fn(actual.createNutritionRacePlanV4Writer),
+  };
+});
+vi.mock('@workout/server-persistence/nutrition-race-plan-v4-preview', async (original) => {
+  const actual = await original<typeof NutritionPreviewModule>();
+  return {
+    ...actual,
+    createNutritionRacePlanV4PreviewRepository: vi.fn(
+      actual.createNutritionRacePlanV4PreviewRepository,
+    ),
+  };
+});
+vi.mock('@workout/server-persistence/race-result-v2', async (original) => {
+  const actual = await original<typeof RaceResultModule>();
+  return { ...actual, createRaceResultV2Repository: vi.fn(actual.createRaceResultV2Repository) };
+});
 const publicFactory = vi.mocked(createRaceManualPooledPublicRepositoryV2);
 const operationsFactory = vi.mocked(createOperationsV38PooledRepository);
+const nutritionWriterFactory = vi.mocked(createNutritionRacePlanV4Writer);
+const nutritionPreviewFactory = vi.mocked(createNutritionRacePlanV4PreviewRepository);
+const raceResultFactory = vi.mocked(createRaceResultV2Repository);
+const factories = [
+  publicFactory,
+  operationsFactory,
+  nutritionWriterFactory,
+  nutritionPreviewFactory,
+  raceResultFactory,
+];
+function expectNoPorts() {
+  for (const factory of factories) expect(factory).not.toHaveBeenCalled();
+}
 const ready = {
   schemaVersion: 1,
   state: 'ready',
@@ -62,13 +101,30 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.probe.mockResolvedValue(ready);
 });
-it('delegates only to the actual named V2/pooledV38 factories after the closed probe', async () => {
+it('delegates to all five actual named factories only after the closed probe', async () => {
   const database = fixture();
   const repositories = await createCurrentRuntimeV9Repositories(database);
   expect(mocks.probe).toHaveBeenCalledExactlyOnceWith(database);
   expect(publicFactory).toHaveBeenCalledExactlyOnceWith(database);
   expect(operationsFactory).toHaveBeenCalledExactlyOnceWith(database);
-  expect(Object.keys(repositories)).toEqual(['raceManualPublic', 'operations']);
+  expect(nutritionWriterFactory).toHaveBeenCalledExactlyOnceWith(database);
+  expect(nutritionPreviewFactory).toHaveBeenCalledExactlyOnceWith(database);
+  expect(raceResultFactory).toHaveBeenCalledExactlyOnceWith(database);
+  expect(Object.keys(repositories)).toEqual([
+    'raceManualPublic',
+    'operations',
+    'nutritionV4Writer',
+    'nutritionV4Preview',
+    'raceResultsV2',
+  ]);
+  expect(repositories.nutritionV4Writer).toBe(nutritionWriterFactory.mock.results[0]?.value);
+  expect(repositories.nutritionV4Preview).toBe(nutritionPreviewFactory.mock.results[0]?.value);
+  expect(repositories.raceResultsV2).toBe(raceResultFactory.mock.results[0]?.value);
+  for (const factory of factories) {
+    expect(factory.mock.invocationCallOrder[0]).toBeGreaterThan(
+      mocks.probe.mock.invocationCallOrder[0] ?? 0,
+    );
+  }
   expect(database.close).not.toHaveBeenCalled();
   expect(publicFactory.mock.invocationCallOrder[0]).toBeGreaterThan(
     mocks.probe.mock.invocationCallOrder[0] ?? 0,
@@ -85,11 +141,10 @@ it('does not construct ports while catalog readiness is pending', async () => {
       }),
   );
   const pending = createCurrentRuntimeV9Repositories(fixture());
-  expect(publicFactory).not.toHaveBeenCalled();
-  expect(operationsFactory).not.toHaveBeenCalled();
+  expectNoPorts();
   finish(ready);
   await pending;
-  expect(publicFactory).toHaveBeenCalledOnce();
+  for (const factory of factories) expect(factory).toHaveBeenCalledOnce();
 });
 it.each([
   ['unavailable', 'snapshot_unavailable', 'CURRENT_RUNTIME_V9_UNAVAILABLE'],
@@ -101,8 +156,7 @@ it.each([
   async (state, reason, code) => {
     mocks.probe.mockResolvedValue({ ...ready, state, reason });
     await expect(createCurrentRuntimeV9Repositories(fixture())).rejects.toMatchObject({ code });
-    expect(publicFactory).not.toHaveBeenCalled();
-    expect(operationsFactory).not.toHaveBeenCalled();
+    expectNoPorts();
   },
 );
 it.each([
@@ -123,8 +177,7 @@ it.each([
     await expect(createCurrentRuntimeV9Repositories(fixture())).rejects.toMatchObject({
       code: 'CURRENT_RUNTIME_V9_INVALID_READINESS',
     });
-    expect(publicFactory).not.toHaveBeenCalled();
-    expect(operationsFactory).not.toHaveBeenCalled();
+    expectNoPorts();
   },
 );
 it('sanitizes unexpected probe failure and leaves the configured database lifecycle owned by its caller', async () => {
@@ -134,7 +187,7 @@ it('sanitizes unexpected probe failure and leaves the configured database lifecy
     new CurrentRuntimeV9RepositoriesError('CURRENT_RUNTIME_V9_UNAVAILABLE'),
   );
   expect(database.close).not.toHaveBeenCalled();
-  expect(publicFactory).not.toHaveBeenCalled();
+  expectNoPorts();
 });
 it('actual repositories retain strict command DTO and mandatory fresh snapshot guards', async () => {
   const database = fixture();
@@ -185,8 +238,7 @@ it('rejects getter or oversized readiness observations before schema access', as
   await expect(createCurrentRuntimeV9Repositories(fixture())).rejects.toMatchObject({
     code: 'CURRENT_RUNTIME_V9_INVALID_READINESS',
   });
-  expect(publicFactory).not.toHaveBeenCalled();
-  expect(operationsFactory).not.toHaveBeenCalled();
+  expectNoPorts();
 });
 
 it('awaits catalog snapshot closure before exposing ports and never retains its transaction', async () => {
@@ -210,7 +262,7 @@ it('awaits catalog snapshot closure before exposing ports and never retains its 
     if (!db.snapshotCatalog) throw Error('SNAPSHOT_UNAVAILABLE');
     return db.snapshotCatalog(async (tx) => {
       await tx.query('SELECT catalog_metadata_only');
-      expect(publicFactory).not.toHaveBeenCalled();
+      expectNoPorts();
       return ready;
     });
   });

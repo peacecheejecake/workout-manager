@@ -1,7 +1,7 @@
 {
   "assetVersion": 1,
-  "sourceManifestSha256": "21c1b9e261be03aecf719f53c2451e0992322a9a8cff0b5a2362092c7f705252",
-  "manifestFileSha256": "c80b7ba6ee205e1635dd25abf61ce1d3ac19d9d969ce7acd99102fb2695e4b58",
+  "sourceManifestSha256": "cd331ca20f2fb2e3115bffbb8bb5b17df5c7d031dcc073ef5ad94591e3b3bb95",
+  "manifestFileSha256": "25870c55a183a7c61461c31f24a8cd4bc944c2f95835c2e587f5a3ea0ef5254e",
   "manifestPath": "manifest.json",
   "profileVersion": 9,
   "runtimeStep": 25,
@@ -16,13 +16,13 @@
     },
     {
       "path": "apps/api/src/configured.ts",
-      "sha256": "0764c5c6be39c6776c7c33c6a078c66f2510c6557e7dd49bdeead951f8840323",
+      "sha256": "b42bbbdae31889509325af28d7c3562ed2ce41313a982be6f45876931ce550d1",
       "role": "dependency"
     },
     {
       "path": "apps/api/src/current-runtime-v9-repositories.ts",
-      "sha256": "2b4ddcae4998a12a15e200cf0db433a8beaccc6f2167d85ca89d5c34e5b8b629",
-      "role": "dependency"
+      "sha256": "005277253eceb38c2c919e062dca81823d94dc9e92032fdeaaf2a7a49c5c3129",
+      "role": "source"
     },
     {
       "path": "package.json",
@@ -117,6 +117,11 @@
     {
       "path": "packages/contracts/src/nutrition-core.ts",
       "sha256": "9f4a8d6cd143a61ac04e552584ee9d0d44eb64567c17e69843f25282b37a2220",
+      "role": "source"
+    },
+    {
+      "path": "packages/contracts/src/nutrition-race-plan-public-v4.ts",
+      "sha256": "ca24798c1338423fceed463c46767c46edffde87555f33ce5f4c28217b6e2cf9",
       "role": "source"
     },
     {
@@ -1240,6 +1245,11 @@
       "role": "source"
     },
     {
+      "path": "packages/server/persistence/src/nutrition-race-plan-v4-preview.ts",
+      "sha256": "771143964bbaa099e4c8370a4543561211796bedb104a8c663382e976f963ec0",
+      "role": "source"
+    },
+    {
       "path": "packages/server/persistence/src/nutrition-race-plan-v4-writer.ts",
       "sha256": "6742354f47a84f99c20d065fcfe98fce08960ab848ac6ccc86d648120a9c057a",
       "role": "source"
@@ -1570,8 +1580,33 @@
       "role": "source"
     },
     {
+      "path": "packages/server/persistence/src/race-result-legacy-projection.ts",
+      "sha256": "9b08761f8a8a5fd3a5055925b3270ead104d02c0398ab46514adca3682e9bf30",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/race-result-legacy-update.ts",
+      "sha256": "443301dca3daf4ee0fcf2b96e6383a2dfee4eb745df5f22e69990f5a8d7b0444",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/race-result-proofs.ts",
+      "sha256": "9164ffd3a8d4aeef291ccb43d75856054b80bc3cfa843f9eb67e1ca4f37c9033",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/race-result-v2.ts",
+      "sha256": "68fb681a888ab47cfdfde353874cbe32fe6d2c62dafbbc85549402f12ba84a13",
+      "role": "source"
+    },
+    {
       "path": "packages/server/persistence/src/race-timing-bindings.ts",
       "sha256": "b28abe8187fcb39cfeeb607ebc822f7ff792756413182a475e4209faac8ebc3c",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/races.ts",
+      "sha256": "0e825bf5e565fde26408f36c1d8d9af0db0ba878bdc6b7f0900e4a4abe3a3d50",
       "role": "source"
     },
     {
@@ -1631,7 +1666,7 @@
     },
     {
       "path": "scripts/identity-e2e.mts",
-      "sha256": "fedec95331dd56521722d831f24610615598d887c9793e810385b36fa1ed624e",
+      "sha256": "afc82aaa53e01fc8fe90d5dd2df31c7f341e288a20e4a2c78368b47da05ac94e",
       "role": "dependency"
     },
     {
@@ -2280,6 +2315,94 @@
       "log": "evidence/logs/wm-source130-root-pg-r6-20261008.log",
       "suitePassed": 12,
       "scope": "same_body_suite"
+    },
+    {
+      "runner": "playwright",
+      "fixture": "tests/identity/race-date-change-all-domains.spec.ts",
+      "label": "${host}: explicit date approval commits all four planned domains once and preserves actuals",
+      "log": "evidence/logs/wm-profile25-gated-root-identity-r4-20261008.log",
+      "suitePassed": 12,
+      "scope": "latest_http"
+    },
+    {
+      "runner": "playwright",
+      "fixture": "tests/identity/nutrition-new-plan-review.spec.ts",
+      "label": "${host}: new nutrition draft requires preview then a separate confirmed save",
+      "log": "evidence/logs/wm-profile25-gated-root-identity-r4-20261008.log",
+      "suitePassed": 12,
+      "scope": "latest_http"
+    },
+    {
+      "runner": "playwright",
+      "fixture": "tests/identity/race-pb-chip-preferred.spec.ts",
+      "label": "${shell.name}: default Chip preference, null-only Gun fallback, original actuals and responsive public replay/delete",
+      "log": "evidence/logs/wm-profile25-gated-root-identity-r4-20261008.log",
+      "suitePassed": 12,
+      "scope": "latest_http"
+    },
+    {
+      "runner": "playwright",
+      "fixture": "tests/identity/current-runtime-personal-export-v38.spec.ts",
+      "label": "${host}: installed named profile HTTP V38 retains exact unapproved public/internal/source facts after app withdrawal",
+      "log": "evidence/logs/wm-profile25-gated-root-identity-r4-20261008.log",
+      "suitePassed": 12,
+      "scope": "latest_http"
+    },
+    {
+      "runner": "playwright",
+      "fixture": "tests/identity/competition-result-proofs.spec.ts",
+      "label": "${shell.name}: public PNG/PDF proof upload, immutable pin, actual-only edit and source removal",
+      "log": "evidence/logs/wm-profile25-gated-root-identity-r4-20261008.log",
+      "suitePassed": 12,
+      "scope": "latest_http"
+    },
+    {
+      "runner": "playwright",
+      "fixture": "tests/identity/nutrition-race-reconnect.spec.ts",
+      "label": "${shell.name}: race deletion suspends nutrition until preview and separate reconnect approval",
+      "log": "evidence/logs/wm-profile25-gated-root-identity-r4-20261008.log",
+      "suitePassed": 12,
+      "scope": "latest_http"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "apps/api/tests/configured-runtime-v9.integration.test.ts",
+      "label": "normal configured profile25 reaches real health and closes only after actual runtime readiness",
+      "log": "evidence/logs/wm-configured-runtime-v9-root-pg-r1-20261008.log",
+      "suitePassed": 5,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "apps/api/tests/configured-runtime-v9.integration.test.ts",
+      "label": "actual final root body drift refuses configured startup without legacy fallback",
+      "log": "evidence/logs/wm-configured-runtime-v9-root-pg-r1-20261008.log",
+      "suitePassed": 5,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "apps/api/tests/configured-runtime-v9.integration.test.ts",
+      "label": "missing actual root EXECUTE refuses startup without auto-grant or fallback",
+      "log": "evidence/logs/wm-configured-runtime-v9-root-pg-r1-20261008.log",
+      "suitePassed": 5,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "apps/api/tests/configured-runtime-v9.integration.test.ts",
+      "label": "actual migration owner credential cannot become configured runtime",
+      "log": "evidence/logs/wm-configured-runtime-v9-root-pg-r1-20261008.log",
+      "suitePassed": 5,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "apps/api/tests/configured-runtime-v9.integration.test.ts",
+      "label": "baseline107 default configuration still starts without applying the profile25 cold gate",
+      "log": "evidence/logs/wm-configured-runtime-v9-root-pg-r1-20261008.log",
+      "suitePassed": 5,
+      "scope": "historical_suite"
     },
     {
       "runner": "vitest",
@@ -3103,7 +3226,7 @@
       "label": "${host}: explicit date approval commits all four planned domains once and preserves actuals",
       "log": "evidence/logs/wm-profile25-root-identity-r1-20261008.log",
       "suitePassed": 8,
-      "scope": "latest_http"
+      "scope": "historical_suite"
     },
     {
       "runner": "playwright",
@@ -3111,7 +3234,7 @@
       "label": "${host}: new nutrition draft requires preview then a separate confirmed save",
       "log": "evidence/logs/wm-profile25-root-identity-r1-20261008.log",
       "suitePassed": 8,
-      "scope": "latest_http"
+      "scope": "historical_suite"
     },
     {
       "runner": "playwright",
@@ -3119,7 +3242,7 @@
       "label": "${shell.name}: default Chip preference, null-only Gun fallback, original actuals and responsive public replay/delete",
       "log": "evidence/logs/wm-profile25-root-identity-r1-20261008.log",
       "suitePassed": 8,
-      "scope": "latest_http"
+      "scope": "historical_suite"
     },
     {
       "runner": "playwright",
@@ -3127,7 +3250,7 @@
       "label": "${host}: installed named profile HTTP V38 retains exact unapproved public/internal/source facts after app withdrawal",
       "log": "evidence/logs/wm-profile25-root-identity-r1-20261008.log",
       "suitePassed": 8,
-      "scope": "latest_http"
+      "scope": "historical_suite"
     }
   ],
   "authority": "none",

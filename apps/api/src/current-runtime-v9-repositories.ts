@@ -6,6 +6,9 @@ import {
 } from '@workout/server-persistence/current-runtime-readiness-v9';
 import { createRaceManualPooledPublicRepositoryV2 } from '@workout/server-persistence/race-manual-pooled-bundle-v2';
 import { createOperationsV38PooledRepository } from '@workout/server-persistence/operations';
+import { createNutritionRacePlanV4Writer } from '@workout/server-persistence/nutrition-race-plan-v4-writer';
+import { createNutritionRacePlanV4PreviewRepository } from '@workout/server-persistence/nutrition-race-plan-v4-preview';
+import { createRaceResultV2Repository } from '@workout/server-persistence/race-result-v2';
 
 const boundedReadiness = createBoundedPlainJsonSchema(4096);
 
@@ -43,5 +46,8 @@ export async function createCurrentRuntimeV9Repositories(database: Database) {
   return {
     raceManualPublic: createRaceManualPooledPublicRepositoryV2(database),
     operations: createOperationsV38PooledRepository(database),
+    nutritionV4Writer: createNutritionRacePlanV4Writer(database),
+    nutritionV4Preview: createNutritionRacePlanV4PreviewRepository(database),
+    raceResultsV2: createRaceResultV2Repository(database),
   };
 }

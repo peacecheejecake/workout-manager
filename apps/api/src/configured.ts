@@ -442,9 +442,8 @@ export async function createConfiguredApi(
       activityContext: createActivityContextRepository(database),
       checkIns: createCheckInRepository(database),
       checkInTemplates: createCheckInTemplateRepository(database),
-      raceManualPublic: runtimeRepositories.raceManualPublic,
+      ...runtimeRepositories,
       dashboard: createDashboardRepository(database),
-      operations: runtimeRepositories.operations,
       resources: createPrivateTextResourceRepository(database),
       resourceFiles: {
         uploads: createResourceFileUploadRepository(database),

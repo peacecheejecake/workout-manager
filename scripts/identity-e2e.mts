@@ -7,10 +7,7 @@ import {
   setupIdentityInstalledCurrentRuntimeV7,
   composeIdentityInstalledCurrentRuntimeV7Ports,
 } from './identity-installed-current-runtime-v7.mjs';
-import {
-  setupIdentityInstalledCurrentRuntimeV9,
-  composeIdentityInstalledCurrentRuntimeV9Ports,
-} from './identity-installed-current-runtime-v9.mjs';
+import { setupIdentityInstalledCurrentRuntimeV9 } from './identity-installed-current-runtime-v9.mjs';
 import {
   installCurrentRuntime,
   verifyCurrentRuntimeInstalledIn,
@@ -99,6 +96,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Pool } from 'pg';
 import { createApi } from '../apps/api/src/app.ts';
+import { createCurrentRuntimeV9Repositories } from '../apps/api/src/current-runtime-v9-repositories.ts';
 import { createAiSettingsService } from '../apps/api/src/ai-settings-service.ts';
 import { createAiSettingsRepository } from '../packages/server/persistence/src/ai-settings.ts';
 import { publishInitialAiSettingsCatalog } from './fixtures/ai-settings-catalog.ts';
@@ -607,7 +605,9 @@ try {
   });
   try {
     await createFixtureRole(admin, 'workout_runtime');
-    await admin.query('ALTER SCHEMA public OWNER TO workout_owner');
+    // Profile25 preserves PostgreSQL's database-owner schema anchor, matching
+    // the normal configured catalog recipe instead of the legacy fixture owner.
+    if (!installedCurrentRuntimeV9) await admin.query('ALTER SCHEMA public OWNER TO workout_owner');
     if (installedRuntime) {
       await migrate(ownerUrl, 107);
       await installCurrentRuntime(ownerUrl);
@@ -975,28 +975,36 @@ try {
     }
     // identity-analysis-output-v3-fixture: an isolated untrusted synthetic producer
     // supplement, outside both the named core recipe and production authority.
-    await admin.query('GRANT INSERT ON coaching_analysis_output TO workout_runtime');
-    if (installedCurrentRuntime)
+    if (!installedCurrentRuntimeV9) {
+      await admin.query('GRANT INSERT ON coaching_analysis_output TO workout_runtime');
+    }
+    if (installedCurrentRuntime && !installedCurrentRuntimeV9)
       console.log('Identity disposable supplement', {
         fixture: 'identity-analysis-output-v3-fixture',
         privilege: 'INSERT',
         productionAuthority: 'none',
       });
-    await createFixtureRole(admin, 'workout_coaching_worker');
-    await grantCoachingRunWorker(adminUrl, 'workout_coaching_worker');
+    if (!installedCurrentRuntimeV9) {
+      await createFixtureRole(admin, 'workout_coaching_worker');
+      await grantCoachingRunWorker(adminUrl, 'workout_coaching_worker');
+    }
     if (!installedCurrentRuntime) {
       await grantGarmin(adminUrl, 'workout_runtime');
       await grantGarminUnofficial(adminUrl, 'workout_runtime');
     }
-    await createFixtureRole(admin, 'workout_garmin_worker');
-    await grantGarminWorker(adminUrl, 'workout_garmin_worker');
+    if (!installedCurrentRuntimeV9) {
+      await createFixtureRole(admin, 'workout_garmin_worker');
+      await grantGarminWorker(adminUrl, 'workout_garmin_worker');
+    }
     // The course thumbnail renderer (M2-01l) runs as its own role with EXECUTE on eight
     // bounded functions and no table privileges, exactly as it would in production.
-    await createFixtureRole(admin, 'workout_course_thumbnail_worker');
-    await grantCourseThumbnailWorker(adminUrl, 'workout_course_thumbnail_worker');
-    await admin.query('GRANT USAGE ON SCHEMA public TO workout_course_thumbnail_worker');
+    if (!installedCurrentRuntimeV9) {
+      await createFixtureRole(admin, 'workout_course_thumbnail_worker');
+      await grantCourseThumbnailWorker(adminUrl, 'workout_course_thumbnail_worker');
+      await admin.query('GRANT USAGE ON SCHEMA public TO workout_course_thumbnail_worker');
+      await admin.query('GRANT USAGE ON SCHEMA public TO workout_coaching_worker');
+    }
     await admin.query('GRANT USAGE ON SCHEMA public TO workout_runtime');
-    await admin.query('GRANT USAGE ON SCHEMA public TO workout_coaching_worker');
     if (!installedCurrentRuntime)
       await admin.query(
         'GRANT SELECT, INSERT, UPDATE, DELETE ON consent, outbox, command_receipt, plan_head, plan_snapshot, plan_history, activity_canonical, activity_source_head, activity_source_revision, activity_overlay, activity_overlay_revision, activity_suppression, activity_import_receipt TO workout_runtime',
@@ -1078,15 +1086,16 @@ try {
   const store = createIdentityRepository({ connectionString: runtimeUrl });
   closers.push(() => store.close());
   const database = createDatabase({ connectionString: runtimeUrl });
+  // Register cleanup before the profile25 cold gate can reject startup.
+  closers.push(() => database.close());
   const installedCurrentPorts = installedCurrentRuntime
     ? installedCurrentRuntimeV9
-      ? composeIdentityInstalledCurrentRuntimeV9Ports(database)
+      ? await createCurrentRuntimeV9Repositories(database)
       : installedCurrentRuntimeV7
         ? composeIdentityInstalledCurrentRuntimeV7Ports(database)
         : composeIdentityInstalledCurrentRuntimeV6Ports(database)
     : null;
 
-  closers.push(() => database.close());
   const sharingMode = process.env['IDENTITY_E2E_COURSE_SHARING'] ?? 'off';
   if (sharingMode !== 'on' && sharingMode !== 'off')
     throw new Error(`Unsupported IDENTITY_E2E_COURSE_SHARING: ${sharingMode}`);
