@@ -47,6 +47,7 @@
     "./current-runtime-grants": "./src/current-runtime-grants.ts",
     "./current-runtime-grants-v2": "./src/current-runtime-grants-v2.ts",
     "./current-runtime-grants-v3": "./src/current-runtime-grants-v3.ts",
+    "./race-manual-internal-personal-export-reader": "./src/race-manual-internal-personal-export-reader.ts",
     "./identity": "./src/identity.ts",
     "./planning": "./src/planning.ts",
     "./period-summary": "./src/period-summary.ts",

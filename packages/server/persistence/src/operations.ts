@@ -4,10 +4,13 @@ import {
   accountExportSchema,
   accountExportV35Schema,
   accountExportV36Schema,
+  parseAccountExportV37,
+  type AccountExportV37,
   operationsStatusSchema,
   type AccountExport,
   type OperationsStatus,
 } from '@workout/contracts/operations';
+import { readRaceManualInternalPersonalExportV1In } from './race-manual-internal-personal-export-reader.js';
 import type { Database } from './database.js';
 import {
   readCheckInTemplatePersonalExportV1In,
@@ -786,6 +789,26 @@ export interface OperationsV36Repository extends Omit<OperationsRepository, 'exp
 /** Explicit personal retained facts. Snapshot coherence is mandatory; this
  * artifact does not authenticate an operational archive or grant approval. */
 export function createOperationsV36Repository(database: Database): OperationsV36Repository {
+  return createRetainedOperationsRepository(database, 36, (raw) =>
+    accountExportV36Schema.parse(raw),
+  );
+}
+
+export interface OperationsV37Repository extends Omit<OperationsRepository, 'exportAccount'> {
+  exportAccount(athleteId: string): Promise<AccountExportV37>;
+}
+
+/** Complete internal retained personal facts are read in the same RR snapshot.
+ * Neither the artifact nor reader availability grants restore/admission authority. */
+export function createOperationsV37Repository(database: Database): OperationsV37Repository {
+  return createRetainedOperationsRepository(database, 37, parseAccountExportV37);
+}
+
+function createRetainedOperationsRepository<T>(
+  database: Database,
+  version: 36 | 37,
+  parse: (raw: unknown) => T,
+): Omit<OperationsRepository, 'exportAccount'> & { exportAccount(athleteId: string): Promise<T> } {
   const historical = createOperationsRepository(database);
   return {
     eraseAccount: historical.eraseAccount,
@@ -840,11 +863,24 @@ export function createOperationsV36Repository(database: Database): OperationsV36
         const manual = await loadRetained(() =>
           readRaceManualPersonalExportV1In(tx, remaining(), debit),
         );
-        const artifact = accountExportV36Schema.parse({
-          schemaVersion: 36,
+        let internal = {};
+        if (version === 37) {
+          const observed = await loadRetained(() =>
+            readRaceManualInternalPersonalExportV1In(tx, remaining(), debit),
+          );
+          internal = {
+            manualInternalChains: observed.manualInternalChains,
+            manualInternalCandidates: observed.manualInternalCandidates,
+            manualInternalApprovalResults: observed.manualInternalApprovalResults,
+            manualInternalApprovalHistory: observed.manualInternalApprovalHistory,
+            sourceProvenanceCoverage: observed.sourceProvenanceCoverage,
+          };
+        }
+        const artifact = parse({
+          schemaVersion: version,
           athleteId,
           exportedAt,
-          data: { ...withTemplates, ...manual },
+          data: { ...withTemplates, ...manual, ...internal },
         });
         if (Buffer.byteLength(JSON.stringify(artifact), 'utf8') > maxBytes)
           throw new OperationsError('EXPORT_TOO_LARGE');
