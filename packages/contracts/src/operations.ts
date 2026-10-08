@@ -24,6 +24,10 @@ import {
   raceManualInternalWholePlainSchema,
   validateRaceManualInternalPersonalExportTuples,
 } from './race-manual-internal-personal-export.js';
+import {
+  manualSourcePersonalExportFields,
+  validateManualSourcePersonalExportTuples,
+} from './manual-source-personal-export.js';
 import type { raceManualApprovalResultSchema } from './race-manual-approval.js';
 import { planSnapshotSchema } from './planning.js';
 
@@ -761,7 +765,7 @@ const retainedExportShape37 = z
     ...raceManualInternalPersonalExportFields,
     sourceProvenanceCoverage: z.literal('not_exported_policy_unresolved'),
   });
-type RetainedExportData37 = z.infer<typeof retainedExportShape37>;
+type RetainedExportData37 = Omit<z.infer<typeof retainedExportShape37>, 'sourceProvenanceCoverage'>;
 function sameRetainedFact37(a: unknown, b: unknown): boolean {
   if (a === b) return true;
   if (Array.isArray(a) || Array.isArray(b))
@@ -979,6 +983,387 @@ export function parseAccountExportV37(raw: unknown): AccountExportV37 {
   return accountExportV37Schema.parse(raw);
 }
 
+/** Personal saved dependency facts are observations, never source/event authentication. */
+const retainedExportShape38 = z.strictObject({
+  ...retainedExportShape37.shape,
+  ...manualSourcePersonalExportFields,
+  sourceProvenanceCoverage: z.literal('saved_safe_dependency_facts'),
+  sourceAuthentication: z.literal('not_authenticated'),
+  originalEventAuthentication: z.literal('not_authenticated'),
+});
+type RetainedExportData38 = z.infer<typeof retainedExportShape38>;
+function sourceNutritionPlanned38(
+  record: RetainedExportData38['nutritionPlanVersions'][number]['record_json'],
+) {
+  return {
+    period: record.period,
+    purpose: record.purpose,
+    timezone: record.timezone,
+    items: record.items.map(({ id, category, title, anchor, foods, targets, instructions }) => ({
+      id,
+      category,
+      title,
+      anchor,
+      foods,
+      targets: targets.map((t) => ({
+        metric: t.metric,
+        amount: {
+          min: t.amount.min,
+          max: t.amount.max,
+          unit: t.amount.unit,
+          basis: t.amount.basis,
+        },
+      })),
+      instructions,
+    })),
+  };
+}
+function sourceRecoveryPlanned38(
+  record: RetainedExportData38['recoveryStrategyVersions'][number]['record_json'],
+) {
+  const { title, goal, startDate, endDateExclusive, timezone, priority, options, reassessment } =
+    record.draft;
+  return { title, goal, startDate, endDateExclusive, timezone, priority, options, reassessment };
+}
+function validateSavedSourceData38(data: RetainedExportData38, ctx: z.RefinementCtx) {
+  const fail = (message: string) => ctx.addIssue({ code: 'custom', message });
+  validateRetainedData37(data, ctx);
+  validateManualSourcePersonalExportTuples(data, ctx);
+  const chains = new Map(data.manualInternalChains.map((c) => [c.evidenceId, c]));
+  if (data.manualSourceChains.length !== chains.size)
+    fail('Exact ALL internal/source chain census required');
+  for (const source of data.manualSourceChains) {
+    const chain = chains.get(source.evidenceId);
+    if (
+      !chain ||
+      chain.decisionId !== source.decisionId ||
+      chain.proposalId !== source.proposalId ||
+      chain.body.state !== source.body.state
+    ) {
+      fail('Exact original internal/source chain roles and state required');
+      continue;
+    }
+    if (
+      chain.body.state === 'purged' &&
+      source.body.state === 'purged' &&
+      (chain.body.purgeEventId !== source.body.eventId ||
+        !sameExportInstant36(chain.body.purgedAt, source.body.occurredAt))
+    )
+      fail('Exact original source purge event and microseconds required');
+  }
+  const trainingBodies = new Map(
+    data.planSnapshots.flatMap((raw) => {
+      const parsed = planSnapshotSchema.safeParse(raw);
+      return parsed.success ? [[parsed.data.id, parsed.data] as const] : [];
+    }),
+  );
+  const nutritionBodies = new Map(
+    data.nutritionPlanVersions.map((r) => [
+      JSON.stringify([r.plan_id, r.version_id]),
+      r.record_json,
+    ]),
+  );
+  const recoveryBodies = new Map(
+    data.recoveryStrategyVersions.map((r) => [
+      JSON.stringify([r.strategy_id, r.version_id]),
+      r.record_json,
+    ]),
+  );
+  const blueprintBodies = new Map(
+    data.genericRoutineBlueprintVersions.map((r) => [
+      JSON.stringify([r.routine_id, r.version_id]),
+      r.record_json,
+    ]),
+  );
+  const scheduleBodies = new Map(
+    data.genericRoutineScheduleVersions.map((r) => [
+      JSON.stringify([r.schedule_id, r.version_id]),
+      r.record_json,
+    ]),
+  );
+  const raceBodies = new Map(
+    data.raceEventRevisions.map((r) => [
+      JSON.stringify([r['entity_id'], r['revision']]),
+      r['values_json'],
+    ]),
+  );
+  const mappings = new Set(
+    data.trainingPlanAggregates.map((r) => JSON.stringify([r.aggregate_id, r.version_id])),
+  );
+  const bodyCorrespondence = new Map<string, boolean>();
+  const checkBody = (key: string, check: () => boolean): boolean => {
+    const existing = bodyCorrespondence.get(key);
+    if (existing !== undefined) return existing;
+    const valid = check();
+    bodyCorrespondence.set(key, valid);
+    return valid;
+  };
+  for (const ref of data.manualSavedSourceRefs) {
+    if (ref.location.state !== 'known') continue;
+    const chain = chains.get(ref.evidenceId);
+    if (!chain || chain.body.state !== 'present') {
+      fail('Known source location requires frozen present chain');
+      continue;
+    }
+    const body = chain.body.planned;
+    for (const loc of ref.location.members) {
+      if (loc.side !== 'before') {
+        fail('Saved source cannot identify hypothetical future content');
+        continue;
+      }
+      const parent = loc.parent;
+      let matched = false;
+      switch (loc.domain) {
+        case 'training':
+          if (body.training.state === 'present' && parent.family === 'plan-snapshot')
+            matched = body.training.members.some(
+              (m) =>
+                m.aggregateId === loc.aggregateId &&
+                parent.sourceId === m.before.ref.versionId &&
+                parent.version === m.before.ref.version &&
+                trainingBodies.get(m.before.ref.versionId)?.version === m.before.ref.version &&
+                checkBody(
+                  JSON.stringify([
+                    ref.evidenceId,
+                    'training',
+                    m.aggregateId,
+                    m.before.ref.versionId,
+                  ]),
+                  () =>
+                    sameRetainedFact37(
+                      trainingBodies.get(m.before.ref.versionId)?.draft,
+                      m.before.plan,
+                    ),
+                ) &&
+                mappings.has(JSON.stringify([m.aggregateId, m.before.ref.versionId])) &&
+                m.before.plan.sessions.some((i) => i.id === loc.memberId),
+            );
+          break;
+        case 'nutrition':
+          if (body.nutrition.state === 'present' && parent.family === 'nutrition-plan')
+            matched = body.nutrition.members.some(
+              (m) =>
+                m.aggregateId === loc.aggregateId &&
+                parent.sourceId === m.aggregateId &&
+                parent.versionId === m.before.ref.versionId &&
+                checkBody(
+                  JSON.stringify([
+                    ref.evidenceId,
+                    'nutrition',
+                    m.aggregateId,
+                    m.before.ref.versionId,
+                  ]),
+                  () => {
+                    const r = nutritionBodies.get(
+                      JSON.stringify([m.aggregateId, m.before.ref.versionId]),
+                    );
+                    return (
+                      r !== undefined &&
+                      r.version === m.before.ref.version &&
+                      (m.before.linkedTraining.kind === 'absent'
+                        ? r.linkedTrainingPlanVersionId === null
+                        : m.before.linkedTraining.kind === 'retained' &&
+                          r.linkedTrainingPlanVersionId === m.before.linkedTraining.versionId) &&
+                      sameRetainedFact37(sourceNutritionPlanned38(r), m.before.plan)
+                    );
+                  },
+                ) &&
+                m.before.plan.items.some((i) => i.id === loc.memberId),
+            );
+          break;
+        case 'recovery':
+          if (body.recovery.state === 'present' && parent.family === 'recovery-strategy')
+            matched = body.recovery.members.some(
+              (m) =>
+                m.aggregateId === loc.aggregateId &&
+                parent.sourceId === m.aggregateId &&
+                parent.versionId === m.before.ref.versionId &&
+                checkBody(
+                  JSON.stringify([
+                    ref.evidenceId,
+                    'recovery',
+                    m.aggregateId,
+                    m.before.ref.versionId,
+                  ]),
+                  () => {
+                    const r = recoveryBodies.get(
+                      JSON.stringify([m.aggregateId, m.before.ref.versionId]),
+                    );
+                    return (
+                      r !== undefined &&
+                      r.version === m.before.ref.version &&
+                      sameRetainedFact37(
+                        r.draft.planRefs.map((ref) => ({
+                          domain: ref.kind,
+                          aggregateId: ref.aggregateId,
+                          version: { kind: 'retained', versionId: ref.headVersionId },
+                        })),
+                        m.before.planLinks,
+                      ) &&
+                      sameRetainedFact37(sourceRecoveryPlanned38(r), m.before.plan) &&
+                      r.status === m.before.status &&
+                      r.selectedOptionId === m.before.selectedOptionId
+                    );
+                  },
+                ) &&
+                m.before.plan.options.some((i) => i.id === loc.memberId),
+            );
+          break;
+        case 'routine_schedule':
+          if (body.routines.state === 'present')
+            matched = body.routines.members.some(
+              (m) =>
+                m.aggregateId === loc.aggregateId &&
+                sameRetainedFact37(
+                  blueprintBodies.get(
+                    JSON.stringify([m.blueprint.routineId, m.blueprint.versionId]),
+                  ),
+                  m.blueprint,
+                ) &&
+                sameRetainedFact37(
+                  scheduleBodies.get(
+                    JSON.stringify([m.before.schedule.id, m.before.schedule.versionId]),
+                  ),
+                  m.before.schedule,
+                ) &&
+                ((parent.family === 'routine-blueprint' &&
+                  parent.sourceId === m.blueprint.routineId &&
+                  parent.versionId === m.blueprint.versionId) ||
+                  (parent.family === 'routine-schedule' &&
+                    parent.sourceId === m.before.schedule.id &&
+                    parent.versionId === m.before.schedule.versionId)) &&
+                m.blueprint.steps.some((i) => i.id === loc.memberId),
+            );
+          break;
+        case 'race':
+          matched =
+            parent.family === 'race-event' &&
+            parent.sourceId === body.race.eventId &&
+            parent.revision === body.race.expectedRevision &&
+            loc.aggregateId === body.race.eventId &&
+            loc.memberId === null &&
+            (() => {
+              const r = raceBodies.get(
+                JSON.stringify([body.race.eventId, body.race.expectedRevision]),
+              );
+              if (r === null || typeof r !== 'object' || Array.isArray(r)) return false;
+              const facts = new Map(Object.entries(r));
+              return Object.entries(body.race.before).every(([k, v]) =>
+                sameRetainedFact37(facts.get(k), v),
+              );
+            })();
+          break;
+      }
+      if (!matched)
+        fail('Known source location requires exact frozen before member and parent tuple');
+    }
+  }
+  const versionKey = (planId: string, versionId: string) =>
+    JSON.stringify([planId.toLowerCase(), versionId.toLowerCase()]);
+  const itemKey = (planId: string, versionId: string, itemId: string) =>
+    JSON.stringify([planId.toLowerCase(), versionId.toLowerCase(), itemId]);
+  const versions = new Map(
+    data.nutritionPlanVersions.map((v) => [versionKey(v.plan_id, v.version_id), v]),
+  );
+  const items = new Map(
+    [...versions.values()].flatMap((row) =>
+      row.record_json.items.map(
+        (item) => [itemKey(row.plan_id, row.version_id, item.id), item] as const,
+      ),
+    ),
+  );
+  const origins = new Map(
+    data.nutritionDisconnectionOrigins.map((o) => [itemKey(o.planId, o.versionId, o.itemId), o]),
+  );
+  const lineages = new Map(
+    data.nutritionDisconnectionLineage.map((l) => [itemKey(l.planId, l.versionId, l.itemId), l]),
+  );
+  for (const origin of data.nutritionDisconnectionOrigins) {
+    const item = items.get(itemKey(origin.planId, origin.versionId, origin.itemId));
+    if (!item || item.anchor.kind !== 'disconnected')
+      fail('Nutrition original marker requires actual disconnected immutable item');
+  }
+  for (const line of data.nutritionDisconnectionLineage) {
+    const row = versions.get(versionKey(line.planId, line.versionId));
+    const prior = versions.get(versionKey(line.planId, line.priorVersionId));
+    const item = items.get(itemKey(line.planId, line.versionId, line.itemId));
+    const previousItem = items.get(itemKey(line.planId, line.priorVersionId, line.itemId));
+    if (
+      !row ||
+      !prior ||
+      !item ||
+      !previousItem ||
+      row.version !== line.version ||
+      prior.version !== line.priorVersion ||
+      row.previous_version_id?.toLowerCase() !== line.priorVersionId.toLowerCase()
+    ) {
+      fail('Nutrition lineage requires exact exported immutable version/prior/item bodies');
+      continue;
+    }
+    if (
+      line.disposition === 'retained' &&
+      (item.anchor.kind !== 'disconnected' || previousItem.anchor.kind !== 'disconnected')
+    )
+      fail('Retained nutrition lineage cannot implicitly reconnect');
+    if (line.disposition === 'reconnected') {
+      if (previousItem.anchor.kind !== 'disconnected')
+        fail('Reconnect requires actual disconnected prior item');
+      // Later deletion may redact this historical reconnect. Only its own actual
+      // new marker explains that state; never reconstruct the deleted pin.
+      if (item.anchor.kind === 'disconnected') {
+        if (!origins.has(itemKey(line.planId, line.versionId, line.itemId)))
+          fail('Redacted historical reconnect requires actual new deletion marker');
+      } else if (
+        item.anchor.kind !== 'relative' ||
+        item.anchor.entity !== 'race' ||
+        !('schemaVersion' in row.record_json) ||
+        row.record_json.schemaVersion !== 4 ||
+        !row.record_json.itemRaceTimingBindings.some(
+          (b) =>
+            b.itemId === line.itemId &&
+            b.binding.state === 'captured' &&
+            b.binding.eventId === (item.anchor.kind === 'relative' ? item.anchor.entityId : null),
+        )
+      )
+        fail('Reconnected lineage requires actual immutable captured race binding');
+    }
+    // SQL110 carried means original lineage carried forward, not an unchanged
+    // anchor or food edit. Do not add a new reconnection policy to this export.
+    if (
+      line.disposition === 'carried' &&
+      item.anchor.kind === 'disconnected' &&
+      !origins.has(itemKey(line.planId, line.versionId, line.itemId))
+    )
+      fail('Redacted historical carry requires actual new deletion marker');
+  }
+  for (const row of versions.values()) {
+    if (!('schemaVersion' in row.record_json) || row.record_json.schemaVersion !== 4) continue;
+    for (const item of row.record_json.items)
+      if (
+        item.anchor.kind === 'disconnected' &&
+        !origins.has(itemKey(row.plan_id, row.version_id, item.id)) &&
+        !lineages.has(itemKey(row.plan_id, row.version_id, item.id))
+      )
+        fail('Disconnected V4 item requires actual origin or immutable lineage');
+  }
+}
+export const accountExportV38Schema = z
+  .strictObject({
+    ...accountExportV36Schema.shape,
+    schemaVersion: z.literal(38),
+    data: retainedExportShape38.superRefine(validateSavedSourceData38),
+  })
+  .superRefine((raw, ctx) => {
+    if (!raceManualInternalWholePlainSchema.safeParse(raw).success)
+      ctx.addIssue({ code: 'custom', message: 'Bounded whole-account V38 artifact required' });
+  });
+export type AccountExportV38 = z.infer<typeof accountExportV38Schema>;
+/** Unknown V38 ingress must use this preguard. Union direct parsing is postbounded. */
+export function parseAccountExportV38(raw: unknown): AccountExportV38 {
+  raceManualInternalWholePlainSchema.parse(raw);
+  return accountExportV38Schema.parse(raw);
+}
+
 // Read historical artifacts unchanged; never manufacture absent collections.
 export const accountExportSchema = z.discriminatedUnion('schemaVersion', [
   accountExportV2Schema,
@@ -1017,6 +1402,7 @@ export const accountExportSchema = z.discriminatedUnion('schemaVersion', [
   accountExportV35Schema,
   accountExportV36Schema,
   accountExportV37Schema,
+  accountExportV38Schema,
 ]);
 export const operationsStatusSchema = z.strictObject({
   checkedAt: z.iso.datetime({ offset: true }),
