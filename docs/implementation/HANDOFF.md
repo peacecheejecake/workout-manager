@@ -803,3 +803,9 @@ Post142 actual metadata26(public13/private13)·old33+guard4·155입력 불변과
 Root 최신 V9 installer29/29·grants20/20·witness11/11을 실제 합성PG로 통과했다. 정확 profile9/runtime25/source142와 parent8/기존physical8 receipt/xmin 보존·42RPC/17owner-only helper를 확인했다. 신규 public subpaths와 explicit profile25 identity fixture의 unit117/117 뒤 Next/Vite 실제8/8로 새 영양계획 preview→별도저장, all-four 명시일정 승인/재생/실제보존, PB정책/삭제, 동의 철회후 V38내보내기를 확인했다. 정상 configured startup은 아직 legacy/default34이며 test fixture 결과로 production 활성화를 주장하지 않는다.
 
 Root177 frozen inputs의 trusted twoDB named 설치·baselineV2/core·grant42·전체 RR READONLY metadata capture는 실제exit0/whole equality/cleanup0이었다. 앞 raw142 metadata와 최신 named25 증거를 구분한다. exactSHA/실패/로그/한계는 [I 기록](progress/M2-02i.md)에 보존한다. 다음 native 병렬은 최소 cold comparator 설계와 기존27source/dynamic·삭제hook/seal 실제 증거 연결이다. Root 공통 통합/DB/graph/Git 소유·원문 없는 신규 계획 개발은 계속하며 FUT-09역사이식 별도대기·운영503/AWS/native/provider/복원/fullphase review/main/push는 미완료다.
+
+## 2026-10-08 일반 runtime cold catalog 실제 수용 및 정상 구성 구현
+
+Root 새 catalog-only comparator 실제 R2 11/11·unit24/24를 확인했다. R1 3pass/8fail은 역사 namespace 분류기의 새 wm_manual_pooled 거절 문제였으며 정확 namespace7·whole hash·28 sections 검증으로 교정했다. 실패/소스 SHA/실제 두 DB 및 drift 음성/cleanup0은 [I 기록](progress/M2-02i.md)에 보존한다. Caller expected/hash/role 입력·owner URL·private ledger grant는 없고 결과는 processingAuthority none/restore not_verified/supported false다. 이 관측만으로 새 처리나 복원 권한을 주장하지 않는다.
+
+Native agent는 source-bound proof/compiler, readiness successor, 정상 API repository factory를 비중복 파일에 병렬 구현한다. Root가 공통 configured/package/asset·DB·graph/Git를 통합한다. 원문 없는 신규 계획 생성·사용 개발은 계속하며 FUT-09 역사 원문 이식은 별도 대기다. I/J/phase 및 정상 configured 최종 수용/복원/외부 운영·full phase review/main/push는 미완료다.
