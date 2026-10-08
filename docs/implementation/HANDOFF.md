@@ -655,3 +655,15 @@ Root catalog R3는6/6 PASS·skip0·exit0,35.09초이며 unit36/36·정리0다. �
 Root SQL130 R2 실제8/8 PASS·skip0·exit0,13.70초 및 정리0를 확인했다. 새race삭제의 원origin과 과거lineage를 함께 보존하는 SQL 교정/V2fixture/RR 실제첫tenantlock barrier가 input이다. 이후 Root reader검토에서 reportedbytes보다 실제 compact body가 큰 응답을 shareddebit으로 받아들이는 경계 결함을 발견해 source/unit에 min(remaining,reported) exact byte 선guard를 배정했다. 새로운 public bounded-plain-json subpath는 Root manifest WIP이며 수정된 reader의 새검증 전 전체130완료/커밋하지 않는다.
 
 Root dense actual public400 fixture R1은 live(세션54422)였으며 결과 전 PASS로 세지 않는다. 에이전트는 서로 겹치지 않는 V38계약2파일, source130reader2파일, private metadata capture script를 계속 준비한다. graph I/J·phase in_progress, main/push0·AWS/FUT09결정대기 및 외부not_executed 유지다.
+
+## 실제 profile20 설치·출처 계약과 dense 병목 후속 · 2026-10-08
+
+Root는 `e08748af` exact plain JSON byte helper/publicsubpath(현재단위25/25), `4f2f9488` SQL130+immutable profile20installer(실제PG11/11·기존installer단위58/58·APIimport), `d24a4f29` V38 wholeaccount source census/body/lineage 계약(현재Root7suite158/158)을 phase/m2-02에 커밋했다. 정상registry107·defaultexport34는 유지했다. source reader actualR3 8/8과 단위15는 이후 historical training known-before mapper수정 전 입력이므로 새입력 실제증거가 필요하다.
+
+독립2DB trusted catalog capture actualR2 exit0·22.20초에서 profile19 metadata/section/hash exactequal·각6346395bytes, artifact두파일동일SHA `8a034e1ee033f11d4aae952aa52356c2652b75ad822e304919d28aa1ef8bfa46`를 확인했다. source142manifest 전/후pins·ownerRRREADONLY/locks·query30초/16MiB한도를 유지하고 actualcleanup 뒤 inspector0다. 이는 metadata관측이며 compiler/effective production recipe/strictcaller/cold지원 승격이 아니다. 처음sandbox EPERM 실패를 보존했다.
+
+Dense400 전체R1 1PASS/5FAIL 뒤 계측 단일R2도1FAIL/5filteredskip·test60초/hook30초 timeout·exit1,158.44초였다. 영양저장312ms·대부분reviewSQL0–45ms이나 callback 미완료였다. 정확R2시험DB/두역할만 terminal확인후정리하고 inspector0다. 정적 조사에서 item별 전체nutrition record 재parse와 frozenprojector 재생성이 O(n²)로확대됨을 확인했다. CPU함수별실측이라고 주장하지 않으며 guards/한도/400수량을 줄이지 않고 batch immutable context/index재사용을 구현 중이다.
+
+Native 병렬 현재: agent1 V38 sameRR producer/composer/unit/실제PG준비(operations src+NEWtests), agent2 historical sourcePlan을현재frozen before로 표시하지 않는 mapper/unit/PG, agent3 dense record검증/frozen calculation context 재사용6파일. Root는 actualDBlane·sharedmanifest·graph/Git통합을 직렬소유한다. profile20 grant/wholecatalog/expected compiler/dynamic·effective·strictwire/coldconfigured·최신전체restore·phase전체gate/독립검토/main 및 운영503/native/provider수용은 미완료다. graph I/J/phase in_progress·main/push0·외부not_executed 유지다.
+
+사용자에게 원문 없이 신규계획으로 시작 가능하다고 답했으며 기존FUT09원문 이식을자동제외/완료로바꾸지 않는다. 원문이식범위 변경 및 AWS새로그인 가능여부 답변은 여전히 별도대기이며 로컬ready구현을 이어간다.
