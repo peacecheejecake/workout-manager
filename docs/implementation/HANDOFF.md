@@ -719,3 +719,7 @@ Explicit current22 harness는 Root unit83/83·전체harnessTS0·실제기존12�
 사용자의 원문 없는 신규 계획 개발 결정을 유지한다. Private lossless source pool과 inventory 경로를 유지하는 envelope은 Root 단위44/44·lint/format/typecheck를 통과했다. 실제 혼합400/400/30 자료의 PG JSONB는4272405→2301988byte이고 원본 왕복을 확인했지만 기존 store는 여전히 실패하므로 저장 수용은 미완료다. 전체 SQL 저장/읽기/ACK/승인/export 프로토콜을 준비한다.
 
 대량 영양 승인400은 진단용 OptionB에서 실제 통과했다. 정식 runtime profile에 등록되지 않은 disposable DB prototype 결과이며 기존 current22가 통과했다고 쓰지 않는다. 신규 SQL133 구현·회귀 준비를 native agent가 담당하고 Root는 DB lane·공통 installer/grants/graph/Git를 직렬 통합한다. FUT-09 원문 이식·외부 not_executed·phase 검토/main/push 대기는 유지한다. 세부 실패 및 실제 증거는 [I 기록](progress/M2-02i.md)에 보존한다.
+
+## 2026-10-08 SQL133 승인400 실제 검증
+
+신규 SQL133 실제 PG R1은20pass/1fail이었다. 승인400과 기존 저장·재연결·receipt·철회·foreign/CAS 회귀는 통과했고, 실패한 변조 fixture의 함수 매개변수 이름 누락을 고친 R2는 해당5개 검증이 모두 통과했다. Root static2/2·lint/format0·actor 전체persistenceTS0 및 실제 시험DB/roles/slots잔존0을 확인했다. 명명된23 설치·새권한/catalog·production/복원·pooled 혼합저장·전체phase는 아직 미완료다. native agent는 새23 installer와 private pooled resolver를 비중복 소유로 구현하고 Root가 실제DB와 공통 통합을 담당한다. main/push·외부 not_executed 변경0이다.
