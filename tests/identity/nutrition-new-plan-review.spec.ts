@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
+import { z } from 'zod';
 import {
   intakeEntriesResponseSchema,
   nutritionPlanVersionSchema,
@@ -95,6 +96,7 @@ for (const [host, origin] of [
     });
     await page.goto(`${origin}/nutrition`);
     await page.getByRole('link', { name: '새 계획', exact: true }).click();
+    await expect(page).toHaveURL(`${origin}/nutrition/plans/new`);
     await expect(page.getByRole('heading', { name: '새 영양 계획', exact: true })).toBeVisible();
     await expect(page.getByLabel(confirmation, { exact: true })).toHaveCount(0);
     const purpose = `Synthetic new nutrition ${host} ${randomUUID()}`;
@@ -152,7 +154,28 @@ for (const [host, origin] of [
     await page.getByRole('button', { name: '확인한 계획 저장', exact: true }).click();
     const response = await savedResponse;
     expect(response.status()).toBe(200);
-    const saved = nutritionPlanVersionSchema.parse(await response.json());
+    await expect(page).toHaveURL(
+      (url) =>
+        url.origin === origin &&
+        /^\/nutrition\/plans\/[^/]+$/.test(url.pathname) &&
+        z.uuid().safeParse(url.pathname.slice('/nutrition/plans/'.length)).success,
+    );
+    const savedUrl = new URL(page.url());
+    expect(savedUrl.origin).toBe(origin);
+    expect(savedUrl.pathname.startsWith('/nutrition/plans/')).toBe(true);
+    const savedPlanId = z.uuid().parse(savedUrl.pathname.slice('/nutrition/plans/'.length));
+    // Read the committed version through the authenticated public detail endpoint.
+    // The page navigates after saving; this is persisted-read evidence, not POST body evidence.
+    // Both the client save boundary and server route independently validate the strict V1 response.
+    const persistedResponse = await page.request.get(
+      `${origin}/bff/v1/nutrition/plans/${savedPlanId}?maxSchemaVersion=4`,
+      { headers },
+    );
+    expect(persistedResponse.status()).toBe(200);
+    const persisted = nutritionPlanReadV4Schema.parse(await persistedResponse.json());
+    expect(persisted.head).not.toBeNull();
+    const saved = nutritionPlanVersionSchema.parse(persisted.head);
+    expect(saved.planId).toBe(savedPlanId);
     // V1 is the strict untagged legacy DTO, not a synthesized schemaVersion field.
     expect(saved.version).toBe(1);
     expect(saved.purpose).toBe(purpose);
