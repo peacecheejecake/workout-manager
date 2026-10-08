@@ -774,4 +774,9 @@ Root post140 metadata capture actual exit0로21함수(public12/private9)·기존
 
 ## 2026-10-08 SQL141 실제 부분 수용·대량8 다음 경계
 
-Root SQL141 실제27/27·unit10/10을 확인했다. End140 installer 준비도 fixture 교정 후 실제19/19·unit6/6이지만 최종141 profile 수용은 아니다. 대량8 R5는3pass/5fail이다. actual prepare4318ms로5초 SQL timeout을 넘겼고 lossless encoded2301981/logical4272398byte를 관측했으나 전체60초 test timeout·reviewed export의 ID/digest fixture 오류·승인 fresh source의4MiB command budget 초과가 남았다. Caps/deadlines/400수량 유지하며 전달 중복/검증 비용 분석·fixture 교정·최신 metadata 준비를 native 병렬 진행한다. 원문 없는 신규 계획 개발·역사이식별도대기·실제외부 not_executed·최종 설치/복원·phase/main 미완료를 유지한다. [I 기록](progress/M2-02i.md)에 실패와 actual/cleanup/SHA를 보존한다.
+Root SQL141 실제27/27·unit10/10을 확인했다. End140 installer 준비도 fixture 교정 후 실제19/19·unit6/6이지만 최종141 profile 수용은 아니다. 대량8 R5는3pass/5fail이다. actual prepare4318ms로5초 SQL deadline 안에 완료됐고 lossless encoded2301981/logical4272398byte를 관측했으나 전체60초 test timeout·reviewed export의 ID/digest fixture 오류·승인 fresh source의4MiB command budget 초과가 남았다. Caps/deadlines/400수량 유지하며 전달 중복/검증 비용 분석·fixture 교정·최신 metadata 준비를 native 병렬 진행한다. 원문 없는 신규 계획 개발·역사이식별도대기·실제외부 not_executed·최종 설치/복원·phase/main 미완료를 유지한다. [I 기록](progress/M2-02i.md)에 실패와 actual/cleanup/SHA를 보존한다.
+
+
+## 2026-10-08 원문 없는 신규 계획 개발 · end141 설치 검증
+
+사용자의 신규 계획 생성·사용 개발 지시를 유지한다. FUT-09 역사 원문 이식은 별도 대기다. Root 최종 end141 installer V8 실제 PG22/22·unit7/7·scoped lint/format exit0와 시험 잔존0을 확인했다. Post141 metadata 실제24함수(public12/private12)·기존33 불변·154입력 전후 SHA를 관측했다. 권한 V8 actual R1은18pass/2fail이며 fixture 교정 후 다시 검증한다. 대량 혼합400/400/30의 전체 승인·export와 cold/configured/복원·phase/main·외부 not_executed는 미완료로 유지한다.
