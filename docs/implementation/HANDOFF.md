@@ -767,3 +767,7 @@ Root 새 Node V38 export R2 실제7/7와 별도 단위147/147을 확인했다. �
 ## 2026-10-08 신규 계획 결과 스키마 교정·다음 병목
 
 Public-first 모듈 순환 초기화 결함을 transport result2곳의 lazy 참조로 교정하고 Root unit13/13을 확인했다. 대량 R4는2pass/4fail: actual store2761ms·ACK1722ms 다음 applicationprepare5013ms/57014로 중단됐다. 저장/ACK 진행을 전체 승인 통과로 승격하지 않는다. 다음 successor 개선 설계와 정상profile 준비를 native agent에 병렬 배정했다. 원문 없는 신규 계획 개발은 계속하며 역사 이식은 별도 대기, phase/main·운영/복원·외부 gate는 미완료다. [I 기록](progress/M2-02i.md)에 실패/검증/cleanup/SHA를 보존한다.
+
+## 2026-10-08 post140 실제 고정 입력 확보
+
+Root post140 metadata capture actual exit0로21함수(public12/private9)·기존33전체불변·두135body전이/metadata불변과153입력 전후SHA를 확보하고 별도 시험 잔존0을 확인했다. 이는 profile24 설치/지원/복원/전체 수용이 아니다. Native agent에 end140 named installer-v8 NEW3 구현과 새 applicationprepare 병목의 successor141 설계를 비중복 배정했다. Root통합/DB직렬·원문 없는 신규 계획 개발·FUT-09역사이식별도대기·외부 not_executed·phase/main미완료를 유지한다. [I 기록](progress/M2-02i.md)을 따른다.
