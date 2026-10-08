@@ -747,3 +747,7 @@ Root는 새 migration137 application 및138 finish/preview를 예약해 두 nati
 원문 없는 신규 계획 생성·사용 개발을 계속한다. Root actual SQL137은 R1 8pass/1fail·R2 7pass/2fail·R3 collection 실패를 보존하고, JSON scalar 크기 측정 교정 뒤 R4 9/9를 확인했다. SQL138은 SAVEPOINT xmin/metadata 연결 fixture 실패(R1 5pass/8fail)를 보존하고 R2 13/13를 확인했다. Node 정확7파일 단위123/123와 시험 DB/roles/slots잔존0이다. 세부 증거는 [I 기록](progress/M2-02i.md)에 남겼다.
 
 대량 혼합400/400/30 승인/export 및 정상 설치·복원·전체 phase 수용은 아직 미완료다. SQL139 export와 consumer 설계를 native agent가 병렬 준비한다. FUT-09 원문 이식·AWS 인증·외부 not_executed·독립 phase 검토/main·사용자 push 대기는 유지한다.
+
+## 2026-10-08 pooled 내보내기 SQL 실제 검증 후속
+
+Root SQL139 actual PG R1 9pass/7fail을 보존하고, 단일 PoolClient transaction·기존 purge preview 상태 기대값으로 시험만 교정한 R2 16/16을 확인했다. SQL·권한/출처 guard 변경0, 실행 전후 shared5 SHA불변, 시험 DB/roles/slots잔존0이다. 상세는 [I 기록](progress/M2-02i.md)에 보존한다. 새 Node export composer와 혼합400/400/30 수용은 별도 병렬 진행 중이며 아직 통과로 표시하지 않는다. 기존 원문 이식·외부 gate·정상 설치/최신 복원·phase 검토/main·release 대기는 유지한다.
