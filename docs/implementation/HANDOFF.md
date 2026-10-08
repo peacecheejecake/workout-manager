@@ -685,3 +685,7 @@ V38 wholeexport actual R1은14PASS/2FAIL이다. 역사2의 R2 실제 진단은2F
 Dense actual R4는400review/store/ACK/SQL118/publicpreview 성공 뒤 V38source130의 공유8MiB 잔량에서1FAIL/5filtered skip·exit1,21.09초다. 최종DTO 자체초과라고 단정하지 않고 raw준비본문129/130/공개128 중복 전송을 조사했다. 실제 raw응답별 byte합은 이 로그에없다. 한도·debit·400수량을 유지한다. Root가 신규132 `132_manual_retained_source_export_batch.sql`을 single sameRR internal129raw+source130metadata-only reader로 예약했다. SQL/actualPG준비와 batchconsumer/unit은 native별 비중복 소유로 진행 중이며 actual132/whole400/normal22설치·grant는 미실행이다. 기존128/129/130의 의미를 바꾸거나 source/event/auth/restore 권한으로 승격하지 않는다.
 
 Root는 actualDB lane·operations/공통package/graph/Git 통합을 직렬 소유한다. 세번째actor는 실제 configured callerwire/build 입력 감사를 준비한다. 현재 configured raceManualPublic는 이미 주입돼 있으므로 모든신포트미주입이라고 요약하지 않는다. nutritionV4/raceResultsV2/V38의 production 연결·compiledexpected/dynamic/effective/cold지원·최신전체restore·phase전체gate/독립phase검토/main·운영503/native/provider gate는 별도 미완료다. 과거installed-runtime12E2E는17step이고 현재21/131/132통과로 재사용하지 않는다. graph I/J/phase in_progress·외부not_executed·AWS인증/FUT09원문 대기·push사용자 작업을 유지한다.
+
+## 사용자 결정 · 2026-10-08 원문 없는 신규 계획 개발
+
+사용자는 “원문 없이 새 계획을 만들고 사용하는 기능은 계속 개발”로 확정했다. 신규 작성·미리보기·명시적 승인·저장·조회·사용 경로의 구현과 수용 검증을 계속한다. FUT-09의 기존 원문 이식만 원문 전달 전까지 별도 보류하며, 이 결정을 기존 원문 이식의 완료나 제품 범위 삭제로 해석하지 않는다. 외부 운영·복원·기기 검증의 `not_executed`도 변경하지 않는다.
