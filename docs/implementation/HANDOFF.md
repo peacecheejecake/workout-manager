@@ -880,3 +880,12 @@ Root 메타데이터 전용 실제 진단은 sourceproof verified/coldcatalog_mi
 
 
 HealthKit27case fixture의 즉시enabled 검사를 원assertion의 waitFor로 바꾼 뒤 actor27/27·identityTS/lint/format0, Root 실제27/27·exit0(2.38s)을 확인했다. timeout·제품소스·동의loadingguard는 변경0이다. 원7파일 집중 재검증 R1/R2는 각각120/120(16.56s/17.93s)이며 full R4를 소급 통과시키지 않는다. 현재 sourceclosure/pin을 고정한 채 독립freshHTTP12 실행·고유DB/role/storage/identity포트 정리를 native agent에 배정했다. Root는 공통증거asset 통합·검토·커밋·phase판정을 맡고 동시공통AWS/iPhone/sourceclosure 변이를 허용하지 않는다.
+
+
+### 2026-10-08 full copied roster 비용 교정과 새 소스 동결
+
+full copied inventory의 반복 위치 검색이 동일source의복사위치 수에따라 중첩비교를 만드는 것을 확인했다. invocation-local Map→Set으로 candidate의기존위치를 lazyseed해 exact membership을검사하며 visited charging/모든bodyhash/divergence/5000상한/원배열과정렬을보존했다. 의미있는행동회귀2개(seed+3고유copies의정확roster/input불변, divergent동일identity의실제firstprojectiondeny)를추가했다. 원43assertions/5s/4999copy조건은유지했다. 새음성fixture의첫가정이틀린 actorR1 44pass/1fail은보존했고 최종actorR2/R3 각각45/45, Root실제45/45·exit0(4.53s)을확인했다. persistence/coachingTS/lint/format0. 원fullR4의9실패를지우지않고 통제된속도배율을주장하지않는다. sourceSHA17f17c52…4ef84/unitSHAca990167…2ec454; 실제Rootunitlog `wm-full-copied-set-root-unit-r1-20261008.log` SHA10f523db…43f89.
+
+소스변경직후 기존bootstrap proof의실제source_drift를확인했다(`wm-full-copied-set-stale-proof-root-20261008.log`). originalstage와모든historical execution scope를보존하고 실제33typed-unit/45full-copy-unit을분리한 Root bootstrapR2 candidate/compile/noargsverified는exit0였다. manifest SHA `d550080e0ef86b90cc5cbf70659a2295c8d7f520a2544d0b0ae2c55b9a14d63d`,385files/257선언labels(257개신규실행이아님), bootstrap asset SHA `8d341998637bec24f29f80df73e17c5f03e14d3942fd7f00b3fc37b743679b23`다. 앞bootstrap1 normal5/HTTP시작실패R1/R2는원입력의기록이며 새runtime 수용으로치환하지않는다. 새sourcefreeze후 actualnormal5→HTTP12→최종compile/pin은nativeagent가진행하며 공통source/asset/pin은고정했다. sourceproof는소스호환검증이고 latest239 whole archive/restore/admission권한이아니다.
+
+Native orchestration의검증도독립소유로분리했다. 기존shared17.6의소유불명 workerroles2는삭제하지않았고, 새localhost-only exact170006/dockerimage고정/빈합성tmpfs cluster를별도agent가생성해lifecycle소유한다. HTTPagent는run별DB/role/storage/identity포트와정리를소유한다. 공개/AWS/iPhone/공통파일동시변이는없다. M0-06b는자기phase의정확frozen의존성준비후7focusedfiles28/28·exit0를확인했으며 원WIP/입력hash불변이었다. 원sandbox DNS설치실패는보존했고 실제운영ODbL/전체로그회전·보존/실기기측정은여전히not_executed다. 전체unit새회차/fullintegration/identity두회차/최종staticgate/독립phase검토/main/push는미완료다.

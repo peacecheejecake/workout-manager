@@ -811,6 +811,33 @@ it('metadata JSON channels reject unknown body payloads instead of whitelisting 
     reason: 'unindexable_body',
   });
 });
+it('retains seeded candidate locations and every distinct repeated source copy without mutating input', () => {
+  const v = input((c) => {
+    c.consumedSources.races = Array.from({ length: 3 }, () => structuredClone(c.event));
+  });
+  const before = structuredClone(v);
+  const r = mapped(v);
+  const locations = r.refs[0]?.copiedLocations;
+  expect(locations).toEqual([
+    'candidate.body.projectionInput.event',
+    'context.consumedSources.races[0]',
+    'context.consumedSources.races[1]',
+    'context.consumedSources.races[2]',
+    'context.event',
+    'sourceInput.projectionInput.event',
+  ]);
+  expect(v).toEqual(before);
+});
+it('rejects divergent repeated source bodies at the projection boundary before inventory merging', () => {
+  expect(() =>
+    input((c) => {
+      c.consumedSources.races = [
+        structuredClone(c.event),
+        { ...structuredClone(c.event), title: 'Different copied event body' },
+      ];
+    }),
+  ).toThrow('source_identity_mismatch');
+});
 it('duplicate source copies are charged before deduplication', () => {
   const v = input((c) => {
     c.consumedSources.races = Array.from({ length: 4999 }, () => structuredClone(c.event));

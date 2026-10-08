@@ -246,6 +246,7 @@ export function enumerateRaceManualReviewFullCopiedSourcesV2(
   const refs = new Map<string, z.infer<typeof refSchema>>(),
     diagnostics: z.infer<typeof diagnosticSchema>[] = [],
     blockers: z.infer<typeof blockerSchema>[] = [];
+  const copiedLocationIndex = new Map<string, Set<string>>();
   let visited = 0;
   const blocker = (location: string, reason: z.infer<typeof blockerSchema>['reason']) => {
     if (blockers.length < 5000) blockers.push({ location, reason });
@@ -278,7 +279,17 @@ export function enumerateRaceManualReviewFullCopiedSourcesV2(
     if (prior) {
       if (prior.dtoDigest !== dtoDigest || prior.representation !== representation)
         blocker(location, 'divergent_copied_body');
-      else if (!prior.copiedLocations.includes(location)) prior.copiedLocations.push(location);
+      else {
+        let locations = copiedLocationIndex.get(key);
+        if (!locations) {
+          locations = new Set(prior.copiedLocations);
+          copiedLocationIndex.set(key, locations);
+        }
+        if (!locations.has(location)) {
+          locations.add(location);
+          prior.copiedLocations.push(location);
+        }
+      }
     } else
       refs.set(key, {
         identity,
