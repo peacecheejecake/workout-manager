@@ -533,7 +533,10 @@ function managementSetup(overrides: Partial<SelectionBridge> = {}) {
 describe('native registration management account UI', () => {
   it('requires an explicit native action and explains deletion and close semantics', async () => {
     const { bridge } = managementSetup();
-    expect(await screen.findByRole('button', { name: 'iPhone 등록 운동 관리·해제' })).toBeEnabled();
+    const managementButton = await screen.findByRole('button', {
+      name: 'iPhone 등록 운동 관리·해제',
+    });
+    await waitFor(() => expect(managementButton).toBeEnabled());
     expect(screen.getByText(/HealthKit 원본은 삭제하지 않습니다/)).toBeVisible();
     expect(screen.getByText(/화면을 닫아도 이미 보낸 해제 요청은 취소되지 않습니다/)).toBeVisible();
     expect(bridge.manageHealthKitWorkouts).not.toHaveBeenCalled();

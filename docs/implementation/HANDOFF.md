@@ -869,3 +869,14 @@ Native PostgreSQL17.11을 Homebrew skip-link/skip-post-install로 설치했다(�
 네 historical fixture의 전체집합 정렬과 PG17 char concatenation explicitcast를 교정했다. Root nativePG17 첫 실제 실행은33pass/1fail: owner의 전체 ACL에 새 MAINTAIN(m)이 있으나 구 기대값이 없었다. 공식 PostgreSQL17 권한 문서에 따라 실제 server_version_num으로17이상/이전의 정확 전체owner/grantor ACL을 비교하도록 교정했다. SQL/제품권한/행수/집합 축소나 권한문자 무시 없이 Root 두 번째 실제 실행은4파일34/34·exit0(별도028→029 upgrade1/1), serverstop/temporarycleanup을 확인했다. 원실패를 유지하며 전체 integration229실패를 이34개로 소급 통과시키지 않는다. 원로그 `/private/tmp/wm-native-pg17-fixture-four-root-r{1,2}-20261008.log`; scopedlint/format 및 persistenceTS exit0.
 
 전체unit R4는 새 계약과 현재 bootstrap에서 별도 실행 중이다. 종료 전 fullpass로 표시하지 않는다. 기존 EXT-HOSTING4lines WIP를 보존하고 bootstrapasset/pin은 최종 증거 수용 전 미커밋 상태다.
+
+### 2026-10-08 exact17.6 정상 기동 재검증 및 R4 실패 보존
+
+Root 메타데이터 전용 실제 진단은 sourceproof verified/coldcatalog_mismatch였다. normalized catalog28sections의 행수·SHA는 모두 original과 같고 changedFieldCounts는 metadata.serverVersion1뿐이었다. 원 trusted-catalog-a에는 exact170006이 실제 저장돼 있다; 버전 미기록이라는 TMP 준비 설명은 이 관측으로 교정한다. native170011 및14는 whole catalog의 exact version 조건을 통과하지 못하며 guard/expectedhash를 완화하지 않았다. 임시 진단 fixture는 원configuredfixture를 보존한 복사본이고 실행 뒤 삭제했다. 원log/finiteJSON `/private/tmp/wm-typed-linear-finite-probe-root-r1-20261008.log`, `wm-typed-linear-configured-finite-probe-20261008.json`를 보존한다.
+
+기존 격리 합성Docker exact17.6/admin을 실제 확인한 별도 fixture 실행에서 새bootstrap/current contract의 normalconfigured5/5·exit0(30.33s)를 확인했다(`/private/tmp/wm-typed-linear-bootstrap-configured-pg176-root-r1-20261008.log`). 새 source의 HTTP12와 최종compile/pin은 아직 미실행이다. exact patch 조건을 유지하는 현재 호환 범위이며 native17.11 지원을 주장하지 않는다. unreachable OIDC discovery network 실패는 합성fixture의 예상 조건이며 운영로그인 증거가 아니다.
+
+전체unit R4는7failed/580passed/1skippedfiles,9failed/9488passed/12skippedtests(9509),267.31s·exit1였다. 원로그 `wm-m2-02-full-test-root-r4-20261008.log`를 보존한다. 기존roster5001 timeout은 이번R4 실패에 없지만 전체pass가 아니다. 별도 actor 집중7파일120/120 R1(16.56s)은 원조건의 독립 재실행이며 R4를 통과로 치환하지 않는다. 로딩 중 management 버튼이 아직disabled인 시점의 즉시enabled 검사와 나머지timeout/후속실패를 분리하고 해당조건을 실제 기다리는 최소fixture 수정만 검토 중이다. 전체gate/phase 독립review/main/push와 external gate는 여전히 미완료다.
+
+
+HealthKit27case fixture의 즉시enabled 검사를 원assertion의 waitFor로 바꾼 뒤 actor27/27·identityTS/lint/format0, Root 실제27/27·exit0(2.38s)을 확인했다. timeout·제품소스·동의loadingguard는 변경0이다. 원7파일 집중 재검증 R1/R2는 각각120/120(16.56s/17.93s)이며 full R4를 소급 통과시키지 않는다. 현재 sourceclosure/pin을 고정한 채 독립freshHTTP12 실행·고유DB/role/storage/identity포트 정리를 native agent에 배정했다. Root는 공통증거asset 통합·검토·커밋·phase판정을 맡고 동시공통AWS/iPhone/sourceclosure 변이를 허용하지 않는다.
