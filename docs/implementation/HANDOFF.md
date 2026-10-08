@@ -827,3 +827,15 @@ Root source proof 실제 compile R2 exit0 및 noargs current-source 검증 verif
 사용자 결정대로 역사 원문 없이 신규 계획 작성·사용 개발을 계속했다. 정상 profile25 closedfactory에 V4 writer/preview·V2 result ports를 연결하고 Root 실제 두Host12/12(최종R4),normalconfigured5/5,단위108/108 및 별도68/68·consumerTS/lint/format0·sourcecompile/noargsverified·cleanup0을 확인했다. R1/R2 catalog 거절과 formatter 교정 이력은 [I](progress/M2-02i.md)/[J](progress/M2-02j.md)에 별도 보존한다. I/J local acceptance는 completed, phase parent/fullphase gates/독립review/main/push는 미완료다.
 
 다음은 M2-02 fullphase gate와 독립 phase 검토, ready EXT-RESTOREa의 최종 inventory/full-family/tail/admission 작업이다. 기존 untracked legacy dense diagnostic은 보존돼 있고 fullintegration glob에 포함되므로 최신 pooled dense8의 통과로 소급 판정하지 않는다. 운영 AWS/503/native/provider와 FUT-09 역사 이식은 별도 대기다.
+
+## 2026-10-08 전체 M2-02 phase 검증 시작
+
+HEAD2b13497e에서 full frozen install R3/generated/lint/typecheck(36/36)/build(15/15)/format exit0. install R1 DNS/noTTY·R2 offline tarball 실패는 보존하고 R3 exact lock 설치로 의존성을 복구했다. 전체 unit R1은9433pass/37fail/32skip·exit1: localserver sandbox EPERM36, compatible-v3 기대 projected→rejected1 및 worktree Python interpreter 부재 suite setup/cleanup 한계가 있다. 부분 R2는 Root 보류로exit130 중단이며 pass가 아니다. compatible-v3 원인을 별도 조사 중이고 권한있는 canonical fullunit은 수정 후 재실행한다. 실제 PG17 canonical 전체 integration은 전용 plainowner/runtime DB에서 실행 중이며 종료 전 수용을 주장하지 않는다. fullphase/독립review/main은 미완료다.
+
+Root 자체 미커밋 legacy dense diagnosis(45029bytes/SHA701f0b4a…f544)를 `/private/tmp/wm-legacy-dense-diagnostic-archive-20261008/`에 원bytes/record로 보존하고 runnable worktree에서 정리했다. 실패한 구6사례를 pass/skip으로 바꾸지 않았고 최신 committed pooled dense8과 구profile22 진단은 다른 범위다. EXT-HOSTING 기존4lines WIP는 그대로 보존한다. 전체 phase 검증 actual logs/result는 `/private/tmp/wm-m2-02-full-validation-result-20261008.{json,md}`를 따른다.
+
+병렬 읽기 준비: 최신 authenticated restore inventory는 table239(source116222대비+17),sequence1,RLS/FORCE220. fixed116 capture/loader와 suppression tail은 latest142 whole restore를 지원하지 않는다. ready EXT-RESTOREa의 capture/autharchive→CLOSED wholeloader→complete ordered tail/sequence→postconditions/atomic admission을 구현해야 한다. latestsourceproof/catalogready와 source archive/restore authority는 별개다. 두 TMP gap 보고서는 준비 증거이며 복원 완료/운영 검증이 아니다.
+
+### compatible-v3 단위 fixture 교정
+
+실패1건은 최신 builder가 V4-only `retainedUnplannedRuns`/`retainedHistoricalRoutines` 두 ownfields를 추가한 전체V4 input을 strictV3 positive fixture에 전달한 버전 불일치였다. 실제 두roster empty를 확인하고 해당 case만 exactV3 input으로 구성했다. strictV1 reject 및 fullV4→strictV3 invalid_input 음성도 유지·추가했다. 제품 schema/decoder/업무source/DBfixture/권한·정책은 변경0. unit fixture SHA42829ce9…386b, actor15/15·Root15/15(`/private/tmp/wm-compatible-v3-fixture-root-unit-r3-20261008.log`),persistenceTS/lint/format exit0. 원14pass1fail/fullunit9433/37/32와부분R2exit130은 그대로 보존하며 전체unit재실행 전 fullpass를 주장하지 않는다.

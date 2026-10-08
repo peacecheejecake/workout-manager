@@ -392,15 +392,28 @@ it('preserves exact historical linked training body instead of replacing it with
 it('requires an explicit internal compatible seam while the old V1 pure and adapter decoders stay strict', () => {
   const capture = disconnected();
   const result = projected(capture);
+  const { retainedUnplannedRuns, retainedHistoricalRoutines, ...compatibleV3Input } = result.input;
+  // The current builder emits V4. This fixture has no V4-only retained content.
+  expect(retainedUnplannedRuns).toEqual([]);
+  expect(retainedHistoricalRoutines).toEqual([]);
   expect(
-    projectRaceRelativeScheduleImpact(result.input, createRaceRelativeScheduleCalculationPorts()),
+    projectRaceRelativeScheduleImpact(
+      compatibleV3Input,
+      createRaceRelativeScheduleCalculationPorts(),
+    ),
   ).toMatchObject({ status: 'rejected', reason: 'invalid_input' });
+  expect(
+    projectRaceRelativeScheduleImpactCompatibleV3(
+      compatibleV3Input,
+      createRaceRelativeScheduleCalculationPortsCompatibleV3([capture.event]),
+    ),
+  ).toMatchObject({ status: 'projected' });
   expect(
     projectRaceRelativeScheduleImpactCompatibleV3(
       result.input,
       createRaceRelativeScheduleCalculationPortsCompatibleV3([capture.event]),
     ),
-  ).toMatchObject({ status: 'projected' });
+  ).toMatchObject({ status: 'rejected', reason: 'invalid_input' });
 });
 it('does not fetch disconnected race sources and includes original V3 body digest while retaining historical Plan reads', async () => {
   const capture = disconnected();
