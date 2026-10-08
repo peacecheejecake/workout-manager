@@ -1,3 +1,6 @@
+import { raceManualApprovalCommandSchema } from '@workout/contracts/race-manual-approval';
+import { raceManualSemanticBasisV2Schema } from '../src/race-manual-review-semantic-basis-v2.js';
+import { assertRaceManualSameTxApprovalContinuation } from '../src/race-manual-same-tx-approval-continuation.js';
 import { randomUUID } from 'node:crypto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Database, Transaction } from '../src/database.js';
@@ -26,6 +29,7 @@ vi.mock('../src/race-manual-approval.js', async (importOriginal) => ({
   ...(await importOriginal<typeof ApprovalModule>()),
   prepareRaceManualApprovalIn: ports.prepare,
   approveRaceManualApplicationIn: ports.approve,
+  approveRaceManualApplicationFromStoredCaptureIn: ports.approve,
 }));
 vi.mock('../src/race-plan-impact-preview.js', async (importOriginal) => ({
   ...(await importOriginal<typeof PreviewModule>()),
@@ -496,4 +500,229 @@ it('impact reserves its response against the same source budget without truncati
     createRaceManualPublicRepository(a.db).impact('synthetic', impactCommand()),
   ).rejects.toThrow('PUBLIC_RESPONSE_LIMIT');
   expect(a.counts()).toEqual({ commits: 0, rollbacks: 1 });
+});
+
+const continuationEventId = 'a0000000-0000-4000-8000-000000000001';
+function continuationBasis() {
+  return raceManualSemanticBasisV2Schema.parse({
+    basisVersion: 2,
+    athleteId: 'Synthetic-食',
+    restoreGeneration: 'b0000000-0000-4000-8000-000000000001',
+    intent: {
+      expectedEvent: { id: continuationEventId, revision: 1 },
+      newLocalDate: '2026-10-08',
+      selection: { kind: 'keep_plan' },
+    },
+    manualBasis: {
+      purpose: 'manual_race_date_change',
+      app: { state: 'present', granted: true, revision: 1 },
+      policy: { id: 'manual-race-date-impact', version: 1, digest: 'a'.repeat(64) },
+    },
+    event: {
+      id: continuationEventId,
+      revision: 1,
+      title: 'Synthetic',
+      localDate: '2026-10-06',
+      localStartTime: null,
+      timezone: 'Asia/Seoul',
+      locationName: null,
+      distance: { kind: 'standard', class: '10k' },
+      priority: null,
+      participation: 'registered',
+      officialUrl: null,
+      course: null,
+      targetSeconds: 0,
+      planVersionId: null,
+    },
+    collectorSelection: { kind: 'keep_plan' },
+    heads: {
+      nutrition: { state: 'absent' },
+      recovery: { state: 'absent' },
+      routine: { state: 'absent' },
+    },
+    currentTraining: null,
+    core: {
+      schemaVersion: 2,
+      scope: 'core-ledgers-v2',
+      athleteId: 'Synthetic-食',
+      trainingPlan: { kind: 'absent' },
+      checkIns: { kind: 'absent' },
+      sessionCompletions: { kind: 'absent' },
+      userConstraints: { kind: 'absent' },
+    },
+    activities: [],
+    eventCollection: null,
+    dependencyHeads: [
+      'intake_revision',
+      'activity_revision',
+      'execution_revision',
+      'set_revision',
+      'routine_run_revision',
+      'routine_occurrence_revision',
+      'recovery_action_revision',
+    ].map((kind) => ({ kind, state: 'absent' })),
+    copiedSources: [],
+    consumedUses: {
+      purposeProjectionVersion: 2,
+      purpose: 'manual_race_date_change',
+      facts: [],
+      authority: 'none',
+      permissionAuthority: 'none',
+      storage: 'not_persisted',
+      freshness: 'not_checked',
+      admissionAllowed: false,
+      approvalAllowed: false,
+    },
+  });
+}
+
+function publicStoredFixture() {
+  const b = continuationBasis();
+  const candidate = {
+    schemaVersion: 1,
+    candidateId: randomUUID(),
+    applicationDigest: 'a'.repeat(64),
+    chain: {
+      evidenceId: randomUUID(),
+      decisionId: randomUUID(),
+      proposalId: randomUUID(),
+      readonlyCandidateDigest: 'b'.repeat(64),
+    },
+    createdAt: '2026-10-08T00:00:00.123456Z',
+    raceChange: { eventId: continuationEventId, expectedRevision: 1, newLocalDate: '2026-10-08' },
+    expectation: {
+      restoreGeneration: b.restoreGeneration,
+      appRevision: 1,
+      manualPolicy: b.manualBasis.policy,
+      semanticDigest: 'c'.repeat(64),
+      heads: {
+        training: { state: 'absent' },
+        nutrition: { state: 'absent' },
+        recovery: { state: 'absent' },
+        routine_schedule: { state: 'absent' },
+      },
+    },
+    authority: 'server_revalidation_required',
+    applicationState: 'ready_for_explicit_approval',
+    scope: 'whole_affected',
+    affected: [],
+    writes: [],
+    notices: [],
+  };
+  const stored = {
+    reference: {
+      schemaVersion: 1,
+      candidateId: candidate.candidateId,
+      applicationDigest: candidate.applicationDigest,
+      chain: candidate.chain,
+      createdAt: candidate.createdAt,
+    },
+    bodyState: 'present',
+    candidate,
+    basis: b,
+    lifecycle: {
+      inventoryVersion: 2,
+      status: 'dependency_correspondence',
+      athleteId: b.athleteId,
+      facts: [],
+      coverage: null,
+      retainedState: 'present',
+      retainedReason: null,
+      originalEventAuthentication: 'unverified_original_event',
+      sourceAuthentication: 'unverified',
+      authority: 'none',
+      freshness: 'not_checked',
+      storage: 'not_persisted',
+      admissionAllowed: false,
+      approvalAllowed: false,
+      appWithdrawal: 'retained_read_allowed',
+      catalogWithdrawal: 'not_source_deletion',
+      correction: 'not_source_deletion',
+    },
+  };
+  const command = raceManualApprovalCommandSchema.parse({
+    schemaVersion: 1,
+    idempotencyKey: 'synthetic_approve',
+    confirmed: true,
+    candidateId: candidate.candidateId,
+    applicationDigest: candidate.applicationDigest,
+    chain: candidate.chain,
+    raceChange: candidate.raceChange,
+    expectation: candidate.expectation,
+  });
+  const a = {
+    xid: '42',
+    role: 'synthetic_runtime',
+    sessionRole: 'synthetic_runtime',
+    athleteId: b.athleteId,
+    isolation: 'repeatable read',
+    readOnly: false,
+  };
+  const query = vi.fn<Transaction['query']>(async (sql) =>
+    response(sql.includes('read_race_manual_public_candidate_v1') ? stored : a),
+  );
+  const tx = { athleteId: b.athleteId, query };
+  return {
+    stored,
+    command,
+    a,
+    tx,
+    query,
+    budget: { bytes: 0n, sources: 0 },
+  };
+}
+
+it('public approval reuses one strict protected stored capture rather than another SQL118 body (mocked writer, no DB authority proof)', async () => {
+  const f = publicStoredFixture();
+  const result = {
+    schemaVersion: 1,
+    status: 'committed',
+    candidateId: f.command.candidateId,
+    approvalId: randomUUID(),
+    proposalId: f.command.chain.proposalId,
+    approvedAt: '2026-10-08T00:00:00Z',
+    race: { eventId: continuationEventId, revision: 2 },
+    versions: [],
+    occurrenceIds: [],
+    notices: [],
+  };
+  const query = vi.fn<Transaction['query']>(async (sql) => {
+    if (sql.includes('read_race_manual_public_approval_v1')) return response(null);
+    if (sql.includes('txid_current')) return response(f.a);
+    if (sql.includes('read_race_manual_public_candidate_v1')) return response(f.stored);
+    if (sql.includes("'publicKey'")) return response(hash);
+    if (sql.includes('finish_race_manual_public_approval_v1')) return response(result);
+    throw Error('Unexpected public boundary query');
+  });
+  ports.approve.mockImplementation(
+    async (
+      ...args: Parameters<typeof ApprovalModule.approveRaceManualApplicationFromStoredCaptureIn>
+    ) => {
+      const [tx, command, factory, handle, budget] = args;
+      assertRaceManualSameTxApprovalContinuation(factory);
+      return factory.consume(tx, handle, command, budget, async (stored) => {
+        expect(stored.candidate.candidateId).toBe(f.command.candidateId);
+        expect(stored.basis).toEqual(f.stored.basis);
+        return result;
+      });
+    },
+  );
+  const a = adapter(query);
+  expect(
+    await createRaceManualPublicRepository(a.db).approve(f.tx.athleteId, {
+      schemaVersion: 1,
+      idempotencyKey: 'public_approve_key',
+      candidateId: f.command.candidateId,
+      applicationDigest: f.command.applicationDigest,
+      confirmed: true,
+    }),
+  ).toEqual(result);
+  expect(query.mock.calls[0]?.[0]).toContain('read_race_manual_public_approval_v1');
+  expect(
+    query.mock.calls.filter(([sql]) => sql.includes('read_race_manual_public_candidate_v1')),
+  ).toHaveLength(1);
+  expect(query.mock.calls.some(([sql]) => sql.includes('read_race_manual_application_v1'))).toBe(
+    false,
+  );
+  expect(a.counts()).toEqual({ commits: 1, rollbacks: 0 });
 });

@@ -1,3 +1,7 @@
+import {
+  assertRaceManualSameTxApprovalContinuation,
+  type RaceManualSameTxApprovalContinuation,
+} from './race-manual-same-tx-approval-continuation.js';
 import { prepareRaceManualSameTxReviewApplicationIn } from './race-manual-same-tx-review-continuation.js';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
@@ -531,6 +535,45 @@ export async function approveRaceManualApplicationIn(
         budget,
       ),
     );
+  return applyStoredRaceManualApplicationIn(tx, command, stored, budget, options);
+}
+/** Internal entry consumes only the actual protected-reader factory handle.
+ * The original receipt is checked before consuming fresh approval state. */
+export async function approveRaceManualApplicationFromStoredCaptureIn(
+  tx: Transaction,
+  unknownCommand: unknown,
+  continuation: RaceManualSameTxApprovalContinuation,
+  handle: unknown,
+  budget: SourceBudget,
+  options: { now?: () => Date; createId?: () => string } = {},
+) {
+  assertRaceManualSameTxApprovalContinuation(continuation);
+  try {
+    const command = raceManualApprovalCommandSchema.parse(unknownCommand);
+    const replay = await call(
+      tx,
+      'public.read_race_manual_application_receipt_v1($1::text,$2::jsonb)',
+      [command.idempotencyKey, JSON.stringify(command)],
+      budget,
+    );
+    if (replay !== null) return raceManualApprovalResultSchema.parse(replay);
+    return await continuation.consume(tx, handle, command, budget, (stored) =>
+      applyStoredRaceManualApplicationIn(tx, command, stored, budget, options),
+    );
+  } finally {
+    continuation.invalidate(handle);
+  }
+}
+async function applyStoredRaceManualApplicationIn(
+  tx: Transaction,
+  command: z.infer<typeof raceManualApprovalCommandSchema>,
+  stored: {
+    candidate: z.infer<typeof raceManualApprovalCandidateSchema>;
+    basis: z.infer<typeof raceManualSemanticBasisV2Schema>;
+  },
+  budget: SourceBudget,
+  options: { now?: () => Date; createId?: () => string },
+) {
   const candidate = stored.candidate;
   if (
     candidate.applicationState !== 'ready_for_explicit_approval' ||

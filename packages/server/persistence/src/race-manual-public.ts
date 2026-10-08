@@ -1,4 +1,9 @@
 import {
+  createRaceManualSameTxApprovalContinuation,
+  raceManualStoredApprovalReadSchema,
+  raceManualStoredApprovalReferenceSchema,
+} from './race-manual-same-tx-approval-continuation.js';
+import {
   captureRaceManualSameTxReviewContinuationIn,
   hasRaceManualSameTxReviewCapabilityIn,
   invalidateRaceManualSameTxReviewContinuation,
@@ -12,22 +17,17 @@ import {
   raceManualPublicApproveSchema,
 } from '@workout/contracts/race-manual-public';
 import {
-  raceManualApprovalCandidateSchema,
   raceManualApprovalCommandSchema,
   raceManualApprovalResultSchema,
 } from '@workout/contracts/race-manual-approval';
 import type { Database, Transaction } from './database.js';
 import { assertRaceManualPlainV2 } from './race-manual-review-consumed-use-v2.js';
-import {
-  prepareRaceManualSemanticBasisV2In,
-  raceManualSemanticBasisV2Schema,
-} from './race-manual-review-semantic-basis-v2.js';
+import { prepareRaceManualSemanticBasisV2In } from './race-manual-review-semantic-basis-v2.js';
 import { storeRaceManualReviewChainV2In } from './race-manual-review-chain-v2.js';
 import {
   prepareRaceManualApprovalIn,
-  approveRaceManualApplicationIn,
+  approveRaceManualApplicationFromStoredCaptureIn,
 } from './race-manual-approval.js';
-import { raceManualReviewLifecycleInventoryV2Schema } from './race-manual-review-lifecycle-inventory-v2.js';
 import {
   projectRaceManualPublicPreview,
   raceManualPublicPreviewSourceSchema,
@@ -56,30 +56,9 @@ const approveCommand = raceManualPublicApproveSchema.extend({
   idempotencyKey: key,
   candidateId: uuid,
 });
-export const raceManualPublicReferenceSchema = z.strictObject({
-  schemaVersion: z.literal(1),
-  candidateId: uuid,
-  applicationDigest: digest,
-  chain: raceManualApprovalCommandSchema.out.shape.chain,
-  createdAt: z.iso.datetime({ offset: true }),
-});
+export const raceManualPublicReferenceSchema = raceManualStoredApprovalReferenceSchema;
 export type RaceManualPublicReference = z.infer<typeof raceManualPublicReferenceSchema>;
-const storedSchema = z.discriminatedUnion('bodyState', [
-  z.strictObject({
-    reference: raceManualPublicReferenceSchema,
-    bodyState: z.literal('present'),
-    candidate: raceManualApprovalCandidateSchema,
-    basis: raceManualSemanticBasisV2Schema,
-    lifecycle: raceManualReviewLifecycleInventoryV2Schema,
-  }),
-  z.strictObject({
-    reference: raceManualPublicReferenceSchema,
-    bodyState: z.literal('purged'),
-    candidate: z.null(),
-    basis: z.null(),
-    lifecycle: z.null(),
-  }),
-]);
+const storedSchema = raceManualStoredApprovalReadSchema;
 export class RaceManualPublicError extends Error {
   constructor(
     readonly code:
@@ -281,44 +260,56 @@ export async function approveRaceManualPublicIn(
       throw new RaceManualPublicError('PUBLIC_INVALID_RESPONSE');
     return alias;
   }
-  const read = await stored(tx, command.candidateId, budget);
-  if (
-    !read ||
-    read.bodyState !== 'present' ||
-    read.candidate.applicationState !== 'ready_for_explicit_approval' ||
-    read.reference.applicationDigest !== command.applicationDigest
-  )
-    throw new RaceManualPublicError('PUBLIC_APPLICATION_UNAVAILABLE');
-  const candidate = read.candidate;
-  const internal = raceManualApprovalCommandSchema.parse({
-    schemaVersion: 1,
-    idempotencyKey: `race_public_approve_v1_${digest.parse(
+  const continuation = createRaceManualSameTxApprovalContinuation();
+  const read = await continuation.capture(tx, command.candidateId, budget);
+  try {
+    if (
+      !read ||
+      read.bodyState !== 'present' ||
+      read.candidate.applicationState !== 'ready_for_explicit_approval' ||
+      read.reference.applicationDigest !== command.applicationDigest
+    )
+      throw new RaceManualPublicError('PUBLIC_APPLICATION_UNAVAILABLE');
+    const candidate = read.candidate;
+    const internal = raceManualApprovalCommandSchema.parse({
+      schemaVersion: 1,
+      idempotencyKey: `race_public_approve_v1_${digest.parse(
+        await sql(
+          tx,
+          "encode(sha256(convert_to(jsonb_build_object('tenant',$1::text,'operation','approve','publicKey',$2::text)::text,'UTF8')),'hex')",
+          [tx.athleteId, command.idempotencyKey],
+          budget,
+        ),
+      )}`,
+      candidateId: candidate.candidateId,
+      applicationDigest: candidate.applicationDigest,
+      chain: candidate.chain,
+      raceChange: candidate.raceChange,
+      expectation: candidate.expectation,
+      confirmed: true,
+    });
+    const result = await approveRaceManualApplicationFromStoredCaptureIn(
+      tx,
+      internal,
+      continuation,
+      read.handle,
+      budget,
+      options,
+    );
+    const committed = raceManualApprovalResultSchema.parse(
       await sql(
         tx,
-        "encode(sha256(convert_to(jsonb_build_object('tenant',$1::text,'operation','approve','publicKey',$2::text)::text,'UTF8')),'hex')",
-        [tx.athleteId, command.idempotencyKey],
+        'public.finish_race_manual_public_approval_v1($1::text,$2::jsonb)',
+        [command.idempotencyKey, request],
         budget,
       ),
-    )}`,
-    candidateId: candidate.candidateId,
-    applicationDigest: candidate.applicationDigest,
-    chain: candidate.chain,
-    raceChange: candidate.raceChange,
-    expectation: candidate.expectation,
-    confirmed: true,
-  });
-  const result = await approveRaceManualApplicationIn(tx, internal, budget, options);
-  const committed = raceManualApprovalResultSchema.parse(
-    await sql(
-      tx,
-      'public.finish_race_manual_public_approval_v1($1::text,$2::jsonb)',
-      [command.idempotencyKey, request],
-      budget,
-    ),
-  );
-  if (JSON.stringify(committed) !== JSON.stringify(result))
-    throw new RaceManualPublicError('PUBLIC_INVALID_RESPONSE');
-  return committed;
+    );
+    if (JSON.stringify(committed) !== JSON.stringify(result))
+      throw new RaceManualPublicError('PUBLIC_INVALID_RESPONSE');
+    return committed;
+  } finally {
+    if (read?.bodyState === 'present') continuation.invalidate(read.handle);
+  }
 }
 /** Internal SQL body is validated but never returned through this public-facing
  * service. Retained read makes no fresh processing/admission claim. */
