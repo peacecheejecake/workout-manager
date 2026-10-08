@@ -104,6 +104,73 @@ function fixture() {
     ],
   };
 }
+function linkedOnlyFixture() {
+  const p = fixture(),
+    n = p.nutrition.members[0];
+  if (!n) throw Error('fixture');
+  const before = {
+    title: 'Train',
+    timezone: 'UTC',
+    periods: [
+      {
+        id: 'season',
+        parentId: null,
+        level: 'season',
+        title: 'Season',
+        startDate: '2026-10-07',
+        endDateExclusive: '2026-10-11',
+        timezone: 'UTC',
+        intent: 'Build',
+        isPartial: false,
+      },
+    ],
+    sessions: [],
+  };
+  const after = {
+    ...before,
+    periods: [{ ...before.periods[0], startDate: '2026-10-08', endDateExclusive: '2026-10-12' }],
+  };
+  return {
+    ...p,
+    intent: {
+      ...p.intent,
+      selection: {
+        kind: 'move_period',
+        expectedCurrentPlanVersionId: id(10),
+        periodId: 'season',
+        newStartDate: '2026-10-08',
+        scope: 'period_only',
+      },
+    },
+    training: {
+      state: 'present',
+      members: [
+        {
+          aggregateId: id(11),
+          before: { ref: { versionId: id(10), version: 1 }, plan: before },
+          after: { kind: 'new_version_on_approval', plan: after },
+        },
+      ],
+    },
+    nutrition: {
+      state: 'present',
+      members: [
+        {
+          ...n,
+          before: { ...n.before, linkedTraining: { kind: 'retained', versionId: id(10) } },
+          after: {
+            ...n.after,
+            linkedTraining: { kind: 'follows_training_approval', aggregateId: id(11) },
+          },
+        },
+      ],
+    },
+    affected: [
+      { domain: 'training', aggregateId: id(11) },
+      { domain: 'nutrition', aggregateId: n.aggregateId },
+    ],
+  };
+}
 function member(p: ReturnType<typeof fixture>) {
   const m = p.nutrition.members[0];
   if (!m) throw Error('fixture');
@@ -499,6 +566,69 @@ describe('transient public impact', () => {
         ],
       }).success,
     ).toBe(true);
+  });
+  it('accepts exact linked-only affected nutrition while keeping old unresolved timing notice', () => {
+    const p = raceManualPublicImpactSchema.parse(linkedOnlyFixture());
+    if (p.status !== 'projected' || p.nutrition.state !== 'present') throw Error('fixture');
+    expect(p.affected.map((t) => t.domain)).toEqual(['training', 'nutrition']);
+    expect(p.nutrition.members[0]?.timings[0]?.state).toBe('unchanged');
+    expect(p.nutrition.members[0]?.timings[0]?.requirement).toBe('none');
+    expect(p.notices.map((n) => n.code)).toEqual(['UNCHANGED_UNRESOLVED']);
+    expect(p.resolutionRequirements).toEqual([]);
+  });
+  it.each([
+    'wrong_before_version',
+    'absent_before',
+    'foreign_training',
+    'no_training_change',
+    'missing_nutrition_target',
+  ] as const)('rejects forged linked-only claim %s', (control) => {
+    const p = linkedOnlyFixture(),
+      n = p.nutrition.members[0],
+      t = p.training.members[0];
+    if (!n || !t) throw Error('fixture');
+    const input = {
+      ...p,
+      nutrition:
+        control === 'wrong_before_version'
+          ? {
+              ...p.nutrition,
+              members: [
+                {
+                  ...n,
+                  before: { ...n.before, linkedTraining: { kind: 'retained', versionId: id(99) } },
+                },
+              ],
+            }
+          : control === 'absent_before'
+            ? {
+                ...p.nutrition,
+                members: [{ ...n, before: { ...n.before, linkedTraining: { kind: 'absent' } } }],
+              }
+            : control === 'foreign_training'
+              ? {
+                  ...p.nutrition,
+                  members: [
+                    {
+                      ...n,
+                      after: {
+                        ...n.after,
+                        linkedTraining: { kind: 'follows_training_approval', aggregateId: id(99) },
+                      },
+                    },
+                  ],
+                }
+              : p.nutrition,
+      training:
+        control === 'no_training_change'
+          ? { ...p.training, members: [{ ...t, after: { kind: 'retained', plan: t.before.plan } }] }
+          : p.training,
+      affected:
+        control === 'missing_nutrition_target'
+          ? p.affected.filter((t) => t.domain !== 'nutrition')
+          : p.affected,
+    };
+    expect(raceManualPublicImpactSchema.safeParse(input).success).toBe(false);
   });
   it('shows affected unconfirmed recovery without fabricating confirmation', () => {
     const plan = {

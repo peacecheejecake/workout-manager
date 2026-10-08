@@ -316,7 +316,11 @@ export function projectRaceManualPublicImpact(raw: unknown): RaceManualPublicImp
   });
   const changedNutrition = new Set(
     nutrition
-      .filter((n) => n.timings.some((t) => t.state === 'affected'))
+      .filter(
+        (n) =>
+          n.timings.some((t) => t.state === 'affected') ||
+          n.after.linkedTraining.kind === 'follows_training_approval',
+      )
       .map((n) => n.aggregateId),
   );
   // Matches approval recipes: only dependency relinking changes recovery; its

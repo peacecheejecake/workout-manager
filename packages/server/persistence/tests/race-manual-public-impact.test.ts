@@ -383,6 +383,30 @@ function allDomains() {
   ];
   return pin(c);
 }
+function linkedOnly(confirmed = true) {
+  const f = allDomains(),
+    c = f.context;
+  const n = c.nutrition[0],
+    r = c.recovery[0];
+  if (!c.currentTraining || !n || !r || !n.record.items[0]) throw Error('fixture');
+  n.record.linkedTrainingPlanVersionId = c.currentTraining.snapshot.id;
+  n.record.items[0].anchor = {
+    kind: 'absolute',
+    date: '2026-10-08',
+    localTime: '08:00',
+    timezone: 'UTC',
+  };
+  r.record.draft.planRefs = [
+    { kind: 'nutrition', aggregateId: n.aggregateId, headVersionId: n.versionId },
+  ];
+  r.record.status = confirmed ? 'user_confirmed' : 'draft';
+  r.record.selectedOptionId = confirmed ? id(14) : null;
+  c.routines = [];
+  c.rosters.routine = [];
+  c.routineActualManifest.schedules = [];
+  c.routineActualManifest.blueprints = [];
+  return pin(c);
+}
 describe('actual pure projection to public impact', () => {
   it('maps actual empty builder output without private location/context', () => {
     const p = projectRaceManualPublicImpact(fixture());
@@ -499,6 +523,81 @@ describe('actual pure projection to public impact', () => {
     expect(JSON.stringify(p)).not.toContain('PRIVATE_ACTUAL_REPORT');
     if (p.recovery.state === 'present') expect(p.recovery.members[0]?.after.status).toBe('draft');
   });
+  it.each([true, false])(
+    'includes linked-only nutrition and downstream recovery, confirmed=%s',
+    (confirmed) => {
+      const f = linkedOnly(confirmed),
+        p = projectRaceManualPublicImpact(f);
+      if (
+        p.status !== 'projected' ||
+        p.nutrition.state !== 'present' ||
+        p.recovery.state !== 'present'
+      )
+        throw Error('fixture');
+      expect(p.affected).toEqual([
+        { domain: 'training', aggregateId: id(11) },
+        { domain: 'nutrition', aggregateId: id(3) },
+        { domain: 'recovery', aggregateId: id(12) },
+      ]);
+      const n = p.nutrition.members[0],
+        r = p.recovery.members[0];
+      if (!n || !r) throw Error('fixture');
+      expect(n.timings.map((t) => t.state)).toEqual(['unchanged']);
+      expect(n.after.plan).toEqual(n.before.plan);
+      expect(n.after.linkedTraining).toEqual({
+        kind: 'follows_training_approval',
+        aggregateId: id(11),
+      });
+      expect(n.before.linkedTraining).toEqual({ kind: 'retained', versionId: id(10) });
+      expect(n.after.plan.items[0]?.foods.map((food) => food.quantity)).toEqual([0, null]);
+      expect(n.after.plan.items[0]?.targets[0]?.amount).toEqual({
+        min: 0,
+        max: 100,
+        unit: 'kcal',
+        basis: 'user_confirmed',
+      });
+      expect(r.state).toBe('affected');
+      expect(r.after.planLinks[0]?.version).toEqual({ kind: 'follows_approval' });
+      expect(r.after.status).toBe(confirmed ? 'user_confirmed' : 'draft');
+      expect(r.after.selectedOptionId).toBe(confirmed ? id(14) : null);
+      expect(p.resolutionRequirements.map((x) => x.domain)).toEqual(confirmed ? [] : ['recovery']);
+      expect(p.approvalAllowed).toBe(false);
+    },
+  );
+  it.each(['null', 'historical', 'no_training_change', 'unrelated_recovery'] as const)(
+    'keeps exact linked-only control %s',
+    (control) => {
+      const f = linkedOnly(),
+        c = f.context,
+        n = c.nutrition[0],
+        r = c.recovery[0];
+      if (!c.currentTraining || !c.calendarIntent || !n || !r) throw Error('fixture');
+      if (control === 'null') n.record.linkedTrainingPlanVersionId = null;
+      if (control === 'historical') {
+        const history = { ...structuredClone(c.currentTraining.snapshot), id: id(42) };
+        c.consumedSources.plans.push(history);
+        n.record.linkedTrainingPlanVersionId = history.id;
+      }
+      if (control === 'no_training_change') c.calendarIntent.selection = { kind: 'keep_plan' };
+      if (control === 'unrelated_recovery')
+        r.record.draft.planRefs = [
+          { kind: 'nutrition', aggregateId: id(99), headVersionId: id(98) },
+        ];
+      const p = projectRaceManualPublicImpact(pin(c));
+      if (p.status !== 'projected' || p.recovery.state !== 'present') throw Error('fixture');
+      const domains = p.affected.map((t) => t.domain);
+      expect(domains).toEqual(
+        control === 'unrelated_recovery'
+          ? ['training', 'nutrition']
+          : control === 'no_training_change'
+            ? []
+            : ['training'],
+      );
+      expect(p.recovery.members[0]?.state).toBe('unchanged');
+      expect(p.recovery.members[0]?.after.planLinks[0]?.version.kind).toBe('retained');
+      expect(p.resolutionRequirements).toEqual([]);
+    },
+  );
   it('keeps stored unresolved occurrence distinct from resolved recomputation', () => {
     const f = allDomains(),
       c = f.context;

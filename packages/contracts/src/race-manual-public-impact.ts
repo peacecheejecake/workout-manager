@@ -467,7 +467,10 @@ function validatePlannedFacts(
         });
     }
   for (const m of p.nutrition.state === 'present' ? p.nutrition.members : []) {
-    if (m.timings.some((t) => t.state === 'affected'))
+    if (
+      m.timings.some((t) => t.state === 'affected') ||
+      m.after.linkedTraining.kind === 'follows_training_approval'
+    )
       expectedAffected.push({ domain: 'nutrition', aggregateId: m.aggregateId });
     for (const t of m.timings) {
       if (t.requirement === 'resolve_before_review')
@@ -587,15 +590,23 @@ function validatePlannedFacts(
   const changedTraining = new Set(
     expectedAffected.filter((t) => t.domain === 'training').map((t) => t.aggregateId),
   );
-  for (const m of p.nutrition.state === 'present' ? p.nutrition.members : [])
+  for (const m of p.nutrition.state === 'present' ? p.nutrition.members : []) {
+    if (m.after.linkedTraining.kind !== 'follows_training_approval') continue;
+    const aggregateId = m.after.linkedTraining.aggregateId;
+    const training = (p.training.state === 'present' ? p.training.members : []).find(
+      (row) => row.aggregateId === aggregateId,
+    );
     if (
-      m.after.linkedTraining.kind === 'follows_training_approval' &&
-      !changedTraining.has(m.after.linkedTraining.aggregateId)
+      !changedTraining.has(aggregateId) ||
+      !training ||
+      m.before.linkedTraining.kind !== 'retained' ||
+      m.before.linkedTraining.versionId !== training.before.ref.versionId
     )
       c.addIssue({
         code: 'custom',
-        message: 'Hypothetical nutrition link needs affected training',
+        message: 'Hypothetical nutrition link needs exact affected training source',
       });
+  }
   for (const m of p.recovery.state === 'present' ? p.recovery.members : [])
     for (const link of m.after.planLinks)
       if (
