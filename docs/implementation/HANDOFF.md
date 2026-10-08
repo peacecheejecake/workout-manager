@@ -751,3 +751,7 @@ Root는 새 migration137 application 및138 finish/preview를 예약해 두 nati
 ## 2026-10-08 pooled 내보내기 SQL 실제 검증 후속
 
 Root SQL139 actual PG R1 9pass/7fail을 보존하고, 단일 PoolClient transaction·기존 purge preview 상태 기대값으로 시험만 교정한 R2 16/16을 확인했다. SQL·권한/출처 guard 변경0, 실행 전후 shared5 SHA불변, 시험 DB/roles/slots잔존0이다. 상세는 [I 기록](progress/M2-02i.md)에 보존한다. 새 Node export composer와 혼합400/400/30 수용은 별도 병렬 진행 중이며 아직 통과로 표시하지 않는다. 기존 원문 이식·외부 gate·정상 설치/최신 복원·phase 검토/main·release 대기는 유지한다.
+
+## 2026-10-08 mixed 대량 승인 실측 후속
+
+정식 named23과 pooled134..138로 genuine400훈련/400영양/30루틴을 시험한 Root R1은2pass/4fail이었다. 첫 저장 SQL135의 timeout으로 승인·철회·삭제 후속3사례가 실행되지 못했다. 작은 SQL139 16/16 결과로 이 실패를 덮지 않는다. 입력 수·상한·timeout은 유지하며 lookup의 반복 전체 검증 비용을 native agent가 분석 중이다. Node export composer도 병렬 준비한다. Named23+raw134..139의 실제 함수20개/기존33개 불변 관측 artifact를 확보했으나 최신 profile 설치·지원·복원·mixed 수용은 미완료다. 자세한 실제 로그·SHA는 [I 기록](progress/M2-02i.md)에 보존한다.
