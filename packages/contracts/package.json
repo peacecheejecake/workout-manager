@@ -300,6 +300,10 @@
     "./manual-source-personal-export": {
       "types": "./src/manual-source-personal-export.ts",
       "default": "./dist/manual-source-personal-export.js"
+    },
+    "./bounded-plain-json": {
+      "types": "./src/bounded-plain-json.ts",
+      "default": "./dist/bounded-plain-json.js"
     }
   },
   "scripts": {
