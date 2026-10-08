@@ -116,7 +116,8 @@
       "types": "./src/race-plan-impact-preview.ts",
       "default": "./src/race-plan-impact-preview.ts"
     },
-    "./nutrition-race-plan-v4-preview": "./src/nutrition-race-plan-v4-preview.ts"
+    "./nutrition-race-plan-v4-preview": "./src/nutrition-race-plan-v4-preview.ts",
+    "./current-runtime-installation-v6": "./src/current-runtime-installation-v6.ts"
   },
   "devDependencies": {
     "@types/pg": "8.23.1",
