@@ -1,0 +1,3136 @@
+{
+  "assetVersion": 1,
+  "sourceManifestSha256": "21c1b9e261be03aecf719f53c2451e0992322a9a8cff0b5a2362092c7f705252",
+  "manifestFileSha256": "c80b7ba6ee205e1635dd25abf61ce1d3ac19d9d969ce7acd99102fb2695e4b58",
+  "manifestPath": "manifest.json",
+  "profileVersion": 9,
+  "runtimeStep": 25,
+  "sourceDdlTip": 142,
+  "catalogDigest": "91da4f0ec82152975eeee569a9c7d81ca06d67710264da8ff392980a99f4b4b2",
+  "compilerAlgorithm": "source-bound-evidence-v9-static-imports-v1",
+  "sourceFiles": [
+    {
+      "path": "apps/api/package.json",
+      "sha256": "9d1d3b9b4c862b832f318d53a152cf87194514594773189c3d0c63a4fb510f93",
+      "role": "dependency"
+    },
+    {
+      "path": "apps/api/src/configured.ts",
+      "sha256": "0764c5c6be39c6776c7c33c6a078c66f2510c6557e7dd49bdeead951f8840323",
+      "role": "dependency"
+    },
+    {
+      "path": "apps/api/src/current-runtime-v9-repositories.ts",
+      "sha256": "2b4ddcae4998a12a15e200cf0db433a8beaccc6f2167d85ca89d5c34e5b8b629",
+      "role": "dependency"
+    },
+    {
+      "path": "package.json",
+      "sha256": "efc2b522847d06f850b7bbff1bb42a80f4492b3d496e87d6632b7a06d451c789",
+      "role": "dependency"
+    },
+    {
+      "path": "packages/contracts/package.json",
+      "sha256": "1c339ed0cb7eb84ba48c378685e1b97f8622cbdd947813924e0c9e3e3fa2c594",
+      "role": "dependency"
+    },
+    {
+      "path": "packages/contracts/src/activity-details.ts",
+      "sha256": "b75ad2e8e957ea7c0e79de9c0b256cdb7f07f5a70b3fc43038b19350424ee3ec",
+      "role": "source"
+    },
+    {
+      "path": "packages/contracts/src/activity-tracks.ts",
+      "sha256": "52c21bc023e8b5b65dab627915f0435e1ebfd42e616b410d38f89233ce3d3072",
+      "role": "source"
+    },
+    {
+      "path": "packages/contracts/src/activity.ts",
+      "sha256": "7327f549e0effabd11fc7cf5837aa88090d8b24dd81b686450b2362d2ac5644f",
+      "role": "source"
+    },
+    {
+      "path": "packages/contracts/src/bounded-plain-json.ts",
+      "sha256": "4b2ca324076e7e48279bd87f6c7db77eb8ddaecc2b8a72301fd197fa59091f59",
+      "role": "source"
+    },
+    {
+      "path": "packages/contracts/src/check-in-template-export.ts",
+      "sha256": "e0692c6830ef17aecb43ceee00a36d4b96c51b9265c84469616cf104af7f5d8e",
+      "role": "source"
+    },
+    {
+      "path": "packages/contracts/src/check-in-templates.ts",
+      "sha256": "0a4f1fff54fd804556a0c2ea57483dc21b27bb7bb7d367cd78a6d493685af5c0",
+      "role": "source"
+    },
+    {
+      "path": "packages/contracts/src/check-ins.ts",
+      "sha256": "668997aa50a2c512dd6c54c90c4b250d429c91679bf76215234726acbda6834e",
+      "role": "source"
+    },
+    {
+      "path": "packages/contracts/src/core.ts",
+      "sha256": "4775933a506c086a06cd1dc182823ef038a54846ae168b89f66c1bfc74bbd2cd",
+      "role": "source"
+    },
+    {
+      "path": "packages/contracts/src/courses.ts",
+      "sha256": "5a782e08a22d509cd751d051babbdde2615d37e2a62a13fe52d880867ef5c54f",
+      "role": "source"
+    },
+    {
+      "path": "packages/contracts/src/evidence-dependencies.ts",
+      "sha256": "c6ee9e8626cbf3457eb6827d7aa197442c1a7629ef7fc4b24790261f65b597d1",
+      "role": "source"
+    },
+    {
+      "path": "packages/contracts/src/gallery.ts",
+      "sha256": "40355c431fbab0661ce337c6c9e3eadc938bb37d1488fef1d65a5a97f44ee0c3",
+      "role": "source"
+    },
+    {
+      "path": "packages/contracts/src/garmin.ts",
+      "sha256": "f2babc915ae06ebae0e6b7faf57594e78b40d1b3c4de18e8614c47bfca08c53f",
+      "role": "source"
+    },
+    {
+      "path": "packages/contracts/src/generic-recovery-export.ts",
+      "sha256": "73c73614340c13a0eadaa618eb9b61b0bd6046e3418b1c1bde465f35ff2ee196",
+      "role": "source"
+    },
+    {
+      "path": "packages/contracts/src/integrated-coaching.ts",
+      "sha256": "25dd002dd356a44a9f2b94f400458b43547001bc06d6ed34731be6f735071352",
+      "role": "source"
+    },
+    {
+      "path": "packages/contracts/src/integrated-planner.ts",
+      "sha256": "35bb0e0e7b3ec8758ae3af61844e989d10558987e3f0f17456df9b2563601105",
+      "role": "source"
+    },
+    {
+      "path": "packages/contracts/src/manual-source-personal-export.ts",
+      "sha256": "35f23a466c15e2b2a0523f942bb18bbdbe2b13eaef93e1bbcd0fe3e0a850db37",
+      "role": "source"
+    },
+    {
+      "path": "packages/contracts/src/nutrition-core.ts",
+      "sha256": "9f4a8d6cd143a61ac04e552584ee9d0d44eb64567c17e69843f25282b37a2220",
+      "role": "source"
+    },
+    {
+      "path": "packages/contracts/src/nutrition-race-plan-v2.ts",
+      "sha256": "f06bc49fa15d8e903796a0c21a2a0ddb0f4d0ee9a51c4f047f75a0f3fe34f118",
+      "role": "source"
+    },
+    {
+      "path": "packages/contracts/src/nutrition-race-plan-v3.ts",
+      "sha256": "d7d5500f7163ca3a3661fd804440fb742b6aecf60c80c4b7011dde430eed4c76",
+      "role": "source"
+    },
+    {
+      "path": "packages/contracts/src/nutrition-race-plan-v4.ts",
+      "sha256": "8ad3d2372614111f67e5ac1c86b896a5d1c6a878841a40a6a11b4718116314f5",
+      "role": "source"
+    },
+    {
+      "path": "packages/contracts/src/nutrition-race-timing.ts",
+      "sha256": "2aecb23d675aa6bc352d1c25f350e655ceb2703860c66ef6247723623d9d95be",
+      "role": "source"
+    },
+    {
+      "path": "packages/contracts/src/nutrition.ts",
+      "sha256": "57394b4a47b1431e58e1872cf502a47c029ed56c0c6c4deca8f8ffa217d8246c",
+      "role": "source"
+    },
+    {
+      "path": "packages/contracts/src/operations.ts",
+      "sha256": "b6c1c38bdeec3b223e068d56d1ec2ea9fc5687048b18e9319ef424be17f698e6",
+      "role": "source"
+    },
+    {
+      "path": "packages/contracts/src/period-constraints.ts",
+      "sha256": "eb7b2af279a270cbe0e48d9c6fb7f68f7f089a32d4a5524fa11db0c22f052802",
+      "role": "source"
+    },
+    {
+      "path": "packages/contracts/src/planning-constraints.ts",
+      "sha256": "48aa1ff0c410db6dff47aa9bc152c67f0a0113491ef3ec7dab546ba5f693af7b",
+      "role": "source"
+    },
+    {
+      "path": "packages/contracts/src/planning.ts",
+      "sha256": "f763141bd1cbf3967795f35e12b304fc49971230a6482985a9485a41b75d7c26",
+      "role": "source"
+    },
+    {
+      "path": "packages/contracts/src/primitives.ts",
+      "sha256": "f183a5b48d4d6d7ffe40ea214c9941990455981e8825ce8b765c3a6b7c93738a",
+      "role": "source"
+    },
+    {
+      "path": "packages/contracts/src/race-commands.ts",
+      "sha256": "9d9dcb4bf66c6afc4ec53bfc8399507a7e231b1571e2c62c2a62acf59c3679f0",
+      "role": "source"
+    },
+    {
+      "path": "packages/contracts/src/race-manual-approval.ts",
+      "sha256": "e19567832af9edfc71f4a47f6bb27d1799887058ffaeaeec35d1d363e5cb89de",
+      "role": "source"
+    },
+    {
+      "path": "packages/contracts/src/race-manual-internal-personal-export.ts",
+      "sha256": "c41c39f105494aaaca2ff46f9500c0c47befcac95ef03aedd95c567bfae38bff",
+      "role": "source"
+    },
+    {
+      "path": "packages/contracts/src/race-manual-personal-export.ts",
+      "sha256": "7e103cea81bed9e283ef08226098c67745aa566f51eb0b3d70c8fddb096e925b",
+      "role": "source"
+    },
+    {
+      "path": "packages/contracts/src/race-manual-public-impact.ts",
+      "sha256": "288ec06a08fcdd44aeb8ac20a772a81af083d85be3209b8bf1ed6ae69c1ffa86",
+      "role": "source"
+    },
+    {
+      "path": "packages/contracts/src/race-manual-public-preview.ts",
+      "sha256": "060dbb5662458641d466bfcd4ba6e39bbf0f8bff56bc1a09fa3e16545432465c",
+      "role": "source"
+    },
+    {
+      "path": "packages/contracts/src/race-manual-public.ts",
+      "sha256": "f23379c28f7a47c7cbd3ea20a56793ad71e6c27a9475088811684e85394b0cf3",
+      "role": "source"
+    },
+    {
+      "path": "packages/contracts/src/race-nutrition-export.ts",
+      "sha256": "e836ce0152ea720310d07db865d6163a64210091bb95bda5df6832cb4d23c417",
+      "role": "source"
+    },
+    {
+      "path": "packages/contracts/src/race-queries.ts",
+      "sha256": "c4c8187aec08379a42b6733dce2b2166ef51cc56f099aa34d0b74b90c8541c05",
+      "role": "source"
+    },
+    {
+      "path": "packages/contracts/src/race-result-v2.ts",
+      "sha256": "7f6dcb93996a071aa7034a1222b17ec27a0b2453a24c41e19b85cad41a53aab3",
+      "role": "source"
+    },
+    {
+      "path": "packages/contracts/src/races.ts",
+      "sha256": "3d93bdc100abc18eab9b6edd18a6636fb793d21607fd2c888dcc8bea5b6777d3",
+      "role": "source"
+    },
+    {
+      "path": "packages/contracts/src/recovery-core.ts",
+      "sha256": "67e74dfa6e619aa86d7abaebcffe08e4679e68f0352e256ac142d00da6b8dbb5",
+      "role": "source"
+    },
+    {
+      "path": "packages/contracts/src/resources.ts",
+      "sha256": "8f73dfc192b66077bfa358c67161a0aa9226930d69659081067758787b049c4a",
+      "role": "source"
+    },
+    {
+      "path": "packages/contracts/src/restore-generation.ts",
+      "sha256": "ddc522a94586105e784010498c37360fccf34f5f6b9e17e36b73c880a1f30f81",
+      "role": "source"
+    },
+    {
+      "path": "packages/contracts/src/routine-commands.ts",
+      "sha256": "b70086bdd0d7dfa57362b79151e7ac8eab78fce479c431000caefe2c075683da",
+      "role": "source"
+    },
+    {
+      "path": "packages/contracts/src/routines.ts",
+      "sha256": "8cf74017154529813904e7f791772d99734186521bac3ec1cda9a16ec9501d18",
+      "role": "source"
+    },
+    {
+      "path": "packages/contracts/src/routing.ts",
+      "sha256": "0295ec21bab5c7042793e7f7eba4007ccaf31ea8949bf3d78709e916bdae2af4",
+      "role": "source"
+    },
+    {
+      "path": "packages/contracts/src/session-completion.ts",
+      "sha256": "bd8dcd9e7d89d219fca2069d8b67df0a1426eddee28533323703265c8a455979",
+      "role": "source"
+    },
+    {
+      "path": "packages/contracts/src/stretching.ts",
+      "sha256": "16e756119823674db66ace0cfd660744c98e57ad7267b44f7bb4a86b23036a9b",
+      "role": "source"
+    },
+    {
+      "path": "packages/contracts/src/supplementary-core.ts",
+      "sha256": "6a6c11908a8122a90bf08b9fa54652accda8ba0ff5578676987ea9992cd8442b",
+      "role": "source"
+    },
+    {
+      "path": "packages/contracts/src/tracks.ts",
+      "sha256": "5ef1d0aa7b1212e9ba730747092f2e7525ad7dcce88022b2886737b1cc4380a1",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/coaching/package.json",
+      "sha256": "fbae7bcc5f8b7bddd847cfc5a7a2c1e95a519d56da1b159317d40c4f01daa4d8",
+      "role": "dependency"
+    },
+    {
+      "path": "packages/server/coaching/src/race-manual-review-candidate-v2.ts",
+      "sha256": "10d9cef8644bf80a5230d52909bcb3c6c73cf562d8c61c211753e6af19e559a5",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/coaching/src/race-plan-impact-codecs.ts",
+      "sha256": "0248a74bc55140c04e83946891e02b8aaafb8379b66c095ed47fa0d1a3cc41ff",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/coaching/src/race-plan-impact.ts",
+      "sha256": "3ef747c30c9a16a678aa709faddfddf704bf377260f6bc57e15fbb7f18039201",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/coaching/src/race-relative-schedule-impact-codecs.ts",
+      "sha256": "a990c4a8573a93df88eba1a14779653cddf8445cfe5fc8477269636e123aeec1",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/coaching/src/race-relative-schedule-impact.ts",
+      "sha256": "325f630e3fa397554ac9f98d3ae0a8fbf74202f026b5925dbe10be817b1056d8",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/courses/package.json",
+      "sha256": "2518db8eb54e4f7b758cf0f4e71aacc5382ef9e9e34fe656899080fb01b1a7b7",
+      "role": "dependency"
+    },
+    {
+      "path": "packages/server/courses/src/digest.ts",
+      "sha256": "dfbb9a9191dc4248bd929341486a3fa175a6f44123464d790cb2b2eee0d0c555",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/migrations/001_foundation.sql",
+      "sha256": "56e22015b80b7c180ac01f5352a66560763f7930589a79512db07fdc57438ad7",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/002_identity.sql",
+      "sha256": "460f87c6e63bc42bebf8beeeca360d08135c020c0fcff10d94c912dd351d8835",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/003_plan.sql",
+      "sha256": "88f0ac4f9911ed7590a0d6fa93f7a8d4de865e7a5cd19b805703f9d368ada4d7",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/004_activities.sql",
+      "sha256": "ed6b4b89620fc3b5aa0794d682fd8696a0b8c8b0ecff2320ffdf7987b27053de",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/005_operations.sql",
+      "sha256": "9f6e14998b68fe090a4140fa7f039bbd13028267f56ccd1a9d589e43a88f2410",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/006_garmin.sql",
+      "sha256": "1a816ec403b29f0be66e812bd6c3a5c92a51135ca467c08fee26f70d4079d3e6",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/007_check_ins.sql",
+      "sha256": "195df46ff4e03db1a5b10b9645730e9b782e970d85fb4cca9741ccfd47fe1277",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/008_manual_activities.sql",
+      "sha256": "ddecacfdcc0b913c0d043b550bc7c95a584f53eac3661bb981efce2b2983fabc",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/009_activity_details.sql",
+      "sha256": "a2fb23544b322783c581c4a79e779d3c16627361fc0345aff0ca22d7d8de53a3",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/010_session_completion.sql",
+      "sha256": "8a7057eeb126cdf99af7deb53efca81e8d17f600136335a904c1a076c9d9f306",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/011_plan_scenarios.sql",
+      "sha256": "ab3f70358a201d26c406fcc8be7ff798cc4c18818853d4f3eb90da15e82d5d4b",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/012_coaching_threads.sql",
+      "sha256": "f7e4a7d2897988bcaf11cbe6ea44a1d2f8a6af775807ce6b38682338098b1b87",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/013_evidence_snapshots.sql",
+      "sha256": "910ed9632f3dd715c33aeaa52ec37721cda76672fe04112c6c0020d92d67b4a1",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/014_coaching_constraints.sql",
+      "sha256": "92ebe2131c9fe4a8d8e8e5a096075d3a4c60f9443d7db7a82dfff9000d55eaf6",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/015_evidence_constraints.sql",
+      "sha256": "3bf790ff58e378093a082bc241e81fd4351216ba48c89b61bd3316470fcea209",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/016_plan_scenario_labels.sql",
+      "sha256": "87d4c107487a8cca42e4b945191a90595da6eb08701afc363aff6b20aceedb07",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/017_coaching_runs.sql",
+      "sha256": "bab0e4f39573b28d172601cffcd02db650343d7add8817708a8efb8a00aa0916",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/018_coaching_candidates.sql",
+      "sha256": "dbfa014830b036e8d217eb2a6216c5d405c2c2e308fd2b646f65334df898fa51",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/019_coaching_candidate_approval.sql",
+      "sha256": "e1453a4322a9a4797bfde27ef379c70edf5c07852e331c3fa7d3b34029d349ee",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/020_nutrition_core.sql",
+      "sha256": "471c65cbd860633288078dfc98a717e96b78717e7c124a362262728bff9bfd77",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/021_supplementary_core.sql",
+      "sha256": "ecacf0822a81a5183206edde621e0322ddb7abc20e2c0e325362f3e6388c4158",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/022_integrated_dependency_heads.sql",
+      "sha256": "ff6073a06d1960facd496cf3fefed5a3f1db54a2a8be68989058076366a2a779",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/023_routine_core.sql",
+      "sha256": "2a397e7384b7729c268fe88e5cb648af1ca0dc0edfd7f697ec01b06bbe5ff548",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/024_stretching.sql",
+      "sha256": "d3927c6da9dd56e96f4b8485582739a18f9e9011657af4bfd1b3e33e3e7a3c9a",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/025_recovery_core.sql",
+      "sha256": "a6f2e6cb55a9ee5b39f198a815fb5c3148a618b8b4166ed19e3af4e628f89af2",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/026_integrated_approval_v4.sql",
+      "sha256": "ad1d1b8f8d12c53d77fa065cf9bbd5092cfea794f3d36db0e1d790e7c16fc8fb",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/027_resource_lifecycle.sql",
+      "sha256": "2f493f9e39286fef0831679f25fd8e6333e87707440190342d7c0ec8647c8872",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/028_resource_file_upload.sql",
+      "sha256": "a4f809a0b1f97ef226885894a1f71b3cb0e7b7ec71dfb268a1a8fb64bef71138",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/029_resource_url_ingestion.sql",
+      "sha256": "68fe9612eca1c710c4e6ce392039eab3b484841e3e5568220fe7f650bc295427",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/030_resource_access_sharing.sql",
+      "sha256": "ec8e410c9ed1b1a433b1d50bb5319430bcf38f392294419169850a0becfdb411",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/031_gallery_media.sql",
+      "sha256": "c95ae5661adfab0a025b9ab42c5832d0e443f3caf0402a2c009eb5f27bc4abd1",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/032_resource_retrieval.sql",
+      "sha256": "f4a87bead89391a801dafb5a0210ea81dbf42d6e9636c4db8deffe027aebc4f3",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/033_activity_track_storage.sql",
+      "sha256": "652f5d97ad9e98d41d02fdd9a21a938cc5dce88be5b34c0c9d316ab333af8bb4",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/034_course_ledger.sql",
+      "sha256": "834c97c305097b099998a471e5f569c02dca26b6f481fa55e67333fab76cca54",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/035_course_route_proposal.sql",
+      "sha256": "a8cdcbd37debbd1d5b0cc73fe74f4dab4926709d262b4e3f8fcd4e5531b2cb09",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/036_course_target_distance_candidates.sql",
+      "sha256": "b4db3f27c1022aaa04a28422e27c32725842a2e74d3a4f02785ea167f7bacd21",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/037_course_preferences_and_privacy_zones.sql",
+      "sha256": "b105b3b178baa32cc1b387bb8cd84e4cbf4e2953f80e4c69b2e002534c85bdb5",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/038_course_thumbnails.sql",
+      "sha256": "11be7407d9a4615c9323001bbed12ec5b98cf354eb2b6599d60358417f0c6aca",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/039_course_thumbnail_reconciliation.sql",
+      "sha256": "ab53f0a048caefd175300ba1aa83193cd5b5e5f520a78ac33636362b4904caae",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/040_reconcile_sweep_faults.sql",
+      "sha256": "e77ce204627500e3776d1f425223ee1b6967914d1bf42514f539753e0d5e5a78",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/041_course_route_proposal_supersession.sql",
+      "sha256": "9e0fc7fe3a6ac03243d6d5ea73948245e4956582756e0846c54c62aa4010b02f",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/042_erasure_queues_watched_object_refs.sql",
+      "sha256": "1a3f4ad7b73454f6a6d593ba46393c6c3d05803e5b817f27863b3e3d41b8779d",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/043_course_accessibility_notes.sql",
+      "sha256": "fc8d2f4105961271132dba1fa833506d36dc994db360da97d5d2d9dc44d9fcc1",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/044_tenant_object_purge.sql",
+      "sha256": "e9beac40d244231ecf0ae72a9c343a77ce22e56a696ada54028d4375c11741fb",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/045_tenant_object_purge_visibility.sql",
+      "sha256": "4acd324c7b3ad53fda77805e27f1330e540b15f34bef71ded4e4bfe5a4b3e6b4",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/046_object_scope_purge.sql",
+      "sha256": "6b3518d4642e7fe2a4143b9c588597474c9b97824b7c29082f33f9cb20e4ce0a",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/047_routing_admission.sql",
+      "sha256": "f7291b280fb66374fc08e66007d170caafa6ae01b0280a23d4a6d33bd8aa59d0",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/048_garmin_unofficial.sql",
+      "sha256": "7f0d0bbec48bded31a49e7179d67fac469e8e853a5651aa1884aa0594600c09d",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/049_course_deletion_ledger.sql",
+      "sha256": "228b3b288d123ab02d3614a2d4fdc38a4f0e5b923901601285ebc3163df17457",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/050_course_sharing.sql",
+      "sha256": "f77832bade5585032eef2e658d9655564aa05d0e24570fd3c02d2d46354931e5",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/051_object_purge_plain_owner.sql",
+      "sha256": "ada715b865a93ed114461a360fce13fb4a9497b5761562f716bc64318bf852dd",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/052_queue_state_plain_owner.sql",
+      "sha256": "b60cd52ba9f99f27a5f7f031d307d8b7a15600ae5ef88adb00ad722ce8e1aefc",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/053_course_candidate_evaluation_v2.sql",
+      "sha256": "c72527583f91928791eed2eb7128f93dd8e9ccce43a326ef2c2724f255ca2353",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/054_course_share_area_budget.sql",
+      "sha256": "a6b66a1db9ff7368eb38be8b963c37e186071051cd1d350644df0057d059d6c2",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/055_worker_tenant_source.sql",
+      "sha256": "0fdb588f0da07c52047835377474baba0729f7d6911826ed484defec57984513",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/056_course_share_legacy_route_notice.sql",
+      "sha256": "13c7a5f69133096987b291ab2a032c5d36c0c5c0b85b7c71ccb8656285e13721",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/057_oidc_backchannel.sql",
+      "sha256": "ce94aed28062ccbf264ade61049cf2c396fb6a1fa3259c374966a53878f81229",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/058_native_oidc.sql",
+      "sha256": "2d1ea2da86fe02b971a8a7028b8ddcf665137d5aef51d4461965a44aec8826b3",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/059_healthkit_ingestion.sql",
+      "sha256": "d65b400ad07712a55fbb56cb05c760326966970b5e86e2eb460ea0f31e4eefa3",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/060_healthkit_review_lineage.sql",
+      "sha256": "a51c7f7471caed9b6d100107e91ba35c16d846ff5019de7cb9271686a978546a",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/061_healthkit_existing_binding.sql",
+      "sha256": "201858755c9c6e229ea3c5f67b60b70392639c57d42e1a2992ace81894acdce8",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/062_healthkit_canonical_activity.sql",
+      "sha256": "7a5403757c217e5d03517f444db6f705bff77b3d9f2d4ee6d66ba782ab219f1c",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/063_healthkit_receipt_replay.sql",
+      "sha256": "de0c0180abc07c34a35de18b504028b8e253d8acefe387b48992b006fec633e4",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/064_healthkit_consent_epoch.sql",
+      "sha256": "573a726254647d26dbae4fa4e870a14b23e07fb5a28818f781a8c2f31318491e",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/065_healthkit_activity_track.sql",
+      "sha256": "8b32bcd4083903a043aacc86467a0e2541c4107623cd049521fcfe1651409417",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/066_tenant_erasure_suppression_event.sql",
+      "sha256": "a3237d1f64f410cb7f498793bd81551ff6895ec618047b1d833159dac625627c",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/067_course_deletion_suppression_event.sql",
+      "sha256": "11455b660821852a3b087fce0e2bcd4f1ec9fddac7fa77bf25ca26c0121bfd10",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/068_activity_deletion_suppression_event.sql",
+      "sha256": "9d4448ae61ebeb25b4cad9bd163738627cf4a1c3ff65b500467ff3d781fb9df2",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/069_resource_deletion_suppression_event.sql",
+      "sha256": "951583514b37b81f45e64e176779029d50c5404012c42eeaabbd6054cba09df1",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/070_gallery_media_deletion_suppression_event.sql",
+      "sha256": "875faf9613c5cdc14ed8ad8dde006d0262d2599de1acba5b4c7a4ee900c56758",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/071_healthkit_consent_transition_suppression_event.sql",
+      "sha256": "2f285707facbed111b8202d476381f038b6c7c9f11ec1e3e1cfe6fa31ed241d3",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/072_ai_consent_transition_suppression_event.sql",
+      "sha256": "6e099b0674073e12c937cd821652e7dd0f81a5d635eca0be2375e68f13f91c27",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/073_check_in_deletion_suppression_event.sql",
+      "sha256": "1feff16c3c8de3d644b295ee6272703dc08b19ab510c5720a8437e1e4e7db163",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/074_resource_share_revoke_suppression_event.sql",
+      "sha256": "b765cd19fed21ac382a22e66c941cc1714d3571f7469c7c013b5802fe23c97f9",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/075_course_share_revoke_suppression_event.sql",
+      "sha256": "ecf7e898f7105b652cb1780b5c40673634f21b2345f0218f1b8e1ca9474076a8",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/076_restore_generation.sql",
+      "sha256": "50700c09d5f272512e10a10e1338ba320d61f0eed488f7630e0a2dfcdf3981fa",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/077_actual_deletion_suppression_event.sql",
+      "sha256": "174a3129ea119c34bd4ff927c57c9b6834fa5384ce93c9169d6199eabfb29bf1",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/078_restore_suppression_pgoutput_publication.sql",
+      "sha256": "919f346b1dcb9f8dec164357d919a1523f9e58e38b1c4ecc8ccbbe7fdf14c435",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/079_exact_restore_suppression_replay.sql",
+      "sha256": "d84dcb3637c22f14b65b2139e987fff3a0f56fb552cdf6c54f287e16c6945477",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/080_exact_activity_deletion_replay.sql",
+      "sha256": "bb4720aaf75dfa50608ca6b6579dea977b28499cdfd4adfa9399e7b155c2bfa4",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/081_exact_resource_deletion_replay.sql",
+      "sha256": "659bc60b41975b254d0a98044cce82cfa73a0deab676ed7c2898af38cb6d8268",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/082_exact_gallery_media_deletion_replay.sql",
+      "sha256": "7d6ad3abdf874f00f3c62a55fa32398e261dd9cf593c9be5844015a513e308e4",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/083_exact_check_in_deletion_replay.sql",
+      "sha256": "de91295d8283ef5296d6d6a56f012def66aabf7f8f1cdcb6ae579f598faf04b0",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/084_exact_healthkit_consent_replay.sql",
+      "sha256": "1ad063c358ddfba84d41eecf43f585f6fd377dddcf22e2b3786ec243ef942ab2",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/085_exact_ai_consent_replay.sql",
+      "sha256": "d6ea79d396e0e4264288cda1e33654ee4d2edce499076db3a70843b01182da5d",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/086_exact_resource_share_revoke_replay.sql",
+      "sha256": "e020a6d0732fa470be5c68c98e64c350aba50dd21cfb1aa64c790c56543e89b1",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/087_resource_share_cause.sql",
+      "sha256": "a0ad8317cd4d47bce1ecc961546a074cecd5b9c077be70267fea205439754539",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/088_exact_erasure_share_child_replay.sql",
+      "sha256": "70b59d4508dceb1ccc269ed18ed1ea41ab6fc927ab6f7d4811d64174408e60c6",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/089_exact_resource_deletion_compound_replay.sql",
+      "sha256": "0c91ce930be6756d23901d1e8ee055a2a12c3cc1134a66c51cc655bd0864db1d",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/090_course_share_replay_provenance.sql",
+      "sha256": "504975e5b2c90b09199b26119ea7e68cff74d6e7efd4e834329af8b78e2d8ef3",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/091_actual_deletion_revision_provenance.sql",
+      "sha256": "f7f5c445b58289aab379b7b78fe3234684ff76e4ddf3a39181ecd8f7b4226cad",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/092_exact_course_share_revoke_replay.sql",
+      "sha256": "ba645732bbdab5df461249d49acb171b4f3efed18ae1cc658ac541b3294f3ffc",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/093_exact_actual_deletion_replay.sql",
+      "sha256": "2e431c6398943f83ef64b6ffb0a485335e63097df89f26f74715cba785774896",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/094_healthkit_workout_registration.sql",
+      "sha256": "cb751ca7a0e8351ca66b35f518f608bb8e54b19eef95010350bfac194d06d77d",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/095_healthkit_receipt_protocol_fence.sql",
+      "sha256": "fa3a3f3486880547a5aca1dcd6f04b93f87a41c3befe87d22053579025619f74",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/096_healthkit_workout_deregistration.sql",
+      "sha256": "d3bcaffc1671693d62421b726589475354f778b5f33b45997a960d4563de951e",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/097_healthkit_deregistration_worker.sql",
+      "sha256": "dc695996ca5c412631fa248c53ec07b3f26244e9d40d698c3733e5ef54612e35",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/098_race_ledger.sql",
+      "sha256": "17287bd6209461f7dff1c8c34c2a48906c0772d11cdb67511224e940eb895f56",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/099_exact_race_deletion.sql",
+      "sha256": "9c593d53edfa2da78c562d1af492060e5af252c384d7008330c32bf264b33270",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/100_app_admission_binding.sql",
+      "sha256": "4d08a67aa44ffa0961e7b1023a420f854c3bfd0a3023811b98cc626fbd3209fd",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/101_restore_processing_closed_control.sql",
+      "sha256": "a5b6b54a4eade418c617a10d5e94f8367ea79d8a844e1d1b2f958f5f57d81338",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/102_restore_app_family_loader.sql",
+      "sha256": "9676c73c0e0e514cfb05166e00633363c642a3ac4b1b8faa0dd6305353d22ca5",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/103_global_openai_budget.sql",
+      "sha256": "481469ad28efdce8db9cbbff1100beb46b09995aba90be69e6d4477253d75a0d",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/104_ai_settings.sql",
+      "sha256": "0df82f1f79487c7ed15d5c0e3f49f197aee2cd1f61c8c8be2e7151bb3015b9c4",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/105_tenant_reconcile_bounds.sql",
+      "sha256": "f92c41eaacf0aada2dafca672473fd030d38827df77873bb8ab2615d740864af",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/106_race_manual_review.sql",
+      "sha256": "791110bcd65acb26e354dd445b63fd1ac0d70ba79febdace25b3a3b7225853bf",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/107_guard_race_review_stamp_authority.sql",
+      "sha256": "174cd121e0cfa2572382389132f7ef6e653043a7efc1e379c76ad08b3ef76048",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/108_nutrition_race_disconnection.sql",
+      "sha256": "b71fc7ab7cb863932f1472c28d46200f42f22bc25d8ca198b529b6cc564a20f4",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/109_race_result_proof_lifecycle.sql",
+      "sha256": "fd2ecf020660c48d39990acdedc5838651ff873e7970b882814264b58808a9fa",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/110_nutrition_disconnection_lineage.sql",
+      "sha256": "d2891aeaeb3af586c42e4e2ee924eb4adc9de0e61af3011219c654a185c91614",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/111_race_result_preserved_proof_updates.sql",
+      "sha256": "69b7689c8579575eb899d2602e979db697039cb75b8a7b8f71ab54154b0d4576",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/112_training_plan_aggregate_history.sql",
+      "sha256": "4cff9ecaae439618e3ec2b24de5428fb377f4c8a843df983aba7a765171b3dfb",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/113_race_media_cleanup_source.sql",
+      "sha256": "b5e97aeb781d59c7b5fdef60962a6a05aed5f43336ebbc98debff455276e88b9",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/114_manual_review_owned_source_bindings_v2.sql",
+      "sha256": "a0673efde1a0d5ae89248438d4a62a68744b0783388c560400ddedc507d2dfdf",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/115_manual_review_full_owned_source_bindings_v2.sql",
+      "sha256": "5ee731099bf520290aabab179fcb94872b984b515cc2d556fda990eb228841b3",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/116_manual_race_chain_v2.sql",
+      "sha256": "2d1a9b5f7443de7f8b1d5a37e405d038513f86c39fb9c9d8fb9eb11c17e2c4ea",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/118_race_manual_atomic_approval.sql",
+      "sha256": "781f329238f379408f33726e6cb5faf55212918bf32fa353841a9bc42684b623",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/120_manual_race_multi_owned_sources.sql",
+      "sha256": "f95368d67ce3793561bc09a15e252df7f2eadc78dfde799a35a1cb733e3bac78",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/121_routine_versioned_occurrences.sql",
+      "sha256": "82eb2b4c597f5e8259de35af6a984b0613f6740e1bb36140673c05c4cae29cd8",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/122_race_manual_public_receipts.sql",
+      "sha256": "14d85313329b6d0d8ae4e209efc219e45046fb2cd760109841864a72013d9dda",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/123_check_in_template_versions.sql",
+      "sha256": "6d3ad2f18cb7b1c99d63ccff582214b6ba8f0318a72c1238092140a5ffc9444c",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/124_race_manual_public_preview_source.sql",
+      "sha256": "6a339bd014f9f9240378202b70907fe28221440ab522281ca725d27d57666955",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/126_manual_race_checklist_uuid_comparison.sql",
+      "sha256": "eaf7019d29b27ec2696881e406b22b86bb55bdc8b86d1cc322adb28817bc6b0c",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/127_manual_race_nutrition_resolution_id.sql",
+      "sha256": "caff05ddaed839a61a049b0ab72d46b2ee339dacca8b1b91c59ff1acbe0c54b4",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/128_personal_export_retained_runtime.sql",
+      "sha256": "dde66cf3882cf0bbdc982dd6fa489f531091caf2941f61be1d73e0e0dbd2962d",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/129_manual_internal_retained_export.sql",
+      "sha256": "9a8267e4bfc2b9effedddb2dc5c5200a5bea634daf5d86c9bad8c22ab7bfd49a",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/130_retained_source_provenance_export.sql",
+      "sha256": "dc3d7e4b5d301c6804561c6f1405eaa37992fad4a46b7ee2b4b7457cbdc083a5",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/131_manual_race_same_tx_parent_ack.sql",
+      "sha256": "45b65db20f8d2e3c646722bed14962c007c72c7540775828e6d4638299a0fb44",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/132_manual_retained_source_export_batch.sql",
+      "sha256": "07088ed6119fa52129dd8e4615253e6b00814d5b1d085fc98cc5268fcea9c30c",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/133_nutrition_v4_indexed_application.sql",
+      "sha256": "44b4705652ed5dd27ad2e414b95a63c1f2ba252569f837ea3951fcaed34a529b",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/134_manual_pooled_preparation_resolver.sql",
+      "sha256": "21d3b99fa3e837e9e3726ae2c9ea9beeb3a00a6c3beb8485b77aa1d4e438f3a0",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/135_manual_pooled_store_and_basis.sql",
+      "sha256": "38e669ae98c26b067e670b78318f9053d5707b05cf2a528073bbb6004114a97b",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/136_manual_pooled_chain_reader_and_ack.sql",
+      "sha256": "94cd6097e7e304117c45511f4e5eba9f4a3fab1fe763a8e2041af794252c46e3",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/137_manual_pooled_application.sql",
+      "sha256": "a40138f54ab38ad7769952c5501395b7a10f936f7279d58afefb0061e0fe37e5",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/138_manual_pooled_public_finish_and_preview.sql",
+      "sha256": "af53d5bff8e3a8cf821b4ade965d12472cc920eac754266d5aa42713d5962238",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/139_manual_pooled_personal_export_batch.sql",
+      "sha256": "afe65f33afa297ac92d752acd3eb1bb40be728444cf9b6957537622ea696e9f8",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/140_manual_pooled_same_invocation_lookup.sql",
+      "sha256": "748596663ad63c868cdcf22bbc149d7328d3438230826cd7d61a8dd6270dd3ac",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/141_manual_pooled_application_local_validation.sql",
+      "sha256": "cab05bdb0aa3b081d886efd3c0b4eabcbd0cbb5a38baf5c1ffadde30df10008d",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/migrations/142_manual_pooled_parent_delta.sql",
+      "sha256": "7653de06a0b5017195729a20d2a21ea706c45c1e0db6b21f4b9c3a7094851cca",
+      "role": "sql"
+    },
+    {
+      "path": "packages/server/persistence/package.json",
+      "sha256": "31f1ba37fcb896e4d6d8b228b60d75bcda9a679d0df9644ff5e08166b33d37dc",
+      "role": "dependency"
+    },
+    {
+      "path": "packages/server/persistence/src/activity-calendar.ts",
+      "sha256": "7222057f72a39ecca0fa67b55a3cc8563ca011aa9ebcfdce3993e004fc582557",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/app-admission.ts",
+      "sha256": "37abe39e4dd6f64f9e2fdeee2fb3dddb55054326f1691af872c99d536f972879",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/check-in-template-source.ts",
+      "sha256": "3dca2ee7454b6e1bbfac61e6ca1b8c2d6d3811917d19a840b75e5c71ceea9b2a",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/current-runtime-app-grants-v1.ts",
+      "sha256": "a7f137232f81fa476d938e08b147c12582c96fa5a1b832ffe3941344d352db76",
+      "role": "dependency"
+    },
+    {
+      "path": "packages/server/persistence/src/current-runtime-app-grants-v2.ts",
+      "sha256": "136692b5170be63189e181ebc587035646183756ad18145bde054449b98f0a30",
+      "role": "dependency"
+    },
+    {
+      "path": "packages/server/persistence/src/current-runtime-catalog-witness-v3.ts",
+      "sha256": "5d5402fa1b1afaca3f4f175157e39c03343bb77bf12e5ed79560ba7289401c1d",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/current-runtime-catalog-witness-v4.ts",
+      "sha256": "e65bba456668f3982d8615e3242a5dcbaf18700c76ced2c46aee20114af98f68",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/current-runtime-catalog-witness-v5.ts",
+      "sha256": "bab2e391f543ecb30cc2bac763282ecb5aab52987d132c7d0407a6c7a4c0a22c",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/current-runtime-catalog-witness-v6.ts",
+      "sha256": "af4d3817e190925b339522eec70fe777ecc65ca2adde0fff84e59de8fc4e41e4",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/current-runtime-catalog-witness-v7.ts",
+      "sha256": "4c6e8497d315c82fe0bafe0dcdc11569001643ed801b0ece77fd9746cdcf6b04",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/current-runtime-catalog-witness-v9.ts",
+      "sha256": "dd2b5fe253984ea77de2b561c808fd3adeb2403542a514e44af17c5a925f64d1",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/current-runtime-catalog-witness.ts",
+      "sha256": "badb76db9e2fd3e4ac2038070b7d5370c4e72ff45d69482cc5b54a404d86e3c0",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/current-runtime-cold-catalog-v9.ts",
+      "sha256": "42fcdc2eb21d7a5d6524ec7343ee362a015773dcc18c7319e7cc3ebdcc5083fb",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/current-runtime-compiled-expected-v9.ts",
+      "sha256": "161efe192cb28b5543d2bb267e6ecaf9eac116613c2b400cbe2bfdfd6dcced30",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/current-runtime-grants-v2.ts",
+      "sha256": "7324a8fc0dfed2747568eda327e96a518a09bf11503fff9df9e340e92dd6cd45",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/current-runtime-grants-v3.ts",
+      "sha256": "d93d25a22eef9ebdc938a190783a488432e0289ef58e52bf38672d72925cc8e7",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/current-runtime-grants-v4.ts",
+      "sha256": "d6870aa5764e10e31aa35aa86589242944567a676fa768c05573d92b9a5c0dac",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/current-runtime-grants-v5.ts",
+      "sha256": "2b0e753bad65888ce00fbb231bcfbcd860c43cf452ae3aab3e73cc2b12e7e446",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/current-runtime-grants-v6.ts",
+      "sha256": "10eb89914277b2f40d7dff2f7879d9cd8a082275fa77c684cff2413561389c1c",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/current-runtime-grants-v7.ts",
+      "sha256": "c9d789e3c178544784c898d0d027a006284e43be15df313230be17dd10088be6",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/current-runtime-grants-v9.ts",
+      "sha256": "ae3e30c550617d685ffcfe35426bbec23a7fcf057ade9c74ac34cda256fa84ca",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/current-runtime-grants.ts",
+      "sha256": "8e976c1385cf0947e3895ca9bf88759979e15f8c665b3271444d50f134ad9f19",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/current-runtime-installation-v2.ts",
+      "sha256": "5a8fdc695e441a87607266a8ddec777c878a455b0bd6f29ecef2acb1d4699966",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/current-runtime-installation-v3.ts",
+      "sha256": "e84184447ec517085e834afe10a48a82c20b3edd3c72bb76ff640ac96ab8077c",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/current-runtime-installation-v4.ts",
+      "sha256": "597c375bc89048a10963f5327dcefa9bf22d4a6125ffdbce00fd9dfabf2c1d7d",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/current-runtime-installation-v5.ts",
+      "sha256": "73df89009c9a4c4f9abba199312491858c6eb4ef82683ff7b3f9cf6435759280",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/current-runtime-installation-v6.ts",
+      "sha256": "2aa694b510d2ab438640044ad2152b3a232af994eb7f7f10a2e90c2d8fc9f41b",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/current-runtime-installation-v7.ts",
+      "sha256": "11db9fc17f3a55986aa6ed29e7c2d9c8df4a633d15a52074aef0a5833e22d10e",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/current-runtime-installation-v8.ts",
+      "sha256": "6f9be46b60c01cb0744c889065b7094d249ed2585196b990839cd70811fd5215",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/current-runtime-installation-v9.ts",
+      "sha256": "c0ec71eb77b87661b1d29993d24adc45f691d92a0ab4ad27c87ba46e1d214885",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/current-runtime-installation.ts",
+      "sha256": "017f5f5ad18da44fb6a0bb20d5b8cf59c717720739b5ed1e42cd9619f06cc1f9",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/current-runtime-readiness-v9.ts",
+      "sha256": "263f4a5ef883a85becd07cf76e1eb9550a6ac76c7a8df0af4c86359131c78da7",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/current-runtime-source-proof-v9.ts",
+      "sha256": "9c302c14eb0bedd169432e37e6e0eac79d2fd028432a2afd29c08e029a994dc6",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/database.ts",
+      "sha256": "ffbb008196d51b8480d7ab682d2d6fea22b6e979167c73f9392572a81e5333a2",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/evidence-dependencies.ts",
+      "sha256": "04488b841df4aa3e87aacf2fbfdf75689b2af18f2addb06ab356f3f3bf26e857",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/integrated-planner.ts",
+      "sha256": "83646179d60d9507f843c4594a068509f917766a522d104118b07bffb2c3aaa5",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/manual-pooled-personal-export-batch-reader-v1.ts",
+      "sha256": "4eda874e8c766317b11fe6cb9c5dbbce81d18087524c219b8dc27b1b4db43026",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/manual-retained-source-export-batch-reader.ts",
+      "sha256": "fa0e35105fa9caa5d0201abe09778fb1cd6c95bcefab72898a54f6109bc35e78",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/manual-source-personal-export.ts",
+      "sha256": "ea8836152c49f243f0a1393dcce9a625d39ed4e06de736b647e2036c677c8a68",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/migrate.ts",
+      "sha256": "e438019508e16293177fc2228acd8fb311e870b31f7996fabc97bd41d1f10eaf",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/nutrition-calendar.ts",
+      "sha256": "8f2dfff9d8c26fbac5dcff2507034ca7330aa1eeb8b914b419a99e0a33c94a3c",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/nutrition-core.ts",
+      "sha256": "f82f331c1384be75e669e704b46f8ef6242b29531836f283dce87b2e11489971",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/nutrition-frozen-timing-projection.ts",
+      "sha256": "46fd907899c89050da7bc64f7d73191e9960593932fb0cfafb43cf27666d6242",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/nutrition-item-projection.ts",
+      "sha256": "11429826af91e221781bd5a90ad1cbc9cc1edfeacee32d092098e6e07fb43a41",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/nutrition-operational-timing.ts",
+      "sha256": "235cc77711089a03ff03d05f84c6e400f4d362b04979e4a013772fd5dffda646",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/nutrition-race-plan-v4-writer.ts",
+      "sha256": "6742354f47a84f99c20d065fcfe98fce08960ab848ac6ccc86d648120a9c057a",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/operations.ts",
+      "sha256": "5ded2a75fa5bf02fa90847ccd614182de7968a59504aeef2d8cb20cd983618c4",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/outbox.ts",
+      "sha256": "bae97019ada0c0c4d15912f587871f03b5f73f1a8c82903592fd2b807f3d1918",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/planning.ts",
+      "sha256": "f31d86bbb0763ad0541161a728c019f6506393893b19887a30fa9db040830d34",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/race-manual-approval-domain-writes.ts",
+      "sha256": "659a20f3b1b36fcf2f9c5a4ac4e97f82c82d74a55ca6e4c91bc6d7b71f599dca",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/race-manual-approval.ts",
+      "sha256": "dc2436c7027c4c5c06aa40d3ed457617f2b005e36af084617fc492183f7cf5a3",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/race-manual-internal-personal-export-reader.ts",
+      "sha256": "ca3ea5b6495211f5cf5e2523e16dde5f8a570eee9c4d0f80e6915a469ac90f71",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/race-manual-internal-personal-export-renderer.ts",
+      "sha256": "5239ed8b35dd5cc68307853e8b2f1c162eec187af45f5d57e1a1752f07a245c6",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/race-manual-pooled-bundle-v2.ts",
+      "sha256": "610b9baf40cd1d25e90efb0fb59f5d14e3a97eca234fca887eabdf08cdb759f7",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/race-manual-pooled-chain-transport-v1.ts",
+      "sha256": "80796c0b15b3333de2099a0f4564c9634dace393b3a4f2d23c432b0f70fe1b53",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/race-manual-pooled-parent-delta-transport-v1.ts",
+      "sha256": "775834f0cfc72abc42d01f8dc511f8ae7cb545f19c9495a207a1f4caea719607",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/race-manual-pooled-parent-delta-v1.ts",
+      "sha256": "3a5e45f4ec90a45a5ff2aa7cc7c7b766ae412f8a243695c99e85bfe7ec762761",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/race-manual-public-impact.ts",
+      "sha256": "589fa530c2271d730e9e0d2eb407814953495df0c497e0076069be5b4bb41ff8",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/race-manual-public-preview.ts",
+      "sha256": "d046ec5a1d143213cc3ea0e8e16481bafeb67e17b7418e9ad429c986ae10bf33",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/race-manual-public.ts",
+      "sha256": "e212f0b6e943346537186511c70b89766595b27551fe39ad4d95789dd2ccdb76",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/race-manual-review-chain-v2.ts",
+      "sha256": "680bf419dfc52f80d57c3f38b625deb9e35f544f55a88309e3cc0892114d7821",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/race-manual-review-consumed-use-v2.ts",
+      "sha256": "fdbed3ce5268b8ea4370053dd7a4f84279ac34ba3e9619904705075129a7805b",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/race-manual-review-current-binding-v2.ts",
+      "sha256": "cfc914d2217a8fd46cf605a64243e58b5bb966da8b52cadf88dfb3c1bd728022",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/race-manual-review-full-copied-inventory-v2.ts",
+      "sha256": "d44b1b7fc98558c4c628f29b237e481fbdbad0b059562a52aee2b3d983ee7ddd",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/race-manual-review-full-owned-binding-consumer-v2.ts",
+      "sha256": "d0be52ea0f1d7f5d06bb8b2cf096f1321c55cdcb38caab2ca16649611f916e1e",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/race-manual-review-full-owned-source-inventory-v2.ts",
+      "sha256": "f56bac18edbac2e1bdcad54a123901a8626dbdcb09f883788d39a1f502ea8ec6",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/race-manual-review-garmin-purpose-v2.ts",
+      "sha256": "5ef6fcbf73e53deaa72dfbac3575576f74ce3df010317658dae80ba731fc4d0e",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/race-manual-review-healthkit-purpose-v2.ts",
+      "sha256": "8996719c93907f58b7035e2d09ee5259bbcff5ed769c63b98a7cc82312ae2946",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/race-manual-review-lifecycle-inventory-v2.ts",
+      "sha256": "7522970c307646f3ed36844893b2e9d1c71b2ca26e8936ba4e63e8666d8da4d0",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/race-manual-review-media-purpose-v2.ts",
+      "sha256": "89a036f33b658c74bff9ce44f515a8f68b03193161c5d43702b9536a7b833774",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/race-manual-review-owned-source-inventory-v2.ts",
+      "sha256": "112d928f111f7ddf95d6ae5809a8141a35eec4ad1f34297054d692bbd066168c",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/race-manual-review-pooled-database-envelope-v1.ts",
+      "sha256": "776ea0633b1f16950d082d52b2702e79621d9be320c0af9977f9d88d2196ac0c",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/race-manual-review-pooled-retained-payload-v1.ts",
+      "sha256": "219866a287b4ef3710d4f078d221aeb0616487e6a6bac724560caa392a888a3c",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/race-manual-review-preparation-v2.ts",
+      "sha256": "c14ee1c12fe9531fe3ec6a3366309bd06d770af97e88c04ef5f0a85be88621e5",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/race-manual-review-retained-payload-v2.ts",
+      "sha256": "9bbb20e64a1fbb3be3b5f5433db2b458a7e75c6236b4cc419a4732f00aa04bd9",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/race-manual-review-semantic-basis-v2.ts",
+      "sha256": "1961647c06a809ca530ff4d4fbbc63a8957955868f4b0feb3de2ff103fdd8fd8",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/race-manual-review-source-inventory-v2.ts",
+      "sha256": "893ffe61dcf4fe310f9062ca57ec8feac76348b06086db1f4d86a46f8378d688",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/race-manual-review-source-purpose-adapters-v2.ts",
+      "sha256": "4fc8e0e9070610ffbe4a04ea14222fb3edc1d57800b63d5e151f548772b4893a",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/race-manual-same-tx-approval-continuation.ts",
+      "sha256": "856573eacbfcdab9c6c00213e0402b59df9c385a0983663dd5997fbfe45beecd",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/race-manual-same-tx-review-continuation.ts",
+      "sha256": "a636fce223ce0f4938d2bf3a6850faa9ebac26593ceef6342881c69526aeb132",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/race-media-cleanup-source.ts",
+      "sha256": "720311849b445db3442dc80149496ed84ad73288272c20c6ea5a20f14416fdca",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/race-plan-impact-calendar-roots.ts",
+      "sha256": "35e44a2858c0c55fc010a1109c36d46ddfcb8996ec2976c1a79b54b49c28d733",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/race-plan-impact-complete-manifest.ts",
+      "sha256": "725cf36d508128cb4e926edeb49b815e4bbf797e003bc91f30296adacd7cc620",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/race-plan-impact-context.ts",
+      "sha256": "879526addd5eae53ffa8e44ecfdaf081798fef62f249c1581fccfbd1bde414d0",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/race-plan-impact-course-manifest.ts",
+      "sha256": "3b8aab4296a4d3ac8b742e83c891901a8472548ac1344df3ff45f4965805d04f",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/race-plan-impact-course-sources.ts",
+      "sha256": "3b12bf29b7b4e1e724a86ad8eefe7db184f779b72fb5fed2bb2a14a4caae18f6",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/race-plan-impact-dependencies.ts",
+      "sha256": "3b41e7a015fd40c21d3545ee2be94c8a7a8a3f5eacf39b011a3f9b8eb161ef1d",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/race-plan-impact-garmin-activity-read-facts.ts",
+      "sha256": "07ee81979f9593aa9bb7522818cacb6f8869bd889c40e5a58a1da24a61f4f43f",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/race-plan-impact-healthkit-activity-read-facts.ts",
+      "sha256": "953ad5cb92aceaddecee1af9d674f46af256055cdcce8401d6c54a2eab08193a",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/race-plan-impact-intake-read-facts.ts",
+      "sha256": "ffd61b58eb23ed50b25547c324eff6f5754b23bbf915b5d9615eff3180f53dcd",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/race-plan-impact-local-imported-activity-read-facts.ts",
+      "sha256": "233d8ade361afd1fcba1b6a0c37a2620965311fd060685841abc0c8838dc7c0e",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/race-plan-impact-manual-activity-read-facts.ts",
+      "sha256": "96f4eb697bc6be861fbe2d6a72e448af8871926033cad65212efdb6b407d333d",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/race-plan-impact-manual-basis.ts",
+      "sha256": "b704ec721359ac2271e0fbd724b5780c630083044aae7ed12400889a1f3b299e",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/race-plan-impact-media-read-facts.ts",
+      "sha256": "e60c01b552cd9878dff4a3820673e983d7c812106d56b08d52b14dbf67fe3e72",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/race-plan-impact-media-read-manifest.ts",
+      "sha256": "5823e4f75d2e7d0fe4012fbdd78a0614d6590bad0b33b05803aa3046775a7c0f",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/race-plan-impact-nested-sources.ts",
+      "sha256": "fadb727940b7724527fa791beb1367fa10ace3a6ffa5defb73558f295e134f3f",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/race-plan-impact-preview.ts",
+      "sha256": "3f07dae02ae8b81c2b15155720de0d145366f60bd358f8f2748bb1e87806ec8f",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/race-plan-impact-projection-input.ts",
+      "sha256": "0ab734e9f28626fc95aabaadf0ec34f93ab77b607a9fcca33fd6b4b1d90b8aff",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/race-plan-impact-recovery-manifest.ts",
+      "sha256": "618a41779164e84b23811dbd77255404f5f324487181ce49932e1b63ca426d94",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/race-plan-impact-recovery-nutrition-sources.ts",
+      "sha256": "6c4f6e779e01c8a07f619c9b05f6844b34ddaa725ae68ab9398075c08ca19cad",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/race-plan-impact-recovery-sources.ts",
+      "sha256": "c3d987f5b5fc78741357d3dd78ef554de8b8ca8ed7286dca7025d35287bfed50",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/race-plan-impact-resource-manifest.ts",
+      "sha256": "6487a6b388cfedc5f4bf3661d7ff42891a4f29a2a06c3aeda63a699284b0c99e",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/race-plan-impact-resource-read-facts.ts",
+      "sha256": "086641e8b7f8a430f5a0850a1d1bfa1706093d7a88daca65e7551462d53a7f5b",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/race-plan-impact-routine-actuals.ts",
+      "sha256": "64f7b172302f99e79c72304d90e5f808b1e70e921264355a96d09327e359ce99",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/race-plan-impact-routine-manifest.ts",
+      "sha256": "6ed6996f5d6a910681b0112193d1075b19616b1a405644a563b761ebe80e69eb",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/race-plan-impact-routine-schedule-read-manifest.ts",
+      "sha256": "0adfccf8fe90bcbbd8febfe975425aed4be2cee59d8f7494eae259a16ac5ec61",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/race-plan-impact-routine-timers.ts",
+      "sha256": "262c8c247312ddeed439238a34e97466bd88361340479de93efeceba2799779a",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/race-plan-impact-source-permissions.ts",
+      "sha256": "f8f3910d3cb7dbd7c12a6942065570dc404b23395868c495efad45031218a5da",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/race-plan-impact-workout-template-manifest.ts",
+      "sha256": "5d6e17c89ec09ccdbe2822fe52ab0adc9aab0ee935bc7a6f45bc3ee99cd9fca6",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/race-plan-impact-workout-template-sources.ts",
+      "sha256": "f9fc3aa64200181f48a4bdc298c82b3c4fb297b4fdde8a8646105bbaa5263b09",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/race-relative-schedule-calculation.ts",
+      "sha256": "47b131778e323c71e88e6980a3f91ad2297910b3c681fb477383aaace43018e2",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/race-timing-bindings.ts",
+      "sha256": "b28abe8187fcb39cfeeb607ebc822f7ff792756413182a475e4209faac8ebc3c",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/restore-generation.ts",
+      "sha256": "27294c9148411b609694057ef51c842d667449629db0f7db86ffe4dcaa9aed55",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/retained-personal-export.ts",
+      "sha256": "9d3b270e060a552bdb460937d92c612805bd229b55d03ebfd53980b16913aa12",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/routine-expansion.ts",
+      "sha256": "43f9e0940a35d2ce65a346d06ecaee4f38d4306687c7b1c587a5f4cc941189e0",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/session-completions.ts",
+      "sha256": "d6c4642d39b9b872c369834ad3066e116625919feb80263490e54d13486de229",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/supplementary-core.ts",
+      "sha256": "582af008085e510d62e994a6765c43d538b0cd296b81eb50cacf48f07c440ab1",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/supplementary-plan-links.ts",
+      "sha256": "f025fee3ca71092bda6da66b9aca69084238a7e3aef99f9db8857b89627791d8",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/src/training-plan-aggregate-source.ts",
+      "sha256": "16c5d8656e0c4a7d048ff5c4b5fbe66cd6a11c1dc36d87e4f6af72baa2b3ea15",
+      "role": "source"
+    },
+    {
+      "path": "packages/server/persistence/tests/current-runtime-catalog-witness-v3.integration.test.ts",
+      "sha256": "b705433fa964aad0af7dfe981680d7e38b33246de9605539498aec65377d59dc",
+      "role": "dependency"
+    },
+    {
+      "path": "packages/server/persistence/tests/drop-isolated-database.ts",
+      "sha256": "4e43446f861516712f85f7f6eb92a35f325c153ad0cbcd578bcdb90d9ee4f6b3",
+      "role": "dependency"
+    },
+    {
+      "path": "pnpm-lock.yaml",
+      "sha256": "7beb121b136689045950ef47b9a04a94bf6a6010e5941481913b1b0841fd477a",
+      "role": "dependency"
+    },
+    {
+      "path": "scripts/fixtures/identity-runtime-profile.ts",
+      "sha256": "b51da03336c9184487a2b749ee0639209d5f5085952d374243fb96e8564c4757",
+      "role": "dependency"
+    },
+    {
+      "path": "scripts/identity-e2e.mts",
+      "sha256": "fedec95331dd56521722d831f24610615598d887c9793e810385b36fa1ed624e",
+      "role": "dependency"
+    },
+    {
+      "path": "scripts/identity-installed-current-runtime-v9.mts",
+      "sha256": "f4bd720e23dee540110b52213b492558f7f901f1bcfec04e0599999905d2177a",
+      "role": "dependency"
+    }
+  ],
+  "evidenceScopes": [
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-dense-application.integration.test.ts",
+      "label": "public training400/nutrition400/routine30 review stores one lossless pooled body and frozen preview without plan writes",
+      "log": "evidence/logs/wm-pooled-dense-v2-root-pg-r8-20261008.log",
+      "suitePassed": 8,
+      "scope": "latest_dense"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-dense-application.integration.test.ts",
+      "label": "genuine reviewed dense chain exports full frozen planned/source census before approval without domain writes",
+      "log": "evidence/logs/wm-pooled-dense-v2-root-pg-r8-20261008.log",
+      "suitePassed": 8,
+      "scope": "latest_dense"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-dense-application.integration.test.ts",
+      "label": "explicit approval commits all four dense heads atomically and original receipt replay creates no extra versions",
+      "log": "evidence/logs/wm-pooled-dense-v2-root-pg-r8-20261008.log",
+      "suitePassed": 8,
+      "scope": "latest_dense"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-dense-application.integration.test.ts",
+      "label": "withdrawal permits original review/approval replay and frozen retained preview while refusing new processing",
+      "log": "evidence/logs/wm-pooled-dense-v2-root-pg-r8-20261008.log",
+      "suitePassed": 8,
+      "scope": "latest_dense"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-dense-application.integration.test.ts",
+      "label": "approved dense chain exports original approval receipts and atomic heads after withdrawal with frozen source census",
+      "log": "evidence/logs/wm-pooled-dense-v2-root-pg-r8-20261008.log",
+      "suitePassed": 8,
+      "scope": "latest_dense"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-dense-application.integration.test.ts",
+      "label": "genuine account erasure removes whole pooled payloads/candidates/receipts and prevents retained resurrection",
+      "log": "evidence/logs/wm-pooled-dense-v2-root-pg-r8-20261008.log",
+      "suitePassed": 8,
+      "scope": "latest_dense"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-dense-application.integration.test.ts",
+      "label": "routine31/400 are rejected separately from the actual accepted30 blueprint without adding versions",
+      "log": "evidence/logs/wm-pooled-dense-v2-root-pg-r8-20261008.log",
+      "suitePassed": 8,
+      "scope": "latest_dense"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-dense-application.integration.test.ts",
+      "label": "semantic5001 remains a codec negative and is never substituted for genuine accepted mixed400/400/30",
+      "log": "evidence/logs/wm-pooled-dense-v2-root-pg-r8-20261008.log",
+      "suitePassed": 8,
+      "scope": "latest_dense"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-parent-delta.integration.test.ts",
+      "label": "genuine public source preparation stores pooled parent and delta reconstructs exact old reader result",
+      "log": "evidence/logs/wm-parent-delta142-root-pg-r2-20261008.log",
+      "suitePassed": 9,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-parent-delta.integration.test.ts",
+      "label": "honest historical legacy parent remains explicit legacy and reconstructs losslessly",
+      "log": "evidence/logs/wm-parent-delta142-root-pg-r2-20261008.log",
+      "suitePassed": 9,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-parent-delta.integration.test.ts",
+      "label": "typed changed dictionary is compression only: exact prior parent is recovered with no current authorization",
+      "log": "evidence/logs/wm-parent-delta142-root-pg-r2-20261008.log",
+      "suitePassed": 9,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-parent-delta.integration.test.ts",
+      "label": "missing/foreign IDs return no parent; wrong dictionary ownership and malformed encoding reject",
+      "log": "evidence/logs/wm-parent-delta142-root-pg-r2-20261008.log",
+      "suitePassed": 9,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-parent-delta.integration.test.ts",
+      "label": "base and node/depth/whole response bounds are finite, and direct runtime private helper is denied",
+      "log": "evidence/logs/wm-parent-delta142-root-pg-r2-20261008.log",
+      "suitePassed": 9,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-parent-delta.integration.test.ts",
+      "label": "new reader refuses owner and non-snapshot runtime while old24 bodies/OIDs/security/ACL stay unchanged",
+      "log": "evidence/logs/wm-parent-delta142-root-pg-r2-20261008.log",
+      "suitePassed": 9,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-parent-delta.integration.test.ts",
+      "label": "installation repeat and valid predecessor body/config/ACL drift deny atomically with both new roots absent",
+      "log": "evidence/logs/wm-parent-delta142-root-pg-r2-20261008.log",
+      "suitePassed": 9,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-parent-delta.integration.test.ts",
+      "label": "successful new installation then transaction failure removes both new functions atomically",
+      "log": "evidence/logs/wm-parent-delta142-root-pg-r2-20261008.log",
+      "suitePassed": 9,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-parent-delta.integration.test.ts",
+      "label": "withdrawal retains owned parent reading and genuine race deletion purges delta without resurrection",
+      "log": "evidence/logs/wm-parent-delta142-root-pg-r2-20261008.log",
+      "suitePassed": 9,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-full-owned-source-bindings-v2.integration.test.ts",
+      "label": "normal107 public eight source families have exact ordered SQL relation observations without writes",
+      "log": "evidence/logs/wm-full-owned-bindings-root-pg-r3-20261007.log",
+      "suitePassed": 18,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-full-owned-source-bindings-v2.integration.test.ts",
+      "label": "strict all27 identities retain every absent fact rather than inventing sources or history",
+      "log": "evidence/logs/wm-full-owned-bindings-root-pg-r3-20261007.log",
+      "suitePassed": 18,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-full-owned-source-bindings-v2.integration.test.ts",
+      "label": "foreign populated sources and wrong tuple are contentless unavailable under runtime RLS",
+      "log": "evidence/logs/wm-full-owned-bindings-root-pg-r3-20261007.log",
+      "suitePassed": 18,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-full-owned-source-bindings-v2.integration.test.ts",
+      "label": "strict identity rejects malformed fields before any source facts ($kind)",
+      "log": "evidence/logs/wm-full-owned-bindings-root-pg-r3-20261007.log",
+      "suitePassed": 18,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-full-owned-source-bindings-v2.integration.test.ts",
+      "label": "rejects aliases/duplicate, oversized5001 refs, missingrace, RC and missingtenant without authority",
+      "log": "evidence/logs/wm-full-owned-bindings-root-pg-r3-20261007.log",
+      "suitePassed": 18,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-full-owned-source-bindings-v2.integration.test.ts",
+      "label": "invoker function keeps plain owner and PUBLIC execute revoked, no registry activation",
+      "log": "evidence/logs/wm-full-owned-bindings-root-pg-r3-20261007.log",
+      "suitePassed": 18,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-full-owned-source-bindings-v2.integration.test.ts",
+      "label": "public opaque food, recovery strategy and method, text versions retain exact historical relations",
+      "log": "evidence/logs/wm-full-owned-bindings-root-pg-r3-20261007.log",
+      "suitePassed": 18,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-full-owned-source-bindings-v2.integration.test.ts",
+      "label": "current/manual Activity, delta overlay, historical checkin and intake use distinct exact revision namespaces",
+      "log": "evidence/logs/wm-full-owned-bindings-root-pg-r3-20261007.log",
+      "suitePassed": 18,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-full-owned-source-bindings-v2.integration.test.ts",
+      "label": "public checklist and timer require exact frozen run/step membership and do not invent historical timers",
+      "log": "evidence/logs/wm-full-owned-bindings-root-pg-r3-20261007.log",
+      "suitePassed": 18,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-full-owned-source-bindings-v2.integration.test.ts",
+      "label": "public full workout and embedded strength session preserve exact target relational membership",
+      "log": "evidence/logs/wm-full-owned-bindings-root-pg-r3-20261007.log",
+      "suitePassed": 18,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-full-owned-source-bindings-v2.integration.test.ts",
+      "label": "gallery descriptor has explicit113 capability absence and normal ledger grant, no locator output",
+      "log": "evidence/logs/wm-full-owned-bindings-root-pg-r3-20261007.log",
+      "suitePassed": 18,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-full-owned-source-bindings-v2.integration.test.ts",
+      "label": "public course and track descriptors bind ordered exact lineage and retained historical revision",
+      "log": "evidence/logs/wm-full-owned-bindings-root-pg-r3-20261007.log",
+      "suitePassed": 18,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-full-owned-source-bindings-v2.integration.test.ts",
+      "label": "explicit V4 staging binds old/current pin fragments through exact saved nutrition membership, never a current-race substitute",
+      "log": "evidence/logs/wm-full-owned-bindings-root-pg-r3-20261007.log",
+      "suitePassed": 18,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-full-owned-source-bindings-v2.integration.test.ts",
+      "label": "all actual full-row bytes are preflight bounded before hashing or returning oversized groups",
+      "log": "evidence/logs/wm-full-owned-bindings-root-pg-r3-20261007.log",
+      "suitePassed": 18,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-retained-storage-v2.integration.test.ts",
+      "label": "stores canonical evidence once with exact decision/proposal FKs and no approval",
+      "log": "evidence/logs/wm-hk-chain116-root-pg-r2-20261008.log",
+      "suitePassed": 52,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-retained-storage-v2.integration.test.ts",
+      "label": "replays original minimal result after app withdrawal without another chain",
+      "log": "evidence/logs/wm-hk-chain116-root-pg-r2-20261008.log",
+      "suitePassed": 52,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-retained-storage-v2.integration.test.ts",
+      "label": "rejects conflicting idempotency request and preserves original result",
+      "log": "evidence/logs/wm-hk-chain116-root-pg-r2-20261008.log",
+      "suitePassed": 52,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-retained-storage-v2.integration.test.ts",
+      "label": "public original race deletion redacts whole canonical payload; replay does not reconstitute it",
+      "log": "evidence/logs/wm-hk-chain116-root-pg-r2-20261008.log",
+      "suitePassed": 52,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-retained-storage-v2.integration.test.ts",
+      "label": "callback rollback removes every chain artifact",
+      "log": "evidence/logs/wm-hk-chain116-root-pg-r2-20261008.log",
+      "suitePassed": 52,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-retained-storage-v2.integration.test.ts",
+      "label": "a missing lifecycle edge fails before writes",
+      "log": "evidence/logs/wm-hk-chain116-root-pg-r2-20261008.log",
+      "suitePassed": 52,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-retained-storage-v2.integration.test.ts",
+      "label": "JSON authority claims and fabricated source body cannot establish correspondence",
+      "log": "evidence/logs/wm-hk-chain116-root-pg-r2-20261008.log",
+      "suitePassed": 52,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-retained-storage-v2.integration.test.ts",
+      "label": "foreign captured tuples fail the actual tenant predicate",
+      "log": "evidence/logs/wm-hk-chain116-root-pg-r2-20261008.log",
+      "suitePassed": 52,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-retained-storage-v2.integration.test.ts",
+      "label": "tableowner cannot insert a commit context or mint a v7 original with a GUC",
+      "log": "evidence/logs/wm-hk-chain116-root-pg-r2-20261008.log",
+      "suitePassed": 52,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-retained-storage-v2.integration.test.ts",
+      "label": "runtime has no private table DML and PUBLIC has no narrow function execution",
+      "log": "evidence/logs/wm-hk-chain116-root-pg-r2-20261008.log",
+      "suitePassed": 52,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-retained-storage-v2.integration.test.ts",
+      "label": "same key concurrent transactions return a single original chain",
+      "log": "evidence/logs/wm-hk-chain116-root-pg-r2-20261008.log",
+      "suitePassed": 52,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-retained-storage-v2.integration.test.ts",
+      "label": "oversized/deep payload is rejected without persisted artifacts",
+      "log": "evidence/logs/wm-hk-chain116-root-pg-r2-20261008.log",
+      "suitePassed": 52,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-retained-storage-v2.integration.test.ts",
+      "label": "store-first source deletion waits on real tenant fence then redacts committed payload",
+      "log": "evidence/logs/wm-hk-chain116-root-pg-r2-20261008.log",
+      "suitePassed": 52,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-retained-storage-v2.integration.test.ts",
+      "label": "delete-first source transaction serializes a pre-captured store and refuses source resurrection",
+      "log": "evidence/logs/wm-hk-chain116-root-pg-r2-20261008.log",
+      "suitePassed": 52,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-retained-storage-v2.integration.test.ts",
+      "label": "v7 all-version matching preserves composite source namespaces and opaque Unicode identity",
+      "log": "evidence/logs/wm-hk-chain116-root-pg-r2-20261008.log",
+      "suitePassed": 52,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-retained-storage-v2.integration.test.ts",
+      "label": "stores own local ${kind} current original and overlay; actual source deletion purges the sole payload",
+      "log": "evidence/logs/wm-hk-chain116-root-pg-r2-20261008.log",
+      "suitePassed": 52,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-retained-storage-v2.integration.test.ts",
+      "label": "rejects forged local source-purpose tuples although original copied bodies remain intact",
+      "log": "evidence/logs/wm-hk-chain116-root-pg-r2-20261008.log",
+      "suitePassed": 52,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-retained-storage-v2.integration.test.ts",
+      "label": "stores manual recorded course and track metadata; original activity deletion purges through sealed lineage parents",
+      "log": "evidence/logs/wm-hk-chain116-root-pg-r2-20261008.log",
+      "suitePassed": 52,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-retained-storage-v2.integration.test.ts",
+      "label": "public collected Garmin attribution refuses a previously local FIT payload at the final SQL source predicate",
+      "log": "evidence/logs/wm-hk-chain116-root-pg-r2-20261008.log",
+      "suitePassed": 52,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-retained-storage-v2.integration.test.ts",
+      "label": "public FIT recorded-course lineage is unavailable for manual-purpose storage, despite owned valid course and track descriptors",
+      "log": "evidence/logs/wm-hk-chain116-root-pg-r2-20261008.log",
+      "suitePassed": 52,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-retained-storage-v2.integration.test.ts",
+      "label": "normal107 absent113 remains finite unavailable for media purpose",
+      "log": "evidence/logs/wm-hk-chain116-root-pg-r2-20261008.log",
+      "suitePassed": 52,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-retained-storage-v2.integration.test.ts",
+      "label": "staged113 own original+preview media with actual grant stores once and genuine gallery delete purges every copy",
+      "log": "evidence/logs/wm-hk-chain116-root-pg-r2-20261008.log",
+      "suitePassed": 52,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-retained-storage-v2.integration.test.ts",
+      "label": "actual withdrawn or changed media consent rejects fresh storage while own gallery reader is unchanged",
+      "log": "evidence/logs/wm-hk-chain116-root-pg-r2-20261008.log",
+      "suitePassed": 52,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-retained-storage-v2.integration.test.ts",
+      "label": "foreign, forged immutable ledger and cleanup tuple expectations cannot grant media storage",
+      "log": "evidence/logs/wm-hk-chain116-root-pg-r2-20261008.log",
+      "suitePassed": 52,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-retained-storage-v2.integration.test.ts",
+      "label": "actual current access drift and live cleanup requests reject pre-captured media without source resurrection",
+      "log": "evidence/logs/wm-hk-chain116-root-pg-r2-20261008.log",
+      "suitePassed": 52,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-retained-storage-v2.integration.test.ts",
+      "label": "HK public registration/ingestion/canonical/overlay/run stores exact immutable readonly chain with AI false",
+      "log": "evidence/logs/wm-hk-chain116-root-pg-r2-20261008.log",
+      "suitePassed": 52,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-retained-storage-v2.integration.test.ts",
+      "label": "HK public ${deletion} original event scrubs payload; minimal receipt cannot resurrect source",
+      "log": "evidence/logs/wm-hk-chain116-root-pg-r2-20261008.log",
+      "suitePassed": 52,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-retained-storage-v2.integration.test.ts",
+      "label": "HK %s JSON witness cannot mint final-store purpose",
+      "log": "evidence/logs/wm-hk-chain116-root-pg-r2-20261008.log",
+      "suitePassed": 52,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-retained-storage-v2.integration.test.ts",
+      "label": "HK public conflicting same-UUID payload is rejected and original source/store stay unchanged",
+      "log": "evidence/logs/wm-hk-chain116-root-pg-r2-20261008.log",
+      "suitePassed": 52,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-retained-storage-v2.integration.test.ts",
+      "label": "HK current grant revision cannot reuse an earlier claim epoch even if grant remains true",
+      "log": "evidence/logs/wm-hk-chain116-root-pg-r2-20261008.log",
+      "suitePassed": 52,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-retained-storage-v2.integration.test.ts",
+      "label": "HK foreign tenant cannot store an owned purpose/payload from another scope",
+      "log": "evidence/logs/wm-hk-chain116-root-pg-r2-20261008.log",
+      "suitePassed": 52,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-retained-storage-v2.integration.test.ts",
+      "label": "HK store-first public deregistration waits on tenant fence then scrubs the committed copy",
+      "log": "evidence/logs/wm-hk-chain116-root-pg-r2-20261008.log",
+      "suitePassed": 52,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-garmin-retained-storage.integration.test.ts",
+      "label": "public collected core Activity stores once with exact source/app observation, readable original zero/null and no approval",
+      "log": "evidence/logs/wm-garmin-store116-root-regression-r2-20261008.log",
+      "suitePassed": 69,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-garmin-retained-storage.integration.test.ts",
+      "label": "genuine public Activity deletion scrubs sole payload and receipt never restores copied source",
+      "log": "evidence/logs/wm-garmin-store116-root-regression-r2-20261008.log",
+      "suitePassed": 69,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-garmin-retained-storage.integration.test.ts",
+      "label": "current app withdrawal and reallow revision deny stale new storage without treating unused provider cycles as permission",
+      "log": "evidence/logs/wm-garmin-store116-root-regression-r2-20261008.log",
+      "suitePassed": 69,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-garmin-retained-storage.integration.test.ts",
+      "label": "forged %s observation cannot establish final purpose authority",
+      "log": "evidence/logs/wm-garmin-store116-root-regression-r2-20261008.log",
+      "suitePassed": 69,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-garmin-retained-storage.integration.test.ts",
+      "label": "existing runtime ledger drift and public overlay revision changes reject earlier basis; foreign tenant is not authority",
+      "log": "evidence/logs/wm-garmin-store116-root-regression-r2-20261008.log",
+      "suitePassed": 69,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-garmin-retained-storage.integration.test.ts",
+      "label": "callback failure rolls back evidence/decision/proposal/receipt before retry",
+      "log": "evidence/logs/wm-garmin-store116-root-regression-r2-20261008.log",
+      "suitePassed": 69,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/race-manual-review-garmin-retained-storage.integration.test.ts",
+      "label": "public withdrawal-first transaction fences a waiting fresh store before latest admission",
+      "log": "evidence/logs/wm-garmin-store116-root-regression-r2-20261008.log",
+      "suitePassed": 69,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-source-personal-export.integration.test.ts",
+      "label": "exports all saved refs and many-to-many parents with known frozen planned locations, no private paths",
+      "log": "evidence/logs/wm-source130-root-pg-r6-20261008.log",
+      "suitePassed": 12,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-source-personal-export.integration.test.ts",
+      "label": "keeps historical nutrition copied training %s private and identifies only the frozen current before",
+      "log": "evidence/logs/wm-source130-root-pg-r6-20261008.log",
+      "suitePassed": 12,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-source-personal-export.integration.test.ts",
+      "label": "exports genuine ended routine %s historical sources without claiming current before membership",
+      "log": "evidence/logs/wm-source130-root-pg-r6-20261008.log",
+      "suitePassed": 12,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-source-personal-export.integration.test.ts",
+      "label": "retains all refs after genuine race deletion and exposes only matched original deletion facts",
+      "log": "evidence/logs/wm-source130-root-pg-r6-20261008.log",
+      "suitePassed": 12,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-source-personal-export.integration.test.ts",
+      "label": "keeps retained reads after app withdrawal and never exposes another tenant rows",
+      "log": "evidence/logs/wm-source130-root-pg-r6-20261008.log",
+      "suitePassed": 12,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-source-personal-export.integration.test.ts",
+      "label": "rejects genuine erased tenant and bounded source overflow rather than fabricating empty arrays",
+      "log": "evidence/logs/wm-source130-root-pg-r6-20261008.log",
+      "suitePassed": 12,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-source-personal-export.integration.test.ts",
+      "label": "exports original SQL110 origin and retained/reconnected/carried versions without restoring deleted timing",
+      "log": "evidence/logs/wm-source130-root-pg-r6-20261008.log",
+      "suitePassed": 12,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-source-personal-export.integration.test.ts",
+      "label": "reserves escaped opaque item-ID JSON bytes before origin aggregation",
+      "log": "evidence/logs/wm-source130-root-pg-r6-20261008.log",
+      "suitePassed": 12,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-source-personal-export.integration.test.ts",
+      "label": "serializes genuine race deletion after a frozen retained-export snapshot without mixing postimages",
+      "log": "evidence/logs/wm-source130-root-pg-r6-20261008.log",
+      "suitePassed": 12,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-source-personal-export.integration.test.ts",
+      "label": "has no PUBLIC execute/private table grants and refuses RC reads",
+      "log": "evidence/logs/wm-source130-root-pg-r6-20261008.log",
+      "suitePassed": 12,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-store-and-basis.integration.test.ts",
+      "label": "genuine encoded sources store atomically and fresh basis validation keeps all original guards",
+      "log": "evidence/logs/wm-pooled135-root-pg-r2-20261008.log",
+      "suitePassed": 9,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-store-and-basis.integration.test.ts",
+      "label": "stored original receipt replays without duplicate evidence and rejects changed request",
+      "log": "evidence/logs/wm-pooled135-root-pg-r2-20261008.log",
+      "suitePassed": 9,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-store-and-basis.integration.test.ts",
+      "label": "copied pooled body forgery and malformed slot fail authoritative DTO comparison",
+      "log": "evidence/logs/wm-pooled135-root-pg-r2-20261008.log",
+      "suitePassed": 9,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-store-and-basis.integration.test.ts",
+      "label": "actual SQL observer and parent groups reject partial or mutated captured facts",
+      "log": "evidence/logs/wm-pooled135-root-pg-r2-20261008.log",
+      "suitePassed": 9,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-store-and-basis.integration.test.ts",
+      "label": "foreign tenant cannot validate or persist an otherwise genuine encoded body",
+      "log": "evidence/logs/wm-pooled135-root-pg-r2-20261008.log",
+      "suitePassed": 9,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-store-and-basis.integration.test.ts",
+      "label": "successful store then callback failure rolls back evidence receipt seal refs and outbox",
+      "log": "evidence/logs/wm-pooled135-root-pg-r2-20261008.log",
+      "suitePassed": 9,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-store-and-basis.integration.test.ts",
+      "label": "new named roots have exact definer config but no PUBLIC or accidental role grants",
+      "log": "evidence/logs/wm-pooled135-root-pg-r2-20261008.log",
+      "suitePassed": 9,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-store-and-basis.integration.test.ts",
+      "label": "withdrawal preserves receipt replay while fresh basis processing fails closed",
+      "log": "evidence/logs/wm-pooled135-root-pg-r2-20261008.log",
+      "suitePassed": 9,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-store-and-basis.integration.test.ts",
+      "label": "genuine source deletion nulls the entire encoded pool while original receipt remains minimal",
+      "log": "evidence/logs/wm-pooled135-root-pg-r2-20261008.log",
+      "suitePassed": 9,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-application.integration.test.ts",
+      "label": "genuine all-four copied pooled parent prepares and begins with exact actual parent correspondence; rollback leaves plans/event unchanged",
+      "log": "evidence/logs/wm-pooled137-root-pg-r4-20261008.log",
+      "suitePassed": 9,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-application.integration.test.ts",
+      "label": "legacy immutable parent remains readable and fresh encoded begin drives actual four writes once",
+      "log": "evidence/logs/wm-pooled137-root-pg-r4-20261008.log",
+      "suitePassed": 9,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-application.integration.test.ts",
+      "label": "named pooled caller prepares and actually commits all four domains from genuine135 parent without JSON authority",
+      "log": "evidence/logs/wm-pooled137-root-pg-r4-20261008.log",
+      "suitePassed": 9,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-application.integration.test.ts",
+      "label": "pooled malformed discriminator fails without falling back to legacy",
+      "log": "evidence/logs/wm-pooled137-root-pg-r4-20261008.log",
+      "suitePassed": 9,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-application.integration.test.ts",
+      "label": "forged recipe with unchanged digest cannot mint a pooled application",
+      "log": "evidence/logs/wm-pooled137-root-pg-r4-20261008.log",
+      "suitePassed": 9,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-application.integration.test.ts",
+      "label": "SQL recipes reject a forged nutrition child receipt key even with a recomputed candidate digest",
+      "log": "evidence/logs/wm-pooled137-root-pg-r4-20261008.log",
+      "suitePassed": 9,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-application.integration.test.ts",
+      "label": "pooled begin refuses foreign immutable chain tuple and leaves event untouched",
+      "log": "evidence/logs/wm-pooled137-root-pg-r4-20261008.log",
+      "suitePassed": 9,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-application.integration.test.ts",
+      "label": "actual app withdrawal rejects a new pooled begin and retains previously frozen legacy parent",
+      "log": "evidence/logs/wm-pooled137-root-pg-r4-20261008.log",
+      "suitePassed": 9,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-application.integration.test.ts",
+      "label": "atomic installation refuses changed predecessor strict metadata before creating any successor",
+      "log": "evidence/logs/wm-pooled137-root-pg-r4-20261008.log",
+      "suitePassed": 9,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-public-finish-and-preview.integration.test.ts",
+      "label": "preserves both final historical OIDs/body/config/ACL and owner-only named successors",
+      "log": "evidence/logs/wm-pooled138-root-pg-r2-20261008.log",
+      "suitePassed": 13,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-public-finish-and-preview.integration.test.ts",
+      "label": "genuine legacy review uses unchanged provenance and returns full retained envelope once",
+      "log": "evidence/logs/wm-pooled138-root-pg-r2-20261008.log",
+      "suitePassed": 13,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-public-finish-and-preview.integration.test.ts",
+      "label": "genuine pooled review keeps original reference and strict decoded frozen public projection",
+      "log": "evidence/logs/wm-pooled138-root-pg-r2-20261008.log",
+      "suitePassed": 13,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-public-finish-and-preview.integration.test.ts",
+      "label": "foreign and absent candidate reads are null, never a fabricated purge",
+      "log": "evidence/logs/wm-pooled138-root-pg-r2-20261008.log",
+      "suitePassed": 13,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-public-finish-and-preview.integration.test.ts",
+      "label": "existing stored candidates cannot be freshly attached to a new public key in a later xid",
+      "log": "evidence/logs/wm-pooled138-root-pg-r2-20261008.log",
+      "suitePassed": 13,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-public-finish-and-preview.integration.test.ts",
+      "label": "public command/private extra fields and changed stable-key intent are rejected",
+      "log": "evidence/logs/wm-pooled138-root-pg-r2-20261008.log",
+      "suitePassed": 13,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-public-finish-and-preview.integration.test.ts",
+      "label": "raw runtime table writes and migration installation remain denied",
+      "log": "evidence/logs/wm-pooled138-root-pg-r2-20261008.log",
+      "suitePassed": 13,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-public-finish-and-preview.integration.test.ts",
+      "label": "double installation preserves both old and new function metadata",
+      "log": "evidence/logs/wm-pooled138-root-pg-r2-20261008.log",
+      "suitePassed": 13,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-public-finish-and-preview.integration.test.ts",
+      "label": "exact predecessor/resolver drift rolls back the whole pair: ${drift.split(' ').at(-1)}",
+      "log": "evidence/logs/wm-pooled138-root-pg-r2-20261008.log",
+      "suitePassed": 13,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-public-finish-and-preview.integration.test.ts",
+      "label": "withdrawal keeps original minimal receipts and retained mixed previews without new processing",
+      "log": "evidence/logs/wm-pooled138-root-pg-r2-20261008.log",
+      "suitePassed": 13,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-public-finish-and-preview.integration.test.ts",
+      "label": "genuine race deletion purges encoded/legacy envelopes together and preserves original replay",
+      "log": "evidence/logs/wm-pooled138-root-pg-r2-20261008.log",
+      "suitePassed": 13,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-personal-export-batch.integration.test.ts",
+      "label": "exact historical OIDs/bodies/config/ACL unchanged; only ONE public batch root and owner-private helpers",
+      "log": "evidence/logs/wm-pooled139-root-pg-r2-20261008.log",
+      "suitePassed": 16,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-personal-export-batch.integration.test.ts",
+      "label": "genuine legacy + pooled + internal-only candidate + chain-only bodies are each emitted once, with strict hydration",
+      "log": "evidence/logs/wm-pooled139-root-pg-r2-20261008.log",
+      "suitePassed": 16,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-personal-export-batch.integration.test.ts",
+      "label": "public original success/results/history remain an exact internal subset; equal aliases never add approvals",
+      "log": "evidence/logs/wm-pooled139-root-pg-r2-20261008.log",
+      "suitePassed": 16,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-personal-export-batch.integration.test.ts",
+      "label": "foreign empty account is a true empty census, without leaked review/source metadata",
+      "log": "evidence/logs/wm-pooled139-root-pg-r2-20261008.log",
+      "suitePassed": 16,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-personal-export-batch.integration.test.ts",
+      "label": "invalid bound, insufficient actual response budget and runtime private access fail closed",
+      "log": "evidence/logs/wm-pooled139-root-pg-r2-20261008.log",
+      "suitePassed": 16,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-personal-export-batch.integration.test.ts",
+      "label": "repeat installation is rejected and old plus new full metadata remain unchanged",
+      "log": "evidence/logs/wm-pooled139-root-pg-r2-20261008.log",
+      "suitePassed": 16,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-personal-export-batch.integration.test.ts",
+      "label": "metadata/security drift rolls back ALL three new functions: ${drift.split(' ').at(-1)}",
+      "log": "evidence/logs/wm-pooled139-root-pg-r2-20261008.log",
+      "suitePassed": 16,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-personal-export-batch.integration.test.ts",
+      "label": "actual predecessor body drift denies and atomically leaves all successors absent",
+      "log": "evidence/logs/wm-pooled139-root-pg-r2-20261008.log",
+      "suitePassed": 16,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-personal-export-batch.integration.test.ts",
+      "label": "plain owner cannot impersonate a runtime tenant through the new definer reader",
+      "log": "evidence/logs/wm-pooled139-root-pg-r2-20261008.log",
+      "suitePassed": 16,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-personal-export-batch.integration.test.ts",
+      "label": "app withdrawal retains original histories/receipts and frozen bodies without new processing",
+      "log": "evidence/logs/wm-pooled139-root-pg-r2-20261008.log",
+      "suitePassed": 16,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-personal-export-batch.integration.test.ts",
+      "label": "genuine public deletion purges legacy/pool entirely; US6/event/NULL tuples and original successes survive",
+      "log": "evidence/logs/wm-pooled139-root-pg-r2-20261008.log",
+      "suitePassed": 16,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-personal-export-batch.integration.test.ts",
+      "label": "actual account erasure rejects retained enumeration instead of fabricated empty census",
+      "log": "evidence/logs/wm-pooled139-root-pg-r2-20261008.log",
+      "suitePassed": 16,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-application-local-validation.integration.test.ts",
+      "label": "genuine all-four copied pooled parent prepares and begins with exact actual parent correspondence; rollback leaves plans/event unchanged",
+      "log": "evidence/logs/wm-pooled141-root-pg-r1-20261008.log",
+      "suitePassed": 27,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-application-local-validation.integration.test.ts",
+      "label": "legacy immutable parent remains readable and fresh encoded begin drives actual four writes once",
+      "log": "evidence/logs/wm-pooled141-root-pg-r1-20261008.log",
+      "suitePassed": 27,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-application-local-validation.integration.test.ts",
+      "label": "named pooled caller prepares and actually commits all four domains from genuine135 parent without JSON authority",
+      "log": "evidence/logs/wm-pooled141-root-pg-r1-20261008.log",
+      "suitePassed": 27,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-application-local-validation.integration.test.ts",
+      "label": "pooled malformed discriminator fails without falling back to legacy",
+      "log": "evidence/logs/wm-pooled141-root-pg-r1-20261008.log",
+      "suitePassed": 27,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-application-local-validation.integration.test.ts",
+      "label": "forged recipe with unchanged digest cannot mint a pooled application",
+      "log": "evidence/logs/wm-pooled141-root-pg-r1-20261008.log",
+      "suitePassed": 27,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-application-local-validation.integration.test.ts",
+      "label": "SQL recipes reject a forged nutrition child receipt key even with a recomputed candidate digest",
+      "log": "evidence/logs/wm-pooled141-root-pg-r1-20261008.log",
+      "suitePassed": 27,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-application-local-validation.integration.test.ts",
+      "label": "pooled begin refuses foreign immutable chain tuple and leaves event untouched",
+      "log": "evidence/logs/wm-pooled141-root-pg-r1-20261008.log",
+      "suitePassed": 27,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-application-local-validation.integration.test.ts",
+      "label": "actual app withdrawal rejects a new pooled begin and retains previously frozen legacy parent",
+      "log": "evidence/logs/wm-pooled141-root-pg-r1-20261008.log",
+      "suitePassed": 27,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-application-local-validation.integration.test.ts",
+      "label": "atomic installation refuses changed predecessor strict metadata before creating any successor",
+      "log": "evidence/logs/wm-pooled141-root-pg-r1-20261008.log",
+      "suitePassed": 27,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-application-local-validation.integration.test.ts",
+      "label": "two authoritative OIDs and ACLs are preserved; private variants are invoker-only and direct runtime execution denies",
+      "log": "evidence/logs/wm-pooled141-root-pg-r1-20261008.log",
+      "suitePassed": 27,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-application-local-validation.integration.test.ts",
+      "label": "installation ${label} drift rejects with no partial private creation or target metadata change",
+      "log": "evidence/logs/wm-pooled141-root-pg-r1-20261008.log",
+      "suitePassed": 27,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-application-local-validation.integration.test.ts",
+      "label": "repeat installation rejects without changing targets or existing private variants",
+      "log": "evidence/logs/wm-pooled141-root-pg-r1-20261008.log",
+      "suitePassed": 27,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-application-local-validation.integration.test.ts",
+      "label": "partial private successor and failed installation never change the two authoritative bodies",
+      "log": "evidence/logs/wm-pooled141-root-pg-r1-20261008.log",
+      "suitePassed": 27,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-application-local-validation.integration.test.ts",
+      "label": "runtime cannot install an owner-only successor",
+      "log": "evidence/logs/wm-pooled141-root-pg-r1-20261008.log",
+      "suitePassed": 27,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-application-local-validation.integration.test.ts",
+      "label": "actual predecessor body drift rejects before any new private helper exists",
+      "log": "evidence/logs/wm-pooled141-root-pg-r1-20261008.log",
+      "suitePassed": 27,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/manual-pooled-application-local-validation.integration.test.ts",
+      "label": "late diagnostic failure atomically rolls back all3 private creations and both target body transitions",
+      "log": "evidence/logs/wm-pooled141-root-pg-r1-20261008.log",
+      "suitePassed": 27,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/current-runtime-installation-v9.integration.test.ts",
+      "label": "fresh normal107 installs parent24 and one new receipts without activating runtime",
+      "log": "evidence/logs/wm-install-v9-root-pg-r1-20261008.log",
+      "suitePassed": 29,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/current-runtime-installation-v9.integration.test.ts",
+      "label": "upgrade retains genuine parent receipts and xmin and repeated install returns original one receipts",
+      "log": "evidence/logs/wm-install-v9-root-pg-r1-20261008.log",
+      "suitePassed": 29,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/current-runtime-installation-v9.integration.test.ts",
+      "label": "two genuine owner connections serialize one fresh installation and preserve same receipts",
+      "log": "evidence/logs/wm-install-v9-root-pg-r1-20261008.log",
+      "suitePassed": 29,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/current-runtime-installation-v9.integration.test.ts",
+      "label": "normal nongrantable direct EXECUTE permits verify/replay but private/helpers/ledger remain inaccessible",
+      "log": "evidence/logs/wm-install-v9-root-pg-r1-20261008.log",
+      "suitePassed": 29,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/current-runtime-installation-v9.integration.test.ts",
+      "label": "complete raw successor without receipt is rejected and never adopted",
+      "log": "evidence/logs/wm-install-v9-root-pg-r1-20261008.log",
+      "suitePassed": 29,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/current-runtime-installation-v9.integration.test.ts",
+      "label": "partial raw successor without receipt is rejected before installation writes",
+      "log": "evidence/logs/wm-install-v9-root-pg-r1-20261008.log",
+      "suitePassed": 29,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/current-runtime-installation-v9.integration.test.ts",
+      "label": "runtime/elevated principal cannot verify private installation provenance",
+      "log": "evidence/logs/wm-install-v9-root-pg-r1-20261008.log",
+      "suitePassed": 29,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/current-runtime-installation-v9.integration.test.ts",
+      "label": "actual ${label} drift fails closed and rollback restores original receipt",
+      "log": "evidence/logs/wm-install-v9-root-pg-r1-20261008.log",
+      "suitePassed": 29,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/current-runtime-installation-v9.integration.test.ts",
+      "label": "actual ${signature} body tamper rejects without rewriting original ledger",
+      "log": "evidence/logs/wm-install-v9-root-pg-r1-20261008.log",
+      "suitePassed": 29,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/current-runtime-installation-v9.integration.test.ts",
+      "label": "failure after applying actual ordered source DDL rolls back whole new ledger/schema to genuine parent24",
+      "log": "evidence/logs/wm-install-v9-root-pg-r1-20261008.log",
+      "suitePassed": 29,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/current-runtime-installation-v9.integration.test.ts",
+      "label": "fixed physical142 SQL files correspond exactly to the returned receipts",
+      "log": "evidence/logs/wm-install-v9-root-pg-r1-20261008.log",
+      "suitePassed": 29,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/current-runtime-installation-v9.integration.test.ts",
+      "label": "read-only verifier cannot turn normal107 or genuine parent8 into receipted profile9",
+      "log": "evidence/logs/wm-install-v9-root-pg-r1-20261008.log",
+      "suitePassed": 29,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/current-runtime-grants-v9.integration.test.ts",
+      "label": "normal107, parent23 and parent24/raw142 without child receipt cannot obtain V9 grants",
+      "log": "evidence/logs/wm-grants-v9-root-pg-r1-20261008.log",
+      "suitePassed": 20,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/current-runtime-grants-v9.integration.test.ts",
+      "label": "body drift is rejected before any grant",
+      "log": "evidence/logs/wm-grants-v9-root-pg-r1-20261008.log",
+      "suitePassed": 20,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/current-runtime-grants-v9.integration.test.ts",
+      "label": "owner membership, worker inheritance and built-in data roles fail closed",
+      "log": "evidence/logs/wm-grants-v9-root-pg-r1-20261008.log",
+      "suitePassed": 20,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/current-runtime-grants-v9.integration.test.ts",
+      "label": "BYPASSRLS runtime flag is refused",
+      "log": "evidence/logs/wm-grants-v9-root-pg-r1-20261008.log",
+      "suitePassed": 20,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/current-runtime-grants-v9.integration.test.ts",
+      "label": "unsafe deployment sessions and SET ROLE cannot issue grants",
+      "log": "evidence/logs/wm-grants-v9-root-pg-r1-20261008.log",
+      "suitePassed": 20,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/current-runtime-grants-v9.integration.test.ts",
+      "label": "a later GRANT fault rolls back every earlier grant",
+      "log": "evidence/logs/wm-grants-v9-root-pg-r1-20261008.log",
+      "suitePassed": 20,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/current-runtime-grants-v9.integration.test.ts",
+      "label": "exact42 grants serialize, preserve all old receipts and leave helpers/private tables inaccessible",
+      "log": "evidence/logs/wm-grants-v9-root-pg-r1-20261008.log",
+      "suitePassed": 20,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/current-runtime-catalog-witness-v9.integration.test.ts",
+      "label": "two independent profile25 captures enumerate the full typed catalog without claiming dynamic/wire/recipe admission",
+      "log": "evidence/logs/wm-catalog-v9-root-pg-r1-20261008.log",
+      "suitePassed": 11,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/current-runtime-catalog-witness-v9.integration.test.ts",
+      "label": "observes actual domain/composite/range/type ACL and view/rules/index/inheritance metadata",
+      "log": "evidence/logs/wm-catalog-v9-root-pg-r1-20261008.log",
+      "suitePassed": 11,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/current-runtime-catalog-witness-v9.integration.test.ts",
+      "label": "enumerates real user operators/casts and retains their actual dependency edges",
+      "log": "evidence/logs/wm-catalog-v9-root-pg-r1-20261008.log",
+      "suitePassed": 11,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/current-runtime-catalog-witness-v9.integration.test.ts",
+      "label": "preserves real user RI lookalike identifiers while structurally normalizing only real internal FK triggers",
+      "log": "evidence/logs/wm-catalog-v9-root-pg-r1-20261008.log",
+      "suitePassed": 11,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/current-runtime-catalog-witness-v9.integration.test.ts",
+      "label": "rejects nonowner/runtime capture and READ COMMITTED before returning catalog evidence",
+      "log": "evidence/logs/wm-catalog-v9-root-pg-r1-20261008.log",
+      "suitePassed": 11,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/current-runtime-catalog-witness-v9.integration.test.ts",
+      "label": "observes FORCE RLS and unknown ACL principal drift without replacing it with matching root sentinel evidence",
+      "log": "evidence/logs/wm-catalog-v9-root-pg-r1-20261008.log",
+      "suitePassed": 11,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/current-runtime-catalog-witness-v9.integration.test.ts",
+      "label": "source142 observation preserves parent8 plus new1 exact private installation receipts and old xmins",
+      "log": "evidence/logs/wm-catalog-v9-root-pg-r1-20261008.log",
+      "suitePassed": 11,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/current-runtime-catalog-witness-v9.integration.test.ts",
+      "label": "rejects source130 private helper exposure without claiming its27dynamic branches verified",
+      "log": "evidence/logs/wm-catalog-v9-root-pg-r1-20261008.log",
+      "suitePassed": 11,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/current-runtime-catalog-witness-v9.integration.test.ts",
+      "label": "rejects missing batch EXECUTE without promoting protected seal/caller closure",
+      "log": "evidence/logs/wm-catalog-v9-root-pg-r1-20261008.log",
+      "suitePassed": 11,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/current-runtime-catalog-witness-v9.integration.test.ts",
+      "label": "rejects exact142 source/meta/PUBLIC drift before whole metadata transfer",
+      "log": "evidence/logs/wm-catalog-v9-root-pg-r1-20261008.log",
+      "suitePassed": 11,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/current-runtime-catalog-witness-v9.integration.test.ts",
+      "label": "rejects new142 private helper exposure and missing direct42 grant with exact old census preserved",
+      "log": "evidence/logs/wm-catalog-v9-root-pg-r1-20261008.log",
+      "suitePassed": 11,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/current-runtime-cold-catalog-v9.integration.test.ts",
+      "label": "database catalog wrapper establishes actual read-only context and closes the handle",
+      "log": "evidence/logs/wm-cold-catalog-v9-root-pg-r2-20261008.log",
+      "suitePassed": 11,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/current-runtime-cold-catalog-v9.integration.test.ts",
+      "label": "database catalog wrapper rolls back callback failure and frees both actual fences",
+      "log": "evidence/logs/wm-cold-catalog-v9-root-pg-r2-20261008.log",
+      "suitePassed": 11,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/current-runtime-cold-catalog-v9.integration.test.ts",
+      "label": "database catalog wrapper rejects an aborted transaction even when callback catches it",
+      "log": "evidence/logs/wm-cold-catalog-v9-root-pg-r2-20261008.log",
+      "suitePassed": 11,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/current-runtime-cold-catalog-v9.integration.test.ts",
+      "label": "database catalog wrapper denies real writes and permits a fresh observation afterwards",
+      "log": "evidence/logs/wm-cold-catalog-v9-root-pg-r2-20261008.log",
+      "suitePassed": 11,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/current-runtime-cold-catalog-v9.integration.test.ts",
+      "label": "actual twoDB runtime whole catalogs match independently pinned owner expected",
+      "log": "evidence/logs/wm-cold-catalog-v9-root-pg-r2-20261008.log",
+      "suitePassed": 11,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/current-runtime-cold-catalog-v9.integration.test.ts",
+      "label": "runtime cannot read installation receipts or call private pooled helpers",
+      "log": "evidence/logs/wm-cold-catalog-v9-root-pg-r2-20261008.log",
+      "suitePassed": 11,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/current-runtime-cold-catalog-v9.integration.test.ts",
+      "label": "owner session is not accepted as normal runtime",
+      "log": "evidence/logs/wm-cold-catalog-v9-root-pg-r2-20261008.log",
+      "suitePassed": 11,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/current-runtime-cold-catalog-v9.integration.test.ts",
+      "label": "read committed and missing fences are rejected before metadata",
+      "log": "evidence/logs/wm-cold-catalog-v9-root-pg-r2-20261008.log",
+      "suitePassed": 11,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/current-runtime-cold-catalog-v9.integration.test.ts",
+      "label": "driver scalar underreport is closed without changing SQL budget",
+      "log": "evidence/logs/wm-cold-catalog-v9-root-pg-r2-20261008.log",
+      "suitePassed": 11,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/current-runtime-cold-catalog-v9.integration.test.ts",
+      "label": "body metadata drift rejected and exact original body restored",
+      "log": "evidence/logs/wm-cold-catalog-v9-root-pg-r2-20261008.log",
+      "suitePassed": 11,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/current-runtime-cold-catalog-v9.integration.test.ts",
+      "label": "RLS drift rejected",
+      "log": "evidence/logs/wm-cold-catalog-v9-root-pg-r2-20261008.log",
+      "suitePassed": 11,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/current-runtime-cold-catalog-v9.integration.test.ts",
+      "label": "trigger drift rejected",
+      "log": "evidence/logs/wm-cold-catalog-v9-root-pg-r2-20261008.log",
+      "suitePassed": 11,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/current-runtime-cold-catalog-v9.integration.test.ts",
+      "label": "function ACL and private ledger ACL drift rejected",
+      "log": "evidence/logs/wm-cold-catalog-v9-root-pg-r2-20261008.log",
+      "suitePassed": 11,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/current-runtime-cold-catalog-v9.integration.test.ts",
+      "label": "connected membership rejected while unrelated role is normalization noise",
+      "log": "evidence/logs/wm-cold-catalog-v9-root-pg-r2-20261008.log",
+      "suitePassed": 11,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/current-runtime-cold-catalog-v9.integration.test.ts",
+      "label": "seal constraint drift is not ignored",
+      "log": "evidence/logs/wm-cold-catalog-v9-root-pg-r2-20261008.log",
+      "suitePassed": 11,
+      "scope": "historical_suite"
+    },
+    {
+      "runner": "playwright",
+      "fixture": "tests/identity/race-date-change-all-domains.spec.ts",
+      "label": "${host}: explicit date approval commits all four planned domains once and preserves actuals",
+      "log": "evidence/logs/wm-profile25-root-identity-r1-20261008.log",
+      "suitePassed": 8,
+      "scope": "latest_http"
+    },
+    {
+      "runner": "playwright",
+      "fixture": "tests/identity/nutrition-new-plan-review.spec.ts",
+      "label": "${host}: new nutrition draft requires preview then a separate confirmed save",
+      "log": "evidence/logs/wm-profile25-root-identity-r1-20261008.log",
+      "suitePassed": 8,
+      "scope": "latest_http"
+    },
+    {
+      "runner": "playwright",
+      "fixture": "tests/identity/race-pb-chip-preferred.spec.ts",
+      "label": "${shell.name}: default Chip preference, null-only Gun fallback, original actuals and responsive public replay/delete",
+      "log": "evidence/logs/wm-profile25-root-identity-r1-20261008.log",
+      "suitePassed": 8,
+      "scope": "latest_http"
+    },
+    {
+      "runner": "playwright",
+      "fixture": "tests/identity/current-runtime-personal-export-v38.spec.ts",
+      "label": "${host}: installed named profile HTTP V38 retains exact unapproved public/internal/source facts after app withdrawal",
+      "log": "evidence/logs/wm-profile25-root-identity-r1-20261008.log",
+      "suitePassed": 8,
+      "scope": "latest_http"
+    }
+  ],
+  "authority": "none",
+  "approvalAllowed": false,
+  "restoreAuthority": "none"
+}

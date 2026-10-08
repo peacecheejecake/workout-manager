@@ -815,3 +815,9 @@ Native agent는 source-bound proof/compiler, readiness successor, 정상 API rep
 원문 없는 신규 계획 생성·사용 개발을 계속한다. Root catalog 전용 DB 연결 실제4pass/11filtered skip(원 cold11과 별도), source-proof/readiness/APIfactory 및 explicit configured selector 통합 unit59/59·전체 persistence/API TS·scoped lint/format0을 확인했다. Source artifact compiler는 Vitest/Playwright 실제 로그와 고정 source manifest를 검증하며 Root pin은 아직 null이다. 따라서 latest 정상 startup의 ready를 아직 주장하지 않는다.
 
 다음은 native 준비 candidate manifest의 source/case/log 범위를 Root가 검사·고정→실제 compile/immutable pin→normal configured 실제5case와 두 Host 최신 경로를 실행하는 순서다. Native compiler staging은 TMP만, normal configured fixture는 별도1파일에서 준비했다. Root가 공통 source asset/configured/package·DB·graph/Git를 소유한다. FUT-09 역사 원문 이식은 별도 대기이며 latest restore/운영503/AWS/native/provider/full phase gate·독립 검토/main/push는 미완료다. exactSHA/결과와 실패는 [I 기록](progress/M2-02i.md)을 따른다.
+
+## 2026-10-08 정상 신규 계획 runtime 구성 실제 시작 통과
+
+Root source proof 실제 compile R2 exit0 및 noargs current-source 검증 verified, versioned security definition SHA03db2e47…c7272/326source pins을 고정했다. Literal lazy import를 finite closure에 포함하고 계산식/options/require를 거절하며 mixed pass/fail/skip summary를 허용하지 않는다. Root unit71/71·전체 consumerTS/lint/format0, normalconfigured 실제5/5로 최신 named25 real gate/factory→HTTP health 시작·body drift/권한 누락/owner 거절·기본107 유지 및 cleanup0을 확인했다. 원문 없는 신규 계획 개발을 계속하며 FUT-09 역사 이식만 별도 대기한다.
+
+다음은 latest normal factory gate의 두 Host 신규 계획 경로 수용과 I/J 남은 실제 조건 대조, 이후 전체 phase gate/독립 검토다. 소스 증거·실패·역사 scope·actual compile 및 boot의 정확 SHA/로그는 [I 기록](progress/M2-02i.md)에 보존한다. Boot의 localOIDC discovery network 실패를 운영 로그인으로 표시하지 않는다. 최신 복원/운영503/AWS/native/provider·main/push는 미완료다.

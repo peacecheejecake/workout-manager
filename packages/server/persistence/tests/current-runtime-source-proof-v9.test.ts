@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createHash } from 'node:crypto';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -10,10 +10,14 @@ import {
 import { readFileSync } from 'node:fs';
 import {
   compileCurrentRuntimeSourceProofV9,
+  enumerateCurrentRuntimeSourceImportsV9,
   currentRuntimeSourceProofV9CompilerProfile as profile,
   parseCurrentRuntimeSourceProofManifestV9,
   verifyCurrentRuntimeSourceProofV9,
 } from '../src/current-runtime-source-proof-v9.js';
+vi.mock('../src/current-runtime-source-proof-v9-pin.js', () => ({
+  currentRuntimeSourceProofV9AssetSha256: null,
+}));
 const digest = (body: string) => createHash('sha256').update(body).digest('hex');
 const directories: string[] = [];
 afterEach(() => {
@@ -176,6 +180,43 @@ describe('closed source proof build compiler', () => {
       'INVALID_EVIDENCE',
     );
   });
+
+  it.each([
+    ['Tests 4 passed | 11 skipped (15)', 4],
+    ['Tests 8 passed | 1 failed (9)', 8],
+  ])(
+    'rejects mixed inline Vitest summary %s even with matching declared pass count',
+    (summary, passed) => {
+      const f = fixture(),
+        log = f.manifest.files.find((file) => file.path === 'result.log'),
+        entry = f.manifest.cases[0];
+      if (!log || !entry) throw Error('fixture');
+      const body = `RUN v4.1.11 fixture\n${summary}\n`;
+      log.sha256 = digest(body);
+      entry.suitePassed = Number(passed);
+      writeFileSync(join(f.root, 'result.log'), body);
+      expect(() => compileCurrentRuntimeSourceProofV9(f.root, 'manifest.json', f.save())).toThrow(
+        'INVALID_EVIDENCE',
+      );
+    },
+  );
+  it('accepts explicit zero inline fail/skip counts but rejects mismatched total', () => {
+    const f = fixture(),
+      log = f.manifest.files.find((file) => file.path === 'result.log');
+    if (!log) throw Error('fixture');
+    const body = 'RUN v4.1.11 fixture\nTests 8 passed | 0 failed | 0 skipped (8)\n';
+    writeFileSync(join(f.root, 'result.log'), body);
+    log.sha256 = digest(body);
+    expect(compileCurrentRuntimeSourceProofV9(f.root, 'manifest.json', f.save()).authority).toBe(
+      'none',
+    );
+    const wrong = body.replace('(8)', '(9)');
+    writeFileSync(join(f.root, 'result.log'), wrong);
+    log.sha256 = digest(wrong);
+    expect(() => compileCurrentRuntimeSourceProofV9(f.root, 'manifest.json', f.save())).toThrow(
+      'INVALID_EVIDENCE',
+    );
+  });
   it('rejects unknown, getter, proxy, subclass and oversized plain input without invoking getters', () => {
     const f = fixture();
     let called = 0;
@@ -237,6 +278,41 @@ describe('closed source proof build compiler', () => {
     expect(() => compileCurrentRuntimeSourceProofV9(f.root, 'manifest.json', f.save())).toThrow(
       'INVALID_EVIDENCE',
     );
+  });
+
+  it('includes a fixed literal lazy import and rejects a missing pinned destination', () => {
+    const f = fixture(),
+      entry = f.manifest.files.find((file) => file.path === 'src/a.ts');
+    if (!entry) throw Error('fixture');
+    const body = "export const load=()=>import('./b.js');";
+    writeFileSync(join(f.root, 'src/a.ts'), body);
+    entry.sha256 = digest(body);
+    expect(compileCurrentRuntimeSourceProofV9(f.root, 'manifest.json', f.save()).authority).toBe(
+      'none',
+    );
+    f.manifest.files = f.manifest.files.filter((file) => file.path !== 'src/b.ts');
+    expect(() => compileCurrentRuntimeSourceProofV9(f.root, 'manifest.json', f.save())).toThrow(
+      'INVALID_EVIDENCE',
+    );
+  });
+  it.each([
+    'import(path)',
+    'import(`./b.js`)',
+    'import(`./${path}.js`)',
+    "import('./b.js', { with: { type: 'json' } })",
+    "import('./b.js' + suffix)",
+    "require('./b.js')",
+    'const text=`${import(path)}`;',
+  ])('rejects unbounded import expression %s', (source) => {
+    expect(() => enumerateCurrentRuntimeSourceImportsV9(source)).toThrow('INVALID_EVIDENCE');
+  });
+  it('ignores comments/string/regex noise and includes literal imports inside template expressions', () => {
+    const source =
+      "// import(variable)\n/* require('ignored') */ const note=\"import(variable)\"; const pattern=/import\\(variable\\)/; const text=`${import('./b.js')}`;";
+    expect(enumerateCurrentRuntimeSourceImportsV9(source)).toEqual(['./b.js']);
+    expect(enumerateCurrentRuntimeSourceImportsV9("import /* bounded */ ('./b.js')")).toEqual([
+      './b.js',
+    ]);
   });
   it('rejects traversal and unconfigured workspace import paths', () => {
     const f = fixture();

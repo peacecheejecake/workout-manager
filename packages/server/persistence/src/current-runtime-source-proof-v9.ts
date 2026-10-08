@@ -219,6 +219,159 @@ function read(root: string, relative: string): Buffer {
     throw new CurrentRuntimeSourceProofError('SOURCE_UNAVAILABLE');
   }
 }
+/** Build-only lexer: literals in comments, strings and regexes are not call sites. */
+export function enumerateCurrentRuntimeSourceImportsV9(source: string): readonly string[] {
+  if (
+    typeof source !== 'string' ||
+    source.length > MAX_BYTES ||
+    Buffer.byteLength(source) > MAX_BYTES
+  )
+    throw new CurrentRuntimeSourceProofError('LIMIT');
+  type Token = { kind: 'word' | 'punct' | 'literal'; value: string; plain?: boolean };
+  const tokens: Token[] = [];
+  let at = 0;
+  function quoted(quote: string) {
+    at++;
+    let value = '',
+      plain = true;
+    while (at < source.length) {
+      const character = source[at++];
+      if (character === quote) return { kind: 'literal' as const, value, plain };
+      if (character === '\\') {
+        plain = false;
+        value += character;
+        value += source[at++] ?? '';
+      } else value += character;
+    }
+    throw new CurrentRuntimeSourceProofError('INVALID_EVIDENCE');
+  }
+  function template(depth: number) {
+    if (depth > 64) throw new CurrentRuntimeSourceProofError('LIMIT');
+    at++;
+    while (at < source.length) {
+      const character = source[at++];
+      if (character === '\\') {
+        at++;
+        continue;
+      }
+      if (character === '`') return;
+      if (character === '$' && source[at] === '{') {
+        at++;
+        code(true, depth + 1);
+      }
+    }
+    throw new CurrentRuntimeSourceProofError('INVALID_EVIDENCE');
+  }
+  function code(interpolation: boolean, depth: number) {
+    let braces = 0,
+      regexAllowed = true;
+    while (at < source.length) {
+      const character = source[at];
+      if (!character) break;
+      if (/\s/.test(character)) {
+        at++;
+        continue;
+      }
+      if (source.startsWith('//', at)) {
+        const end = source.indexOf('\n', at + 2);
+        at = end < 0 ? source.length : end + 1;
+        continue;
+      }
+      if (source.startsWith('/*', at)) {
+        const end = source.indexOf('*/', at + 2);
+        if (end < 0) throw new CurrentRuntimeSourceProofError('INVALID_EVIDENCE');
+        at = end + 2;
+        continue;
+      }
+      if (character === '}' && interpolation && braces === 0) {
+        at++;
+        return;
+      }
+      if (character === "'" || character === '"') {
+        tokens.push(quoted(character));
+        regexAllowed = false;
+        continue;
+      }
+      if (character === '`') {
+        tokens.push({ kind: 'punct', value: '`' });
+        template(depth);
+        regexAllowed = false;
+        continue;
+      }
+      if (character === '/' && regexAllowed) {
+        at++;
+        let inClass = false,
+          ended = false;
+        while (at < source.length) {
+          const c = source[at++];
+          if (c === '\\') {
+            at++;
+            continue;
+          }
+          if (c === '[') inClass = true;
+          if (c === ']') inClass = false;
+          if (c === '/' && !inClass) {
+            ended = true;
+            break;
+          }
+          if (c === '\n') break;
+        }
+        if (!ended) throw new CurrentRuntimeSourceProofError('INVALID_EVIDENCE');
+        while (at < source.length && /[a-z]/i.test(source[at] ?? '')) at++;
+        tokens.push({ kind: 'punct', value: 'regex' });
+        regexAllowed = false;
+        continue;
+      }
+      if (/[a-z_$]/i.test(character)) {
+        const start = at++;
+        while (at < source.length && /[a-z0-9_$]/i.test(source[at] ?? '')) at++;
+        const value = source.slice(start, at);
+        tokens.push({ kind: 'word', value });
+        regexAllowed = [
+          'return',
+          'throw',
+          'case',
+          'yield',
+          'await',
+          'typeof',
+          'void',
+          'delete',
+          'in',
+          'of',
+        ].includes(value);
+        continue;
+      }
+      tokens.push({ kind: 'punct', value: character });
+      at++;
+      if (character === '{') braces++;
+      if (character === '}') braces--;
+      regexAllowed = !/[a-z0-9_$)\].}]/i.test(character);
+    }
+    if (interpolation) throw new CurrentRuntimeSourceProofError('INVALID_EVIDENCE');
+  }
+  code(false, 0);
+  const imports: string[] = [];
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i],
+      next = tokens[i + 1];
+    if (token?.kind !== 'word') continue;
+    if (token.value === 'require' && next?.value === '(')
+      throw new CurrentRuntimeSourceProofError('INVALID_EVIDENCE');
+    if (token.value === 'import' && next?.value === '(') {
+      const argument = tokens[i + 2],
+        close = tokens[i + 3];
+      if (argument?.kind !== 'literal' || !argument.plain || close?.value !== ')')
+        throw new CurrentRuntimeSourceProofError('INVALID_EVIDENCE');
+      imports.push(argument.value);
+      continue;
+    }
+    if ((token.value === 'import' || token.value === 'from') && next?.kind === 'literal') {
+      if (!next.plain) throw new CurrentRuntimeSourceProofError('INVALID_EVIDENCE');
+      imports.push(next.value);
+    }
+  }
+  return Object.freeze(imports);
+}
 function equalOrdered(a: readonly string[], b: readonly string[]) {
   return a.length === b.length && a.every((value, i) => value === b[i]);
 }
@@ -270,12 +423,8 @@ function validate(root: string, manifest: Manifest) {
     const file = files.get(path);
     if (!file || file.role !== 'source')
       throw new CurrentRuntimeSourceProofError('INVALID_EVIDENCE');
-    // Finite static import inventory. Dynamic imports/requires are not silently ignored.
-    if (/\b(?:import\s*\(|require\s*\()/.test(file.body))
-      throw new CurrentRuntimeSourceProofError('INVALID_EVIDENCE');
-    for (const match of file.body.matchAll(/\b(?:from\s*|import\s*)['"]([^'"]+)['"]/g)) {
-      const specifier = match[1];
-      if (!specifier) throw new CurrentRuntimeSourceProofError('INVALID_EVIDENCE');
+    // Static and fixed literal lazy imports share the same exact resolution and source pins.
+    for (const specifier of enumerateCurrentRuntimeSourceImportsV9(file.body)) {
       if (specifier.startsWith('node:') || ['zod', 'pg'].includes(specifier)) continue;
       const destination = specifier.startsWith('.')
         ? resolve(root, dirname(path), specifier.replace(/\.js$/, '.ts')).slice(root.length + 1)
@@ -304,9 +453,12 @@ function validate(root: string, manifest: Manifest) {
         : /(?:^|\n)Running \d+ tests using \d+ workers?/;
     const totalsPattern =
       evidence.runner === 'vitest'
-        ? /(?:^|\n)\s*Tests\s+(\d+) passed/g
-        : /(?:^|\n)\s*(\d+) passed \([^\n]*\)\s*(?=\n|$)/g;
-    const totals = [...log.body.matchAll(totalsPattern)].map((match) => Number(match[1]));
+        ? /^[ \t]*Tests[ \t]+(\d+) passed(?:[ \t]+\|[ \t]+0 (?:failed|skipped))*[ \t]+\((\d+)\)[ \t]*\r?$/gm
+        : /^[ \t]*(\d+) passed \([0-9]+(?:\.[0-9]+)?(?:ms|s|m|h)\)[ \t]*\r?$/gm;
+    const summaries = [...log.body.matchAll(totalsPattern)];
+    const totals = summaries.map((match) => Number(match[1]));
+    const allPassed =
+      evidence.runner !== 'vitest' || summaries.every((match) => match[1] === match[2]);
     const failures = [
       ...log.body.matchAll(/(?:^|\n)\s*(?:Tests\s+)?(\d+) (?:failed|skipped)/g),
     ].some((match) => Number(match[1]) > 0);
@@ -314,6 +466,7 @@ function validate(root: string, manifest: Manifest) {
       !header.test(log.body) ||
       totals.length !== 1 ||
       totals[0] !== evidence.suitePassed ||
+      !allPassed ||
       failures ||
       /(?:^|\n)\s*Tests[^\n]*[1-9]\d* (?:failed|skipped)/.test(log.body)
     )
