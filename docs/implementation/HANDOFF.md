@@ -735,3 +735,9 @@ Root는 명명된V7/profile23 installer11개와 private resolver134의6개를 �
 원문 없는 신규 계획 생성·사용 개발을 계속한다. Root SQL135 실제 PG9/9, SQL136은 경로/트랜잭션 fixture 실패를 보존하고 수정한 R3 실제15/15를 확인했다. Profile23 공개 Next/Vite HTTP는12pass/2skip 뒤 정확 selector 교정 후 별도 V38 HTTP2/2를 확인했다. Root unit112/112·harness TS0·시험 DB/roles/slots잔존0이다. 서로 다른 실행을 하나의 전수 통과로 합치지 않는다. 자세한 로그·SHA·실패는 [I 기록](progress/M2-02i.md)에 보존한다.
 
 Node transport 및 pooled 전체 승인/export 통합은 native agent와 병행 중이다. 신규 구성요소 단독으로 혼합400/400/30 최종 수용·production 지원·cold/security/fullrestore·phase 완료를 선언하지 않는다. FUT-09 기존 원문 이식, AWS 인증, 운영/native/provider not_executed, 전체 phase gate·독립 검토/main 병합·사용자 push는 별도 대기로 유지한다.
+
+## 2026-10-08 Node pooled transport 실제 PostgreSQL 검증
+
+Root의 정확한 두 파일 단위17/17과 실제 transport PG8/8을 확인했다. 공개 합성 producer의 저장·same-xid ACK·lossless 읽기·원 receipt 재생, foreign·다른transaction·budget·timeout·rollback·철회·삭제 경계를 검증했고 시험 DB/roles/slots잔존0이다. 원source/header/receipt는 보존한다. 상세 SHA와 collection/lint 준비 실패는 [I 기록](progress/M2-02i.md)에 남겼다.
+
+Root는 새 migration137 application 및138 finish/preview를 예약해 두 native agent에 비중복으로 맡겼으며 다른 agent는 coherent Node bundle을 구현한다. DB lane·공통 파일/graph/Git 통합은 Root가 직렬 소유한다. 전체 혼합 승인/export·정상 지원/복원/phase 검토/main·출시는 미완료이고 FUT-09 원문 이식·AWS 인증·외부 not_executed를 유지한다.
