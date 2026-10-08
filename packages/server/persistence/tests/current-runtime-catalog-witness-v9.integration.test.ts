@@ -1,0 +1,468 @@
+import { randomUUID } from 'node:crypto';
+import { Pool, type PoolClient } from 'pg';
+import { z } from 'zod';
+import { afterAll, beforeAll, expect, it } from 'vitest';
+import * as baseline from '../src/migrate.js';
+import { installCurrentRuntimeV9 } from '../src/current-runtime-installation-v9.js';
+import { grantCurrentRuntimeV9Profile } from '../src/current-runtime-grants-v9.js';
+import { grantCurrentRuntimeAppBaselineV2 } from '../src/current-runtime-app-grants-v2.js';
+import { captureCurrentRuntimeCatalogWitnessV9In } from '../src/current-runtime-catalog-witness-v9.js';
+import { dropIsolatedDatabase } from './drop-isolated-database.js';
+
+// Metadata only. Root executes PostgreSQL; this fixture creates no health/source
+// rows and invokes no product RPC. Observed equality is not dependency closure.
+const adminUrl = z.string().min(1).parse(process.env['TEST_DATABASE_ADMIN_URL']);
+const suffix = randomUUID().replaceAll('-', '').slice(0, 10);
+const environments = ['a', 'b'].map((label) => ({
+  database: `current_runtime_catalog_v9_${label}_${suffix}`,
+  owner: `current_runtime_catalog_v9_owner_${label}_${suffix}`,
+  runtime: `current_runtime_catalog_v9_app_${label}_${suffix}`,
+}));
+const first = z
+  .strictObject({ database: z.string(), owner: z.string(), runtime: z.string() })
+  .parse(environments[0]);
+const unknownRole = `current_runtime_catalog_v9_other_${suffix}`;
+const admin = new Pool({ connectionString: adminUrl });
+const roles: string[] = [],
+  databases: string[] = [];
+type Environment = (typeof environments)[number];
+function url(environment: Environment, role = environment.owner) {
+  const value = new URL(adminUrl);
+  value.pathname = `/${environment.database}`;
+  value.username = role;
+  value.password = 'isolated';
+  return value.toString();
+}
+async function session<T>(
+  environment: Environment,
+  role: string,
+  apply: (tx: PoolClient) => Promise<T>,
+) {
+  const pool = new Pool({ connectionString: url(environment, role), max: 1 });
+  const tx = await pool.connect();
+  try {
+    return await apply(tx);
+  } finally {
+    tx.release();
+    await pool.end();
+  }
+}
+// A Vitest timeout does not cancel an asynchronous callback. Serialize entire
+// callbacks (including mutation undo), and drain them before destructive cleanup.
+// Statement deadlines remain 30s and test deadlines remain unchanged.
+let pendingFixtureWork: Promise<void> = Promise.resolve();
+function fixtureIt(name: string, apply: () => Promise<void>, timeout?: number) {
+  it(
+    name,
+    async () => {
+      const work = pendingFixtureWork.then(apply);
+      pendingFixtureWork = work.then(
+        () => undefined,
+        () => undefined,
+      );
+      await work;
+    },
+    timeout,
+  );
+}
+beforeAll(async () => {
+  // Complete both environments first: actual clusterRoleCount cannot change
+  // merely because the second fixture role was provisioned between captures.
+  for (const role of [...environments.flatMap((e) => [e.owner, e.runtime]), unknownRole]) {
+    await admin.query(
+      `CREATE ROLE "${role}" LOGIN PASSWORD 'isolated' NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE`,
+    );
+    roles.push(role);
+  }
+  for (const environment of environments) {
+    await admin.query(`CREATE DATABASE "${environment.database}" OWNER "${environment.owner}"`);
+    databases.push(environment.database);
+  }
+  for (const environment of environments) {
+    await baseline.migrate(url(environment), 107);
+    const installed = await installCurrentRuntimeV9(url(environment));
+    expect(installed).toMatchObject({
+      profileVersion: 9,
+      runtimeStep: 25,
+      sourceDdlTip: 142,
+      supported: false,
+    });
+    await grantCurrentRuntimeAppBaselineV2(url(environment), environment.runtime, 'core');
+    await grantCurrentRuntimeV9Profile(url(environment), environment.runtime);
+  }
+}, 180000);
+afterAll(async () => {
+  await pendingFixtureWork;
+  for (const database of databases.reverse()) await dropIsolatedDatabase(admin, database);
+  for (const role of roles.reverse()) await admin.query(`DROP ROLE "${role}"`);
+  await admin.end();
+});
+async function capture(environment = first) {
+  return session(environment, environment.owner, async (tx) => {
+    // Session locks before BEGIN avoid acquiring the RR snapshot before waiting.
+    await tx.query('SELECT pg_advisory_lock_shared(872194,1)');
+    let lifecycleLocked = false;
+    try {
+      await tx.query('SELECT pg_advisory_lock_shared(77210,1)');
+      lifecycleLocked = true;
+      await tx.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+      await tx.query("SET LOCAL statement_timeout='30000ms'");
+      await tx.query('SET LOCAL search_path=pg_catalog,pg_temp');
+      const witness = await captureCurrentRuntimeCatalogWitnessV9In(tx, environment.runtime);
+      await tx.query('COMMIT');
+      return witness;
+    } finally {
+      await tx.query('ROLLBACK');
+      if (lifecycleLocked)
+        expect(
+          (await tx.query('SELECT pg_advisory_unlock_shared(77210,1) AS unlocked')).rows[0]?.[
+            'unlocked'
+          ],
+        ).toBe(true);
+      expect(
+        (await tx.query('SELECT pg_advisory_unlock_shared(872194,1) AS unlocked')).rows[0]?.[
+          'unlocked'
+        ],
+      ).toBe(true);
+    }
+  });
+}
+async function mutation(sql: string, undo: string, check: () => Promise<void>) {
+  await session(first, first.owner, (tx) => tx.query(sql));
+  try {
+    await check();
+  } finally {
+    await session(first, first.owner, (tx) => tx.query(undo));
+  }
+}
+fixtureIt(
+  'two independent profile25 captures enumerate the full typed catalog without claiming dynamic/wire/recipe admission',
+  async () => {
+    const witnesses = await Promise.all(environments.map((environment) => capture(environment)));
+    const a = witnesses[0],
+      b = witnesses[1];
+    if (!a || !b) throw new Error('fixture witnesses missing');
+    expect(a.metadata).toEqual(b.metadata);
+    expect(a.sections).toEqual(b.sections);
+    expect(a.profile.runtimeStep).toBe(25);
+    expect(a.profile.runtimeSteps).toHaveLength(25);
+    expect(a.profile.runtimeSteps.at(-1)?.sourceDdlId).toBe(142);
+    expect(
+      a.metadata.functions.some((f) => f.name === 'read_manual_race_retained_source_batch_v1'),
+    ).toBe(true);
+    expect(
+      a.metadata.relations.some(
+        (r) => r.schema === 'wm_runtime_installation' && r.name === 'profile_extension_v9',
+      ),
+    ).toBe(true);
+    expect(
+      a.metadata.relations.some(
+        (r) => r.schema === 'wm_runtime_installation' && r.name === 'profile_extension_v3',
+      ),
+    ).toBe(true);
+    const ack = a.metadata.functions.find(
+      (f) => f.name === 'read_manual_race_retained_source_batch_v1',
+    );
+    expect(ack).toMatchObject({
+      owner: 'owner',
+      securityDefiner: true,
+      runtimeExecute: true,
+      returns: 'jsonb',
+      language: 'plpgsql',
+    });
+    expect(ack?.sourceSha256).toMatch(/^[a-f0-9]{64}$/);
+    expect(ack?.acl.some((a) => a.grantee === 'PUBLIC' && a.privilege === 'EXECUTE')).toBe(false);
+    expect(
+      a.metadata.relations.some(
+        (r) => r.schema === 'wm_runtime_installation' && r.name === 'profile_extension_v4',
+      ),
+    ).toBe(true);
+    expect(
+      a.metadata.functions.find((f) => f.name === 'commit_nutrition_plan_v4')?.sourceSha256,
+    ).toBe('16b2dc4c79dec56d417f504d4c005034b2769fefc4249dc8244698c6593a75a6');
+    expect(
+      a.metadata.functions.find((f) => f.name === 'assert_nutrition_disconnect_body')?.sourceSha256,
+    ).toBe('92a0643c5eff075ec00bacd21152666755dc439c1c01571640e8827a618edc6f');
+    expect(a.observation.expectedRootCount).toBe(42);
+    expect(a.supported).toBe(false);
+    expect(a.closure.dynamicDependencies).toBe('not_verified');
+    expect(a.metadata.typeDetails.length).toBe(a.metadata.types.length);
+    expect(a.metadata.relationDetails.length).toBe(a.metadata.relations.length);
+    expect(a.metadata.languages.some((v) => v.name === 'plpgsql')).toBe(true);
+  },
+  90000,
+);
+fixtureIt(
+  'observes actual domain/composite/range/type ACL and view/rules/index/inheritance metadata',
+  async () => {
+    const before = await capture();
+    await mutation(
+      `CREATE SCHEMA "ObservedUnicode영역"; CREATE SCHEMA "pgXObserved";
+    CREATE DOMAIN "ObservedUnicode영역".positive AS integer CHECK(VALUE>0);
+    CREATE TYPE "ObservedUnicode영역".pair AS (zero integer,unknown text);
+    CREATE TYPE "ObservedUnicode영역".integer_span AS RANGE(subtype=integer);
+    CREATE TABLE "ObservedUnicode영역".parent(id integer);
+    CREATE TABLE "ObservedUnicode영역".child(extra text) INHERITS("ObservedUnicode영역".parent);
+    CREATE VIEW "ObservedUnicode영역".viewed AS SELECT id FROM "ObservedUnicode영역".parent;
+    CREATE UNIQUE INDEX ordered_id ON "ObservedUnicode영역".parent(id) NULLS NOT DISTINCT;
+    GRANT USAGE ON TYPE "ObservedUnicode영역".positive TO "${unknownRole}"`,
+      'DROP SCHEMA "ObservedUnicode영역" CASCADE; DROP SCHEMA "pgXObserved"',
+      async () => {
+        const w = await capture();
+        expect(w.catalogSha256).not.toBe(before.catalogSha256);
+        expect(w.metadata.schemas.some((v) => v.name === 'pgXObserved')).toBe(true);
+        const domain = w.metadata.typeDetails.find(
+          (v) => v.schema === 'ObservedUnicode영역' && v.name === 'positive',
+        );
+        expect(domain?.domainConstraints[0]?.definition).toContain('VALUE > 0');
+        expect(domain?.acl.some((v) => v.grantee === `unmapped:${unknownRole}`)).toBe(true);
+        expect(
+          w.metadata.typeDetails
+            .find((v) => v.schema === 'ObservedUnicode영역' && v.name === 'pair')
+            ?.attributes.map((v) => v.name),
+        ).toEqual(['zero', 'unknown']);
+        expect(
+          w.metadata.typeDetails.find(
+            (v) => v.schema === 'ObservedUnicode영역' && v.name === 'integer_span',
+          )?.range?.subtype,
+        ).toBe('integer');
+        expect(
+          w.metadata.relationDetails.find(
+            (v) => v.schema === 'ObservedUnicode영역' && v.name === 'viewed',
+          )?.viewDefinition,
+        ).toContain('parent');
+        expect(
+          w.metadata.relationDetails.find(
+            (v) => v.schema === 'ObservedUnicode영역' && v.name === 'child',
+          )?.inheritance,
+        ).toHaveLength(1);
+        expect(
+          w.metadata.relationDetails.find(
+            (v) => v.schema === 'ObservedUnicode영역' && v.name === 'ordered_id',
+          )?.indexState?.nullsNotDistinct,
+        ).toBe(true);
+        expect(w.supported).toBe(false);
+      },
+    );
+    expect((await capture()).catalogSha256).toBe(before.catalogSha256);
+  },
+  90000,
+);
+fixtureIt(
+  'enumerates real user operators/casts and retains their actual dependency edges',
+  async () => {
+    await mutation(
+      `CREATE SCHEMA catalog_extra;
+ CREATE FUNCTION catalog_extra.same(integer,integer) RETURNS boolean LANGUAGE sql IMMUTABLE AS 'SELECT $1=$2';
+ CREATE OPERATOR catalog_extra.=== (FUNCTION=catalog_extra.same,LEFTARG=integer,RIGHTARG=integer);
+ CREATE TYPE catalog_extra.state AS ENUM('zero','unknown');
+ CREATE FUNCTION catalog_extra.state_text(catalog_extra.state) RETURNS text LANGUAGE sql IMMUTABLE AS 'SELECT $1::text';
+ CREATE CAST(catalog_extra.state AS text) WITH FUNCTION catalog_extra.state_text(catalog_extra.state)`,
+      'DROP SCHEMA catalog_extra CASCADE',
+      async () => {
+        const w = await capture();
+        expect(
+          w.metadata.operators.find((v) => v.schema === 'catalog_extra' && v.name === '===')?.left,
+        ).toBe('integer');
+        expect(
+          w.metadata.casts.some((v) => v.source === 'catalog_extra.state' && v.target === 'text'),
+        ).toBe(true);
+        expect(
+          w.metadata.additionalDependencies.some((v) => v.dependent.includes('catalog_extra')),
+        ).toBe(true);
+      },
+    );
+  },
+  90000,
+);
+fixtureIt(
+  'preserves real user RI lookalike identifiers while structurally normalizing only real internal FK triggers',
+  async () => {
+    const before = await capture();
+    await mutation(
+      `CREATE FUNCTION public.catalog_user_guard() RETURNS trigger LANGUAGE plpgsql AS 'BEGIN RETURN NEW; END';
+ CREATE TRIGGER "RI_ConstraintTrigger_a_12345" BEFORE UPDATE ON public.check_in_template_version FOR EACH ROW EXECUTE FUNCTION public.catalog_user_guard()`,
+      'DROP TRIGGER "RI_ConstraintTrigger_a_12345" ON public.check_in_template_version; DROP FUNCTION public.catalog_user_guard()',
+      async () => {
+        const w = await capture();
+        expect(
+          w.metadata.relations
+            .find((v) => v.schema === 'public' && v.name === 'check_in_template_version')
+            ?.triggers.some((v) => v.name === 'RI_ConstraintTrigger_a_12345'),
+        ).toBe(true);
+        expect(w.catalogSha256).not.toBe(before.catalogSha256);
+      },
+    );
+  },
+  90000,
+);
+fixtureIt(
+  'rejects nonowner/runtime capture and READ COMMITTED before returning catalog evidence',
+  async () => {
+    await session(first, first.runtime, async (tx) => {
+      await tx.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+      try {
+        await expect(captureCurrentRuntimeCatalogWitnessV9In(tx, first.runtime)).rejects.toThrow(
+          'CATALOG_WITNESS_CONTEXT_REQUIRED',
+        );
+      } finally {
+        await tx.query('ROLLBACK');
+      }
+    });
+    await session(first, first.owner, async (tx) => {
+      await tx.query('BEGIN READ ONLY');
+      try {
+        await expect(captureCurrentRuntimeCatalogWitnessV9In(tx, first.runtime)).rejects.toThrow(
+          'CATALOG_WITNESS_CONTEXT_REQUIRED',
+        );
+      } finally {
+        await tx.query('ROLLBACK');
+      }
+    });
+  },
+);
+fixtureIt(
+  'observes FORCE RLS and unknown ACL principal drift without replacing it with matching root sentinel evidence',
+  async () => {
+    const before = await capture();
+    await mutation(
+      'ALTER TABLE public.check_in_template_version NO FORCE ROW LEVEL SECURITY',
+      'ALTER TABLE public.check_in_template_version FORCE ROW LEVEL SECURITY',
+      async () => {
+        const w = await capture();
+        expect(
+          w.metadata.relations.find(
+            (v) => v.schema === 'public' && v.name === 'check_in_template_version',
+          )?.force,
+        ).toBe(false);
+        expect(w.catalogSha256).not.toBe(before.catalogSha256);
+      },
+    );
+    await mutation(
+      `GRANT SELECT ON public.check_in_template_version TO "${unknownRole}"`,
+      `REVOKE SELECT ON public.check_in_template_version FROM "${unknownRole}"`,
+      async () => {
+        const w = await capture();
+        expect(w.metadata.roles.some((v) => v.tag === `unmapped:${unknownRole}`)).toBe(true);
+        expect(w.catalogSha256).not.toBe(before.catalogSha256);
+      },
+    );
+  },
+  90000,
+);
+
+fixtureIt(
+  'source142 observation preserves parent8 plus new1 exact private installation receipts and old xmins',
+  async () => {
+    const ledger = () =>
+      session(first, first.owner, async (tx) => {
+        const out = await tx.query(`SELECT jsonb_build_object(
+   'parent',(SELECT jsonb_agg(jsonb_build_object('row',to_jsonb(t),'xmin',xmin::text) ORDER BY step) FROM wm_runtime_installation.migration t),
+   'v2',(SELECT jsonb_agg(jsonb_build_object('row',to_jsonb(t),'xmin',xmin::text)) FROM wm_runtime_installation.profile_extension_v2 t),
+   'v3',(SELECT jsonb_agg(jsonb_build_object('row',to_jsonb(t),'xmin',xmin::text)) FROM wm_runtime_installation.profile_extension_v3 t),
+   'v4',(SELECT jsonb_agg(jsonb_build_object('row',to_jsonb(t),'xmin',xmin::text)) FROM wm_runtime_installation.profile_extension_v4 t),
+   'v5',(SELECT jsonb_agg(jsonb_build_object('row',to_jsonb(t),'xmin',xmin::text)) FROM wm_runtime_installation.profile_extension_v5 t),
+   'v6',(SELECT jsonb_agg(jsonb_build_object('row',to_jsonb(t),'xmin',xmin::text)) FROM wm_runtime_installation.profile_extension_v6 t),
+   'v7',(SELECT jsonb_agg(jsonb_build_object('row',to_jsonb(t),'xmin',xmin::text)) FROM wm_runtime_installation.profile_extension_v7 t),
+   'v8',(SELECT jsonb_agg(jsonb_build_object('row',to_jsonb(t),'xmin',xmin::text) ORDER BY extension_step) FROM wm_runtime_installation.profile_extension_v8 t),
+   'v9',(SELECT jsonb_agg(jsonb_build_object('row',to_jsonb(t),'xmin',xmin::text)) FROM wm_runtime_installation.profile_extension_v9 t)) ledger`);
+        return out.rows;
+      });
+    const before = await ledger();
+    await capture();
+    expect(await ledger()).toEqual(before);
+  },
+);
+fixtureIt(
+  'rejects source130 private helper exposure without claiming its27dynamic branches verified',
+  async () => {
+    const before = await capture();
+    await mutation(
+      `GRANT EXECUTE ON FUNCTION public.manual_source_personal_row_exists_v1(jsonb,jsonb) TO "${first.runtime}"`,
+      `REVOKE EXECUTE ON FUNCTION public.manual_source_personal_row_exists_v1(jsonb,jsonb) FROM "${first.runtime}"`,
+      async () => {
+        await expect(capture()).rejects.toThrow('CATALOG_WITNESS_CONTEXT_REQUIRED');
+      },
+    );
+    expect((await capture()).catalogSha256).toBe(before.catalogSha256);
+  },
+  90000,
+);
+
+fixtureIt(
+  'rejects missing batch EXECUTE without promoting protected seal/caller closure',
+  async () => {
+    const before = await capture();
+    await mutation(
+      `REVOKE EXECUTE ON FUNCTION public.read_manual_race_retained_source_batch_v1(integer) FROM "${first.runtime}"`,
+      `GRANT EXECUTE ON FUNCTION public.read_manual_race_retained_source_batch_v1(integer) TO "${first.runtime}"`,
+      async () => {
+        await expect(capture()).rejects.toThrow('CATALOG_WITNESS_INVALID');
+      },
+    );
+    expect((await capture()).catalogSha256).toBe(before.catalogSha256);
+  },
+  90000,
+);
+
+fixtureIt(
+  'rejects exact142 source/meta/PUBLIC drift before whole metadata transfer',
+  async () => {
+    const body = await session(first, first.owner, async (tx) =>
+      z
+        .string()
+        .parse(
+          (
+            await tx.query(
+              "SELECT pg_get_functiondef('public.read_manual_race_pooled_parent_delta_v1(uuid,jsonb)'::regprocedure) AS body",
+            )
+          ).rows[0]?.['body'],
+        ),
+    );
+    for (const [changed, undo] of [
+      [body.replace('BEGIN', 'BEGIN /* actual drift */'), body],
+      [
+        'ALTER FUNCTION public.read_manual_race_pooled_parent_delta_v1(uuid,jsonb) SET search_path=public',
+        'ALTER FUNCTION public.read_manual_race_pooled_parent_delta_v1(uuid,jsonb) SET search_path=pg_catalog,pg_temp',
+      ],
+      [
+        'GRANT EXECUTE ON FUNCTION public.read_manual_race_pooled_parent_delta_v1(uuid,jsonb) TO PUBLIC',
+        'REVOKE EXECUTE ON FUNCTION public.read_manual_race_pooled_parent_delta_v1(uuid,jsonb) FROM PUBLIC',
+      ],
+    ] as const)
+      await mutation(changed, undo, async () => {
+        await expect(capture()).rejects.toThrow('CURRENT_RUNTIME_V9_FUNCTION_DRIFT');
+      });
+    await mutation(
+      `GRANT SELECT ON wm_runtime_installation.profile_extension_v9 TO "${first.runtime}"`,
+      `REVOKE SELECT ON wm_runtime_installation.profile_extension_v9 FROM "${first.runtime}"`,
+      async () => {
+        await expect(capture()).rejects.toThrow('CURRENT_RUNTIME_V9_LEDGER_INVALID');
+      },
+    );
+  },
+  90000,
+);
+
+fixtureIt(
+  'rejects new142 private helper exposure and missing direct42 grant with exact old census preserved',
+  async () => {
+    const before = await capture();
+    await mutation(
+      `GRANT EXECUTE ON FUNCTION wm_manual_pooled.parent_delta_node_v1(jsonb,jsonb,integer,integer) TO "${first.runtime}"`,
+      `REVOKE EXECUTE ON FUNCTION wm_manual_pooled.parent_delta_node_v1(jsonb,jsonb,integer,integer) FROM "${first.runtime}"`,
+      async () => {
+        await expect(capture()).rejects.toThrow();
+      },
+    );
+    await mutation(
+      `REVOKE EXECUTE ON FUNCTION public.read_manual_race_pooled_parent_delta_v1(uuid,jsonb) FROM "${first.runtime}"`,
+      `GRANT EXECUTE ON FUNCTION public.read_manual_race_pooled_parent_delta_v1(uuid,jsonb) TO "${first.runtime}"`,
+      async () => {
+        await expect(capture()).rejects.toThrow('CATALOG_WITNESS_INVALID');
+      },
+    );
+    expect((await capture()).catalogSha256).toBe(before.catalogSha256);
+  },
+  90000,
+);

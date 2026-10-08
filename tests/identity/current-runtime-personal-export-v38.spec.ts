@@ -23,12 +23,14 @@ import { identityWebOrigin, identityMobileOrigin } from '../../scripts/fixtures/
 import { grantAppProcessingForScenario } from './app-consent-prerequisite';
 
 // Test selection only, never a production support/admission claim. Baseline34,
-// old installed17 and unknown modes do not count as profile22 HTTP acceptance.
+// Old installed17 and unknown modes do not count as this named V38 HTTP acceptance.
 test.skip(
-  !['installed-current-profile22', 'installed-current-profile23'].includes(
-    process.env['IDENTITY_E2E_RACE_MANUAL_PUBLIC'] ?? '',
-  ),
-  'Requires an explicit installed profile22 or profile23 harness with actual V38 repository; older/default modes are not this acceptance.',
+  ![
+    'installed-current-profile22',
+    'installed-current-profile23',
+    'installed-current-profile25',
+  ].includes(process.env['IDENTITY_E2E_RACE_MANUAL_PUBLIC'] ?? ''),
+  'Requires an explicit installed profile22, profile23 or profile25 harness with its actual V38 repository; older/default modes are not this acceptance.',
 );
 async function login(page: Page, origin: string) {
   await page.goto(`${origin}/account`);
@@ -56,7 +58,7 @@ for (const [host, origin] of [
   ['Next', identityWebOrigin],
   ['Vite', identityMobileOrigin],
 ] as const) {
-  test(`${host}: installed profile22 HTTP V38 retains exact unapproved public/internal/source facts after app withdrawal`, async ({
+  test(`${host}: installed named profile HTTP V38 retains exact unapproved public/internal/source facts after app withdrawal`, async ({
     page,
   }) => {
     test.setTimeout(60000);

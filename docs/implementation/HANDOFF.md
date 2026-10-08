@@ -797,3 +797,9 @@ Root codec4 unit48/48·scoped lint/format0을 확인했다. Dense R7 선택2사�
 사용자의 원문 없는 신규 계획 생성·사용 개발 지시를 계속 따른다. Root SQL142 실제 R1 7pass/2fail을 보존하고 fixture 경계 교정 후 R2 9/9·unit17/17, 명시 V2/adapter unit109/109·전체 persistence TS/scoped lint/format0을 확인했다. Dense V2 R8 actual8/8·exit0,119.82초로 genuine 훈련400/영양400/루틴30의 검토·저장·명시 atomic 승인·원 receipt 재생·철회·전체 내보내기·삭제 및 수량 negative를 통과했다. 기존4MiB/8MiB·SQL5초·test60초·모든 guard를 유지했다. 자세한 SHA·로그·R1/R7 실패와 original chain/proposed candidate의 별도 namespace는 [I 기록](progress/M2-02i.md)에 보존한다.
 
 Post142 actual metadata26(public13/private13)·old33+guard4·155입력 불변과 별도 시험 DB/roles/slots0을 확인했다. 정상 최신 profile·whole-catalog/compiled expected/cold 지원·최신 전체 복원·운영 공개 수용은 아직 아니다. Native agents에 새 V9 installer/grants와 catalog 경계 준비를 비중복 배정하고 Root가 공통 통합·실제 DB·graph/Git를 맡는다. FUT-09 역사 원문 이식 별도 대기, AWS 인증·운영503·native/provider 외부 not_executed, full phase gate·독립 검토/main·사용자 push는 유지한다.
+
+## 2026-10-08 named25 정상 설치·권한·카탈로그 및 두 Host 수용
+
+Root 최신 V9 installer29/29·grants20/20·witness11/11을 실제 합성PG로 통과했다. 정확 profile9/runtime25/source142와 parent8/기존physical8 receipt/xmin 보존·42RPC/17owner-only helper를 확인했다. 신규 public subpaths와 explicit profile25 identity fixture의 unit117/117 뒤 Next/Vite 실제8/8로 새 영양계획 preview→별도저장, all-four 명시일정 승인/재생/실제보존, PB정책/삭제, 동의 철회후 V38내보내기를 확인했다. 정상 configured startup은 아직 legacy/default34이며 test fixture 결과로 production 활성화를 주장하지 않는다.
+
+Root177 frozen inputs의 trusted twoDB named 설치·baselineV2/core·grant42·전체 RR READONLY metadata capture는 실제exit0/whole equality/cleanup0이었다. 앞 raw142 metadata와 최신 named25 증거를 구분한다. exactSHA/실패/로그/한계는 [I 기록](progress/M2-02i.md)에 보존한다. 다음 native 병렬은 최소 cold comparator 설계와 기존27source/dynamic·삭제hook/seal 실제 증거 연결이다. Root 공통 통합/DB/graph/Git 소유·원문 없는 신규 계획 개발은 계속하며 FUT-09역사이식 별도대기·운영503/AWS/native/provider/복원/fullphase review/main/push는 미완료다.
