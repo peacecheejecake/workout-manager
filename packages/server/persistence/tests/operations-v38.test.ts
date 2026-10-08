@@ -6,6 +6,7 @@ import {
   createOperationsV38Repository,
 } from '../src/operations.js';
 import type * as RetainedExport from '../src/retained-personal-export.js';
+import type * as ManualSourceExport from '../src/manual-source-personal-export.js';
 import { RetainedPersonalExportError } from '../src/retained-personal-export.js';
 
 const readers = vi.hoisted(() => ({
@@ -22,7 +23,8 @@ vi.mock('../src/retained-personal-export.js', async (original) => ({
 vi.mock('../src/race-manual-internal-personal-export-reader.js', () => ({
   readRaceManualInternalPersonalExportV1In: readers.internal,
 }));
-vi.mock('../src/manual-source-personal-export.js', () => ({
+vi.mock('../src/manual-source-personal-export.js', async (original) => ({
+  ...(await original<typeof ManualSourceExport>()),
   readManualSourcePersonalExportV1In: readers.source,
 }));
 const athlete = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';

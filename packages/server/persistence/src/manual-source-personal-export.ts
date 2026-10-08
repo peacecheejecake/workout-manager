@@ -66,6 +66,11 @@ const nutritionSchema = z.strictObject({
   origins: z.array(z.unknown()),
   lineage: z.array(z.unknown()),
 });
+// Server-private structural seams; callers must bound unknown input before parsing.
+export {
+  manualSchema as manualSourcePersonalExportRawSchemaV1,
+  nutritionSchema as nutritionDisconnectionPersonalExportRawSchemaV1,
+};
 type Identity = z.infer<typeof fields.identity>;
 type Edge = z.infer<typeof raceManualReviewLifecycleEdgeV2Schema>;
 /** Server-private correspondence of already strictly decoded frozen observations.

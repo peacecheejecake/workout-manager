@@ -13,6 +13,7 @@ import {
   type OperationsStatus,
 } from '@workout/contracts/operations';
 import { readManualSourcePersonalExportV1In } from './manual-source-personal-export.js';
+import { readManualRetainedSourceExportBatchV1In } from './manual-retained-source-export-batch-reader.js';
 import { readRaceManualInternalPersonalExportV1In } from './race-manual-internal-personal-export-reader.js';
 import type { Database } from './database.js';
 import {
@@ -817,10 +818,17 @@ export function createOperationsV38Repository(database: Database): OperationsV38
   return createRetainedOperationsRepository(database, 38, parseAccountExportV38);
 }
 
+/** Explicit batch transport shares the same retained preparation once. Missing
+ * batch capability rejects export; it never falls back after a reader failure. */
+export function createOperationsV38BatchRepository(database: Database): OperationsV38Repository {
+  return createRetainedOperationsRepository(database, 38, parseAccountExportV38, 'batch');
+}
+
 function createRetainedOperationsRepository<T>(
   database: Database,
   version: 36 | 37 | 38,
   parse: (raw: unknown) => T,
+  sourceTransport: 'separate' | 'batch' = 'separate',
 ): Omit<OperationsRepository, 'exportAccount'> & { exportAccount(athleteId: string): Promise<T> } {
   const historical = createOperationsRepository(database);
   return {
@@ -876,11 +884,19 @@ function createRetainedOperationsRepository<T>(
         const manual = await loadRetained(() =>
           readRaceManualPersonalExportV1In(tx, remaining(), debit),
         );
+        const batch =
+          sourceTransport === 'batch'
+            ? await loadRetained(() =>
+                readManualRetainedSourceExportBatchV1In(tx, remaining(), debit),
+              )
+            : null;
         let internal = {};
         if (version >= 37) {
-          const observed = await loadRetained(() =>
-            readRaceManualInternalPersonalExportV1In(tx, remaining(), debit),
-          );
+          const observed =
+            batch?.internal ??
+            (await loadRetained(() =>
+              readRaceManualInternalPersonalExportV1In(tx, remaining(), debit),
+            ));
           internal = {
             manualInternalChains: observed.manualInternalChains,
             manualInternalCandidates: observed.manualInternalCandidates,
@@ -891,9 +907,9 @@ function createRetainedOperationsRepository<T>(
         }
         let source = {};
         if (version === 38) {
-          const observed = await loadRetained(() =>
-            readManualSourcePersonalExportV1In(tx, remaining(), debit),
-          );
+          const observed =
+            batch?.sources ??
+            (await loadRetained(() => readManualSourcePersonalExportV1In(tx, remaining(), debit)));
           source = {
             manualSourceChains: observed.manualSourceChains,
             manualSavedSourceRefs: observed.manualSavedSourceRefs,
