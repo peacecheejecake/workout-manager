@@ -627,3 +627,11 @@ Root 실제 aggregate PG R4 **16/16**,focused unit174 및 별도 계약8파일24
 ## internal source129·additive installation 후속 · 2026-10-08
 
 phase commit4d92e59a는 V36/source128, df30fec8는 closed owner catalog observer,6151b4e7는 immutable parent17을보존하는 named installer-v2다. Root v2 actualPG10/10·publicsubpath import·combinedunit81을 확인했다. Owner actualfinal28 metadata를 수집/rollback/cleanup했고 newgrant-v2는 native WIP다. SQL129+internal renderer는 실제R4 **10/10**,unit68이며 공개122검토없는 chain/후보·원all-fourhistory·실제purge·withdraw·13정상독립 체인의 용량 수용을 확인했다. 초기8/2·9/1과 targeted진단 실패를 [I 기록](progress/M2-02i.md)에 보존했다. Registry107/main/push0·I/J/phase in_progress다. 최종wholeaccount successor·source27/SQL110 provenance·normal129successor/cold/configured·전체restore/phase/운영 gate는 미완료이며 linked-only nutrition dependency predicate gap을 병렬 조사한다. Actualcatalog의 원실패10/1과 수정targeted1/10filteredskip은 단일현재11PASS가 아니다. 외부 not_executed를 유지한다.
+
+## 설치19·V37 실제 수용과 다음 병렬 작업 · 2026-10-08
+
+이후 phase 커밋 `2cc88d55`는 grant-v2 실제13/13, `883554a3`는 parent18 불변 installer-v3 실제10/10, `f8a860e6`는 linked-only 영양/회복 영향 수정 실제PG4/4와 Next/Vite2/2, `dc36366c`는 V37 계약 prerequisite, `d0d2c39b`는 실제 final29 관측 기반 grant-v3 실제13/13, `e68f9901`는 V37 same-RR composer/129 adapter다. Root 실제 V37 11+V36 회귀8 **19/19 PASS·skip0**,66.29초와 composer/reader 단위36/36·public import·DB/role/slot 정리0을 확인했다. 최초37의9/2 fixture 비교 실패, 이름이 잘못된 V36/V35 선택과 미실행은 [I 기록](progress/M2-02i.md)에 보존하며 통과로 세지 않는다. 공개 producer의1000 template versions와 독립 chains로 실제 공유8MiB 초과 및 audit0, 1001 count cap도 검증했다.
+
+다음 native 병렬은 source27/SQL110 safe provenance 계약과 신규130 좁은 reader/mapper, 명시profile19의 typed whole-catalog 관측 보강이다. Root는130 `130_retained_source_provenance_export.sql`만 직렬 배정했으며 normalregistry/profile 편입은 아직 없다. Safe projection이 다른 external sourceRecordId를 같은 값으로 축약할 때 저장ordinal을 지키는 보완과 개별planned/C/S/B JSON visits 용량 조사도 진행 중이다. current root catalog witness의 원body·v1 의미는 export-only 재사용 seam 외에 변경하지 않는다. source-authentication/caller wire/dynamic/effective recipe·cold/configured·전체복원·phase 전체 gate/독립검토/main·운영/native/provider gate는 미완료다.
+
+AWS 관리자 STS는 현재 `Token has expired and refresh failed`로 거절돼 새 로그인 가능 여부를 사용자에게 다시 질문했다. FUT-09 원문은 사용자가 전달 예정이라고 답했고, 이후 원문 없이 신규 시작 가능 여부를 질문했다. 신규 시작은 가능하며 기존 원문 이식 범위 변경 여부를 질문한 상태다. 답변 전 원문 이식을 완료/제외로 바꾸지 않는다. I/J/phase·graph 상태와 외부 not_executed는 유지하고 push는 사용자 작업이다.
