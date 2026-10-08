@@ -8,8 +8,8 @@ import type { RaceEventValues } from '@workout/contracts/race-commands';
 import { createDatabase, type Database } from '../src/database.js';
 import { createRaceRepository, type RaceRepository } from '../src/races.js';
 import { createConsentRepository } from '../src/repositories.js';
-import { prepareRaceManualReview } from '../src/race-manual-review-preparation.js';
-import { mapRaceManualReviewSourceInventory } from '../src/race-manual-review-source-inventory.js';
+import { prepareRaceManualReviewCompatibleV4In } from '../src/race-manual-review-preparation-v2.js';
+import { enumerateRaceManualReviewFullCopiedSourcesV2 } from '../src/race-manual-review-full-copied-inventory-v2.js';
 import {
   migrate,
   migrationFileNames,
@@ -175,7 +175,9 @@ afterAll(async () => {
 });
 // Synthetic tenant source fixtures use plain owner+tenant context, not browser facts.
 const prepare = (athlete: string, eventId: string, revision = 1) =>
-  database.tenant(athlete, (tx) => prepareRaceManualReview(tx, intent(eventId, revision)));
+  database.tenant(athlete, (tx) =>
+    prepareRaceManualReviewCompatibleV4In(tx, intent(eventId, revision)),
+  );
 const intent = (id: string, revision = 1) => ({
   expectedEvent: { id, revision },
   newLocalDate: '2026-10-08',
@@ -232,22 +234,24 @@ it('maps exact owned prepared event lineage but never changes storage, admission
     event = await create(athlete),
     before = await counts(athlete);
   const prepared = await prepare(athlete, event.id);
-  expect(prepared.status).toBe('prepared_blocked');
-  const mapped = mapRaceManualReviewSourceInventory(prepared);
+  if (prepared.status === 'blocked') throw new Error('Expected CompatibleV4 assembled preparation');
+  expect(prepared.candidate.status).toBe('assembled_readonly');
+  const mapped = enumerateRaceManualReviewFullCopiedSourcesV2({
+    context: prepared.context,
+    sourceInput: prepared.sourceInput,
+    candidate: prepared.candidate,
+  });
   expect(mapped.refs).toContainEqual(
-    expect.objectContaining({ kind: 'race-event', sourceId: event.id, versionKey: '1' }),
+    expect.objectContaining({ identity: { kind: 'race-event', sourceId: event.id, revision: 1 } }),
   );
   expect(mapped).toMatchObject({
-    complete: false,
-    coverage: false,
     storage: 'not_persisted',
-    storageAllowed: false,
     approvalAllowed: false,
     sourceCompleteness: 'unverified',
   });
   expect(await counts(athlete)).toEqual(before);
   // Full real collector output is inspected below, not reduced to a fabricated capture.
-  expect(mapped.unindexable).toEqual([]);
+  expect(mapped.blockers).toEqual([]);
   expect(mapped.inventoryState).toBe('mapped');
   expect(mapped.allCopiedBodiesIndexed).toBe(true);
 });
@@ -258,17 +262,24 @@ it('preserves exact owned historical and current Plan snapshot namespaces from a
     event = await create(athlete, { planVersionId: historical });
   const before = await counts(athlete),
     prepared = await prepare(athlete, event.id);
-  expect(prepared.status).toBe('prepared_blocked');
-  const mapped = mapRaceManualReviewSourceInventory(prepared);
+  if (prepared.status === 'blocked') throw new Error('Expected CompatibleV4 assembled preparation');
+  expect(prepared.candidate.status).toBe('assembled_readonly');
+  const mapped = enumerateRaceManualReviewFullCopiedSourcesV2({
+    context: prepared.context,
+    sourceInput: prepared.sourceInput,
+    candidate: prepared.candidate,
+  });
   expect(mapped.refs).toContainEqual(
-    expect.objectContaining({ kind: 'plan-snapshot', sourceId: historical, versionKey: '1' }),
+    expect.objectContaining({
+      identity: { kind: 'plan-snapshot', sourceId: historical, version: 1 },
+    }),
   );
   expect(mapped.refs).toContainEqual(
-    expect.objectContaining({ kind: 'plan-snapshot', sourceId: current, versionKey: '2' }),
+    expect.objectContaining({ identity: { kind: 'plan-snapshot', sourceId: current, version: 2 } }),
   );
   expect(mapped.inventoryState).toBe('mapped');
   expect(mapped.allCopiedBodiesIndexed).toBe(true);
-  expect(mapped.storageAllowed).toBe(false);
+  expect(mapped.admissionAllowed).toBe(false);
   expect(await counts(athlete)).toEqual(before);
 });
 it('rejects foreign preparation and forged body copies without writes or replacement of the server capture', async () => {
@@ -278,10 +289,14 @@ it('rejects foreign preparation and forged body copies without writes or replace
     before = await counts(athlete);
   await expect(prepare(foreign, event.id)).rejects.toMatchObject({ code: 'EVENT_UNAVAILABLE' });
   const prepared = await prepare(athlete, event.id);
-  if (prepared.status !== 'prepared_blocked') throw new Error('Expected server preparation');
+  if (prepared.status === 'blocked') throw new Error('Expected server preparation');
   const forged = structuredClone(prepared);
   forged.sourceInput.projectionInput.event.title = 'Synthetic forged copy';
-  const result = mapRaceManualReviewSourceInventory(forged);
+  const result = enumerateRaceManualReviewFullCopiedSourcesV2({
+    context: forged.context,
+    sourceInput: forged.sourceInput,
+    candidate: forged.candidate,
+  });
   expect(result.inventoryState).toBe('blocked');
   expect(result.allCopiedBodiesIndexed).toBe(false);
   expect(prepared.sourceInput.projectionInput.event.title).toBe(values().title);
@@ -292,7 +307,7 @@ it('blocks unsupported copies and transaction rollback retains the original owne
     event = await create(athlete),
     before = await counts(athlete);
   const prepared = await prepare(athlete, event.id);
-  if (prepared.status !== 'prepared_blocked') throw new Error('Expected server preparation');
+  if (prepared.status === 'blocked') throw new Error('Expected server preparation');
   const unsupported = {
     ...prepared,
     context: {
@@ -300,17 +315,26 @@ it('blocks unsupported copies and transaction rollback retains the original owne
       actuals: { original: { title: 'Synthetic unsupported private body' } },
     },
   };
-  const result = mapRaceManualReviewSourceInventory(unsupported);
+  const result = enumerateRaceManualReviewFullCopiedSourcesV2({
+    context: unsupported.context,
+    sourceInput: unsupported.sourceInput,
+    candidate: unsupported.candidate,
+  });
   expect(result.inventoryState).toBe('blocked');
   expect(result.allCopiedBodiesIndexed).toBe(false);
-  expect(result.unindexable).toContainEqual({
-    path: 'context.actuals.original',
-    reason: 'unsupported_copied_body',
-  });
+  expect(result.blockers).toContainEqual({ location: 'input', reason: 'invalid_envelope' });
   await expect(
     database.tenant(athlete, async (tx) => {
-      const captured = await prepareRaceManualReview(tx, intent(event.id));
-      expect(mapRaceManualReviewSourceInventory(captured).approvalAllowed).toBe(false);
+      const captured = await prepareRaceManualReviewCompatibleV4In(tx, intent(event.id));
+      if (captured.status === 'blocked')
+        throw new Error('Expected CompatibleV4 captured preparation');
+      expect(
+        enumerateRaceManualReviewFullCopiedSourcesV2({
+          context: captured.context,
+          sourceInput: captured.sourceInput,
+          candidate: captured.candidate,
+        }).approvalAllowed,
+      ).toBe(false);
       throw new Error('SYNTHETIC_CALLER_ROLLBACK');
     }),
   ).rejects.toThrow('SYNTHETIC_CALLER_ROLLBACK');

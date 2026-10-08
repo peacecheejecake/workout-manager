@@ -7,12 +7,13 @@ import {
   nutritionPlanVersionSchema,
   type NutritionPlanVersion,
 } from '@workout/contracts/nutrition-core';
+import { projectRaceRelativeScheduleImpact } from '@workout/server-coaching/race-relative-schedule-impact';
 import { planDraftSchema } from '@workout/contracts/planning';
 import type { RaceEventValues } from '@workout/contracts/race-commands';
 import { createDatabase, type Database } from '../src/database.js';
 import { createRaceRepository, type RaceRepository } from '../src/races.js';
 import { createConsentRepository } from '../src/repositories.js';
-import { prepareRaceManualReview } from '../src/race-manual-review-preparation.js';
+import { prepareRaceManualReviewCompatibleV4In } from '../src/race-manual-review-preparation-v2.js';
 import {
   migrate,
   migrationFileNames,
@@ -178,7 +179,9 @@ afterAll(async () => {
 });
 // Synthetic tenant source fixtures use plain owner+tenant context, not browser facts.
 const prepare = (athlete: string, eventId: string, revision = 1) =>
-  database.tenant(athlete, (tx) => prepareRaceManualReview(tx, intent(eventId, revision)));
+  database.tenant(athlete, (tx) =>
+    prepareRaceManualReviewCompatibleV4In(tx, intent(eventId, revision)),
+  );
 const intent = (id: string, revision = 1) => ({
   expectedEvent: { id, revision },
   newLocalDate: '2026-10-08',
@@ -303,21 +306,51 @@ it('prepares only a blocked, unstored own review using normal107 real capture an
     before = await counts(athlete);
   const result = await prepare(athlete, event.id),
     again = await prepare(athlete, event.id);
-  expect(result.status).toBe('prepared_blocked');
-  if (result.status !== 'prepared_blocked' || again.status !== 'prepared_blocked')
-    throw new Error('Expected blocked preparation');
+  if (result.status === 'blocked') throw new Error('Expected CompatibleV4 assembled preparation');
+  expect(result.candidate.status).toBe('assembled_readonly');
+  if (again.status === 'blocked') throw new Error('Expected CompatibleV4 assembled preparation');
+  // Readonly preparation is assembled; approval/admission remains blocked.
   expect(result).toMatchObject({
     storage: 'not_persisted',
     sourceCompleteness: 'unverified',
     approvalAllowed: false,
-    integrity: { status: 'consistent', sourceCompleteness: 'unverified', admissionAllowed: false },
+    correspondence: 'recomputed',
+    authority: 'none',
+    freshness: 'not_checked',
     context: { athleteId: athlete, coverage: { complete: false } },
   });
   expect(result.candidate.digest).toBe(again.candidate.digest);
-  expect(result.binding.readSetDigest).toBe(result.context.readSetDigest);
+  expect(result.sourceInput.binding.readSetDigest).toBe(result.context.readSetDigest);
   expect(result.sourceInput.athleteId).toBe(athlete);
-  expect(result.candidate.body.approval.status).toBe('blocked');
-  expect(Object.isFrozen(result.candidate.body)).toBe(true);
+  expect(result.candidate.body).toMatchObject({
+    schemaVersion: 2,
+    approvalAllowed: false,
+    authority: 'none',
+    freshness: 'not_checked',
+  });
+  expect(result.sourceInput.projectionInput.retainedUnplannedRuns).toEqual([]);
+  expect(result.sourceInput.projectionInput.retainedHistoricalRoutines).toEqual([]);
+  // The legacy V1 decoder remains strict: V4 retained fields are not stripped.
+  expect(
+    projectRaceRelativeScheduleImpact(result.sourceInput.projectionInput, {
+      resolveNutrition: () => {
+        throw Error('Legacy decoder must reject before calculations');
+      },
+      expandRoutine: () => {
+        throw Error('Legacy decoder must reject before calculations');
+      },
+    }),
+  ).toMatchObject({ status: 'rejected', reason: 'invalid_input' });
+  const originalBody = structuredClone(result.candidate.body),
+    originalDigest = result.candidate.digest;
+  result.candidate.body.projectionInput.event.title = 'Caller-only changed returned DTO';
+  expect(result.candidate.body).not.toEqual(originalBody);
+  const afterMutation = await prepare(athlete, event.id);
+  if (afterMutation.status === 'blocked') throw Error('Expected assembled V4 reprepare');
+  expect(afterMutation.candidate.body).toEqual(originalBody);
+  expect(afterMutation.candidate.digest).toBe(originalDigest);
+  expect(afterMutation.approvalAllowed).toBe(false);
+  expect(afterMutation.context.event.title).toBe(originalBody.projectionInput.event.title);
   expect(await counts(athlete)).toEqual(before);
 });
 it('rejects browser capture, digests and affected ID authority and preserves foreign/CAS boundaries', async () => {
@@ -334,7 +367,7 @@ it('rejects browser capture, digests and affected ID authority and preserves for
   ])
     await expect(
       database.tenant(athlete, (tx) =>
-        prepareRaceManualReview(tx, { ...intent(event.id), ...extra }),
+        prepareRaceManualReviewCompatibleV4In(tx, { ...intent(event.id), ...extra }),
       ),
     ).rejects.toMatchObject({ code: 'INVALID_INTENT' });
   await expect(prepare(other, event.id)).rejects.toMatchObject({ code: 'EVENT_UNAVAILABLE' });
@@ -364,7 +397,7 @@ it('retains exact historical Plan and other-race before/after sources without up
   await seedNutrition(athlete, [nutrition]);
   const before = await counts(athlete),
     result = await prepare(athlete, event.id);
-  if (result.status !== 'prepared_blocked') throw new Error('Expected blocked preparation');
+  if (result.status === 'blocked') throw new Error('Expected blocked preparation');
   expect(result.context.currentTraining?.snapshot.id).toBe(current);
   expect(result.context.consumedSources.plans.map((plan) => plan.id)).toEqual(
     [historical, current].sort(),
@@ -375,7 +408,7 @@ it('retains exact historical Plan and other-race before/after sources without up
   expect(result.sourceInput.projectionInput.nutrition[0]?.timings).toEqual([
     { itemId: 'item-0', timing: { state: 'resolved', date: '2026-10-10', localTime: '09:00:00' } },
   ]);
-  expect(result.candidate.body.nutrition[0]?.items).toMatchObject([
+  expect(result.candidate.body.projection.nutrition[0]?.items).toMatchObject([
     {
       state: 'unchanged',
       before: { state: 'resolved', date: '2026-10-10', localTime: '09:00:00' },
@@ -385,9 +418,39 @@ it('retains exact historical Plan and other-race before/after sources without up
   expect(result.sourceInput.sourceFacts.nutritionRacePins[0]?.binding.state).toBe(
     'legacy_unpinned',
   );
-  expect(result.missingFacts).toContainEqual(
-    expect.objectContaining({ kind: 'immutable_race_pin' }),
-  );
+  expect(result.candidate.body.pinTransitions).toContainEqual({
+    nutritionVersionId: nutrition.versionId,
+    itemId: 'item-0',
+    priorBinding: { state: 'legacy_unpinned' },
+    savedPin: null,
+    state: 'preserved',
+    proposedCurrentSource: null,
+    proposedTarget: null,
+    allocation: 'not_allocated',
+  });
+  // The other race is unrelated above. Reviewing that exact source makes the
+  // same missing immutable pin affected, requiring explicit review, not upgrade.
+  const affected = await prepare(athlete, other.id);
+  if (affected.status === 'blocked') throw Error('Expected assembled V4 affected preparation');
+  expect(affected.sourceInput.sourceFacts.nutritionRacePins[0]?.binding).toEqual({
+    state: 'legacy_unpinned',
+  });
+  expect(affected.candidate.body.pinTransitions).toContainEqual({
+    nutritionVersionId: nutrition.versionId,
+    itemId: 'item-0',
+    priorBinding: { state: 'legacy_unpinned' },
+    savedPin: null,
+    state: 'requires_explicit_review',
+    proposedCurrentSource: { eventId: other.id, eventRevision: 1 },
+    proposedTarget: { eventId: other.id, eventRevision: 2 },
+    allocation: 'not_allocated',
+  });
+  expect(affected.candidate.body.unresolvedBindingItems).toContainEqual({
+    nutritionVersionId: nutrition.versionId,
+    itemId: 'item-0',
+    reason: 'race_binding_unavailable',
+  });
+  expect(affected.approvalAllowed).toBe(false);
   expect(await counts(athlete)).toEqual(before);
 });
 it('derives and recaptures move-period affected IDs while preparation stays in its caller-owned transaction', async () => {
@@ -398,7 +461,7 @@ it('derives and recaptures move-period affected IDs while preparation stays in i
   const before = await counts(athlete);
   const result = await database.tenant(athlete, async (tx) => {
     const first = await tx.query('SELECT txid_current()::text AS id');
-    const prepared = await prepareRaceManualReview(tx, {
+    const prepared = await prepareRaceManualReviewCompatibleV4In(tx, {
       ...intent(event.id),
       selection: {
         kind: 'move_period',
@@ -412,12 +475,12 @@ it('derives and recaptures move-period affected IDs while preparation stays in i
     expect(last.rows).toEqual(first.rows);
     return prepared;
   });
-  if (result.status !== 'prepared_blocked') throw new Error('Expected blocked preparation');
+  if (result.status === 'blocked') throw new Error('Expected blocked preparation');
   expect(result.context.affected.nutrition).toHaveLength(1);
-  expect(result.candidate.body.calendar.sessionDiffs).toMatchObject([
+  expect(result.candidate.body.projection.calendar.sessionDiffs).toMatchObject([
     { id: 'session', beforeDate: '2026-10-06', afterDate: '2026-10-08' },
   ]);
-  expect(result.candidate.body.resolution.requiresResolution).toBe(true);
+  expect(result.candidate.body.projection.requiresResolution).toBe(true);
   expect(await counts(athlete)).toEqual(before);
 });
 it('unaffected old unresolved has a notice but affected old unresolved still requires resolution', async () => {
@@ -431,17 +494,17 @@ it('unaffected old unresolved has a notice but affected old unresolved still req
     ]),
   ]);
   const result = await prepare(athlete, event.id);
-  if (result.status !== 'prepared_blocked') throw new Error('Expected blocked preparation');
-  expect(result.candidate.body.resolution.preservedNotices).toContainEqual(
-    expect.objectContaining({ reason: 'existing_unresolved_preserved', itemId: 'item-0' }),
+  if (result.status === 'blocked') throw new Error('Expected blocked preparation');
+  expect(result.candidate.body.projection.nutrition.flatMap((row) => row.items)).toContainEqual(
+    expect.objectContaining({ notice: 'existing_unresolved_preserved', itemId: 'item-0' }),
   );
-  expect(result.candidate.body.resolution.blocking).toContainEqual(
+  expect(result.candidate.body.projection.nutrition.flatMap((row) => row.items)).toContainEqual(
     expect.objectContaining({
-      reason: 'affected_unresolved_requires_resolution',
+      notice: 'affected_unresolved_requires_resolution',
       itemId: 'item-1',
     }),
   );
-  expect(result.integrity.resolution).toBe('requires_resolution');
+  expect(result.candidate.body.projection.requiresResolution).toBe(true);
 });
 it('withdrawal committed before preparation acquires tenant0 blocks the entire server composition', async () => {
   const athlete = await account(),
@@ -474,7 +537,7 @@ it('preparation retains app lock until caller commit, then subsequent preparatio
     ready = deferred(),
     release = deferred();
   const pending = database.tenant(athlete, async (tx) => {
-    const value = await prepareRaceManualReview(tx, intent(event.id));
+    const value = await prepareRaceManualReviewCompatibleV4In(tx, intent(event.id));
     ready.resolve();
     await release.promise;
     return value;
@@ -501,7 +564,7 @@ it('concurrent event mutation waits until caller completes preparation and makes
     ready = deferred(),
     release = deferred();
   const pending = database.tenant(athlete, async (tx) => {
-    const value = await prepareRaceManualReview(tx, intent(event.id));
+    const value = await prepareRaceManualReviewCompatibleV4In(tx, intent(event.id));
     ready.resolve();
     await release.promise;
     return value;
