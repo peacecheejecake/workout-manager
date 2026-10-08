@@ -49,6 +49,7 @@
     "./current-runtime-grants-v2": "./src/current-runtime-grants-v2.ts",
     "./current-runtime-grants-v3": "./src/current-runtime-grants-v3.ts",
     "./current-runtime-grants-v4": "./src/current-runtime-grants-v4.ts",
+    "./current-runtime-catalog-witness-v4": "./src/current-runtime-catalog-witness-v4.ts",
     "./race-manual-internal-personal-export-reader": "./src/race-manual-internal-personal-export-reader.ts",
     "./identity": "./src/identity.ts",
     "./planning": "./src/planning.ts",
