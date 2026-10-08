@@ -114,6 +114,10 @@ interface Options {
   readonly holdFirstPlaceSearch?: Promise<unknown>;
   /** Holds the protected-area ADD response until the test releases it. */
   readonly holdZoneAdd?: Promise<unknown>;
+  readonly holdZoneAddByCall?: readonly Promise<unknown>[];
+  /** Observe or delay reads without changing the server's stored roster. */
+  readonly beforeZoneRead?: (read: number) => Promise<void>;
+  readonly zoneDigestByCount?: (count: number) => string;
   /** The area an addition stores, so the mock server has something to add. */
   readonly zoneToAdd?: { zoneId: string; name: string; radiusMeters: number };
   /** Refuse every removal, the way a removal of an area somebody else deleted is refused. */
@@ -130,6 +134,8 @@ interface Options {
 function setup(options: Options = {}) {
   let imports = 0;
   let searches = 0;
+  let zoneReads = 0;
+  let zoneAdds = 0;
   // The mock server's own protected areas, so a write is observable in what a later read
   // answers. A fixed reply cannot show "the list the screen shows is not the list the
   // server holds", which is the defect these tests exist for.
@@ -141,7 +147,9 @@ function setup(options: Options = {}) {
   const zoneList = () => ({
     zones: [...stored],
     total: stored.length,
-    zoneSetDigest: stored.length === 0 ? 'd'.repeat(64) : 'c'.repeat(64),
+    zoneSetDigest:
+      options.zoneDigestByCount?.(stored.length) ??
+      (stored.length === 0 ? 'd'.repeat(64) : 'c'.repeat(64)),
   });
   const request = vi.fn(async (input: TransportRequest): Promise<Reply> => {
     if (input.path === '/bff/v1/courses' && input.method === 'GET')
@@ -162,8 +170,11 @@ function setup(options: Options = {}) {
       });
     if (input.path === '/bff/v1/courses/preferences' && input.method === 'PUT')
       return reply({ courseId, favourite: true, lastUsedAt: createdAt });
-    if (input.path === '/bff/v1/courses/privacy-zones' && input.method === 'GET')
+    if (input.path === '/bff/v1/courses/privacy-zones' && input.method === 'GET') {
+      zoneReads += 1;
+      await options.beforeZoneRead?.(zoneReads);
       return reply(zoneList());
+    }
     if (input.path === '/bff/v1/courses/place-search' && input.method === 'POST') {
       searches += 1;
       const at = searches - 1;
@@ -183,6 +194,9 @@ function setup(options: Options = {}) {
           updatedAt: createdAt,
         });
       const answer = zoneList();
+      const held = options.holdZoneAddByCall?.[zoneAdds];
+      zoneAdds += 1;
+      if (held) await held;
       if (options.holdZoneAdd) await options.holdZoneAdd;
       return reply(answer);
     }
@@ -1044,6 +1058,123 @@ describe('protected areas and the privacy trim', () => {
       .queryAllByRole('button', { name: /삭제$/u })
       .map((button) => button.textContent ?? '');
 
+  const deferred = () => {
+    let release = () => {};
+    const promise = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    return { promise, release };
+  };
+
+  const trimButton = (panel: HTMLElement) =>
+    within(panel).getByRole('button', { name: '보호 구역 제거본 만들기' });
+  const trimCalls = (request: ReturnType<typeof setup>['request']) =>
+    request.mock.calls.filter(([input]) => input.method === 'PATCH');
+
+  it('waits for the area write and its reread before trimming with the refreshed digest', async () => {
+    const addition = deferred();
+    const reread = deferred();
+    const { request } = setup({
+      zones,
+      zoneToAdd: workZone,
+      holdZoneAdd: addition.promise,
+      beforeZoneRead: async (read) => {
+        if (read === 2) await reread.promise;
+      },
+      zoneDigestByCount: (count) => (count === 1 ? 'c' : 'e').repeat(64),
+    });
+    await userEvent.click(await screen.findByRole('button', { name: '가져온 코스' }));
+    const panel = await screen.findByRole('region', { name: '보호 구역' });
+    await waitFor(() => expect(trimButton(panel)).toBeEnabled());
+    await addZone(panel);
+    expect(trimButton(panel)).toBeDisabled();
+    await userEvent.click(trimButton(panel));
+    expect(trimCalls(request)).toHaveLength(0);
+    addition.release();
+    await screen.findByText('보호 구역을 추가했습니다.');
+    await waitFor(() =>
+      expect(
+        request.mock.calls.filter(
+          ([input]) => input.path.endsWith('privacy-zones') && input.method === 'GET',
+        ),
+      ).toHaveLength(2),
+    );
+    expect(trimButton(panel)).toBeDisabled();
+    await userEvent.click(trimButton(panel));
+    expect(trimCalls(request)).toHaveLength(0);
+    reread.release();
+    await waitFor(() => expect(trimButton(panel)).toBeEnabled());
+    expect(shownZones(panel)).toEqual(['집 삭제', '직장 삭제']);
+    await userEvent.click(trimButton(panel));
+    await waitFor(() => expect(trimCalls(request)).toHaveLength(1));
+    expect(trimCalls(request)[0]?.[0].body).toEqual({
+      expectedRevision: 2,
+      change: { kind: 'privacy-trim', acknowledgedZoneSetDigest: 'e'.repeat(64) },
+    });
+  });
+
+  it('keeps an old digest unavailable after a failed reread and recovers with a successful read', async () => {
+    const reread = deferred();
+    const { request } = setup({
+      zones,
+      zoneRemoveFails: true,
+      zoneToAdd: workZone,
+      zoneDigestByCount: (count) => (count === 1 ? 'c' : 'e').repeat(64),
+      beforeZoneRead: async (read) => {
+        if (read === 2) {
+          await reread.promise;
+          throw new Error('synthetic read failure');
+        }
+      },
+    });
+    await userEvent.click(await screen.findByRole('button', { name: '가져온 코스' }));
+    const panel = await screen.findByRole('region', { name: '보호 구역' });
+    await waitFor(() => expect(trimButton(panel)).toBeEnabled());
+    await userEvent.click(within(panel).getByRole('button', { name: '집 삭제' }));
+    await waitFor(() => expect(trimButton(panel)).toBeDisabled());
+    reread.release();
+    await screen.findByText('보호 구역을 불러오지 못했습니다.');
+    expect(shownZones(panel)).toEqual(['집 삭제']);
+    await userEvent.click(trimButton(panel));
+    expect(trimCalls(request)).toHaveLength(0);
+    // Another genuine zone write invalidates the failed query and rereads the server.
+    await addZone(panel);
+    await waitFor(() => expect(trimButton(panel)).toBeEnabled());
+    expect(shownZones(panel)).toEqual(['집 삭제', '직장 삭제']);
+    await userEvent.click(trimButton(panel));
+    await waitFor(() => expect(trimCalls(request)).toHaveLength(1));
+    expect(trimCalls(request)[0]?.[0].body).toMatchObject({
+      change: { acknowledgedZoneSetDigest: 'e'.repeat(64) },
+    });
+  });
+
+  it('keeps trim disabled when a later addition settles before an earlier addition', async () => {
+    const first = deferred();
+    const second = deferred();
+    const { request } = setup({ zones, holdZoneAddByCall: [first.promise, second.promise] });
+    await userEvent.click(await screen.findByRole('button', { name: '가져온 코스' }));
+    const panel = await screen.findByRole('region', { name: '보호 구역' });
+    await waitFor(() => expect(trimButton(panel)).toBeEnabled());
+    await addZone(panel);
+    // The first response has not cleared the form; submit the same valid form again.
+    await userEvent.click(within(panel).getByRole('button', { name: '보호 구역 추가' }));
+    second.release();
+    await screen.findByText('보호 구역을 추가했습니다.');
+    await waitFor(() =>
+      expect(
+        request.mock.calls.filter(
+          ([input]) => input.path.endsWith('privacy-zones') && input.method === 'GET',
+        ),
+      ).toHaveLength(2),
+    );
+    expect(trimButton(panel)).toBeDisabled();
+    await userEvent.click(trimButton(panel));
+    expect(trimCalls(request)).toHaveLength(0);
+    first.release();
+    await waitFor(() => expect(trimButton(panel)).toBeEnabled());
+    expect(screen.getByText('보호 구역을 추가했습니다.')).toBeInTheDocument();
+  });
+
   /**
    * Neither write may resurrect what another removed.
    *
@@ -1055,7 +1186,7 @@ describe('protected areas and the privacy trim', () => {
     const addResponse = new Promise<void>((resolve) => {
       releaseAdd = resolve;
     });
-    setup({ zones, holdZoneAdd: addResponse, zoneToAdd: workZone });
+    const { request } = setup({ zones, holdZoneAdd: addResponse, zoneToAdd: workZone });
     await userEvent.click(await screen.findByRole('button', { name: '가져온 코스' }));
     const panel = await screen.findByRole('region', { name: '보호 구역' });
     await addZone(panel);
@@ -1063,10 +1194,14 @@ describe('protected areas and the privacy trim', () => {
     // While that is out, the owner deletes the area they already had.
     await userEvent.click(within(panel).getByRole('button', { name: '집 삭제' }));
     expect(await screen.findByText('보호 구역을 삭제했습니다.')).toBeInTheDocument();
+    expect(trimButton(panel)).toBeDisabled();
+    await userEvent.click(trimButton(panel));
+    expect(trimCalls(request)).toHaveLength(0);
     // Now the addition answers, with a list that still contains the deleted area.
     releaseAdd();
     await settle();
     await waitFor(() => expect(shownZones(panel)).toEqual(['직장 삭제']));
+    await waitFor(() => expect(trimButton(panel)).toBeEnabled());
     expect(screen.getByText('보호 구역을 삭제했습니다.')).toBeInTheDocument();
   });
 

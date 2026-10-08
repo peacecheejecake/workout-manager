@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useRef, useState, type FormEvent } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useIsMutating, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   courseLimits,
   type CoursePosition,
@@ -523,6 +523,8 @@ export function CoursePrivacyPanel({
   const [radius, setRadius] = useState('300');
   const [message, setMessage] = useState('');
   const zoneKey = [...scope, 'privacy-zones'];
+  const zoneWriteKey = [...scope, 'privacy-zone-write'];
+  const outstandingZoneWrites = useIsMutating({ mutationKey: zoneWriteKey, exact: true });
   const zones = useQuery({
     queryKey: zoneKey,
     queryFn: ({ signal }) => api.privacyZones(signal),
@@ -547,10 +549,9 @@ export function CoursePrivacyPanel({
    * a superseded write must not speak over the write that replaced it.
    */
   const claimZoneMessage = useLatest();
-  const rereadZones = () => {
-    void queries.invalidateQueries({ queryKey: zoneKey });
-  };
+  const rereadZones = () => queries.invalidateQueries({ queryKey: zoneKey });
   const add = useMutation({
+    mutationKey: zoneWriteKey,
     mutationFn: (input: { name: string; center: CoursePosition; radiusMeters: number }) =>
       api.createPrivacyZone(input),
     onMutate: () => ({ owns: claimZoneMessage() }),
@@ -570,6 +571,7 @@ export function CoursePrivacyPanel({
     onSettled: rereadZones,
   });
   const remove = useMutation({
+    mutationKey: zoneWriteKey,
     mutationFn: (zoneId: string) => api.removePrivacyZone(zoneId),
     onMutate: () => ({ owns: claimZoneMessage() }),
     onSuccess: (_result, _zoneId, context) => {
@@ -582,6 +584,15 @@ export function CoursePrivacyPanel({
     },
     onSettled: rereadZones,
   });
+
+  // A stored write is not a refreshed acknowledgement. Keep trim unavailable until
+  // every scoped write and its reread settles, including earlier overlapping calls.
+  const canTrim =
+    zoneSet !== undefined &&
+    zoneSet.zones.length > 0 &&
+    outstandingZoneWrites === 0 &&
+    !zones.isFetching &&
+    !zones.isError;
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -656,12 +667,12 @@ export function CoursePrivacyPanel({
       </form>
       <Button
         variant="primary"
-        disabled={zoneSet === undefined || zoneSet.zones.length === 0}
+        disabled={!canTrim}
         // Built from the list or not built at all: the button cannot be pressed without
         // one, so there is no unreachable "no list yet" branch inside it to mislead a
         // reader into thinking this can run before the areas are known.
         onClick={
-          zoneSet === undefined
+          !canTrim || zoneSet === undefined
             ? undefined
             : () =>
                 onTrim({

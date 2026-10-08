@@ -78,3 +78,7 @@ Root의 최신 AWS non-root workout-admin STS 조회는 SSO token expired/refres
 후속 canonical 관측 실행은 general318통과·1timeout·12skip로 실패했고 후속 모음/두 번째 실행은 not_executed다. Controlled app 동의409 경쟁 시험의 단언1통과와 actor 정리 실패(DB1·역할5·TMP1)는 별개이며, 정확한 소유 클러스터만 별도 폐기했다. OIDC 보류 목록에 app 동의 한 줄을 추가한 뒤 실제 focused2/2·skip0·retry0·exit0을 확인했다. TMP 부모 종료 관측의 child code0/signalnull과 즉시 잔존0은 진단 범위의 증거이며 원 timeout/정리 실패 원인은 미확정이다. 제품·timeout·runtime333·빌드는 변경하지 않았다. 실제 SHA와 native signed artifact 유효/기기 미연결 한계는 [HANDOFF의 새 기록](../HANDOFF.md#2026-10-09-oidc-경쟁-fixture-교정과-종료-관측)에 따른다. 관측 없는 whole x2·독립 phase 검토/main은 여전히 미완료다.
 
 후속 `f26bc4a5` canonical 전체 실행은 general318통과·course-extras1실패·12skip였다. 원본 focused1통과와 별도 controlled1실패는 구분한다. 실제 controlled에서 보호 구역 POST200 뒤 새 목록 GET 완료 전에 enabled 버튼의 PATCH가 나가 서버409 stale 거절을 받았으며 기존 수정본은 보존됐다. 만든 구역2개·임시 spec 정리, 원4,219개 입력과 자원 정리는 완료했다. 서버 guard를 보존하는 scoped 화면 수정·회귀 검증은 진행 중이며 full x2·독립 review/main은 미완료다. 실제 SHA·관측 한계·AWS CLI 인증 복구·iPhone 정확 합성 앱 설치 성공 뒤 LOCKED 실행 중단은 [HANDOFF의 새 기록](../HANDOFF.md#2026-10-09-보호-구역-갱신-경합의-실제-재현)을 따른다. 잠금 해제 전 성능 측정은 not_executed다.
+
+### 2026-10-09 보호 구역 갱신 대기 교정
+
+[HANDOFF의 새 검증 기록](../HANDOFF.md#2026-10-09-보호-구역-갱신-대기-교정과-실제-ui-확인)을 따른다. Component48/48, 전체 정적6개 exit0, 전체 unit9509통과·5skip, 실제 Cua IAB 합성 UI/320·768·1280 reflow를 확인했다. Controlled R2는 시험1건 통과와 actor 유효성 오류를 구분해 보존했다. canonical identity x2·독립 phase review·main 병합은 미완료이며 graph 상태를 올리지 않는다.

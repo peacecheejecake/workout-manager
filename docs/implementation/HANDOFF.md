@@ -1003,3 +1003,15 @@ OIDC fixture의 보류 목록에 `/bff/v1/consents/app` 한 줄을 추가했다.
 사용자의 새 기기 연결 승인 뒤 `workout-admin` CLI SSO login은 실제 exit0, 서울 리전의 읽기 전용 STS는 exit0·기존 계정 일치였다. 기록 SHA `442022cfa63e8db70e0a0d706b5c4ced275c187f444d17e17cbd5646b274afb9`를 따른다. 세션 만료 시각은 미관측이며 로그인 유지 기간·IAM 정책·서버 배포 변경을 주장하지 않는다. 기존 public TLS503 관측은 그대로이고 공개 전환은 수행하지 않았다.
 
 사용자의 iPhone 연결 후 실제 paired/connected1개를 확인했다. 보존된 signed 합성 artifact4,849개 파일 SHA `810686ac7d51bc585ade9f4d2bd2b62487b1f5c384f71cd211f6a31d2b465d83`를 재확인하고 `org.workoutmanager.synthetic.performance` 정확 앱 설치는 exit0이었다. 설치 후 bundle/version/build는 일치했으나 원격 바이너리 SHA는 not_observed다. 이어 foreground 실행1회는 iPhone 잠금으로 exit1/LOCKED라 중단했고 재시도·record·성능 측정은 하지 않았다. 실제 기록 SHA `cdc9642d7d72126a168b12f7de6e4dc086e1363837e5a4a130d98e05c63aface`를 따른다. 사용자 잠금 해제 확인을 기다린다. 제품 앱·HealthKit·개인 기록에 접근하지 않았고 native RSS/JS heap/그리기·이동 수용은 not_executed다. 이전 unsigned artifact·미연결 관측은 과거 결과로 보존한다.
+
+### 2026-10-09 보호 구역 갱신 대기 교정과 실제 UI 확인
+
+`CoursePrivacyPanel`은 계정/session scope의 모든 보호 구역 쓰기와 뒤따르는 목록 갱신이 끝나고 조회 오류가 없을 때만 제거본 버튼과 callback을 허용한다. 같은 종류의 앞선 요청이 뒤 요청보다 늦게 끝나는 경우도 포함하며 서버 digest guard는 유지했다. 실제 component48/48·consumer TS/lint/format/diff exit0이다. source SHA `db5bdc0c098648b0d71b63bd758b261aabba1e3e2c77d8e7b1902a738a21dca6`, test SHA `eb264a8526667063073b3213e897624ee0a6693681ff1f3c4aca4c930feb780a`를 따른다.
+
+새 전체 정적 R3 install/generated/lint/typecheck/build/format은 모두 exit0이었다. typecheck36/36·build15/15·cache0, 입력2917/source333/asset 불변이다. 보고서 SHA `e322a342f2a575c427d8999a5cdd390f0c04a6a2a6575966718c7eb7a71c433a`다. 앞선 R2 install exit1·원인 unknown은 보존한다. 전체 unit R7은583파일 통과·5파일 실패,9473시험 통과·36실패·5skip·exit1이었다. R8은588파일/9509시험 통과·5skip·실패0·exit0, 결과 SHA `86099ed05e183b553945a8dc408e208a061d7c2c6346b3aaa170e7802bb428ef`다. R8 성공만으로 R7 실패 원인을 확정하지 않는다. 기존 normal 통합1091개 입력은 실제 재대조에서 모두 불변(SHA `31d3f29f47f7137334b1a1b773d9d0f9eebe06f2064658b8294aa205717702ba`)이며 새 통합 실행으로 세지 않는다.
+
+수정 뒤 controlled R2 원 시험1건은 실제 통과·skip0·retry0·exit0이고 새 목록 응답 완료 뒤 제거 PATCH200·수정번호2를 관측했다. 다만 뒤 관측기의 유효성 오류 때문에 actor는 acceptedfalse·exit1이었다. aggregate SHA `9621d72b3d7962ed66993ad5d8eb6577194712fa3ba21ca3e30ef740fc351093`와 보고서 SHA `b6eea46cad7020305e9ad9c9dc1287961ed8e9cb52da4ffaece5675ea8a6f098`를 함께 보존한다. 현 수정번호 조회와 UI 문구는 옛 수정본 DB 보존의 독립 증거가 아니다.
+
+사용자 선호에 따라 실제 탐색은 Cua Codex In-app Browser로 수행했다. 로컬 합성 Alice 로그인·app 동의·고정 합성 GPX 가져오기·동일 이름 구역2개 추가 후 제거본 성공/수정번호2를 확인했다. 320/768/1280 외부 viewport의 client/scroll 폭은 각각305/753/1265로 동일했고 성공 상태가 유지됐다. 실제 pending 창은 관측하지 못했으며 IME/native lifecycle/개인 건강 자료 검증은 수행하지 않았다. viewport reset·소유 tab20 종료를 완료했다. 유한 UI 기록 SHA `cdbdb0de719a6ecfad6e8dc95181b55ae627e834549add68835e9131ae27ccc8`다. guardian 종료는 exit0·소유 process group 부재·DB/역할/slot/포트/새 TMP 잔존0·4219 입력 불변이며 SHA `d295e8210743431fe1c4629d07c981088be8f276bfd61b365a0a104d143f7d41`다. 파일명의 Aside를 실제 Aside 점검으로 표시하지 않는다.
+
+iPhone 재연결의 읽기 관측은 paired/connected1개·정확 합성 bundle/version/build 일치·artifact/hash 불변이었다(SHA `246d2c4135eb9f8508ee946baf9565dc60a9e689fb01a9a9bba81997454de72d`). 잠금 상태는 unknown이라 사용자 해제 확인을 기다린다. 새 설치/launch/trace/성능 측정은 수행하지 않았다. canonical 전체 identity 두 회차, 독립 phase review, main 병합과 운영/실기기 gate는 아직 미완료다.
