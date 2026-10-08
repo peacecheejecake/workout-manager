@@ -1053,7 +1053,7 @@ function validateSavedSourceData38(data: RetainedExportData38, ctx: z.Refinement
   }
   const trainingBodies = new Map(
     data.planSnapshots.flatMap((raw) => {
-      const parsed = planSnapshotSchema.safeParse(raw);
+      const parsed = trainingExportSnapshot36.safeParse(raw);
       return parsed.success ? [[parsed.data.id, parsed.data] as const] : [];
     }),
   );

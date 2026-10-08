@@ -5,11 +5,14 @@ import {
   accountExportV35Schema,
   accountExportV36Schema,
   parseAccountExportV37,
+  parseAccountExportV38,
+  type AccountExportV38,
   type AccountExportV37,
   operationsStatusSchema,
   type AccountExport,
   type OperationsStatus,
 } from '@workout/contracts/operations';
+import { readManualSourcePersonalExportV1In } from './manual-source-personal-export.js';
 import { readRaceManualInternalPersonalExportV1In } from './race-manual-internal-personal-export-reader.js';
 import type { Database } from './database.js';
 import {
@@ -804,9 +807,19 @@ export function createOperationsV37Repository(database: Database): OperationsV37
   return createRetainedOperationsRepository(database, 37, parseAccountExportV37);
 }
 
+export interface OperationsV38Repository extends Omit<OperationsRepository, 'exportAccount'> {
+  exportAccount(athleteId: string): Promise<AccountExportV38>;
+}
+
+/** Saved safe dependency observations join the complete retained family in one
+ * RR snapshot. Their census does not authenticate source or original events. */
+export function createOperationsV38Repository(database: Database): OperationsV38Repository {
+  return createRetainedOperationsRepository(database, 38, parseAccountExportV38);
+}
+
 function createRetainedOperationsRepository<T>(
   database: Database,
-  version: 36 | 37,
+  version: 36 | 37 | 38,
   parse: (raw: unknown) => T,
 ): Omit<OperationsRepository, 'exportAccount'> & { exportAccount(athleteId: string): Promise<T> } {
   const historical = createOperationsRepository(database);
@@ -864,7 +877,7 @@ function createRetainedOperationsRepository<T>(
           readRaceManualPersonalExportV1In(tx, remaining(), debit),
         );
         let internal = {};
-        if (version === 37) {
+        if (version >= 37) {
           const observed = await loadRetained(() =>
             readRaceManualInternalPersonalExportV1In(tx, remaining(), debit),
           );
@@ -876,11 +889,28 @@ function createRetainedOperationsRepository<T>(
             sourceProvenanceCoverage: observed.sourceProvenanceCoverage,
           };
         }
+        let source = {};
+        if (version === 38) {
+          const observed = await loadRetained(() =>
+            readManualSourcePersonalExportV1In(tx, remaining(), debit),
+          );
+          source = {
+            manualSourceChains: observed.manualSourceChains,
+            manualSavedSourceRefs: observed.manualSavedSourceRefs,
+            manualSavedSourceParents: observed.manualSavedSourceParents,
+            manualSavedSourceSuppressions: observed.manualSavedSourceSuppressions,
+            nutritionDisconnectionOrigins: observed.nutritionDisconnectionOrigins,
+            nutritionDisconnectionLineage: observed.nutritionDisconnectionLineage,
+            sourceProvenanceCoverage: observed.sourceProvenanceCoverage,
+            sourceAuthentication: observed.sourceAuthentication,
+            originalEventAuthentication: observed.originalEventAuthentication,
+          };
+        }
         const artifact = parse({
           schemaVersion: version,
           athleteId,
           exportedAt,
-          data: { ...withTemplates, ...manual, ...internal },
+          data: { ...withTemplates, ...manual, ...internal, ...source },
         });
         if (Buffer.byteLength(JSON.stringify(artifact), 'utf8') > maxBytes)
           throw new OperationsError('EXPORT_TOO_LARGE');

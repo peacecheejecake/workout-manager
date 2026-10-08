@@ -1,4 +1,6 @@
 import { expect, it } from 'vitest';
+import { z } from 'zod';
+import { planDraftSchema } from '../src/planning.js';
 import {
   accountExportSchema,
   accountExportV35Schema,
@@ -613,4 +615,139 @@ it('does not mistake carried provenance for an unchanged-anchor policy', () => {
   expect(parseAccountExportV38(v).data.nutritionDisconnectionLineage[1]?.disposition).toBe(
     'carried',
   );
+});
+
+function knownTrainingPhysicalFixture() {
+  const value = fixture(),
+    versionId = id(80),
+    aggregateId = id(81);
+  const draft = planDraftSchema.parse({
+    title: 'Frozen actual export wire',
+    timezone: 'UTC',
+    periods: ['season', 'wave', 'phase', 'block'].map((level, index, levels) => ({
+      id: level,
+      parentId: index ? levels[index - 1] : null,
+      level,
+      title: level,
+      startDate: '2026-10-01',
+      endDateExclusive: '2026-11-01',
+      timezone: 'UTC',
+      intent: '',
+      isPartial: false,
+    })),
+    sessions: [
+      {
+        id: '현재-세션',
+        blockId: 'block',
+        date: '2026-10-09',
+        localStartTime: null,
+        title: 'Frozen zero and unknown',
+        sport: 'running',
+        durationSeconds: 0,
+        distanceMeters: null,
+        targetRpe: null,
+        purpose: '',
+        notes: '',
+        priority: 'normal',
+        locks: { date: false, time: false, intensity: false },
+        steps: [],
+      },
+    ],
+  });
+  const chain = first(value.data.manualInternalChains);
+  if (chain.body.state !== 'present') throw Error('FIXTURE_REQUIRED');
+  chain.body.planned.training = {
+    state: 'present',
+    members: [
+      {
+        aggregateId,
+        before: { ref: { versionId, version: 1 }, plan: draft },
+        after: { kind: 'retained', plan: structuredClone(draft) },
+      },
+    ],
+  };
+  // Exact existing operations exportSql projection: created_at, not runtime
+  // PlanSnapshot.createdAt. This is a structural fixture, not DB/source proof.
+  value.data.planSnapshots = [
+    { id: versionId, version: 1, created_at: at, draft: z.json().parse(draft) },
+  ];
+  value.data.trainingPlanAggregates = [{ version_id: versionId, aggregate_id: aggregateId }];
+  const source = first(value.data.manualSourceChains);
+  source.savedRefCount = 2;
+  source.savedParentCount = 2;
+  value.data.manualSavedSourceRefs.push({
+    evidenceId: chain.evidenceId,
+    ordinal: 2,
+    identity: { kind: 'plan-snapshot', sourceId: versionId, version: 1 },
+    parentCoverage: 'saved_parents',
+    existence: { basis: 'export_snapshot', state: 'present' },
+    location: {
+      state: 'known',
+      members: [
+        {
+          domain: 'training',
+          aggregateId,
+          side: 'before',
+          component: 'training_session',
+          memberId: '현재-세션',
+          parent: { family: 'plan-snapshot', sourceId: versionId, version: 1 },
+        },
+      ],
+    },
+  });
+  value.data.manualSavedSourceParents.push({
+    evidenceId: chain.evidenceId,
+    ordinal: 2,
+    identity: { family: 'plan-snapshot', sourceId: versionId, version: 1 },
+    role: 'source',
+    membership: null,
+  });
+  return value;
+}
+it('accepts exact raw created_at wire and nonempty frozen training session with immutable parent mapping', () => {
+  const value = knownTrainingPhysicalFixture(),
+    parsed = parseAccountExportV38(value);
+  expect(parsed).toEqual(value);
+  const chain = first(parsed.data.manualInternalChains);
+  if (chain.body.state !== 'present' || chain.body.planned.training.state !== 'present')
+    throw Error('FIXTURE_REQUIRED');
+  expect(first(first(chain.body.planned.training.members).before.plan.sessions)).toMatchObject({
+    durationSeconds: 0,
+    distanceMeters: null,
+    localStartTime: null,
+  });
+  expect(first(parsed.data.planSnapshots)).toHaveProperty('created_at', at);
+  expect(first(parsed.data.planSnapshots)).not.toHaveProperty('createdAt');
+});
+it('rejects runtime createdAt substituted for the raw export timestamp without converting the input wire', () => {
+  const value = knownTrainingPhysicalFixture(),
+    snapshot = first(value.data.planSnapshots);
+  snapshot['createdAt'] = snapshot['created_at'] ?? null;
+  Reflect.deleteProperty(snapshot, 'created_at');
+  const result = accountExportV38Schema.safeParse(value);
+  expect(result.success).toBe(false);
+  if (result.success) throw Error('NEGATIVE_REQUIRED');
+  expect(result.error.issues.map((issue) => issue.message)).toContain(
+    'Known source location requires exact frozen before member and parent tuple',
+  );
+});
+it('rejects a forged training member even with unchanged source counts and full parent tuple', () => {
+  const value = knownTrainingPhysicalFixture(),
+    ref = value.data.manualSavedSourceRefs[1];
+  if (!ref || ref.location.state !== 'known') throw Error('FIXTURE_REQUIRED');
+  first(ref.location.members).memberId = 'forged-session';
+  expect(accountExportV38Schema.safeParse(value).success).toBe(false);
+});
+it('rejects a substituted training parent or aggregate while preserving the exact frozen before guard', () => {
+  for (const mutation of ['version', 'aggregate', 'mapping'] as const) {
+    const value = knownTrainingPhysicalFixture(),
+      ref = value.data.manualSavedSourceRefs[1];
+    if (!ref || ref.location.state !== 'known') throw Error('FIXTURE_REQUIRED');
+    const loc = first(ref.location.members);
+    if (loc.parent.family !== 'plan-snapshot') throw Error('FIXTURE_REQUIRED');
+    if (mutation === 'version') loc.parent.version = 2;
+    else if (mutation === 'aggregate') loc.aggregateId = id(82);
+    else first(value.data.trainingPlanAggregates).aggregate_id = id(82);
+    expect(accountExportV38Schema.safeParse(value).success).toBe(false);
+  }
 });
