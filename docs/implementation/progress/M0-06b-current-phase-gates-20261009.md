@@ -40,3 +40,26 @@ Loader는 같은 소스이므로 아직 권한·환경 원인이 미확정이다
 Identity 두 회차·적용 가능한 drill·독립 context-less phase review/main 병합은 아직 남는다.
 이 기록으로 전체 phase 또는 로컬 노드 수용 완료를 선언하지 않는다. 운영·외부 수용과
 최종 실제 제품 앱의 물리 기기 gate는 별도로 유지한다. 개인 건강/GPS/오류 본문은 저장하지 않았다.
+
+## 세 파일 집중 PostgreSQL 검증 및 fixture 교정
+
+Root는 두 fixture diff와 TMP 실행기·유한 projector 전체를 읽고 새2334-source clone을 준비했다.
+원 source2333·contracts build114를 고정하고 loader 계측은 clone에만 적용했다. 원 canonical
+preinstall/별도upgrade/private Unix socket/plain role/timeout/정리는 유지하며 normal선택만
+3파일로 제한했다. 최초 실행은 정확버전 표기 검사에서 실패해 설치·DB 실행0이었다.
+실제 pg_ctl 출력 `17.11 (Homebrew)`를 정확히 반영한 새 실행기로 frozen offline install0·
+persistence typecheck0 후 upgrade1/1·normal29/29·3files·skip0·exit0을 확인했다.
+
+ai-settings는 fixture DB 소유권을 관리자 setup으로 설정·검증한 뒤 기존 plain REASSIGN을
+실행하며 CREATEDB는 추가하지 않는다. worker는 tgenabled::text와 PG17의 MAINTAIN을 포함한
+완전한 owner/grantor ACL을 비교한다. 원 assertions/skip/timeout은 보존했다. Root 실제 집중
+검증을 근거로 이 두 파일만 커밋한다. 보호 WIP14·stash·원 loader 파일은 변경하지 않았다.
+
+- 실행 입력 SHA: `00f40b989e530965aba6b055484b04d2e3a8d2f61de78fee9de4f2fc4b76f557`
+- 실제 결과: `/private/tmp/wm-m0-pg-three-files-diagnostic-prepared-20261009/terminal.json`
+- 결과 SHA: `08a0ff99c7c8536ccce3b9a0977c70f716e861e3840204f7bba9702c7459b6f2`
+
+source/clone 전후 동일·새 PG scratch 잔존0이다. owner transfer 유한 이벤트는0개 수집돼
+구체 권한/SQLSTATE 관측을 주장하지 않는다. loader는 이번 집중 실행에서 통과했으나 이전
+전체 실패 원인은 미확정이다. 기존 full PG1483pass/4fail/4skip과 R2 unit4fail은 보존한다.
+전체 PG 재검증·identity×2·독립 phase 검토·main 병합은 여전히 미완료다.

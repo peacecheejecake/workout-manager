@@ -336,7 +336,7 @@ async function rowSecurity(): Promise<string[]> {
 
 async function triggers(): Promise<string[]> {
   const rows = await upgraded.query<{ entry: string }>(
-    `SELECT c.relname||':'||t.tgname||':'||t.tgenabled||':'||pg_get_triggerdef(t.oid) AS entry
+    `SELECT c.relname||':'||t.tgname||':'||t.tgenabled::text||':'||pg_get_triggerdef(t.oid) AS entry
      FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid
      WHERE NOT t.tgisinternal ORDER BY 1`,
   );
@@ -494,8 +494,17 @@ describe('tenant-source migration upgrade of a database a plain owner built', ()
         ...[...wrapped.map(renamed), ...helpers].map((signature) => `fn:${signature}`),
       ].sort(),
     );
+    const serverVersion = await upgraded.query<{ version: number }>(
+      "SELECT current_setting('server_version_num')::integer AS version",
+    );
+    expect(serverVersion.rows).toHaveLength(1);
+    const version = serverVersion.rows[0]?.version;
+    expect(version).toBeTypeOf('number');
+    if (version === undefined) throw new Error('PostgreSQL version is unavailable');
+    // PostgreSQL 17 adds MAINTAIN; retain the complete owner/grantor ACL on older versions.
+    const ownerTablePrivileges = version >= 170000 ? 'arwdDxtm' : 'arwdDxt';
     expect(privilegesAfter.get('rel:public.tenant_work_index')).toBe(
-      `{${ownerRole}=arwdDxt/${ownerRole}}`,
+      `{${ownerRole}=${ownerTablePrivileges}/${ownerRole}}`,
     );
     // So the owner still sees no tenant row without a tenant; it sees the index.
     for (const table of sourceTables) expect(await ownerSeesWithoutTenant(table), table).toBe(0);

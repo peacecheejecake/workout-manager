@@ -361,6 +361,17 @@ it('REASSIGN+existing retarget new plain liveowner erases with no refund while o
     previous = owner;
   await admin.query(`GRANT "${roles.next}" TO "${roles.owner}"`);
   try {
+    // Fixture database ownership setup is separate from the plain role's
+    // application-object REASSIGN; neither role receives CREATEDB authority.
+    await admin.query(`ALTER DATABASE "${dbName}" OWNER TO "${roles.next}"`);
+    expect(
+      (
+        await admin.query(
+          'SELECT pg_get_userbyid(datdba) AS owner FROM pg_database WHERE datname=$1',
+          [dbName],
+        )
+      ).rows,
+    ).toEqual([{ owner: roles.next }]);
     await previous.query(`REASSIGN OWNED BY "${roles.owner}" TO "${roles.next}"`);
   } finally {
     await admin.query(`REVOKE "${roles.next}" FROM "${roles.owner}"`);
