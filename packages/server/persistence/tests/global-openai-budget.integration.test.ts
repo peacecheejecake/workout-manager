@@ -35,6 +35,79 @@ let owner: Pool, runtime: Database;
 const tenant = randomUUID(),
   foreign = randomUUID();
 const hash = (v: string) => createHash('sha256').update(v).digest('hex');
+// Test-only finite observation. No SQL, role identity, error message or payload is emitted.
+const ownerTransferSqlStates = new Set([
+  '42501',
+  '53200',
+  '40P01',
+  '55P03',
+  '57014',
+  '3D000',
+  '42704',
+  '42P01',
+  '23505',
+  'P0001',
+  '08006',
+  '57P01',
+  'XX000',
+]);
+const ownerTransferErrorNames = new Set([
+  'Error',
+  'DatabaseError',
+  'PostgresError',
+  'TimeoutError',
+  'TypeError',
+  'RangeError',
+  'error',
+]);
+function ownErrorValue(error: unknown, key: 'code' | 'name'): unknown {
+  if (error === null || typeof error !== 'object') return undefined;
+  try {
+    const descriptor = Object.getOwnPropertyDescriptor(error, key);
+    return descriptor && 'value' in descriptor ? descriptor.value : undefined;
+  } catch {
+    return undefined;
+  }
+}
+async function observeOwnerTransfer(
+  stage: 'reassign_owned' | 'revoke_membership',
+  operation: () => Promise<unknown>,
+): Promise<void> {
+  const started = performance.now();
+  const emit = (outcome: 'success' | 'error', error?: unknown) => {
+    const code = ownErrorValue(error, 'code');
+    const name = ownErrorValue(error, 'name');
+    const elapsed = performance.now() - started;
+    // Logging must never replace the SQL result or the original thrown object.
+    try {
+      console.info(
+        JSON.stringify({
+          diagnostic: 'global_budget_owner_transfer',
+          stage,
+          phase: 'terminal',
+          outcome,
+          elapsedMs: Number.isFinite(elapsed) && elapsed >= 0 ? Math.floor(elapsed) : null,
+          sqlState: typeof code === 'string' && ownerTransferSqlStates.has(code) ? code : null,
+          errorName:
+            outcome === 'success'
+              ? null
+              : typeof name === 'string' && ownerTransferErrorNames.has(name)
+                ? name
+                : 'unknown',
+        }),
+      );
+    } catch {
+      // A console failure is observation failure, not a different database outcome.
+    }
+  };
+  try {
+    await operation();
+    emit('success');
+  } catch (error) {
+    emit('error', error);
+    throw error;
+  }
+}
 function url(role: string) {
   const u = new URL(adminUrl);
   u.pathname = `/${dbName}`;
@@ -690,9 +763,13 @@ it('REASSIGN and existing retarget preserve live-owner accounting while old owne
   const previous = owner;
   await admin.query(`GRANT "${roles.next}" TO "${roles.owner}"`);
   try {
-    await previous.query(`REASSIGN OWNED BY "${roles.owner}" TO "${roles.next}"`);
+    await observeOwnerTransfer('reassign_owned', () =>
+      previous.query(`REASSIGN OWNED BY "${roles.owner}" TO "${roles.next}"`),
+    );
   } finally {
-    await admin.query(`REVOKE "${roles.next}" FROM "${roles.owner}"`);
+    await observeOwnerTransfer('revoke_membership', () =>
+      admin.query(`REVOKE "${roles.next}" FROM "${roles.owner}"`),
+    );
   }
   owner = new Pool({ connectionString: url(roles.next), max: 6 });
   pools.push(owner);

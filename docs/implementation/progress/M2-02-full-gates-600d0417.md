@@ -37,3 +37,17 @@ logical 첫 v3 실행에서는 시험 1/1이 통과했지만 Node/tsx 캐시 두
 동일 원 `pnpm test:integration`과 등록 roster·config·시간 제한으로 새 소유 PostgreSQL 17.6 클러스터에서 실제 재실행했다. 업그레이드 1/1 통과 후 일반 모음은 **300파일 통과·1파일 실패·3파일 skip**, **3,069통과·1실패·14skip/3,084등록**이었다. 약 34.6분, terminal exit 1이다. 실패 위치는 `global-openai-budget.integration.test.ts:693:5`의 REASSIGN/retarget 시험이며 원인은 아직 확정하지 않는다. 이전 v5의 네 파일 실패와 별도 24/24 좁은 진단 성공은 그대로 보존한다.
 
 소스 1,093개 freeze SHA `3ac2e0d5e2a0510446acdc6a9a434c5c7511974d5b33511664cb573998fa0497`는 전후 동일했다. normal registry 107/FORCE RLS 확인, 시험 뒤 역할 17·DB 1·slot 0, pool 종료와 정확 소유 container 제거를 확인했다. 원 오류 메시지·SQL·payload는 저장하지 않았고 유한 결과와 스트림 SHA만 보존했다. finite-terminal SHA `82f678a1c48062cb7d6f1511d04424bafc3fc95116cecb00d0063889e3110364`, lifecycle SHA `115ddd9df067c46f39b939ce389a57f3f032715caaf7cc23aa739e803c44e9ab`. 두 스트림은 drain 완료이며 dense/restore/timeout allowlisted marker는 0이다. 해당 marker 부재가 원인 부재나 실패 해결을 증명하지 않는다. 전체 normal·identity 두 회차·독립 phase review/main·운영/최종 제품 실기기 gate는 여전히 미완료다.
+
+## 원본 budget 17개 시험 실제 좁은 진단
+
+동일 1,093개 입력을 고정한 새 소유 PostgreSQL 17.6에서 `global-openai-budget.integration.test.ts`의 **17개 전체**를 원 config/시간 제한으로 실행했다. **17/17, 실패/skip 0, exit 0**이며 unhandled 0, 단일 모듈을 관측했다. 소스 전후 동일, pool 종료·정확 소유 container 제거와 poststate 역할 1·DB 1·slot 0을 확인했다. finite reporter SHA `1cdc5981fbc2262afa340672f64ad14d80848c016ab49d6012e71d5d57e8bb6a`, terminal SHA `a9be16386719a4727755b54d47a8fcdf14199f51dfbf2847aea2e15568b5969a`, lifecycle SHA `cabbc00a61da13b7bc6aed1265bcd475814e7d6ece2179953bffd3ad7c6cbf85`.
+
+이 시험에는 전체 normal의 선행 300개 파일·canonical 설치/upgrade 상태가 없다. 좁은 성공은 v6의 REASSIGN 실패를 해결하지 않으며 SQLSTATE·원인과 full normal 성공은 미확정이다. 전체 실패 원인을 관측하기 위한 유한 stage/elapsed/code 증거를 준비한다. 제품 권한·시간 제한을 완화하지 않는다.
+
+## 소유권 이전 유한 관측 추가 및 실제 검증
+
+원 17개 case와 68개 query 표현, SQL/grant/단언/시간 제한/기존 finally 동작을 유지하고 REASSIGN 및 REVOKE의 terminal stage·outcome·elapsed와 허용 SQLSTATE/name만 기록하는 test-only 관측을 추가했다. 원 오류 객체는 그대로 throw하며 logging 오류가 SQL 결과를 바꾸지 않는다. raw message/role ID/query/payload는 출력하지 않는다. Root가 diff와 원 fixture 단독 변경을 확인했고 scoped persistence TypeScript·lint·format은 실제 exit 0이다.
+
+갱신 source freeze1,093개 SHA `ba67c301a4bc9207a48840dc230b87aa3506fba5895c65ea439cf4295a59ad97`에서 같은 17개 원본 시험을 새 PG17.6으로 다시 실행해 **17/17, 실패/skip0, exit0**을 확인했다. 실제 terminal 관측은 REASSIGN 성공36ms·REVOKE 성공0ms이며 오류 SQLSTATE를 제조하지 않았다. source 전후 동일, post역할1/DB1/slot0·pool종료·소유container제거, unhandled/관측overflow0이었다. finite reporter SHA `4292c4d7943d5bda8fa2b7778aea4dba1306f0d690a5493ec38689bb7176eb6e`, terminal SHA `7d535378a0f656275fb3d04a47f3959f8ea79224bf3bd5dfc9fccb3db45e4610`, lifecycle SHA `9b198dfb089583072e21553ac3c9c01902c65687d0fd4a9fa2f3aa52e10991a8`.
+
+전체 normal v7은 동일 관측 projector를 원 default reporter stream에 연결하여 다음 실행을 준비했다. 이 준비와 두 좁은 17/17 결과는 v6의 whole 실패를 해결하지 않는다. full normal·identity x2·phase 독립 검토/main은 여전히 미완료다.
