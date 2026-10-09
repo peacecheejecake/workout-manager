@@ -122,3 +122,44 @@ source·localdependency전후동일, 새PGscratch잔존0이며 accepted=true는 
 
 새build를고정한 identity×2·적용drill·독립phase검토는 다음gate다. 이기록으로main병합하거나
 운영/최종제품실기기 수용을 완료하지 않는다.
+
+## 원 identity 두 회차 실제 종료 · 2026-10-09
+
+새 build를 고정한60e4 clone에서 원 `pnpm test:identity --full`의 general/app-consent/
+ai-settings-lifecycle3 fixture를 각 회차 실행했다. 원 local PostgreSQL17.11 initdb/pg_ctl·
+Unix socket, migration105, 원 assertions/fixture timeout/skip을 유지했다. 외부 watchdog만
+72분으로 고정했으며 각 회차 exit0이었다. Docker17.6 실행으로 표현하지 않는다.
+
+| 회차 | general        | app-consent | AI lifecycle | 실패·flaky | 등록             |
+| ---- | -------------- | ----------- | ------------ | ---------- | ---------------- |
+| 1    | 311pass/12skip | 4pass       | 1pass        | 0          | 328case/115files |
+| 2    | 311pass/12skip | 4pass       | 1pass        | 0          | 328case/115files |
+
+각 회차 실제316pass/12skip이며 정적 list의 skip7과 실제skip12를 구분한다. 두 회차의
+finite 결과를 전수 파싱해 실패 분류·오류 frame·operation0과 exact roster를 확인했다.
+source/build3494, dependency42515, geo4831, 보호 WIP14가 전후 동일했고 protected5 ports는
+ECONNREFUSED였다. 새 identity TMP잔존0, 원 fixture의 정리를 확인했다. 기존3 scratch를
+삭제하지 않았다. per-suite DB/role/slot 원자적 정리는 외부에서 관측하지 않았으므로
+not_observed를 유지한다. actual fixture 성공은 운영 OIDC·HealthKit·실기기 성공이 아니다.
+
+- 고정 collection manifest SHA: `b9ed76851b8a87ef7e2d24ecd514e16edb9e1c03e5c308f11f4c6cc58f57001f`.
+- run1: `/private/tmp/wm-m0-identity-local1711-x2-root-r1-20261009-run1.json`, SHA `59b54cabb5e1fc7dd8b5cabcfb792bd4952ee69bb5cfd79a15b4f3eaec597f97`.
+- run2: `/private/tmp/wm-m0-identity-local1711-x2-root-r1-20261009-run2.json`, SHA `c41ef87355442011a54101ea8e38875e45b43f84a4d6af3bd1ca6eedb69363e3`.
+- terminal2: `/private/tmp/wm-m0-identity-local1711-x2-root-r1-20261009-result.json`, SHA `bc3c47e7476c1dfac1362931eeca9dac4ecc8e7d79fc14b4906161d26fe95a07`.
+- 정확 watchdog 실행기 SHA: `de310f9c59f7849e885e72764635945e5911bd0a84e255b53496a873ffdecfab`.
+
+### 현재 diff의 drill 적용 범위와 코드 연속성
+
+현재 phase는 UI presentation/controlled store/table primitive 및 PG 시험fixture 교정이다.
+제품 persistence SQL·새 migration·backup/admission 변경은 없다. 원 canonical integration의
+restore/RLS/worker/upgrade 회귀와 UI dispose/cancel/unavailable/focus/rollback 부정시험을
+관련 로컬 근거로 연결한다. 운영 backup/restore/failover는 해당 외부 gate에 유지하며 이번
+UI diff의 새 미실행 drill을 통과라고 만들지 않는다. 최신60e4 실행 코드2331개는7695 HEAD와
+byte 동일하고 차이는 committed 검사 문서와 보호 WIP 문서뿐이었다. 이 후속은 문서만 추가한다.
+
+full seven, canonical PG R2, identity 두 회차는 scoped 로컬 실제 증거다. 이전 unit4fail,
+fullPG4fail/1fail, focused 등록0 실패와 외부 not_executed를 그대로 보존한다. 104 closure와
+slider/stack 선택 근거는 [동일 phase 최신기록](M0-06b-local-license-slider-20261009.md),
+[선택 ADR](../research/ui-library-selection-adr-20261009.md)에 연결한다.
+독립 phase review는 fresh base/main과 최종 HEAD의 전체 diff로 별도 실행해야 한다.
+이 문서 commit 자체는 main 병합 승인·graph 전체 완료·공개 출시 수용이 아니다.
