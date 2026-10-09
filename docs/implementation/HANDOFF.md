@@ -1258,3 +1258,22 @@ Chrome 두 Host slider 실제키보드·focus 관측과 새 Playwright2case를 �
 Root native239 catalog 관측은 신규 소유 PG17.6의 normal107/V9 설치까지 성공했으나
 catalog observation은 실패해 아직 미수용이다. 각 원 기록·정확 컨테이너 정리·source1056 불변을
 보존하고 raw 오류 없는 단계 진단으로 원인을 좁힌다. 운영·기기·개인자료 사용0.
+
+## 2026-10-09 최신 사용자 결정과 검증 후속
+
+사용자는 **주간 잔여량을 신경 쓰지 말고 계속** 진행하도록 지시했다. 앞선 잔여20% 미만
+중단·handoff 준비 조건은 철회됐다. 전체 구현→로컬 통합·독립 phase 검토→운영 백업/복원·
+HTTPS→외부 수용→최종 실제 제품 앱 실기기→출시 순서와 push는 사용자 작업이라는 경계는 유지한다.
+
+EXT-RESTORE `9279f10e`의 V2는 optional absent/legacy/wildcard를 명시 지원한다. Root 실제
+V1/V2 88/88·TS/lint/format0 및 literal 등록 SHA로66packages/15,872,247bytes 대조0이다.
+167 supplied resolution records 대응을 AST/dynamic 실행 폐쇄성 또는 SRI 검증으로 확대하지 않는다.
+Compiler prerequisite와 native239의 정규화 수집은 native 에이전트가 병렬 구현 중이다.
+
+M0 `97b00da0`는 최신104-package closure·Chrome 두 Host slider·실제 focused2/2 및 후보 선택
+ADR을 기록했다. 새 깨끗한 동일 HEAD 복제본의 full7 R1은 도구 중단 후 build terminal이 없어
+미수용으로 보존했다. R2는 install/generated/lint/typecheck/build/format0이나 전체 unit은
+4,668 passed/4 failed/2 skipped·exit1이다. 실패한3파일만 원 설정으로 재현하면68/68·exit0이지만
+이를 전체 성공으로 바꾸지 않는다. canonical DB 통합은 별도 실제 실행 중이며 종료 수용 전이다.
+전체 실패 기록은 `/private/tmp/wm-m0-clone-static-six-unit-actual-r2-20261009-terminal.json`,
+집중 재현은 `/private/tmp/wm-m0-unit-failure-diagnostic-actual-r1-20261009.json`을 따른다.
