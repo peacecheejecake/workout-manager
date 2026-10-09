@@ -92,3 +92,19 @@ SQLSTATE는 아직 관측하지 않았고 loader 실패로 분류하지 않는�
 
 기존 full4fail과 이번1fail을 각각 보존한다. 전체 통합·identity×2·독립 phase 검토·main 병합은
 아직 완료되지 않았다. 운영 및 최종 제품 실기기 gate도 유지한다.
+
+### REASSIGN 집중17 원시험 진단 결과
+
+최초 TMP진단은 package별의존성/build누락으로 등록0·exit1이었다. 실패를 보존했다.
+새 R2는 package별node_modules 링크와 contracts114 build bytes를 별도 고정했다. 실제목록17개와
+원제목대응을 확인한 뒤 새privateUnixPG17.11에서17/17·skip0·exactroster·exit0이었다.
+plain/NOCREATEDB·old/next USAGE/SET true·old-owned sharedDB1 상태에서 REASSIGN 자체가
+success/SQLSTATE null이었다. 단순 DB소유권 사전조건 결함으로 단정하지 않으며 교정0이다.
+
+- R1 등록0 실패: `/private/tmp/wm-m0-budget-reassign-run-6JNMIT/focused-result.json`
+- R2 실제결과: `/private/tmp/wm-m0-budget-reassign-run-r2-EXCoEa/focused-result.json`
+- R2 결과 SHA: `c2be2545fa095f9edacfc76b3147a967f9f954b491c21b9dfdcbe8806b15a915`
+
+소스·의존성 전후동일, scratchDB0, 정확PGstop/remove를 확인했다. originalWholeGateAccepted false를
+유지한다. 집중성공으로 원full1fail을 덮어쓰지 않고 변경없는 고정source의 전체canonical R2를
+새wx결과로 실행 중이다. loader/REASSIGN의 앞선 전체실패 원인은 미확정이다.
