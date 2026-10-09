@@ -51,3 +51,9 @@ logical 첫 v3 실행에서는 시험 1/1이 통과했지만 Node/tsx 캐시 두
 갱신 source freeze1,093개 SHA `ba67c301a4bc9207a48840dc230b87aa3506fba5895c65ea439cf4295a59ad97`에서 같은 17개 원본 시험을 새 PG17.6으로 다시 실행해 **17/17, 실패/skip0, exit0**을 확인했다. 실제 terminal 관측은 REASSIGN 성공36ms·REVOKE 성공0ms이며 오류 SQLSTATE를 제조하지 않았다. source 전후 동일, post역할1/DB1/slot0·pool종료·소유container제거, unhandled/관측overflow0이었다. finite reporter SHA `4292c4d7943d5bda8fa2b7778aea4dba1306f0d690a5493ec38689bb7176eb6e`, terminal SHA `7d535378a0f656275fb3d04a47f3959f8ea79224bf3bd5dfc9fccb3db45e4610`, lifecycle SHA `9b198dfb089583072e21553ac3c9c01902c65687d0fd4a9fa2f3aa52e10991a8`.
 
 전체 normal v7은 동일 관측 projector를 원 default reporter stream에 연결하여 다음 실행을 준비했다. 이 준비와 두 좁은 17/17 결과는 v6의 whole 실패를 해결하지 않는다. full normal·identity x2·phase 독립 검토/main은 여전히 미완료다.
+
+## 전체 normal 후속 v7 · FAILED
+
+원 normal registry107·config·시간 제한을 유지한 새 소유 PostgreSQL17.6의 전체 실행은 terminal exit1이었다. 업그레이드1/1 통과, 일반 모음300파일 통과·1파일 실패·3파일 skip, 3,069통과·1실패·14skip/3,084등록이며 elapsed2,088,597.879417ms였다. 실패 위치는 `course-share-revoke-exact-replay.integration.test.ts:49:20` 및 `:337:5`, 허용된 marker는 `RESTORE_REPLAY_INVALID_ENTRY`다. 원인은 아직 확정하지 않는다. 이전 v5/v6 실패와 좁은 진단 결과는 보존한다.
+
+고정 소스1,093개 SHA `ba67c301a4bc9207a48840dc230b87aa3506fba5895c65ea439cf4295a59ad97`는 전후 동일했다. normalregistry107/FORCE RLS 확인, poststate 역할17·DB1·slot0, pool종료·정확 소유container제거를 확인했다. stdout/stderr 모두 drain 완료이며 원 오류 메시지·SQL·payload는 저장하지 않았다. finite-terminal SHA `13cc593e99b6640d651f1d023823bc4cb310ba1e0ffd7042c38362bd7102dc7b`, lifecycle SHA `d0a0e696714c021a07d86fb45157ae70a5a6a71bfcc98e692286f61dc417a27c`다. whole normal·최신 identity 두 회차·phase 독립 검토/main·운영 및 최종 제품 실기기 수용은 미완료다.
