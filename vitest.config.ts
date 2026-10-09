@@ -10,6 +10,7 @@ export default defineConfig({
           include: [
             'packages/tooling/tests/**/*.test.{ts,mjs}',
             'packages/api-client/tests/**/*.test.ts',
+            'packages/experience/conversation-kit/tests/**/*.test.ts',
             'packages/modules/*/tests/**/*.test.ts',
             'packages/platform/tests/**/*.test.ts',
             'apps/api/tests/**/*.test.ts',

@@ -1,0 +1,21 @@
+{
+  "name": "@workout/conversation-kit",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --project tsconfig.json"
+  },
+  "dependencies": {
+    "react": "19.3.0"
+  },
+  "devDependencies": {
+    "react-dom": "19.3.0"
+  },
+  "exports": {
+    "./transcript": "./src/transcript.tsx",
+    "./composer": "./src/composer.tsx",
+    "./stream-presentation-store": "./src/stream-presentation-store.ts",
+    "./stream-transcript": "./src/stream-transcript.tsx"
+  }
+}

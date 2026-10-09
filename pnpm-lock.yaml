@@ -382,11 +382,30 @@ importers:
         specifier: 4.6.5
         version: 4.6.5
 
+  packages/experience/conversation-kit:
+    dependencies:
+      react:
+        specifier: 19.3.0
+        version: 19.3.0
+    devDependencies:
+      react-dom:
+        specifier: 19.3.0
+        version: 19.3.0(react@19.3.0)
+
   packages/experience/geo-kit:
     dependencies:
       maplibre-gl:
         specifier: 6.9.1
         version: 6.9.1
+      react:
+        specifier: 19.3.0
+        version: 19.3.0
+
+  packages/experience/table-kit:
+    dependencies:
+      '@tanstack/virtual-core':
+        specifier: 3.17.11
+        version: 3.17.11
       react:
         specifier: 19.3.0
         version: 19.3.0
@@ -414,6 +433,12 @@ importers:
       '@tiptap/starter-kit':
         specifier: 3.31.3
         version: 3.31.3
+      '@workout/conversation-kit':
+        specifier: workspace:*
+        version: link:../conversation-kit
+      '@workout/table-kit':
+        specifier: workspace:*
+        version: link:../table-kit
       '@workout/ui-foundation':
         specifier: workspace:*
         version: link:../../ui/foundation
@@ -477,6 +502,9 @@ importers:
       '@workout/contracts':
         specifier: workspace:*
         version: link:../../contracts
+      '@workout/conversation-kit':
+        specifier: workspace:*
+        version: link:../../experience/conversation-kit
       '@workout/ui-foundation':
         specifier: workspace:*
         version: link:../../ui/foundation
@@ -628,6 +656,9 @@ importers:
       '@workout/contracts':
         specifier: workspace:*
         version: link:../../contracts
+      '@workout/table-kit':
+        specifier: workspace:*
+        version: link:../../experience/table-kit
       '@workout/ui-foundation':
         specifier: workspace:*
         version: link:../../ui/foundation

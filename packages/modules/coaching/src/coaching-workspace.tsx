@@ -28,6 +28,8 @@ import { EvidencePanel } from './evidence-panel';
 import { CoachingRunPanel } from './run-panel';
 import { ConstraintsPanel } from './constraints-panel';
 import { createEvidenceDraftStore, type EvidenceDraftStore } from './evidence-store';
+import { ConversationTranscript } from '@workout/conversation-kit/transcript';
+import { ConversationComposer } from '@workout/conversation-kit/composer';
 import styles from './coaching.module.css';
 export interface CoachingWorkspaceProps {
   athleteId: string;
@@ -378,64 +380,71 @@ function Workspace({
                   ) : plan.data ? (
                     <ScopeView plan={plan.data} scope={selected.data.scope} />
                   ) : null}
-                  <section aria-label="사용자 메시지 기록">
-                    <h3>사용자 메시지</h3>
-                    {messages.isPending ? (
-                      <p>메시지 조회 중</p>
-                    ) : messages.isError ? (
-                      <p role="alert">
-                        메시지 조회 실패{' '}
+                  <ConversationTranscript
+                    lifetimeKey={JSON.stringify([athleteId, sessionId, selected.data.id])}
+                    label="사용자 메시지 기록"
+                    before={<h3>사용자 메시지</h3>}
+                    messages={
+                      messages.data?.pages
+                        .flatMap((page) => page.messages)
+                        .map((message) => ({
+                          id: message.id,
+                          author: '사용자',
+                          description: `기록 ${message.revision} · ${message.createdAt}`,
+                          content: message.content,
+                        })) ?? []
+                    }
+                    state={
+                      messages.isPending
+                        ? { kind: 'loading', message: '메시지 조회 중' }
+                        : messages.isError
+                          ? { kind: 'error', message: '메시지 조회 실패' }
+                          : { kind: 'ready' }
+                    }
+                    empty={<p>사용자 메시지 기록 없음</p>}
+                    after={
+                      messages.isError ? (
                         <button type="button" onClick={() => void messages.refetch()}>
                           메시지 다시 확인
                         </button>
-                      </p>
-                    ) : (
-                      <>
-                        <ol>
-                          {messages.data.pages
-                            .flatMap((page) => page.messages)
-                            .map((message) => (
-                              <li key={message.id}>
-                                <p>
-                                  사용자 · 기록 {message.revision} · {message.createdAt}
-                                </p>
-                                <p className={styles.message}>{message.content}</p>
-                              </li>
-                            ))}
-                        </ol>
-                        {messages.hasNextPage ? (
-                          <button
-                            type="button"
-                            disabled={messages.isFetchingNextPage}
-                            onClick={() => void messages.fetchNextPage()}
-                          >
-                            메시지 더 보기
-                          </button>
-                        ) : null}
-                      </>
-                    )}
-                  </section>
+                      ) : messages.hasNextPage ? (
+                        <button
+                          type="button"
+                          disabled={messages.isFetchingNextPage}
+                          onClick={() => void messages.fetchNextPage()}
+                        >
+                          메시지 더 보기
+                        </button>
+                      ) : null
+                    }
+                  />
                   <fieldset disabled={locked}>
                     <legend>사용자 메시지 작성</legend>
-                    <label>
-                      사용자 메시지
-                      <textarea
-                        maxLength={8000}
-                        value={compose?.message ?? ''}
-                        onChange={(event) =>
-                          actions.editMessage(
-                            selected.data.id,
-                            event.target.value,
-                            selected.data.revision,
-                          )
-                        }
-                      />
-                    </label>
-                    <p>작성 중 기록이 바뀌면 최신 내용을 확인한 뒤 다시 저장해야 합니다.</p>
-                    <button
-                      type="button"
-                      disabled={conflict === query.thread || !compose?.message.trim()}
-                      onClick={() => {
+                    <ConversationComposer
+                      label="사용자 메시지"
+                      submitLabel="사용자 메시지 저장"
+                      maxLength={8000}
+                      value={compose?.message ?? ''}
+                      state={
+                        phase === 'uncertain'
+                          ? {
+                              kind: 'uncertain',
+                              message: '동일 요청 재확인이 필요합니다.',
+                            }
+                          : locked
+                            ? { kind: 'submitting', message: '사용자 기록을 저장하고 있습니다.' }
+                            : conflict === query.thread
+                              ? {
+                                  kind: 'conflict',
+                                  message: '최신 기록 검토가 필요합니다.',
+                                }
+                              : { kind: 'idle' }
+                      }
+                      help="작성 중 기록이 바뀌면 최신 내용을 확인한 뒤 다시 저장해야 합니다."
+                      onChange={(value) =>
+                        actions.editMessage(selected.data.id, value, selected.data.revision)
+                      }
+                      onSubmit={() => {
                         const result = coachingMessageAppendSchema.safeParse({
                           expectedRevision: compose?.expectedRevision ?? selected.data.revision,
                           message: compose?.message ?? '',
@@ -449,9 +458,7 @@ function Workspace({
                           });
                         else actions.reject('메시지 입력값을 확인하세요.');
                       }}
-                    >
-                      사용자 메시지 저장
-                    </button>
+                    />
                   </fieldset>
                 </>
               )}

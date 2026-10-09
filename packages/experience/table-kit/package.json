@@ -1,0 +1,17 @@
+{
+  "name": "@workout/table-kit",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --project tsconfig.json"
+  },
+  "dependencies": {
+    "@tanstack/virtual-core": "3.17.11",
+    "react": "19.3.0"
+  },
+  "exports": {
+    "./table-virtualizer": "./src/table-virtualizer.tsx",
+    "./table-viewport": "./src/table-viewport.tsx"
+  }
+}

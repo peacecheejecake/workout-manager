@@ -546,3 +546,26 @@ it.each([
     expect(f.posts.some((r) => r.path.includes('/consents/'))).toBe(false);
   },
 );
+
+it('uses public transcript and composer with newer pagination and no implicit shortcut submission', async () => {
+  const f = fixture(51),
+    user = userEvent.setup();
+  render(<Harness transport={f.transport} />);
+  const input = await ready();
+  expect(
+    screen.getByRole('region', { name: '사용자 메시지 기록 스크롤 영역' }),
+  ).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: '이전 메시지 더 보기' })).toBeNull();
+  expect(input).toHaveAccessibleDescription(
+    '작성 중 기록이 바뀌면 최신 내용을 확인한 뒤 다시 저장해야 합니다.',
+  );
+  await user.type(input, '명시 저장 초안');
+  fireEvent.keyDown(input, { key: 'Enter', ctrlKey: true });
+  expect(f.posts).toHaveLength(0);
+  await user.click(screen.getByRole('button', { name: '메시지 더 보기' }));
+  await screen.findByText('Stored message 51');
+  expect(input).toHaveValue('명시 저장 초안');
+  await user.click(screen.getByRole('button', { name: '사용자 메시지 저장' }));
+  await waitFor(() => expect(f.posts).toHaveLength(1));
+  expect(f.posts[0]?.body).toMatchObject({ expectedRevision: 51, message: '명시 저장 초안' });
+});

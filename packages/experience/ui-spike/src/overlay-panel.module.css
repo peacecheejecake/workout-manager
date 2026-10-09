@@ -1,0 +1,46 @@
+.panel {
+  min-inline-size: 0;
+  padding: var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  color: var(--ink);
+  background: var(--surface);
+  overflow-wrap: anywhere;
+}
+.panel button {
+  box-sizing: border-box;
+  min-block-size: 44px;
+  max-inline-size: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  overflow-wrap: anywhere;
+}
+.panel button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  box-shadow: var(--focus);
+}
+.clip {
+  min-inline-size: 0;
+  padding: var(--space-2);
+  border: 1px dashed var(--line);
+}
+.clip[data-native-overlay='true'] {
+  block-size: 72px;
+  overflow: hidden;
+}
+.invisible {
+  visibility: hidden;
+  block-size: 0;
+}
+.notDisplayed {
+  display: none;
+}
+.contentHidden {
+  content-visibility: hidden;
+  block-size: 0;
+}
