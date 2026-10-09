@@ -662,11 +662,10 @@ describe('race source deletion privacy', () => {
     await tenant(
       source.athleteId,
       async (client) => {
-        const erased = await client.query('SELECT public.replay_tenant_erasure_exact($1,$2,$3)', [
-          source.athleteId,
-          randomUUID(),
-          new Date().toISOString(),
-        ]);
+        const erased = await client.query(
+          'SELECT public.replay_tenant_erasure_exact($1,$2,clock_timestamp())',
+          [source.athleteId, randomUUID()],
+        );
         expect(erased.rows[0]?.['replay_tenant_erasure_exact']).toBe('erased');
       },
       false,
@@ -703,5 +702,64 @@ describe('race source deletion privacy', () => {
     await expect(races.getTrainingBest(source.athleteId, records.best.id)).rejects.toThrow(
       'ACCOUNT_ERASED',
     );
+  });
+
+  it('rejects a future tenant erasure and retains race sources and original receipts', async () => {
+    const source = await seedSource(),
+      records = await ledger(source);
+    const eventId = randomUUID();
+    const beforeExport = await exportedRaces(source.athleteId);
+    const beforeFreshness = await freshness(source.athleteId);
+    const beforeBest = await races.getTrainingBest(source.athleteId, records.best.id);
+    expect(beforeBest).toEqual({ ...records.bestInput.values, ...records.best });
+    await expect(
+      tenant(
+        source.athleteId,
+        (client) =>
+          client.query(
+            "SELECT public.replay_tenant_erasure_exact($1,$2,clock_timestamp()+interval '1 hour')",
+            [source.athleteId, eventId],
+          ),
+        false,
+      ),
+    ).rejects.toThrow('RESTORE_REPLAY_INVALID_ENTRY');
+    const retained = await tenant(source.athleteId, (client) =>
+      client.query<{
+        account_present: boolean;
+        activity_present: boolean;
+        erasure_present: boolean;
+        event_present: boolean;
+        receipt_present: boolean;
+      }>(
+        `SELECT
+           EXISTS(SELECT 1 FROM identity_private.account WHERE athlete_id::text=$1) AS account_present,
+           EXISTS(SELECT 1 FROM activity_canonical WHERE athlete_id=$1 AND id=$2) AS activity_present,
+           EXISTS(SELECT 1 FROM tenant_erasure WHERE athlete_id=$1) AS erasure_present,
+           EXISTS(SELECT 1 FROM restore_suppression_event WHERE event_id=$3
+             OR (athlete_id=$1 AND kind='tenant_erased')) AS event_present,
+           EXISTS(SELECT 1 FROM restore_exact_replay_receipt WHERE event_id=$3
+             OR (athlete_id=$1 AND kind='tenant_erased')) AS receipt_present`,
+        [source.athleteId, source.activityId, eventId],
+      ),
+    );
+    expect(retained.rows).toEqual([
+      {
+        account_present: true,
+        activity_present: true,
+        erasure_present: false,
+        event_present: false,
+        receipt_present: false,
+      },
+    ]);
+    expect(await exportedRaces(source.athleteId)).toEqual(beforeExport);
+    expect(await freshness(source.athleteId)).toEqual(beforeFreshness);
+    expect((await privacyEvents(source.athleteId)).rows).toHaveLength(0);
+    expect(await races.createTrainingBest(source.athleteId, records.bestInput)).toEqual(
+      records.best,
+    );
+    expect(await races.getTrainingBest(source.athleteId, records.best.id)).toEqual(beforeBest);
+    expect(await replay(source)).toBe('deleted');
+    expect(await replay(source)).toBe('already_applied');
+    await expectPurged(source, records);
   });
 });

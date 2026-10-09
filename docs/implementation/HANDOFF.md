@@ -1044,3 +1044,11 @@ FUT-03 후보 감사에서 기존 M2-03 기록이 S17 viewer/codec·앨범/날�
 - `phase/m2-03`의 `fd3a4052`/`dafb7f9e`는 codec input/output frames 및 native core 연결 entry/좁은 JavaScript emission을 구현했다. Root 기본 unit53/53·actual compiled native 이미지 변환/semantic correlation을 확인했다. Linux image/OS fence/broker/worker/DB 통합은 미완료다. SQL143 앨범은 아직 draft·미등록이며 pure authoring의 잘못된 core app consent 요구를 교정했다. restored CLOSED admission 조건은 미해결이어서 실제 저장 수용·완료를 선언하지 않는다. 앨범 조회 port와 Linux artifact pin 준비를 native agent에 비중복 배정했다.
 - `phase/m2-02` 전체 normal v7은3,069pass/1fail/14skip·exit1을 보존했다. 이후 원 course-share5case 실제5/5, 호스트 시계 의존 제거와 직접 future-time rollback 추가 뒤 실제6/6·skip0·exit0을 확인해 `27eb7362`에 커밋했다. 원 v7 실패의 정확 OR 분기는 미확정이며 좁은 성공을 whole pass로 바꾸지 않는다. [전체 gate 기록](progress/M2-02-full-gates-600d0417.md)을 따른다.
 - 갱신1093입력 freeze SHA `9fc74fdf6e2ceb197843e3baa2b689b40c566b50811b1e82dac106b5cb15c496`에서 원 whole normal/upgrade **v8 실행 중**이다. 실제 실행 handle72423, artifact `/private/tmp/wm-fullnormal176-v8-9d25ac3b-d5ef-47c5-a115-79c2e0b91135`; 마지막 실제 poll은 진행 중이며 `canonical_full_normal_running`/PG170006을 확인했다. 같은 handle을 이어 관측하고 timeout만으로 재시작하지 않는다. 최종 결과·최신 identity×2·전체phase·독립review/main 및 운영/제품실기기 수용은 아직 없다.
+
+## 2026-10-09 구현 선행·전체 DB v8 종료와 좁은 삭제 재처리 후속
+
+앞선 handle72423 실행 중 기록은 역사다. 실제 whole v8은3070pass/1fail/14skip·exit1, 자기 container 제거·입력1093불변으로 종료했다. race 삭제 재처리 fixture의 양의 erasure 시각을 같은 DB clock으로 교정하고 future rejection 보존 시험을 추가했다. 좁은 v1의 DTO 단언 실패와 v2의 reporter 경로 실패를 보존한 뒤 actual v3 전체11개·skip0·exit0 및 DB/role/slot·자기 container 정리를 확인했다. [M2-02i 후속](progress/M2-02i.md)을 따른다. 최신 전체 normal 재실행과 identity×2·독립 phase 검토/main은 남는다.
+
+Linux codec v2 build handle9627은 image `sha256:bb02fef0436098b1bf209c5e800a3e13ade8ad4a0a55e554f950d4531db5c67e`로 actual exit0이었다. Nonroot UID/GID20001에서 Node24.12/sharp0.35.4/vips8.18.6와 fixed ffmpeg/ffprobe binary hashes를 관측했다. Production entry probe v2는 표식 비교에서 멈췄고 exact label·ID·name·image·created 상태 확인 후 자기 container를 제거했다. v3는 Env 및 HostConfig.Mounts 검사에서 prestart 거절, 자기 container 정리 완료다. Codec actual frame 성공·cgroup quiescence·production processing authority는 아직 없다.
+
+Standalone 실기기 앱 작업은 중단을 유지한다. 실제 제품 앱 수용은 모든 구현 후 마지막 단계다. main `1d557358`·사용자 push·기존 EXT-HOSTING WIP는 변경하지 않았다.
