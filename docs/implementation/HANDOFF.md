@@ -1155,3 +1155,47 @@ Root의 실제 JSON/의존성 검사는267노드·기존status변경0·신규not
 공개 출시 최종기기/전체지도 선행과 M2-05b/c의 로컬 EXT-RESTOREa 기술 의존도 확인했다.
 Native agent의 별도 읽기 전용 dependency audit도 차단할 finding이 없었다. 이 감사는 phase review가 아니다.
 문서 포맷·diff 검사 exit0이며 기존 EXT-HOSTING 4줄 WIP는 이번 커밋에서 제외한다.
+
+## 사용자 결정 기록 · 2026-10-09 주간 사용량 종료 조건
+
+주간 잔여 사용량이20% 미만이면 새 노드·새 subagent 작업 배정을 중단하고 이미 진행 중인
+bounded 작업만 마무리한 뒤 HANDOFF를 준비한다. 새 작업 배정과 장시간 검증 시작 전에
+계정의 주간 잔여량을 확인한다. 도구의 usedPercent가 제공되면 잔여량은100-usedPercent로
+계산한다. 조회 실패·missing/null을0% 또는 충분한 잔여량으로 가정하지 않는다.
+현재 조회 도구는 두 차례 load failure로 정확한 잔여량을 확인하지 못했다. threshold 도달을
+판정한 것은 아니며, 정확한 조회가 가능해질 때까지 새 작업 배정을 보류한다.
+
+이미 배정된 source build-proof/compiler 후보 작업은 범위를 늘리지 않고 완료·검증·동결한다.
+Physical row packet V2 후보는 TMP 동결 반환됐으며 Root 통합은 아직 미실행이다.
+HANDOFF에는 branch/HEAD·보호 WIP/stash·동결 후보 경로/SHA·실제 검사/실패/skip·미실행·
+다음 ready 작업·필요 승인과 실행 중 process/agent 상태를 남긴다. 새 identity 두 회차는 아직
+시작하지 않았으며 완료한 검사로 승격하지 않는다. main 병합·push·운영/기기 변경은 하지 않았다.
+
+### 재개용 현재 작업 정리
+
+- 중앙 `phase/m2-02` 계획 변경 커밋은 `e92a59fd`다. 현재267노드/신규8not_started,
+  기존259status불변이다. 보존한 `progress/EXT-HOSTING.md` 4줄 WIP는 커밋하지 않는다.
+- Gallery `phase/m2-03` HEAD `5317fc7c`: durable source recipe6개+검증 기록을 커밋했다.
+  SQL143 album migration/test 두 untracked 초안은 그대로다. 정책4파일 승인 적용은 이미
+  `992cc386`에 완료됐다. 실제 Engine/cgroup·worker·authoritative SQL/API·erase/restore는 남는다.
+- EXT-RESTORE `phase/ext-restore` HEAD `022610a6`은 clean이다. 완전한239 복원은 미완료다.
+- Physical packet 후보2파일은 `/private/tmp/wm-full-restore-physical-row-packet-v2-candidate-20261009/`
+  에 동결됐다. agent unit13/13·scopedTS/lint/format exit0, 보고서 SHA
+  `ed935015eea301d352b460bf86fa0a3df42ab04e4cc575c04d214ffd1f98f61e`.
+  Root 소스 통합/독립 재검증·producer/inventory wire 등록은 아직 미실행이다.
+- Source build-proof/compiler 후보5파일은 `/private/tmp/wm-source-build-proof-v1-candidate-20261009/`
+  에 동결됐다. agent unit31/31·scopedTS/lint/format exit0, freeze SHA
+  `204db91fee881d03a9794813116ffa7893c4658316d7d773c1d76fd6313954d2`, 보고서
+  `/private/tmp/wm-ext-source-build-proof-v1-candidate-report-20261009.md` SHA
+  `61d5a08239e52639d5248a00b9f92af7b38708ef13e63d1753569d9494deffb2`.
+  Root 통합·최종asset/pin 등록·readiness/API 연결은 미실행이며 pin null/authority none이다.
+- 최신 identity postbuild freezer/x2 actor 준비 파일은 동결돼 있으나 새 manifest/provision/두 회차
+  모두 미실행이다. `/private/tmp/wm-current-identity-postbuild-x2-preparation-report-20261009.md`를
+  읽고 문서 커밋 이후의 입력으로 새 freeze를 만들며, 기존 prepared manifest를 그대로 쓰지 않는다.
+- Root subprocess는 모두 terminal이다. 마지막 실제 전체 static/unit R3는7단계 exit0,
+  전체DB v10은 upgrade1/1·normal3072pass/14skip이었다. 실패·skip 역사와 외부 not_executed는 보존한다.
+  에이전트들은 현재 배정된 후보 작업을 완료해 소유권 반환했고 추가 작업을 시작하지 않았다.
+- 재개 시 주간 잔여량부터 확인한다. 조건이 허용하면 새 로컬 노드의 기존 증거 대조와 위 후보의
+  Root 검증·통합을 bounded scope로 배정한다. 운영·기기 작업은 승인된 새 순서 이후이며,
+  기존 exact one-shot 실행 승인에 기대어 새 script를 실행하지 않는다. main은 `1d557358` clean,
+  push는 사용자 작업이다. M0-06b 기존14파일 WIP와 기존 stash는 건드리지 않았다.
