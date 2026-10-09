@@ -31,3 +31,9 @@ logical 첫 v3 실행에서는 시험 1/1이 통과했지만 Node/tsx 캐시 두
 고정된 원본 소스/시간 제한으로 새 PostgreSQL 17.6에서 네 실패 파일 전체를 실행했다. **24/24 통과·실패/skip 0**, 네 module 전부 관측, 실제 exit 0, 약 122초였다. 유한 reporter SHA-256 `cb16df8fb90418b08916efb9b8744acd596ec23738e09e4a580c3b71f53e066b`. 소스 입력 전후 불변과 DB 1·역할 1·slot 0, pool 종료·정확 소유 container 제거를 확인했다.
 
 이 실행에는 canonical preinstall/upgrade와 나머지 300파일의 선행 상태가 없다. 전체 모음 실패를 해결하거나 시계/timeout을 원인으로 확정하지 않는다. allowlisted dense 이벤트 1,030개에서 query error는 관측되지 않았으며 일부 workflow 약 41.7초·review 약 41.2초였다. 좁은 성공에 맞춰 guard·timeout·SQL·fixture를 변경하지 않는다. 원 전체 모음 재실행과 유한 관측을 통해 차이를 조사한다.
+
+## 전체 normal 후속 v6 · FAILED
+
+동일 원 `pnpm test:integration`과 등록 roster·config·시간 제한으로 새 소유 PostgreSQL 17.6 클러스터에서 실제 재실행했다. 업그레이드 1/1 통과 후 일반 모음은 **300파일 통과·1파일 실패·3파일 skip**, **3,069통과·1실패·14skip/3,084등록**이었다. 약 34.6분, terminal exit 1이다. 실패 위치는 `global-openai-budget.integration.test.ts:693:5`의 REASSIGN/retarget 시험이며 원인은 아직 확정하지 않는다. 이전 v5의 네 파일 실패와 별도 24/24 좁은 진단 성공은 그대로 보존한다.
+
+소스 1,093개 freeze SHA `3ac2e0d5e2a0510446acdc6a9a434c5c7511974d5b33511664cb573998fa0497`는 전후 동일했다. normal registry 107/FORCE RLS 확인, 시험 뒤 역할 17·DB 1·slot 0, pool 종료와 정확 소유 container 제거를 확인했다. 원 오류 메시지·SQL·payload는 저장하지 않았고 유한 결과와 스트림 SHA만 보존했다. finite-terminal SHA `82f678a1c48062cb7d6f1511d04424bafc3fc95116cecb00d0063889e3110364`, lifecycle SHA `115ddd9df067c46f39b939ce389a57f3f032715caaf7cc23aa739e803c44e9ab`. 두 스트림은 drain 완료이며 dense/restore/timeout allowlisted marker는 0이다. 해당 marker 부재가 원인 부재나 실패 해결을 증명하지 않는다. 전체 normal·identity 두 회차·독립 phase review/main·운영/최종 제품 실기기 gate는 여전히 미완료다.
