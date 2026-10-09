@@ -12,7 +12,8 @@
     "@tanstack/react-query": "5.102.8",
     "@workout/contracts": "workspace:*",
     "@workout/ui-foundation": "workspace:*",
-    "zod": "4.6.5"
+    "zod": "4.6.5",
+    "@workout/conversation-kit": "workspace:*"
   },
   "exports": {
     "./coaching-workspace": "./src/coaching-workspace.tsx",

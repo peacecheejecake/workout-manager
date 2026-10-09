@@ -204,16 +204,34 @@ test('shared coaching UI preserves drafts, scopes saved messages and clears a re
   await page.getByRole('button', { name: '상담 기록 만들기', exact: true }).focus();
   await page.keyboard.press('Enter');
   await expect(page).toHaveURL(/thread=/);
-  await expect(page.getByRole('region', { name: '사용자 메시지 기록' })).toContainText(
+  await expect(page.getByRole('region', { name: '사용자 메시지 기록', exact: true })).toContainText(
     '두 shell에서 유지할 초안',
   );
-  await page
-    .getByRole('textbox', { name: '사용자 메시지', exact: true })
-    .fill('추가 사용자 메시지');
+  const composer = page.getByRole('textbox', { name: '사용자 메시지', exact: true });
+  const draft = '추가 사용자 메시지\n한글 초안 두 번째 줄';
+  await composer.fill(draft);
+  await composer.focus();
+  for (const width of [320, 767, 768, 1279, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect(composer).toBeFocused();
+    await expect(composer).toHaveValue(draft);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+      true,
+    );
+  }
+  await composer.press('End');
+  await composer.press('Enter');
+  await expect(composer).toHaveValue(`${draft}\n`);
+  await composer.press('Control+Enter');
+  expect(writes).toHaveLength(1);
+  expect(messages).toHaveLength(1);
+  const explicitDraft = await composer.inputValue();
   await page.getByRole('button', { name: '사용자 메시지 저장', exact: true }).click();
-  await expect(page.getByRole('region', { name: '사용자 메시지 기록' })).toContainText(
+  await expect(page.getByRole('region', { name: '사용자 메시지 기록', exact: true })).toContainText(
     '추가 사용자 메시지',
   );
+  expect(messages[1]?.content).toBe(explicitDraft);
+  expect(messages[1]?.revision).toBe(2);
   expect(messages).toHaveLength(2);
   expect(writes).toHaveLength(2);
   expect(writes.every((path) => path.startsWith('/bff/v1/coaching-threads'))).toBe(true);
@@ -226,4 +244,8 @@ test('shared coaching UI preserves drafts, scopes saved messages and clears a re
     '공통 모듈 검증',
   );
   await expect(page.getByText('저장된 상담이 없습니다.', { exact: true })).toBeVisible();
+  await expect(page.getByRole('region', { name: '사용자 메시지 기록', exact: true })).toHaveCount(
+    0,
+  );
+  await expect(page.getByText('추가 사용자 메시지', { exact: true })).toHaveCount(0);
 });

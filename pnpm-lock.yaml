@@ -459,6 +459,9 @@ importers:
 
   packages/modules/coaching:
     dependencies:
+      '@workout/conversation-kit':
+        specifier: workspace:*
+        version: link:../../experience/conversation-kit
       '@tanstack/react-query':
         specifier: 5.102.8
         version: 5.102.8(react@19.3.0)
