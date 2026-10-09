@@ -1,6 +1,6 @@
 # EXT-RESTORE · 현재 제품의 완전한 인증 복원
 
-상태: **not_started**. 기존 M2-01k의 운영·삭제·복원 수용 공백을 명시적으로 추적한다. 새 제품 범위를 추가하거나 기존 요구를 완료 처리하지 않는다. G2-PUBLIC, EXT-HOSTING과 M2-01k는 이 gate를 기다린다.
+상태: **in_progress** (`EXT-RESTOREa` 로컬 구조 검증 구현 착수). 전체 gate와 운영 `EXT-RESTOREb`는 미완료다. 기존 M2-01k의 운영·삭제·복원 수용 공백을 명시적으로 추적한다. 새 제품 범위를 추가하거나 기존 요구를 완료 처리하지 않는다. G2-PUBLIC, EXT-HOSTING과 M2-01k는 이 gate를 기다린다.
 
 ## 현재 실제 증거와 공백
 
@@ -31,3 +31,11 @@ Local signed fixture, 단일 이벤트 hash, 서버 health 응답, root 검토�
 ## 2026-10-07 추적 검증
 
 읽기 감사: `/private/tmp/wm-c-current105-authenticated-chain-gap-20261007.md`. Historical source100/target102와 현재105의 공백을 코드에서 대조한 문서이며 새 protocol 구현·PG·운영 결과가 아니다. Root는 기존 매핑 요구의 backup restore/삭제 suppression과 최신 v-c의 직접105 복원 미구현 기록을 확인했다. Graph는 기존 M2-02 하위 작업에 의존하며 parent M2-02 의존성을 추가하지 않아 순환을 만들지 않는다. 기존 모든 node/status와 미완료 요구를 보존한다.
+
+## 2026-10-09 로컬 inventory precursor
+
+`phase/ext-restore`는 M2-02 개발 입력 `a300ff3f`에서 분리했다. M2-02 전체 phase 검토/main 통합과 SQL143 최종 registry는 아직 미완료다. 새 `full-restore-inventory-v1` public port는 independently supplied exact registry/profile/catalog identity에 대해 unknown inventory를 bounded strict 검증한다. 전체 relation의 present/explicit-empty, 순서·중복·누락·추가·codec·column/order key·개별/합산 count와 bytes, target-local 제외를 검사한다. 결과는 detached/frozen `validated`이며 `authority: none`, `admissionAllowed: false`다. digest는 equality descriptor이며 물리 row SHA·서명·최신 tail·객체·실제 권한을 증명하지 않는다.
+
+Root의 실제 Node24.12.0 기본 unit 모음 **14/14·1파일·skip0·exit0**, duration229ms, 전체 persistence TypeScript·scoped lint/format exit0이다. 새 worktree의 offline frozen38개 workspace 설치는805개 package·다운로드0·exit0이다. 초기 store 등록 EPERM은 허용된 동일 설치로 해소했고 msw ignored build script 경고는 보존한다. 첫 unit 실행의 기본 Node22 관측 뒤 Node24로 같은 시험을 실제 재실행했다. source SHA `9e9f05770bfa55c265ca7fc9cc241ec0139dc701c163b208d48ab06ef42e0d81`, test SHA `5303f568794990c3dd994f0a390d6c7f3310685622ee02e6d9333445300422f0`다.
+
+이 입력은 synthetic registry이고 production 전체 inventory가 아니다. 최종 whole registry·물리 row/tail/crypto/loader·원자 admission·실제 plain-owner PG 15항목과 운영 외부/최종 제품 실기기 수용은 남는다. 기존 source333·역사 domain/literal/SQL101/142와 CLOSED guard는 변경하지 않았다.

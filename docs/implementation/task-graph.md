@@ -891,3 +891,7 @@ M2-01k-v-a~f는 app 처리 의미 확정 뒤 새 admission·직접 저장·basis
 ## 2026-10-09 S17 전체 수용 후속
 
 기존 M2-03은 core 수용이고 viewer/codec·앨범/날짜/코스·파생물 미구현은 [후속 기록](progress/M2-03-follow-up.md)에 명시한다. ready M2-03a~c를 추가하고 M2-06이 모두 요구한다. 기존 미실행을 완료로 바꾸지 않으며 최종 실제 제품 기기 검증은 M3-03b에 남긴다.
+
+## 2026-10-09 전체 복원 구현 착수
+
+`EXT-RESTOREa`는 `phase/ext-restore`의 `11014164`에서 strict inventory descriptor parser를 구현하고 실제 Node24 단위14/14·persistence 타입/lint/format을 확인해 in_progress로 갱신했다. 선행 v-c/i/j/k/l 상태는 completed지만 M2-02 전체 phase 검토/main 및 SQL143 최종 registry는 아직 미완료다. parser의 structural validated 결과는 authority none이며 전체 row/tail/서명/loader·원자 admission·실PG 및 운영 gate 완료가 아니다. 기존 요구·dependsOn·외부 not_executed는 유지한다.

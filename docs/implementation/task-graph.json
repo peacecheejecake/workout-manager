@@ -2404,7 +2404,7 @@
       "title": "현재 schema의 완전한 인증 복원 protocol 구현·로컬 수용",
       "dependsOn": ["M2-01k-v-c", "M2-02i", "M2-02j", "M2-02k", "M2-02l"],
       "kind": "task",
-      "status": "not_started",
+      "status": "in_progress",
       "scope": "기존 M2-01k의 broader 복원 수용 공백을 명시 추적. 승인된 phase 통합 schema의 independently pinned 전체 table/object inventory, 새로운 versioned authenticated full-family loader·완전한 suppression/budget tail·target-bound postconditions와 원자적 admission. 역사 source100→target102→upgrade105는 보존하며 literal widening/임의 guard 해제 금지. M2-02 schema 확정 후 Root가 신규 DDL을 직렬 배정하며 번호를 선예약하지 않는다. 실제 plain-owner PG 전체 family·privacy·mixed rollback·foreign/collision/partial denial·원 receipt replay 수용 필요.",
       "evidence": "docs/implementation/progress/EXT-RESTORE.md"
     },
