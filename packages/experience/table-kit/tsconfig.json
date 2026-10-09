@@ -1,0 +1,4 @@
+{
+  "extends": "../../tooling/tsconfig/bundler.json",
+  "include": ["src", "tests"]
+}

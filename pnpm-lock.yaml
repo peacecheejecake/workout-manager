@@ -379,6 +379,15 @@ importers:
         specifier: 19.3.0
         version: 19.3.0
 
+  packages/experience/table-kit:
+    dependencies:
+      '@tanstack/virtual-core':
+        specifier: 3.17.11
+        version: 3.17.11
+      react:
+        specifier: 19.3.0
+        version: 19.3.0
+
   packages/experience/ui-spike:
     dependencies:
       '@dnd-kit/dom':
@@ -594,6 +603,9 @@ importers:
       '@workout/contracts':
         specifier: workspace:*
         version: link:../../contracts
+      '@workout/table-kit':
+        specifier: workspace:*
+        version: link:../../experience/table-kit
       '@workout/ui-foundation':
         specifier: workspace:*
         version: link:../../ui/foundation
