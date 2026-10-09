@@ -1378,3 +1378,15 @@ Root는 실제DB/Docker/브라우저/Git/공통graph/exports를 직렬 소유한
 중앙 compilation 준비·Gallery guard actual 준비·EXT native projection actual 준비를 계속
 병렬 진행한다. 주간잔여량을 이유로 중단하지 않는다. 새graph완료판정/main변경/push/운영/
 실기기수용은 이 후속으로 승격하지 않는다. EXT-HOSTING 보호4줄 WIP와 각stash는 유지한다.
+
+## 2026-10-10 실제 후속 관측 · 주간 잔여량 중단 조건 해제
+
+사용자가 주간 잔여량과 관계없이 계속 진행하도록 지시했다. 병렬 구현과 검증을 계속하며 push는 사용자 작업이다.
+
+Root가 R4 source-build1 compiler를 정확1회 실행해 exit0을 확인하고 실제 asset SHA `d57f0a4224e5f249ea22cfda857dc62d7ac687575444a1d28ce5cde82cd16c64`와 literal pin SHA `09dcbe2e0fb2f047f2f7b475aa64926113a2016614a7b69636dc1484f77d0e00`를 등록했다. 새 no-args verifier는 source340을 검증하지만 functionalExecution은 not_executed, configuredWholeExternalAst는 not_verified다. 옛 V9 asset/pin 및 source_drift 거절은 유지한다.
+
+로그인 E2E host의 profile25 factory 직접 소비가 legacy V9에 남아 있음을 발견해 Root가 등록 factory로 import/call 두줄을 전환했다. 이 dependency source 변경 뒤에는 R4 proof가 최신이 아니므로 새 R5 compile/pin을 준비하고, 그 이후 full static·실제 configured PG·영양 HTTP·전체 integration·identity×2를 실행한다. 영양 actual fixture는 실제1case/90s이며 네 case로 제조하지 않는다.
+
+Gallery capture19 실제 결과18통과/1실패/skip0·exit1은 보존했다. 부모 함수 본문·portable metadata actual capture SHA `8c8de2678ced41115d07bb3ed1a0b29caa70a923d1a7163e6f8722f1ebb4148a`를 고정한 guard22는 Root 실제 PostgreSQL 검사22/22통과·skip0·exit0이었다. 결과 SHA `6454f874dd92fc1d5ed144056c815f387aab3317cc6538ba5a1132558c161b57`; source/execution 전후동일·poolclose·DB1/role1/slot0·소유container제거. TMP clone만 변경하며 보호raw143/원14case는 유지한다. 제품 formal profile·membership/course producer·erasure/export/restore·API/두 shell 연결은 미완료다.
+
+EXT C1 단일-root 실제 실행은239관계 projection·합성13타입·portable metadata 일치까지 관측했으나 synthetic_order ROOT_ORDER로 exit1이다. 순서0/underreport0을 통과로 세지 않는다. 실제 유한 결과 SHA `cfe75307f404c8e0551744c9b3196196c3fab6731eba2e3795a1b087398aa7a1`; source전후동일·poolclose·소유container제거. productionRegistry false·authority none·capture/restore/admission 미완료를 유지하며 최소 진단 후속을 준비한다.
