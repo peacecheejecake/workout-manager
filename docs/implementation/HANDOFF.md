@@ -1092,3 +1092,32 @@ EXT-RESTORE의 실제 native R3가 찾은 BC 최소값 거절을 exact PostgreSQ
 Gallery `381cda53`에 고정 GCC builder의 실제 Python3.11.2 exit0(첫localmissingimage125보존)을 기록했다. 후속 dav1d1.5.4/Meson1.9.2/Ninja1.13.1 공개5입력을 실제 exact size/SHA로 검증하고 Root150개context핀·Dockerfile/안전unpack을 읽었다. TMP context `/private/tmp/wm-gallery-linux-dav1d-context-v3-20261009/context`, freeze SHA `c0acb121a66fa30b64e9c292a9828e67f25d4652947b476d7af33b0fabe21128`, Dockerfile SHA `717d3474ae52b938530779e61d0dc1b95e115c8c16a3248612a48e2b71ca2617`. 실제 network-none build handle69148은 최신poll에서live/x264 compile이었다. 성공image/새decoder/decode를 아직 주장하지 않는다. 같은handle을이어관측한다.
 
 Canonical 전체DB v10 handle31315도 최신 실제poll에서 계속live였다. source1093수정금지/기존artifact/freeze를 유지하고 결과가 없다는 이유로 새회차를 시작하지 않는다. Native병렬은 전체producer설계, M2-03a 실제viewer연결공백 감사, 새image핀을 기다릴 productionprobe준비다. main/기기/운영/push변경0, 정책4파일사용자승인대기0변경이며 실제기기는 마지막 제품앱에서만 검증한다.
+
+## 2026-10-09 사용자 승인 적용·자막 transport·실제 빌드 후속
+
+사용자는 Gallery 격리 정책의 정확한 4파일 후보 적용을 승인했다. Root는 동결 후보 SHA를 재확인해
+적용하고 실제 정책/projection 98/98 및 codec 회귀159/159·skip0·lint/format exit0을 확인했다.
+검증 등록·기록과 함께 `phase/m2-03`의 `992cc386`에 커밋했다. 이제 이 정확한 후보의 승인 대기는
+해소됐으며, 실제 Engine/cgroup admission·종료 및 worker/DB/restore 연결은 계속 미완료다.
+사용자는 삭제/접근 불가 코스의 연결을 보존하고 `사용 불가`를 표시하도록 결정했다. V2를 보존하는
+V3 조회 DTO와 저장 association/권한 projection 준비를 native agent에 배정했으며 구현 완료는 아니다.
+
+별도 자막 transport factory 두 파일은 Root 전체 검토 후 실제18/18·skip0, Gallery/Web/mobile-web
+typecheck·lint/format을 확인하고 공개 subpath export와 함께 `9a41c267`에 커밋했다. 최초 Web
+tsbuildinfo EPERM은 같은 검사를 권한 경계에 맞춰 재실행해 해소했다. authoritative 서버 저장/RLS,
+receipt/outbox·삭제/export/restore·shell reader 및 실제 HTTP/브라우저는 아직 미완료다.
+
+V3 빌드는 Ninja child의 Meson module 부재로 실제 실패했다. 이 실패를 보존하고 정확한 두 Ninja
+명령에 PYTHONPATH를 전달한 V4가 실제 exit0으로 image
+`sha256:8cdca45bfe22b05adfd774acb3f28c7c31725772177e6d56145e85b23bd64658`를 생성했다.
+빌드 중 실제 libdav1d decoder를 확인했지만 production AV1 성공은 아직 없다. 새 바이너리 확인
+probe는 created_requirements에서 실패했고 자기 container 제거/부재를 확인했다. 결과 SHA
+`cc4fd97a976f0177e2ebbd83f19d84fe23c2a3be61d7488bcc28ba339ba6f79c`를 보존하고
+검증 조건을 완화하지 않는 유한 실패 항목 관측 successor를 준비한다.
+
+EXT-RESTORE는 현재334 runtime 입력/393 stage의 원본 closure 후보를 실제 compile exit0으로
+생성했다(`022610a6`, asset SHA `b88955b2345da67f7c7c24415cb48b515019341327868021f9469f3ac1445da5`).
+역사268건은 currentExecutionClaims=0/not_executed로 유지하며 등록·catalog·복원 권한은 없다.
+Canonical 전체DB v10의 같은 handle31315는 최신 poll에서 계속 실행 중이다. 입력1093 변경 없이
+terminal을 기다린다. main `1d557358`은 clean/변경0, 운영·기기·push0이며 phase 전체 gate와
+독립 검토를 앞서 통과했다고 쓰지 않는다. 실제기기는 모든 구현 후 실제 제품 앱에서 마지막에 검증한다.
