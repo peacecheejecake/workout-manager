@@ -108,3 +108,17 @@ success/SQLSTATE null이었다. 단순 DB소유권 사전조건 결함으로 단
 소스·의존성 전후동일, scratchDB0, 정확PGstop/remove를 확인했다. originalWholeGateAccepted false를
 유지한다. 집중성공으로 원full1fail을 덮어쓰지 않고 변경없는 고정source의 전체canonical R2를
 새wx결과로 실행 중이다. loader/REASSIGN의 앞선 전체실패 원인은 미확정이다.
+
+### 동일 source 전체canonical R2 실제 통과
+
+집중17성공 후 제품소스·시험·권한·timeout 변경 없이 원전체integration을 새privateUnixPG에서
+재실행했다. Upgrade1/1, normal1487passed/기존4skip·158files(157pass/1skip), exit0이다.
+source·localdependency전후동일, 새PGscratch잔존0이며 accepted=true는 이 실행의 localcanonical
+범위만 의미한다. 직전full1fail 및 그전4fail은 각각 보존한다. 원인의 확정·fixture추가교정0.
+
+- 새 실제결과: `/private/tmp/wm-m0-60e4fa4f-canonical-pg-actual-r2-20261009.json`
+- SHA: `31c5b43398471a186a2c5fe23ed1a6c6f5670656f0dbb9c3705a5f499582338a`
+- R2driver SHA: `0513fc1fee57b85f3bbedf8e1f6888b93f459d0ea9a29a1901846ab29b4420c9`
+
+새build를고정한 identity×2·적용drill·독립phase검토는 다음gate다. 이기록으로main병합하거나
+운영/최종제품실기기 수용을 완료하지 않는다.
