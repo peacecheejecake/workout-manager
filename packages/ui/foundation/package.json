@@ -13,6 +13,7 @@
     "./button": "./src/button.tsx",
     "./text-field": "./src/text-field.tsx",
     "./status-notice": "./src/status-notice.tsx",
+    "./modal-dialog": "./src/modal-dialog.tsx",
     "./adaptive-workspace": "./src/adaptive-workspace.tsx",
     "./responsive": "./src/responsive.ts",
     "./tokens.css": "./src/tokens.css",
