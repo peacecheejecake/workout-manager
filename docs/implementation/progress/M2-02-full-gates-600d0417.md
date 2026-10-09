@@ -73,3 +73,11 @@ logical 첫 v3 실행에서는 시험 1/1이 통과했지만 Node/tsx 캐시 두
 동일 normal registry107/config/시간 제한과 freeze1,093개 SHA `9fc74fdf6e2ceb197843e3baa2b689b40c566b50811b1e82dac106b5cb15c496`의 실제 전체 실행은 terminal exit1이었다. upgrade1/1, 일반300파일 통과·1실패·3skip, 3,070통과·1실패·14skip/3,085등록, error1이다. elapsed2,155,832.279125ms, 실행 구간은2026-10-09 06:28:57.003Z~07:04:52.841Z다. 실패 위치는 `race-source-deletion.integration.test.ts:665:24`, `:45:20`, `:662:5`, marker는 `RESTORE_REPLAY_INVALID_ENTRY`이며 정확 내부 OR 분기는 미관측이다. 이전 course-share 실패와 좁은6/6을 보존한다.
 
 source 전후동일·normal registry107/FORCE RLS 확인, poststate 역할17/DB1/slot0·pool종료·소유container제거·stdout/stderr drain 완료를 확인했다. artifact `/private/tmp/wm-fullnormal176-v8-9d25ac3b-d5ef-47c5-a115-79c2e0b91135`, finite-terminal SHA `e31384ec213817d4d193b20ed37b3a1ccfc1191c7938ad6adb5a2cb77f9e30dc`, lifecycle SHA `b249f503aaf3513627f6b40759e31ab4ba3bebe59f7cf9937733c33a1e994927`다. handle72423은 terminal이며 다시 poll하거나 timeout 재시작 대상으로 취급하지 않는다. 최신 whole/identity×2·fullphase·독립review/main은 미완료다.
+
+## Canonical whole normal v9 · terminal FAILED
+
+원 normal registry107/config/timeouts·동결1093입력 SHA `284c0627980f3a3409fbacfd8ed442c4ccc2f6fe0f9fa1b8ef133f6e68df3fb1`의 실제 전체 실행은 exit1로 종료됐다. Upgrade1/1; normal300파일 통과·1실패·3skip, **3071통과·1실패·14skip/3086등록**. error markers2. 원 race clock 교정·추가1시험을 포함하지만 whole gate는 실패이며 이전 v8 실패를 통과로 변경하지 않는다. 실행 구간2026-10-09 07:26:23.863Z~08:01:12.642Z, elapsed2088784.240208ms.
+
+실패 위치는 `global-openai-budget.integration.test.ts:104:5`, `:766:5`. 기존 finite owner-transfer observer는 `reassign_owned` terminal error/SQLSTATE42501/2ms, 이후 `revoke_membership` success/0ms를 실제 관측했다. 정확한 권한 조건은 미관측이며 NOCREATEDB/schemaCREATE/role membership을 원인으로 단정하지 않는다. 이전 좁은 budget17/17 결과와 whole 실패를 구분하고 native read-only agent가 PostgreSQL17 primary source·같은 session precondition/closed error enum 진단을 준비 중이다.
+
+Artifact `/private/tmp/wm-fullnormal176-v9-a9c357e6-7c9e-4824-bd88-681bf60b012c`. finite-terminal SHA `c8c073692c63fd0b84b8bad99b7b8b9532261f1d2d099251772df2cd1675b2ae`, lifecycle SHA `8c950772222e156c749d7a15c01953f2a2ab627145a0704025140e9f48d5e1fe`. source pre/post SHA 동일·pool close·stdout/stderr drain·자기 container 제거 true. Poststate role17/DB1/slot0는 컨테이너 제거 전 관측이며 role0이라고 바꾸지 않는다. 실행 handle49068은 terminal이므로 다시 poll/재시작하지 않는다. 최신 whole 통과·identity×2·phase 독립 검토·main·운영/최종 제품 실기기 gate는 미완료다.

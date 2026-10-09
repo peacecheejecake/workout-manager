@@ -1068,3 +1068,9 @@ EXT-RESTORE의 generic 원본 row-byte 검증을 Root가 읽고15/15·skip0·전
 Gallery는 `phase/m2-03`의 `b91d8215`에 Root actual PNG frame 및 Engine 유한 경계 관측을 기록했다. PNG 기술 점검 exit0·sourceSame·자기 container 정리, TMP V3 기존 V1 포함130/130은 실제 결과다. cgroup quiescence/processing authority/worker DB/video/전체 phase 수용은 미완료다. 정확4파일 V3 runtime 적용도 자동 승인 검토가 persistent security boundary의 명시 승인 부족으로 거절했다. 저장소 정책 변경0이며 사용자에게 구체 후보 적용 승인을 요청했다. 원본·후보와 실패는 보존하고 우회하지 않는다.
 
 Canonical whole normal v9는 실제 실행 handle49068의 최신 poll도 진행 중이었다. 같은 handle을 계속 관측하고 timeout만으로 재시작하지 않는다. Parent/phase 상태와 main `1d557358`·push0를 유지한다. Native 병렬은 공개 template timestamp 대응, full239 producer/native-order 계약 대조다. 실기기는 모든 구현 후 실제 제품 앱으로 마지막에 진행한다.
+
+## 2026-10-09 v9 전체 DB terminal FAILED
+
+Handle49068은 실제exit1로 종료되고 소유컨테이너 제거까지 완료됐다. Upgrade1/1, normal3071pass/1fail/14skip이며 실패는 global budget REASSIGN 단계42501이다. [전체 gate 기록](progress/M2-02-full-gates-600d0417.md)에 exact frozen inputs/유한 로그 SHA/권한 원인 미확정을 기록했다. 기존 narrow 통과로 whole 실패를 바꾸지 않고, native agent가 같은session 권한 조건과 closed error enum 진단을 준비한다. 앞서 기록한 live 상태는 당시 관측이며 현재 terminal로 대체된다.
+
+EXT-RESTORE `f288c097`에 durable7·공개 PostgreSQL microsecond 비교를 Root 통합 검증 후 커밋했다(117/117, contracts build·persistence/API/worker TS·lints/format exit0, 실제 합성PG12/12). Generic lossless physical V2는 다음 검증 중이며 whole239 복원 완료는 아니다. Gallery 실제 합성 H264제품frame은 성공했으나 AV1제품frame은 invalid_media로 실패했다. 두 결과를 분리하고 software decoder 원인 진단을 준비한다. 정확보안4파일 사용자승인은 계속대기, 정책적용0/main변경0/실기기마지막결정유지.
