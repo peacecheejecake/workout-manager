@@ -128,3 +128,9 @@ Root가 runner 원형과 generated-output 제외 diff를 검토하고 실행을 
 10k 시험은 전체 DOM 읽기 대안, 동적 높이·scroll/focus·정렬/검색·null/zero·viewport 경계와 emulated touch를 실제 검증했다. 현 추가 수용을 원 18개 조합/현재 모든 shell 입력의 전체 회귀, 실기기 또는 외부 운영 gate로 확대하지 않는다. 새 table-kit은 이미 고정된 virtual-core 3.17.11을 사용하지만 과거 101-package closure 동일성을 새 importer까지 자동 적용하지 않는다. 정확 closure/고지 재대조가 필요하다.
 
 Gallery viewer·caption/speed/fullscreen·carousel·파생물의 제품 저장/worker/권한/복원 연결은 M2-03a~c에서 계속 구현한다. Historical core completed를 전체 S17 또는 M0의 남은 기능 완료로 세지 않는다. 전체 phase install/generated/lint/typecheck/build/unit/integration/identity×2/format과 context-less 독립 phase 검토는 별도이며 main/push 경계는 유지한다.
+
+## 후속 closure와 streaming store · 2026-10-09
+
+`phase/m0-06b`의 `2fefc6f1`에서 위 추가 table importer의 dependency/license closure를 실제 재대조했다. 현재 103 packages(외부 100), 기존 101개의 metadata/notice SHA 불변, 추가 table-kit/virtual-core 두 항목, required unresolved 0이다. 새 inventory SHA는 `ab1c916463f0c839fe232cafb0dbbf6362cfc7e47eaba600faeb9dd91458c595`이며 Web/mobile-web/Storybook의 notice manifest 전체와 bundle hash가 모두 정확 일치했다. 해당 phase의 `M0-06b-license-closure-20261009.md`를 따른다. 앞 표의 재대조 필요는 이 후속 로컬 범위에서 해소됐으며 전체 법률/지도 데이터 권한 수용으로 확대하지 않는다.
+
+`a216daa3`은 호출별 external store의 provisional text/read-only tool result 실험을 추가했다. Root가 기본 Vitest node 수집에서 15/15·skip 0 및 kit TS/lint/format을 확인했다. account/session/run/attempt와 순서·bounds·dispose를 구분한다. 실제 provider/token/tool 전송·서버 권한/동의/lease·승인 적용은 미구현이며 React 소비자/브라우저 통합은 진행 중이다. 이 순수 시험을 제품 streaming 완료로 세지 않는다. 기존 후보/조합 시험과 미실행 최종 제품 실기기 gate는 유지한다.
