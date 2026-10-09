@@ -1032,6 +1032,8 @@ FUT-03 후보 감사에서 기존 M2-03 기록이 S17 viewer/codec·앨범/날�
 
 ## 구현 선행 진행 후속 · 2026-10-09
 
+추가 검증: `phase/m2-03`의 `0e402b7d`는 own 앨범 목록 SQL query port와 runtime query/DTO 검증을 연결했다. scoped query+mapper 실제25/25·TS/lint/format exit0이며 PostgreSQL 연결·SQL143 등록·복원 admission 통합은 아직 미완료다. `428569a4`에는 FFmpeg9.0.2 공식 서명·Node24.12.0 Linux ARM64 공식 SHA·x264 exact commit/archive SHA의 실제 검증을 기록했다. Linux image 빌드/실행파일 SHA/hard cgroup fence는 아직 미검증이다. 별도 source 소유 TMP 최소 이미지 recipe, 전체 복원 inventory parser 준비, 제품 Gallery wiring gap 점검을 native agent로 병렬 배정했다. standalone 기기 작업은 재개하지 않았다.
+
 사용자 결정대로 standalone iPhone 시험 앱은 실행하지 않았다. 실기기 수용은 모든 구현 후 실제 제품 앱에 남긴다. main은 `1d557358` clean이며 이번 unreviewed 작업을 병합하지 않았다.
 
 - `phase/m0-06b`의 `52f6579e`는 scoped Streaming React consumer/lazy panel을 실제 단위 및 두Host Playwright12/12·Chrome으로 검증·커밋했다. 기존 비공개 실기기 WIP14파일은 byte불변으로 보존했다. 실제 provider transport·전체 phase 및 제품 기기 gate는 남는다. [중앙 수용 연결](progress/M0-06b-local.md)을 따른다.
