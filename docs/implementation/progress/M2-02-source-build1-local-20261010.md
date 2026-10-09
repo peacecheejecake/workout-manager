@@ -44,3 +44,11 @@ HANDOFF의 이전 dense804 위치 설명도 정정한다:804는 원 시험 호�
 원 source/build4326을 복사하고 이2파일만 교체한 후보 clone의 실제 PG17.6 원3파일 시험은25passed/failed0/skip0, module/suite error0·unhandled0·exit0이었다. actual `/private/tmp/wm-dbclocktwo176-f1e085d7-655a-403a-bfc5-27769eae5274`, finite SHA `f7653c2361d6f31cd8bde3a6cfc1eb3f9df7d61614960b37f2188d023c382903`, Root 평가 SHA `67570ac2809e714a0312c2d312b3c05553a60857c9ff761be02e68bc27ac043b`. 실행 source/clone 전후동일, post roles1/DB1/slots0, poolclose·정확 소유 container 제거를 확인했다. 독립 신규 install clone은 아니며 고정 원 dependency bytes를 읽기 전용 링크로 사용했다.
 
 이 실제 결과 뒤 정확한 두 fixture를 phase tree에 적용했다. 전체 persistence TS·두 파일 ESLint/Prettier exit0. 적용 후 전체 canonical integration과 identity 두 회차는 아직 미실행이다. 이전 whole4fail/14skip·baseline2fail·진단1fail과 harness의21개 가정 오류를 모두 보존한다. sourceproof의 authority none·admission false, main/운영/실기기 출시 gate는 그대로다.
+
+## DB-clock fixture2 이후 canonical 전체 actual · 2026-10-10
+
+중앙 `6b145056`의 fresh source/build4326 freeze `f824781e09784a5531d414d6d18fad3f640cf56ad5a708162bd7ad514d4102f9`를 Root가 독립 재해시하고 canonical `pnpm test:integration`을 그대로 실행했다. 실제 2026-10-09T19:38:25.560Z→20:12:57.641Z, 2072083.56ms: upgrade 1file/1case passed; normal 304files 중 300passed/1failed/3skipped, 3086cases 중 3071passed/1failed/14skipped, exit1. 원 clock fixture의 이전3파일 실패 위치는 이번 전체 결과에 없으며 새 실패 위치는 `restore-app-family-loader.integration.test.ts:1124:5`의 REASSIGN OWNED 호출이다. 정확 원인은 raw 오류가 보존되지 않아 아직 unknown이며 기존 실패를 통과로 덮어쓰지 않는다.
+
+실제 디렉터리는 `/private/tmp/wm-source-build1-fullnormalr7-176-4940a5dc-66b6-4e57-8a5d-abcf4c30a68a`다. source/build 전후 동일, stream complete, signal null, pool close와 정확 소유 컨테이너 제거를 Root가 확인했다. canonical 실패 때문에 성공 전용 role cleanup은 실행하지 않았다. 삭제 전 roles17/DB1/slots0/otherclients0와 `SUITE_ROLE_CANONICAL_NOT_SUCCESSFUL` 및 secondary `POSTSTATE_NOT_CLEAN`을 그대로 보존한다. 전체 컨테이너 제거가 실제 시험 실패나 성공 전용 정리 실패를 통과로 바꾸지 않는다. Root 평가 SHA `3f46a31beebffa42591b0fcca312858b98827c335c482d6051d87d13924bc5a8`.
+
+다음은 원 실패 파일의 실제 ownedPG baseline과 유한 오류 진단이다. 원 SQL·단언·timeout·권한을 완화하지 않는다. identity 새 두 회차·phase 독립 검토·main·운영 수용은 아직 미완료다. 이 기록 이후 문서가 변경되므로 후속 source/build freeze는 새로 수집한다.

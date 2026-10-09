@@ -1443,3 +1443,13 @@ EXT `40262057`은 C4 raw metadata actual 성공을 기록했다:239관계/1887�
 - Gallery `a1685d26`: generic physical boundary2+test2와 Gallery A3 source/test2/publicexports4 통합. unit66/66·persistence/API/worker/publicexport TS0. JSON ESLint 미지원 최초경고 실패는 보존했다. 보호 SQL143·원 integration2는 미커밋 그대로이며 정식installer/profile/sourceproof/publication/전체복원은 남는다.
 
 다음은 중앙 canonical 전체integration과 identityx2의 새 정확입력 검증, source 기반 C4 trigger 예상 구조 검토 준비, Gallery A1 정식 forward 등록 준비를 native 병렬로 진행한다. Root는 shared manifest/graph/Git/DB lane만 직렬 통합한다. phase 검토 전main 반영·push는 하지 않으며 운영 backup/restore→HTTPS→외부 수용→실제 제품iPhone→출시 순서를 유지한다. 주간 잔여량 기준 중단은 사용자 결정으로 해제됐다.
+
+### 2026-10-10 canonical 결과 및 병렬 로컬 후속
+
+중앙 `6b145056`에 대한 canonical 전체 integration actual은 upgrade1pass, normal3071pass/1fail/14skip로 exit1이었다. 이전 시간 경계 관련3파일 실패 위치는 이번 결과에 없고 새 실패는 `restore-app-family-loader.integration.test.ts:1124:5` REASSIGN OWNED이며 raw cause는 unknown이다. 원 오류/skip 기록은 보존한다. source/build 동일·poolclose·정확 소유container 제거를 확인했으나 실패 실행의 성공 전용 role cleanup은 거절돼 POSTSTATE_NOT_CLEAN도 별도 남았다. 상세는 [현재 R7 검증 기록](progress/M2-02-source-build1-local-20261010.md). 다음은 이 원파일의 고정 PG17.6 baseline/유한 진단, 이후 정확 입력의 whole integration 및 identityx2다. 이 문서 수정 이후 후속 freeze를 새로 생성한다.
+
+Gallery phase/m2-03 `ee4709c8`에는 lease stage를 분리한 rendition worker와 public 수명주기 계약을 검증·커밋했다. Root 실제 unit55+contracts35는 각각 실패/skip0, 소비자 TS·lint·format도 확인했다. actual persistence/codec/storage/HTTP/미확정 attempt의 durable 격리·복원 연결과 EXIF 위치 정책은 남는다. source1 단일 transaction 설치 후보는 mid-install 정확 sentinel과 기존 helper2 관측 guard를 복원한 새 r2를 준비했고 native 수용은 아직 없다.
+
+EXT C4 logical preimage의 새 actual은 trigger58/routine15를 수집했고 고정한 source 본문 SHA15개가 일치했다. raw7파일 핀·동일 source·rollback/release/poolclose·소유container 제거를 Root가 확인했다. WHEN·전체 ACL/역할/메타데이터 의미의 독립 expected 결정·정식 registry/sourceproof·positive/whole inverse/admission은 미완료다. 관측 성공을 복원 통과로 승격하지 않는다.
+
+Root는 graph/공통등록/Git/DB lane을 직렬 통합하고 다른 native agents는 독립 TMP scope에서 계속 병렬 진행한다. 주간 잔여량에 따른 중단은 적용하지 않는다. main은 `e7fb1d0b`, push는 사용자 작업이며 운영 backup/restore→HTTPS→외부수용→실제 제품앱 iPhone→출시 선행조건은 유지한다.
