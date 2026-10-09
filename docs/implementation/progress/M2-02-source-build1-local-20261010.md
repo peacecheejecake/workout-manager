@@ -52,3 +52,11 @@ HANDOFF의 이전 dense804 위치 설명도 정정한다:804는 원 시험 호�
 실제 디렉터리는 `/private/tmp/wm-source-build1-fullnormalr7-176-4940a5dc-66b6-4e57-8a5d-abcf4c30a68a`다. source/build 전후 동일, stream complete, signal null, pool close와 정확 소유 컨테이너 제거를 Root가 확인했다. canonical 실패 때문에 성공 전용 role cleanup은 실행하지 않았다. 삭제 전 roles17/DB1/slots0/otherclients0와 `SUITE_ROLE_CANONICAL_NOT_SUCCESSFUL` 및 secondary `POSTSTATE_NOT_CLEAN`을 그대로 보존한다. 전체 컨테이너 제거가 실제 시험 실패나 성공 전용 정리 실패를 통과로 바꾸지 않는다. Root 평가 SHA `3f46a31beebffa42591b0fcca312858b98827c335c482d6051d87d13924bc5a8`.
 
 다음은 원 실패 파일의 실제 ownedPG baseline과 유한 오류 진단이다. 원 SQL·단언·timeout·권한을 완화하지 않는다. identity 새 두 회차·phase 독립 검토·main·운영 수용은 아직 미완료다. 이 기록 이후 문서가 변경되므로 후속 source/build freeze는 새로 수집한다.
+
+### 원 restore-family18 focused baseline · 2026-10-10
+
+전체 normal3071pass/1fail/14skip의 REASSIGN 위치 실패 원인을 구분하기 위해 원 restore-app-family-loader 파일18개를 그대로 별도 PostgreSQL17.6에 실행했다. 원 SQL·roles·assertions·개별 timeout을 변경하지 않았다. 실제18passed/0failed/0skip·terminal0이며 module/case/unhandled 오류0이다. pre/post roles1/DB1/slots0/otherclients0, source/build 입력 전후 동일, pool 종료 및 정확 소유 컨테이너 제거를 확인했다.
+
+실제 `/private/tmp/wm-restorefamily176-4b115ae1-3eec-4fa0-bbf1-b3686360fb92`, finite reporter SHA `3d5323de895d3c24512d1bbf05a14a42aef62d7dd1c0c6d7f5df35016f5ee718`, 새 source2996/build1330 전체4326 입력 freeze SHA `3262076b404b1d0f4359c1beff4e700f357916a7e0905b9e45f52cc296926e49`다. Root가 전체 입력 SHA를 별도 대조해 mismatch0을 확인했다. 원 fixture SHA `b05d20d86e1c7ab0d29cb5b23af5f20898524abbd6ec7565ea1bf561ad7d08a8`와 원18 제목 allowlist를 유지했다.
+
+이 focused 성공은 전체 실패 원인이나 수정 완료 증거가 아니다. 원 canonical failure와 성공 시만 허용되는 role cleanup 거절 기록은 보존한다. 전체 실행의 유한 SQLSTATE/timeout 관측을 보완한 별도 진단 준비를 계속한다. 전체 gate·독립 phase 검토·운영 복원/출시 및 identity x2는 이 결과로 통과시키지 않는다.
