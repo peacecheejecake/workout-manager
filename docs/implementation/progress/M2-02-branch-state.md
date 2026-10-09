@@ -92,3 +92,11 @@ HEAD `6a00c113`의 canonical full identity 실제 두 회차를 완료했다. �
 이를 좁히기 위해 현재 V9 installer·configured core grants에서 긴 item ID·0/null 음식·실제 섭취 기록을 포함한 absolute→race-relative 승인 직접 writer 통합 시험을 추가했다. `0fb7a1f1`+새 시험의4,221개 source/build 최종 manifest SHA `b70cc1b73a42eaed78fc5646de11f07435510dd8fda916b1a5c0670b3277df02`, 전용 Unix-socket PostgreSQL17에서 실제1case/1pass/0skip/exit0이었다. initdb/start/test/stop exit0·원 입력 불변·소유 cluster 정리 완료·원 E2E 자원 접근0. 결과 SHA `86b9f8b6f10b7f05b6eedd6d77e1f63ac150c7e8ea7bfc871e76598f6c24f9b2`. 이 진단에서는 실패가 재현되지 않았으며 원 HTTP500은 여전히 failed/원인 미확정이다. API 경계와 직접 writer 입력 차이를 후속 조사한다.
 
 실기기는 사용자 결정에 따라 모든 구현 후 실제 제품 앱에서 마지막으로 검증한다. [변경 계획](../device-validation-plan.md)을 따르며 standalone 시험 앱 결과를 최종 기기 수용으로 승격하지 않는다.
+
+## 2026-10-09 HTTP V9 관측 진단과 로컬 UI 수용
+
+새 API 진단은 실제 V9 설치·동일 admission/readiness·loopback HTTP를 사용하며 인증 port만 합성이다. v1은 readiness 단계의 미확정 오류로 종료했고, v2는 원 snapshot callback 결과/오류를 바꾸지 않는 passive 관측으로 **unsupported / catalog_mismatch**, **CURRENT_RUNTIME_V9_INCOMPATIBLE**를 확인했다. v2는 1등록·0통과·1실패·0skip·exit1이며 HTTP 시작/승인/writer 호출은 0이다. initdb/start/stop exit0, source/build 4224개 불변, 자기 생성 PG cluster 제거, 원 E2E 자원 접근0이다. 이를 기존 Next/Vite approve-v4 HTTP500의 재현이나 해결로 판정하지 않는다.
+
+v2 actual TMP `wm-nutrition-http-v9-diag-s17-frozen-v2-actual-20261009-result.json` SHA `f492e7b1c2786f17102c06fb3e88c76b3a39eb60385a1768212c077dc15e84d3`, manifest SHA `3ef126745840991ecf9da5e26f9f9d84b5a5f78e65a06b84ecc204256667848c`; runner/test SHA는 각각 `6ce5505e6d647e5f684fd351f2bf4ce5557a5e65301b379b8eb9fb0b75ec1d66` / `3962d65584c56c8a55a7050e7bb5196f4aabbbf0816369d167f353697d6f6ca0`다. 원 fail과 readiness 거절은 보존하며 진단 fixture 및 원 E2E 실패의 다음 원인 대조는 미완료다. 새 실패 진단 테스트는 아직 검증 커밋에 포함하지 않았다.
+
+[비실기기 UI 기록](M0-06b-local.md)의 최신 Playwright 두 shell 18/18, skip/fail/flaky/retry0 및 2146 source/build 불변을 Root가 실제 JSON으로 확인했다. 이는 기존 조합 UI 범위의 현재 수용이고 전체 FUT-03 선택 ADR·S17 후속·최종 실기기 수용은 완료되지 않았다.

@@ -1888,7 +1888,7 @@
       "dependsOn": ["M1c-04"],
       "kind": "task",
       "status": "completed",
-      "scope": "gallery/media; 객체 권한·upload·video·삭제",
+      "scope": "gallery/media; 객체 권한·upload·video·삭제; 역사 core 수용이며 전체 S17의 미구현 viewer/탐색/파생물은 M2-03a~c 및 M2-06 출시 수용에 별도 추적",
       "evidence": "docs/implementation/progress/M2-03.md"
     },
     {
@@ -1947,7 +1947,16 @@
     {
       "id": "M2-06",
       "title": "전체 화면·내부 통합 검증",
-      "dependsOn": ["M2-02", "M2-05", "M0-06b-local", "M1-06b-tmp", "M2-05c"],
+      "dependsOn": [
+        "M2-02",
+        "M2-05",
+        "M0-06b-local",
+        "M1-06b-tmp",
+        "M2-05c",
+        "M2-03a",
+        "M2-03b",
+        "M2-03c"
+      ],
       "kind": "task",
       "status": "not_started",
       "scope": "S01–S35·보안·운영·내부 수용 기준 대조; FUT-09 원문 미확정 해소 또는 명시적 범위 결정. 완료된 M1-06b-tmp의 소유자 한정·기본 꺼짐 비공식 수집 interface와 fixture 회귀를 포함하되, 실제 Garmin 계정 실행은 별도 not_executed이며 공식 연동·일반 사용자 자동 동기화 증거로 쓰지 않는다. 공식 후속 범위: docs/implementation/research/garmin-official-deferred.md"
@@ -2447,9 +2456,9 @@
         "M0-06b-odbl-gpx"
       ],
       "kind": "task",
-      "status": "not_started",
+      "status": "in_progress",
       "scope": "사용자 결정 2026-10-09: adapter·라이선스·coverage·브라우저 등 기존 M0-06b의 비실기기 구현 수용을 분리한다. 실제 증거를 대조한 뒤 완료하며 계획 변경만으로 passed가 되지 않는다. 실기기 성능·touch·IME는 구현 완료 후 실제 제품 앱의 M3-03b에서 검증하고 공개 ODbL 응답은 EXT-HOSTING에 남긴다. standalone 시험 앱 작업은 중단한다.",
-      "evidence": "docs/implementation/device-validation-plan.md"
+      "evidence": "docs/implementation/progress/M0-06b-local.md"
     },
     {
       "id": "M3-03a",
@@ -2487,6 +2496,33 @@
       "status": "not_started",
       "scope": "사용자 결정 2026-10-09: 모든 구현과 HTTPS 제품 준비 후 실제 org.workoutmanager.app에서 기존 M0-06b·M3-03의 물리 touch/가로 넘침·지도 성능/RSS/JS heap·IME/back·offline·foreground/background·접근성 수용을 실행한다. HealthKit 전체 경로는 M3-02h 증거를 대조한다. standalone 시험 앱 결과를 최종 제품 증거로 승격하지 않는다. 실제 사용자 관측·자동화 관측·미실행을 구분하며 최종 미검증은 출시를 막는다.",
       "evidence": "docs/implementation/device-validation-plan.md"
+    },
+    {
+      "id": "M2-03a",
+      "title": "S17 private media viewer·자막·재생 오류 수용",
+      "dependsOn": ["M2-03"],
+      "kind": "task",
+      "status": "in_progress",
+      "scope": "S17/V2-F21/V2-A36과 기존 M2-03 미구현 기록의 후속. 실제 사진/영상 viewer의 swipe 및 버튼/키보드 대안, 안전한 timed caption 연결/없음 상태, 재생 속도·inline/fullscreen·실제 decode 오류/복구를 구현한다. private object URL·삭제·로그아웃 무효화, reviewed/source/actual 구분과 동의를 보존한다. 단위/DTO/실DB·Next/Vite 브라우저 수용, 최종 실기기는 M3-03b. 자동 자막 생성이나 특정 라이브러리 설치를 새 필수로 추가하지 않는다.",
+      "evidence": "docs/implementation/progress/M2-03-follow-up.md"
+    },
+    {
+      "id": "M2-03b",
+      "title": "S17 앨범·날짜·코스 미디어 탐색",
+      "dependsOn": ["M2-03"],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "S17/V2-F21의 미구현 앨범 관리·날짜/코스 filter를 계약→API/저장→UI로 구현한다. 소유권/날짜·timezone/null/paging·계정 export/erase를 검증하며 원본 GPS로 코스 관계를 제조하지 않는다. 기존 album 문자열과 원본/파생물 의미 및 private 기본값을 보존한다.",
+      "evidence": "docs/implementation/progress/M2-03-follow-up.md"
+    },
+    {
+      "id": "M2-03c",
+      "title": "S17 미디어 파생물 처리·상태·삭제",
+      "dependsOn": ["M2-03"],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "S17/V2-F21의 EXIF/orientation·thumbnail/transcoding 미구현을 bounded worker/object storage/계약·UI로 구현한다. 원본 불변과 정확 derivative lineage, 지원불가/실패/변환 상태, 삭제 suppression·계정 삭제/복원·재시도 억제·유한 비용/codec 예산을 실제 합성 codec/실DB로 검증한다. 운영 및 최종 실제 제품 실기기 수용은 외부/final gate에 남긴다.",
+      "evidence": "docs/implementation/progress/M2-03-follow-up.md"
     }
   ]
 }

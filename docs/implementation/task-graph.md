@@ -887,3 +887,7 @@ M2-01k-v-a~f는 app 처리 의미 확정 뒤 새 admission·직접 저장·basis
 [M2-02l](progress/M2-02l.md)은 기존 S22/S35 export 누락을 additive34로 보완한다. completed M1c-01/03/04와 M2-02e에 의존하며 아래 최종 검증으로 해당 범위를 완료했다. M2-02 부모와 EXT-RESTOREa의 나머지 미완료 요구는 유지한다. Supplementary routine과 generic routine을 구분하고 현재 body/불변 history/실제 링크·최소 삭제 tombstone을 보존하며 command/restore 권한을 export하지 않는다. 전체 개인자료 export 또는 전체 인증 복원이 완료된 것은 아니다. main의 별도 상태 기록과 phase의 동일 entry가 자동 병합되어 생긴 b~k 중복10개는 원래 직접 evidence entry로 통합하고 역사 branch-state 기록을 보존했다.
 
 2026-10-07 M2-02l은 strict export34·실제 publicproducer와 PG 집중230/230·logical pgoutput24/24의 범위 수용을 완료했다. 기존 fullnormal failed 회차는 보존하며 전체 phase 재검증/독립 review·최신 full authenticated restore·운영/실기기는 별도다. 자세한 입력과 실패·수정·검증은 [L 기록](progress/M2-02l.md)을 따른다.
+
+## 2026-10-09 S17 전체 수용 후속
+
+기존 M2-03은 core 수용이고 viewer/codec·앨범/날짜/코스·파생물 미구현은 [후속 기록](progress/M2-03-follow-up.md)에 명시한다. ready M2-03a~c를 추가하고 M2-06이 모두 요구한다. 기존 미실행을 완료로 바꾸지 않으며 최종 실제 제품 기기 검증은 M3-03b에 남긴다.
