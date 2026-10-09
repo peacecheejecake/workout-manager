@@ -2511,7 +2511,7 @@
       "title": "S17 앨범·날짜·코스 미디어 탐색",
       "dependsOn": ["M2-03"],
       "kind": "task",
-      "status": "not_started",
+      "status": "in_progress",
       "scope": "S17/V2-F21의 미구현 앨범 관리·날짜/코스 filter를 계약→API/저장→UI로 구현한다. 소유권/날짜·timezone/null/paging·계정 export/erase를 검증하며 원본 GPS로 코스 관계를 제조하지 않는다. 기존 album 문자열과 원본/파생물 의미 및 private 기본값을 보존한다.",
       "evidence": "docs/implementation/progress/M2-03-follow-up.md"
     },
