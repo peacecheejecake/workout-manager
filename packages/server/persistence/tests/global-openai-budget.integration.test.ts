@@ -60,7 +60,7 @@ const ownerTransferErrorNames = new Set([
   'RangeError',
   'error',
 ]);
-function ownErrorValue(error: unknown, key: 'code' | 'name'): unknown {
+function ownErrorValue(error: unknown, key: 'code' | 'name' | 'message' | 'detail'): unknown {
   if (error === null || typeof error !== 'object') return undefined;
   try {
     const descriptor = Object.getOwnPropertyDescriptor(error, key);
@@ -68,6 +68,29 @@ function ownErrorValue(error: unknown, key: 'code' | 'name'): unknown {
   } catch {
     return undefined;
   }
+}
+// Test-only closed projection: strings are inspected in memory and never emitted.
+function classifyOwnerTransfer(error: unknown): string | null {
+  if (ownErrorValue(error, 'code') !== '42501') return null;
+  const message = ownErrorValue(error, 'message');
+  const detail = ownErrorValue(error, 'detail');
+  if (typeof message !== 'string' || message.length > 4096) return 'unknown_42501';
+  if (message === 'permission denied to reassign objects') {
+    if (typeof detail === 'string' && detail.length <= 4096) {
+      if (
+        /^Only roles with privileges of role ".*" may reassign objects owned by it\.$/.test(detail)
+      )
+        return 'old_role_privileges';
+      if (/^Only roles with privileges of role ".*" may reassign objects to it\.$/.test(detail))
+        return 'next_role_privileges';
+    }
+    return 'reassign_role_privileges';
+  }
+  if (message.startsWith('must be able to SET ROLE ')) return 'cannot_set_next_role';
+  if (message.startsWith('must be owner of schema ')) return 'namespace_not_owner';
+  if (message.startsWith('permission denied for database ')) return 'database_privilege_denied';
+  if (message.startsWith('permission denied for schema ')) return 'schema_privilege_denied';
+  return 'unknown_42501';
 }
 async function observeOwnerTransfer(
   stage: 'reassign_owned' | 'revoke_membership',
@@ -87,6 +110,7 @@ async function observeOwnerTransfer(
           phase: 'terminal',
           outcome,
           elapsedMs: Number.isFinite(elapsed) && elapsed >= 0 ? Math.floor(elapsed) : null,
+          errorClass: outcome === 'error' ? classifyOwnerTransfer(error) : null,
           sqlState: typeof code === 'string' && ownerTransferSqlStates.has(code) ? code : null,
           errorName:
             outcome === 'success'
@@ -763,9 +787,116 @@ it('REASSIGN and existing retarget preserve live-owner accounting while old owne
   const previous = owner;
   await admin.query(`GRANT "${roles.next}" TO "${roles.owner}"`);
   try {
-    await observeOwnerTransfer('reassign_owned', () =>
-      previous.query(`REASSIGN OWNED BY "${roles.owner}" TO "${roles.next}"`),
-    );
+    await observeOwnerTransfer('reassign_owned', async () => {
+      const client = await previous.connect();
+      try {
+        // Passive probe failure never replaces the subsequent original command.
+        try {
+          const observed = await client.query(
+            `WITH fixture AS (
+ SELECT (SELECT oid FROM pg_roles WHERE rolname=$1::text) AS old_oid,
+        (SELECT oid FROM pg_roles WHERE rolname=$2::text) AS next_oid,
+        (SELECT oid FROM pg_database WHERE datname=current_database()) AS db_oid
+), owned_namespaces AS (
+ SELECT n.oid, n.nspname,
+   pg_has_role(current_user,n.nspowner,'USAGE') AS caller_has_owner_privileges
+ FROM pg_namespace n,fixture f WHERE n.nspowner=f.old_oid
+)
+SELECT
+ current_user=session_user AS same_session,
+ current_user=$1::text AS caller_is_old,
+ current_database()=$3::text AS current_database_matches_fixture,
+ f.old_oid IS NOT NULL AS old_role_exists,
+ f.next_oid IS NOT NULL AS next_role_exists,
+ pg_has_role(current_user,f.old_oid,'USAGE') AS caller_has_old_privileges,
+ pg_has_role(current_user,f.next_oid,'USAGE') AS caller_has_next_privileges,
+ pg_has_role(current_user,f.next_oid,'SET') AS caller_can_set_next,
+ (SELECT rolinherit FROM pg_roles WHERE rolname=current_user) AS caller_inherits,
+ (SELECT rolsuper FROM pg_roles WHERE rolname=current_user) AS caller_super,
+ (SELECT rolcreatedb FROM pg_roles WHERE rolname=current_user) AS caller_createdb,
+ (SELECT datdba=f.old_oid FROM pg_database WHERE oid=f.db_oid) AS database_is_old_owned,
+ has_database_privilege(current_user,f.db_oid,'CREATE') AS caller_database_create,
+ pg_has_role(current_user,'pg_database_owner','USAGE') AS caller_database_owner_privileges,
+ (SELECT nspowner=(SELECT oid FROM pg_roles WHERE rolname='pg_database_owner')
+  FROM pg_namespace WHERE nspname='public') AS public_schema_database_owner,
+ has_schema_privilege(current_user,'public','CREATE') AS caller_public_create,
+ has_schema_privilege(f.next_oid,'public','CREATE') AS next_public_create_observed_not_reassign_requirement,
+ (SELECT count(*)::int FROM owned_namespaces) AS owned_namespace_count,
+ (SELECT count(*)::int FROM owned_namespaces WHERE NOT caller_has_owner_privileges) AS owned_namespace_not_owner_count,
+ (SELECT count(*)::int FROM owned_namespaces WHERE nspname NOT IN
+    ('identity_private','garmin_private','wm_app_load')) AS unexpected_owned_namespace_count,
+ (SELECT count(*)::int FROM pg_database WHERE datdba=f.old_oid) AS old_owned_shared_database_count,
+ (SELECT count(*)::int FROM pg_tablespace WHERE spcowner=f.old_oid) AS old_owned_tablespace_count,
+ (SELECT count(*)::int FROM pg_auth_members WHERE member=f.old_oid AND roleid=f.next_oid
+    AND inherit_option AND set_option) AS direct_inherit_set_grant_count
+FROM fixture f`,
+            [roles.owner, roles.next, dbName],
+          );
+          // Validation/logging errors cannot replace REASSIGN's result or original error.
+          try {
+            const facts = z
+              .strictObject({
+                same_session: z.boolean(),
+                caller_is_old: z.boolean(),
+                current_database_matches_fixture: z.boolean(),
+                old_role_exists: z.boolean(),
+                next_role_exists: z.boolean(),
+                caller_has_old_privileges: z.boolean(),
+                caller_has_next_privileges: z.boolean(),
+                caller_can_set_next: z.boolean(),
+                caller_inherits: z.boolean(),
+                caller_super: z.boolean(),
+                caller_createdb: z.boolean(),
+                database_is_old_owned: z.boolean(),
+                caller_database_create: z.boolean(),
+                caller_database_owner_privileges: z.boolean(),
+                public_schema_database_owner: z.boolean(),
+                caller_public_create: z.boolean(),
+                next_public_create_observed_not_reassign_requirement: z.boolean(),
+                owned_namespace_count: z.number().int().min(0).max(1000000),
+                owned_namespace_not_owner_count: z.number().int().min(0).max(1000000),
+                unexpected_owned_namespace_count: z.number().int().min(0).max(1000000),
+                old_owned_shared_database_count: z.number().int().min(0).max(1000000),
+                old_owned_tablespace_count: z.number().int().min(0).max(1000000),
+                direct_inherit_set_grant_count: z.number().int().min(0).max(1000000),
+              })
+              .safeParse(observed.rows.length === 1 ? observed.rows[0] : undefined);
+            console.info(
+              JSON.stringify(
+                facts.success
+                  ? {
+                      diagnostic: 'global_budget_owner_preflight',
+                      phase: 'before_reassign',
+                      facts: facts.data,
+                    }
+                  : {
+                      diagnostic: 'global_budget_owner_preflight',
+                      phase: 'before_reassign',
+                      rejected: true,
+                    },
+              ),
+            );
+          } catch {
+            /* Observation failure is not a changed SQL outcome. */
+          }
+        } catch {
+          try {
+            console.info(
+              JSON.stringify({
+                diagnostic: 'global_budget_owner_preflight',
+                phase: 'before_reassign',
+                queryFailed: true,
+              }),
+            );
+          } catch {
+            /* Preserve command outcome. */
+          }
+        }
+        return await client.query(`REASSIGN OWNED BY "${roles.owner}" TO "${roles.next}"`);
+      } finally {
+        client.release();
+      }
+    });
   } finally {
     await observeOwnerTransfer('revoke_membership', () =>
       admin.query(`REVOKE "${roles.next}" FROM "${roles.owner}"`),

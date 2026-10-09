@@ -81,3 +81,11 @@ source 전후동일·normal registry107/FORCE RLS 확인, poststate 역할17/DB1
 실패 위치는 `global-openai-budget.integration.test.ts:104:5`, `:766:5`. 기존 finite owner-transfer observer는 `reassign_owned` terminal error/SQLSTATE42501/2ms, 이후 `revoke_membership` success/0ms를 실제 관측했다. 정확한 권한 조건은 미관측이며 NOCREATEDB/schemaCREATE/role membership을 원인으로 단정하지 않는다. 이전 좁은 budget17/17 결과와 whole 실패를 구분하고 native read-only agent가 PostgreSQL17 primary source·같은 session precondition/closed error enum 진단을 준비 중이다.
 
 Artifact `/private/tmp/wm-fullnormal176-v9-a9c357e6-7c9e-4824-bd88-681bf60b012c`. finite-terminal SHA `c8c073692c63fd0b84b8bad99b7b8b9532261f1d2d099251772df2cd1675b2ae`, lifecycle SHA `8c950772222e156c749d7a15c01953f2a2ab627145a0704025140e9f48d5e1fe`. source pre/post SHA 동일·pool close·stdout/stderr drain·자기 container 제거 true. Poststate role17/DB1/slot0는 컨테이너 제거 전 관측이며 role0이라고 바꾸지 않는다. 실행 handle49068은 terminal이므로 다시 poll/재시작하지 않는다. 최신 whole 통과·identity×2·phase 독립 검토·main·운영/최종 제품 실기기 gate는 미완료다.
+
+## 같은 session 권한 관측 · 실제 budget 진단 v3
+
+REASSIGN 직전 같은 leased client에서 권한 사실23개를 strict scalar로 관측하고, 오류는 허용8개 분류만 출력하도록 test-only observer를 확장했다. 원 SQL/grant/17case/단언/시간 제한은 유지하며 관측 실패가 원 command 결과를 바꾸지 않는다. 원message/detail은 메모리 분류 후 폐기한다. Root diff·persistence TS·scoped lint/format exit0을 확인했다.
+
+Freeze1093개 SHA `94e1e5f049346d07b14031cda2faaa91daf908e9081e7a5f4f0d16ff6b54f879`와 fixture SHA `6045e12ffa74d14ed31a4f14fd43f0125c25fc9663d483ee8ebb0f01fd567dbe`의 원파일 전체 진단은 실제 **17/17·실패/skip0·exit0**이었다. 호출자는 same_session/old이고 SUPER·CREATEDB는 false; old/next USAGE·next SET·database CREATE는 true였다. 소유 namespace3개 중 owner권한 부족0·예상외0, direct INHERIT/SET grant1이다. next public CREATE는 false지만 REASSIGN40ms·REVOKE1ms 모두 성공했다. 따라서 그 권한을 whole 실패 원인으로 단정하거나 넓히지 않는다.
+
+Artifact `/private/tmp/wm-budgetdiagnostic176-a6f61e64-806a-44f1-874f-af1ebdd4bbc8`; finite reporter SHA `0deb54e749cad3dbe9f2bb643ba5c9e62d3bb3fe6be7bd422d2da6c44abe7434`, lifecycle SHA `bb5e0ba92beccade7360e4b1a302e7924810e63a68a23e586d53c2e07e951a05`. PG170006·source pre/post 동일·post 역할1/DB1/slot0·pool close·소유 container 제거 true였다. 이 단독 모음에는 전체 선행 상태가 없으며 v9 whole FAILED와 정확 원인 미확정을 유지한다. 관측을 포함한 canonical 전체 재검증·identity×2·독립 phase 검토/main은 남는다.
