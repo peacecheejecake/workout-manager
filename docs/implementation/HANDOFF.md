@@ -1084,3 +1084,11 @@ EXT-RESTORE `f288c097`에 durable7·공개 PostgreSQL microsecond 비교를 Root
 Gallery `29d4957d`에는 실제 AV1 default/software-none decode exit218·frame0과 software decoder backend 부재를 기술 진단 범위로 기록했다. H264 성공과 AV1 production 실패를 구분하고 native agent는 pinned software decoder successor를 준비한다. 보안 V3 정확4파일 적용은 사용자승인 대기/실제변경0이다. EXT-RESTORE `e29fde3a`는 물리V2 native39 runner의 실제 R1/R2 case0 시작실패를 보존했다. R2는 pool_connect 실패·정확소유container제거true/source불변이며 native boundary 통과가 아니다. 해당 generic 소스/시험2파일은 untracked WIP로 보존하고 transport readiness/유한 error관측 successor를 준비한다.
 
 모든 구현·로컬 자동검증을 먼저 완료하며 실제 iPhone 검증은 마지막 실제 제품앱 org.workoutmanager.app에서만 수행한다. Native 병렬 작업은 TMP software decoder recipe, whole239 producer설계/runner readiness다. main `1d557358`과 보호된 EXT-HOSTING WIP를 유지했고 서버/기기/push변경0이다. 최신 identity×2·fullphase·context-less gpt-6-sol high 독립검토/main·전체복원/운영/출시는 미완료다.
+
+## 2026-10-09 lossless physical V2 검증·AV1 실제 빌드 시작
+
+EXT-RESTORE의 실제 native R3가 찾은 BC 최소값 거절을 exact PostgreSQL Julian/microsecond 한계로 고쳤다. DateStyle ISO,YMD/date::text를 쓰는 독립producer에서 Root unit15/15·실제PG40case mismatch0·exit0·sourceSame/owncleanup을 확인하고 public export·whole persistence TS/lint/format과 함께 `phase/ext-restore`의 `ff755f71`에 커밋했다. 결과 SHA `4f02a6a4ba8d9505bc0d90ec8e0b535dc0126f9f4aa746f41b4500bbee107150`. 전체239 registration/원본producer/native key order/인증archive·tail·loader·원자admission은 아직 미완료다. 이전 startup/39case 실패를 보존하며 R3 date_max의 to_char 승격 문제를 date 입력범위 거절로 해석하지 않는다.
+
+Gallery `381cda53`에 고정 GCC builder의 실제 Python3.11.2 exit0(첫localmissingimage125보존)을 기록했다. 후속 dav1d1.5.4/Meson1.9.2/Ninja1.13.1 공개5입력을 실제 exact size/SHA로 검증하고 Root150개context핀·Dockerfile/안전unpack을 읽었다. TMP context `/private/tmp/wm-gallery-linux-dav1d-context-v3-20261009/context`, freeze SHA `c0acb121a66fa30b64e9c292a9828e67f25d4652947b476d7af33b0fabe21128`, Dockerfile SHA `717d3474ae52b938530779e61d0dc1b95e115c8c16a3248612a48e2b71ca2617`. 실제 network-none build handle69148은 최신poll에서live/x264 compile이었다. 성공image/새decoder/decode를 아직 주장하지 않는다. 같은handle을이어관측한다.
+
+Canonical 전체DB v10 handle31315도 최신 실제poll에서 계속live였다. source1093수정금지/기존artifact/freeze를 유지하고 결과가 없다는 이유로 새회차를 시작하지 않는다. Native병렬은 전체producer설계, M2-03a 실제viewer연결공백 감사, 새image핀을 기다릴 productionprobe준비다. main/기기/운영/push변경0, 정책4파일사용자승인대기0변경이며 실제기기는 마지막 제품앱에서만 검증한다.
