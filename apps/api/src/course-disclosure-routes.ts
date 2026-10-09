@@ -23,6 +23,7 @@ import {
 import { courseContentDigest } from '@workout/server-courses/digest';
 import {
   disclosureChoices,
+  trimCourseForExportDisclosure,
   exactLine,
   removedVerticesPerCircle,
   shareCircleSet,
@@ -36,7 +37,7 @@ import {
   EXACT_COORDINATE_DIGITS,
   writeCourseGpx,
 } from '@workout/server-courses/gpx';
-import { privacyZoneSetDigest, trimCourseForPrivacy } from '@workout/server-courses/privacy-trim';
+import { privacyZoneSetDigest } from '@workout/server-courses/privacy-trim';
 import type { CoursePreferenceRepository } from '@workout/server-persistence/course-preferences';
 import {
   CourseSharingStateError,
@@ -313,7 +314,7 @@ export function registerCourseDisclosureRoutes(
           throw new ProductRequestError(409, 'COURSE_EXPORT_NOT_CONFIRMED');
         let confirmedRevision = head.courseRevision;
         if (body.purpose === 'export' && body.exposure === 'trimmed') {
-          const trimmed = trimCourseForPrivacy({
+          const trimmed = trimCourseForExportDisclosure({
             coordinates: head.coordinates,
             waypoints: head.waypoints,
             zones,

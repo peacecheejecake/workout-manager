@@ -19,6 +19,9 @@ import {
   insideAnyCircle,
   lineEntersAnyCircle,
   trimLineAgainstCircles,
+  trimCourseForPrivacy,
+  type TrimCourseInput,
+  type TrimmedCourseContent,
   type ProtectedCircle,
   type TrimmedLine,
 } from './privacy-trim.js';
@@ -405,6 +408,25 @@ function settleRounding(
     if (same) return { coordinates: line, waypoints: points };
   }
   throw new CourseTrimError('COURSE_TRIM_LINE_CROSSES_AREA');
+}
+
+/** Append the owner's export trim on the same settled coordinates the preview offers. */
+export function trimCourseForExportDisclosure(input: TrimCourseInput): TrimmedCourseContent {
+  const rounded = settleRounding(input.coordinates, input.waypoints);
+  const trimmed = trimCourseForPrivacy({ ...input, ...rounded });
+  const line = finishDisclosedLine({
+    coordinates: trimmed.coordinates,
+    waypoints: trimmed.waypoints,
+    circles: input.zones,
+    cutStart:
+      trimmed.generation.kind === 'privacy-trimmed' &&
+      trimmed.generation.removedLeadingVertexCount > 0,
+    cutFinish:
+      trimmed.generation.kind === 'privacy-trimmed' &&
+      trimmed.generation.removedTrailingVertexCount > 0,
+    settled: true,
+  });
+  return { ...trimmed, ...line };
 }
 
 function choicesFor(

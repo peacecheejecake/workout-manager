@@ -3,8 +3,8 @@
   "buildProofVersion": 1,
   "sourceBuildRevision": 1,
   "currentFunctionalExecution": "not_executed",
-  "sourceManifestSha256": "3d72cc2263d687f5e091bfc9910ada7318b57b4aea71748be8b635de098e6027",
-  "manifestFileSha256": "3ca512bbd1741ff6da68c973c63929097e95a9bb8dfb18526984fdf0bc4e44ad",
+  "sourceManifestSha256": "8e19428c731c6c8e71b9bdd9fa0ed9e2ed95082f1be5f2a587125635d852a0f4",
+  "manifestFileSha256": "59ce3cafd4859e6007bef2833b6f28f8519c8c806ca16f20d9f5976628806081",
   "manifestPath": "manifest.json",
   "profileVersion": 9,
   "runtimeStep": 25,
@@ -20,6 +20,11 @@
     {
       "path": "apps/api/src/configured.ts",
       "sha256": "cf5d402ff8b545dd0ec6c87e0313ca9cf7a10f391bf1a075ee1a1926173e4cbf",
+      "role": "dependency"
+    },
+    {
+      "path": "apps/api/src/course-disclosure-routes.ts",
+      "sha256": "0e26ccf68f4ec78377e600cb9323012feabf16338211318c00ad1d826dbd5deb",
       "role": "dependency"
     },
     {
@@ -331,6 +336,11 @@
       "path": "packages/server/courses/src/digest.ts",
       "sha256": "dfbb9a9191dc4248bd929341486a3fa175a6f44123464d790cb2b2eee0d0c555",
       "role": "source"
+    },
+    {
+      "path": "packages/server/courses/src/disclosure.ts",
+      "sha256": "b5eb17eb62ebeb1c3a2fe680f1a252df6ea817e8b5b0bdea89d2ef73c2d27e54",
+      "role": "dependency"
     },
     {
       "path": "packages/server/persistence/migrations/001_foundation.sql",
