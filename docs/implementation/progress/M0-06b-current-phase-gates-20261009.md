@@ -78,3 +78,17 @@ format·unit을 원 명령대로 실행했다. **일곱 단계 exit0, unit391파
 새 build가 생성돼 identity는 새 build freeze를 사용해야 한다. 동일 복제본의 원 canonical
 PostgreSQL17.11 전체 통합을 별도 실행 중이며 종료 전 성공으로 기록하지 않는다.
 이 결과는 이전 unit4fail·전체PG4fail·집중 진단의 범위를 덮어쓰지 않는다.
+
+## 60e4fa4f 전체 PostgreSQL 실제 종료 결과
+
+동일 고정 clone의 원 canonical integration은 exit1로 종료됐다. Upgrade1/1 통과,
+normal1486passed/1failed/기존4skip이다. 기존 네 실패 위치는 이번 전체 실행에서 통과했으며
+새 실패 프레임은 `global-openai-budget.integration.test.ts:693:5`의 REASSIGN이다.
+SQLSTATE는 아직 관측하지 않았고 loader 실패로 분류하지 않는다. 실제 DB 소유권·권한을
+변경하기 전에 별도 고정 단일파일 진단을 준비한다. 소스·의존성 전후 동일, 새 PG scratch잔존0.
+
+- 실제 결과: `/private/tmp/wm-m0-60e4fa4f-canonical-pg-actual-20261009.json`
+- SHA: `de3a24baf7c6cb21b847985be886d408e25d8155de63e2dc95ed659feac8d57b`
+
+기존 full4fail과 이번1fail을 각각 보존한다. 전체 통합·identity×2·독립 phase 검토·main 병합은
+아직 완료되지 않았다. 운영 및 최종 제품 실기기 gate도 유지한다.
