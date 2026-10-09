@@ -4,6 +4,8 @@
 [docs/.pre](../.pre/README.md), 작업 규칙은 [AGENTS.md](../../AGENTS.md)를 우선 확인한다.
 재개할 때 `git log -1`, `git status --short`, 원격 동기화를 다시 확인한다.
 
+**최신 중단·재개점(2026-10-10):** 사용자가 현재 작업 마무리와 handoff를 요청했다. [최신 Handoff 준비](#2026-10-10-handoff-준비)의 종료 결과·미실행 큐·남은 결정을 먼저 읽는다.
+
 **최신 Garmin 범위 결정(2026-09-27):** 공식 권한·다운로드·adapter·출시 검증을
 [별도 후속 계획](research/garmin-official-deferred.md)으로 이관했다. 현 Web MVP의 `G2`는
 공식 Garmin을 요구하지 않는다. 완료된 `M1-06b-tmp`는 소유자 한정·기본 꺼짐 비공식
@@ -1453,3 +1455,53 @@ Gallery phase/m2-03 `ee4709c8`에는 lease stage를 분리한 rendition worker�
 EXT C4 logical preimage의 새 actual은 trigger58/routine15를 수집했고 고정한 source 본문 SHA15개가 일치했다. raw7파일 핀·동일 source·rollback/release/poolclose·소유container 제거를 Root가 확인했다. WHEN·전체 ACL/역할/메타데이터 의미의 독립 expected 결정·정식 registry/sourceproof·positive/whole inverse/admission은 미완료다. 관측 성공을 복원 통과로 승격하지 않는다.
 
 Root는 graph/공통등록/Git/DB lane을 직렬 통합하고 다른 native agents는 독립 TMP scope에서 계속 병렬 진행한다. 주간 잔여량에 따른 중단은 적용하지 않는다. main은 `e7fb1d0b`, push는 사용자 작업이며 운영 backup/restore→HTTPS→외부수용→실제 제품앱 iPhone→출시 선행조건은 유지한다.
+
+### 2026-10-10 Handoff 준비
+
+사용자가 **현재 작업만 마무리하고 Handoff 준비**를 지시했다. 주간 잔여량 조건과 관계없이 이번 지시로 신규 작업 배정을 멈췄다. 이미 실행 중인 whole DB diagnostic과 native subagent의 bounded 준비만 종료하며, 아래 후속 DB 시험은 실행하지 않는다. 재개는 새 사용자 지시 후 진행한다.
+
+#### 현재 Git과 보호 변경
+
+- main `/Users/minjiwon/workout-manager`: `e7fb1d0b33eeaa52e6d1e5cb7765687a641a1193`, 이번에 이동·push하지 않았다.
+- 중앙 `phase/m2-02`: handoff 직전 `58601cb7`이며 이 Handoff 문서는 별도 docs commit으로 기록한다. 보호 `docs/implementation/progress/EXT-HOSTING.md`의 미커밋4줄은 보존한다.
+- Gallery `phase/m2-03` `/Users/minjiwon/.codex/worktrees/rag-validation/workout-manager`: `18461f15`. 자막 API2와 실제 검증 기록1의 scoped commit이다. 보호 SQL143 SHA `f599a99a533762816749c55aa388c03bfe62b99dbc19fa22d582455409f631cd` 및 원 gallery-albums integration SHA `ec65eb878d784c79754b82b32dfecd60f24dddf99db297424c613c145cd37d18`는 그대로 untracked다.
+- EXT `phase/ext-restore`: `99fe99e8`, same-snapshot 역할/ACL 관측을 기록한 docs commit이며 working tree clean이다. AGENTS 규칙 SHA `87134775a4673511f443c73e51e8af7b7895a42977f38d74ca79da375e4fdc28`는 main/중앙/Gallery/EXT에서 동일하다.
+- 중앙 graph267은 completed235/in_progress11/not_started21이며 준비-only 결과로 노드 상태를 올리지 않았다. 이번 미완료 phase의 독립 검토/main 병합은 아직 없고 push는 사용자 작업이다.
+
+#### 이번에 Root가 실제 검증한 범위
+
+- 자막 공개 계약의 5tracks/4990cues/204108bytes/19996nodes 응답이 기존 API에서 INVALID_REPLY가 되는 것을 합성 재현했다. 배열 length metadata를 JSON key/value/node에서 제외하여 공개20k node cap과 맞췄다. 제한 숫자·Proxy/getter 방어·원36 assertions를 유지했다. Root TMP67/67과 실제 저장소 API41/41, API 전체 TS·변경2 ESLint/Prettier·진행 문서 format/diff exit0. 수정 후 같은 합성 공개/API 재현 accepted다. 평가 `/private/tmp/wm-gallery-subtitle-json-budget-root-applied-verification-20261010.json` SHA `602ec19651018952d64457cebdb2af5b341998af396b5e9b17c11c36d1edf20d`. storage26/SQL/원PG14는 아직 TMP 후보다.
+- DEFAULT/CHECK 별도 preimage parser/query/carrier Root 읽기 및 pure45/45, source 입력163 hash mismatch0, candidate13 hash mismatch0. SAME RR/RO worker successor도 Root minimal diff를 읽고 pure141/141을 재실행했다. 실제 query/의미 검증/independent expected/registry/admission은 미실행이다.
+- Rendition privacy native v1의 Root source/SQL/runner 검토와 pure9/9는 완료했다. 계정 롤백 negative가 모든23514를 성공 처리할 수 있어 정확 deferred-source 오류·직전 상태 결속의 새 v2를 요청했다. v1 actual은 실행하지 않았고 원 freeze·초기 SDK_VERSION preflight DB0 실패2회는 보존했다. 원 v1 준비만 통과로 실제 SQL/동시성/복원 수용을 올리지 않는다.
+
+#### 재개 후 DB lane 우선순서와 정확 입력
+
+1. 아래 whole diagnostic 실패2개를 원 fixture/권한/clock/정확 입력에서 좁게 조사한다. 처리와 검증 후 canonical 원명령 및 identityx2 새 현재입력 검증을 계획한다. 이번 diagnostic 결과는 literal canonical gate 성공으로 대신하지 않는다.
+2. Gallery R6 source-forward: `/private/tmp/wm-gallery-source-forward-r6-zod-transport-20261010/runner.mjs`. Root fresh freeze `/private/tmp/wm-gallery-local-producer-freeze-r6-root-after-api-20261010.json`, SHA `c931567a980885d0f164b2f902da48c3ee3ec6a9634ecdb85e860ffc30f32316`. 2683파일 전수 byte/SHA mismatch0, `--list` 등록24/실행0/DB0. Root-go `root-go-gallery-source-forward-r6-zod-transport`; Node24·Gallery cwd. R5 actual의 ZodError/privacy9skip/producer 미실행은 보존한다. 문서/소스가 이후 drift하면 새 wx freeze를 만들고 독립 재해시한다.
+3. Rendition privacy는 아래 새 v2 반환 범위부터 Root 전체검토·fresh freeze를 진행한다. 이전 v1 freeze2115/SHA `7eb95a0f1bab2fff918ca8dc1c0a41823bcb61a17fb05db17f04779a545936c8`는 실제 실행 입력으로 재사용하지 않는다. Root finding `/private/tmp/wm-gallery-native-privacy-v1-root-findings-20261010.json` SHA `c89ddd39205a0a6a734d0915b5c16be725597f91db6011347435b0707c6353aa`.
+4. EXT DEFAULT/CHECK SAMEsnapshot: `/private/tmp/wm-c4-default-check-snapshot-v1-r76x56xw/DEFAULT-CHECK-report.md`, runner-v1.mjs. Root freeze `/private/tmp/wm-c4-default-check-snapshot-v1-freeze-root-20261010.json` SHA `80d5e22d39059fd1048ef376dc565fe3a2e822b48f934d257ec6e5b5a6cfdc0e`, 2472hash mismatch0. Root-go `root-go-c4-default-check-snapshot-only-v1`; Node24·EXT cwd. 실제 실행0이며 기존 V2/WHEN/ACL/원raw10은 불변, 새witness1을 같은client/RRRO에만 추가한다.
+5. 자막 PG14 준비와 privacy sameTX body 추출·typed node decoder는 아래 agent 반환을 읽고 각 source/prerequisite·정확 실행 입력을 다시 검토한다. 원14 assertion/timeouts·processing CLOSED·기존 소유권/동의/삭제 suppression을 완화하지 않는다.
+
+#### 남은 결정과 운영 gate
+
+- EXIF: 원본 GPS를 계정 비공개로 보존하고 파생 preview/thumbnail에서 제거할지, 업로드 전에 제거할지 답변 대기다.
+- 코스 공유 요구 §7: GPX 고정 ODbL XML attribution 및 routeDataNotice boolean의 공개 allowlist 추가 여부가 답변 대기다. 공개 B sharing은 별도 재식별 검토와 운영 수용 전까지 disabled다.
+- 전체 구현 → 로컬 통합·fresh context-less gpt-6-sol/high read-only phase 검토 → 운영 backup/restore·HTTPS → 외부 수용 → 실제 제품 org.workoutmanager.app iPhone → 출시 순서를 유지한다. 운영/외부/기기 not_executed·실패를 순수/모의/문서 결과로 바꾸지 않는다. AWS/기기 작업은 이번 구간에 실행하지 않았다.
+
+#### Subagent 마무리 산출물 · 통합 전 준비
+
+- 자막 PG21: `/private/tmp/wm-gallery-subtitle-owned-pg21-prepared-r1-20261010-5c5v7sl9/README.md` SHA `63babf1dea7f836ea999b17af25d1ceb5cb3c6cc116cb04ab59229ed63ee08a5`, NEW7/config whole-minimal diff SHA `30ec050ab34f04d54674c6a1f1c5f6f10cfe460c4a48091f7ff8a25127c86e68`, inputpins SHA `708e8a292985191977ea853be36dedce3d5bceb19b09cf10e82550cac193b1c6`. 원PG14/r3storage/SQL 불변, agent scoped TS/lint/format0. Root는 보고서를 읽었으며 NEW7 전체 source/diff 검토와 collection/actual은 아직 없다. fullsource1 fixed helper 실제설치와 Root 전체freeze·ownedlauncher·finite21reporter 연결이 pending이다. 이packet은 standalone 실행준비 완료가 아니다.
+- Same-TX 본문 추출: `/private/tmp/wm-gallery-rendition-same-tx-extraction-v1-20261010/report.md` SHA `d71f823139c56e6ec30276fee919d0181300d7906054fc552c0be5410db83824`. 원 media body는 hook2 제외 normalized equality true, 원 live3SHA불변. agent mock10/10 및 TS/lint/format0, V39 vs historical account 분리·성공 replay hook0·COMMIT ACKlost 자동 성공/retry0. Root 보고서 읽기만 완료했으며 전체 candidate.diff/root실행/실제PG/제품 통합은 pending이다.
+- Privacy native v2: `/private/tmp/wm-gallery-rendition-native-privacy-v2-20261010/report.md` SHA `28e0171eaed0bd8afe5545c5e794ef8c2406a632be318e87e39ba54a024b2d36`. runner SHA `def2f659cc28a5d7a66543e0fdc1a788f828db616fe33465780a605d164ed3a8`, finalpins SHA `2c011d3d83134bbb364907df31c8ef2e7b0259d2035569a66435bdc466b18133`. Root report/전체 v1-v2 diff를 읽고 exact error·retirement 직전상태·rollback후 marker/hold0 조건으로 source 지적 수정 확인. agent13/13·정적검사0, Root 동일순수13/13·fail0/skip0·exit0. 실제SQL/PG/새freeze/prepare/run0. Gallery cwd의 정확 v2 CLI는 보고서를 따르며 원 v1을 조용히 대체하지 않는다.
+- Typed node decoder: `/private/tmp/wm-c4-pg17-node-decoder-1pp5e8m0/report.md` SHA `33042a6932ad6457795b527ca2d793f936898c7c3c87cb61d1ce7a0274636a31`, full diff SHA `7a23776f2eac29427b42d1fc22fb2c3920569383d0524636c44adcdee575a83c`, pins SHA `b36ee8d6bccb216ac3bf14d4e031688df7b693f201c42b8668fdb61816b71df5`. CONST/VAR closed source/tests TMP 완료, agent46/46·TS/format0, Root 보고서만 읽음. 나머지 composite node/operator/function·typed catalog 의미·source expression binding은 unsupported/pending이며 실제 native 입력/통합은 미실행이다. local PG17.11 header pin과 공식 REL_17_6 primary URL을 구분한다. 세 subagent 모두 현재 범위를 반환하고 추가 작업 없이 종료했다.
+
+#### 현재 전체 DB diagnostic r3 · 종료 결과
+
+중앙 `58601cb7`, Root source2996+build1330=4326 freeze SHA `a847c0d6f7a54db3e1d8f38743bd7156c7358890132b0e55db1c7f33484a048d`에서 진단 harness r3를 실제 실행했다. 기존 r2의 normal argv 안 `--exclude upgradeFile`을 upgrade로 잘못 판정하던 selector만 수정했고 원 reporter/SQL/assertions/timeout/roster/lifecycle/role guards는 유지했다. Root pure17/17 후 실제 r3의 normal finite가 생성됐다. original literal `pnpm test:integration` gate는 아니므로 이 결과로 canonical gate를 통과시키지 않는다.
+
+- actual `/private/tmp/wm-wholenormal-finite176-e9fc8282-a36e-4f29-a311-429123af5fe8`: upgrade1passed, normal3070passed/2failed/14skipped(total3086), normal modules299passed/2failed/3skipped, exit1. selected restore-app-family 원18cases는 모두 passed였으나 과거 canonical REASSIGN OWNED 실패 원인은 아직 unknown이며 소급 수정하지 않는다.
+- 실패1: `packages/server/persistence/tests/global-openai-budget.integration.test.ts`, title SHA `8e87899b62345a7a1f472a44e11c6ae5bf3872f880363f181d824606cf877150`, SQLSTATE42501. 실패2: `packages/server/persistence/tests/restore-resource-share-exact-replay.integration.test.ts`, title SHA `7b0dd9afabebf93dc1439b9ac78e6b4f18b297ab3c753da2a38afcd4fcdbdd7c`, SQLSTATEP0001. finite timeout not_observed/location[]/unhandled0이며 raw cause는 unknown이다. raw error/body는 저장하지 않았고 이번 중단 지시 뒤 새 진단/수정 실행은 하지 않았다.
+- pre PG170006/roles1/DB1/slot0/otherclient0, 실패 후 suite role의 성공 전용 cleanup은 실행하지 않아 postroles17/DB1/slot0/client0 및 POSTSTATE_NOT_CLEAN을 별도 기록했다. child close·group absence·pool close·source pre/post equality 및 정확 owned container 제거는 확인됐다. 삭제된 시험 cluster의 역할 잔여를 일반 cluster 정리 완료로 혼동하지 않는다.
+- normal finite SHA `a4986ec1294debadac815701a748595613d596869524f634c206e5b728c7594c`, lifecycle SHA `a1a212922be7d9e01e61ed4d3e5dc5f07a66a23138de5f91ddbe2dfd2bbe636a`. Root 평가 `/private/tmp/wm-whole-normal-diagnostic-r3-root-actual-assessment-20261010.json` SHA `dc9ed0bfdd107e7bd9bfd841ad1fa73d1393b4495124bfae49c984e024b9328b`. r2 reporter missing/exit1·과거 canonical 실패·14skip는 보존한다. identityx2/phase/운영 수용은 미실행/미완료다.
+
+이제 실행 중인 DB/agent 작업은 모두 종료했다. 준비된 R6/privacy v2/C4/newPG21/typed decoder를 새로 실행하지 않았다. 이 Handoff commit이 source census의 문서를 바꾸므로 후속 canonical/identity는 기존 whole freeze를 그대로 재사용하지 말고 fresh source/build inventory와 Root 해시를 만든다.
