@@ -134,3 +134,11 @@ Gallery viewer·caption/speed/fullscreen·carousel·파생물의 제품 저장/w
 `phase/m0-06b`의 `2fefc6f1`에서 위 추가 table importer의 dependency/license closure를 실제 재대조했다. 현재 103 packages(외부 100), 기존 101개의 metadata/notice SHA 불변, 추가 table-kit/virtual-core 두 항목, required unresolved 0이다. 새 inventory SHA는 `ab1c916463f0c839fe232cafb0dbbf6362cfc7e47eaba600faeb9dd91458c595`이며 Web/mobile-web/Storybook의 notice manifest 전체와 bundle hash가 모두 정확 일치했다. 해당 phase의 `M0-06b-license-closure-20261009.md`를 따른다. 앞 표의 재대조 필요는 이 후속 로컬 범위에서 해소됐으며 전체 법률/지도 데이터 권한 수용으로 확대하지 않는다.
 
 `a216daa3`은 호출별 external store의 provisional text/read-only tool result 실험을 추가했다. Root가 기본 Vitest node 수집에서 15/15·skip 0 및 kit TS/lint/format을 확인했다. account/session/run/attempt와 순서·bounds·dispose를 구분한다. 실제 provider/token/tool 전송·서버 권한/동의/lease·승인 적용은 미구현이며 React 소비자/브라우저 통합은 진행 중이다. 이 순수 시험을 제품 streaming 완료로 세지 않는다. 기존 후보/조합 시험과 미실행 최종 제품 실기기 gate는 유지한다.
+
+## Streaming 소비자 실제 통합 후속 · 2026-10-09
+
+`phase/m0-06b`의 `52f6579e`에서 공개 StreamTranscript·안정된 빈 SSR snapshot·lazy 합성 consumer를 연결했다. Root 실제 component 회귀18/18·pure store15/15, 전체build15/15·cache0·exit0과 최종 kit/UI-spike TS·scoped lint/format을 확인했다. 최초 react-dom/server 수집 실패0case·exit1은 보존하고 정확 dev dependency/lock 설치 뒤 재검증했다. 실제 원 shell config Next/Vite12/12·0skip·0flaky·exit0, source/build 전후동일·소유 artifacts/포트정리이며 finite result SHA `a2dc5530c172950bfb6dc855a655541c7844c23f6314705549a8949edca551d4`다.
+
+Aside daemon 인증 실패로 사용할 수 없어 실제 Chrome Vite preview에서 텍스트/도구결과 plaintext·초안보존·완료의 비승인·실행교체/늦은입력거절·세션교체 초안제거를 별도로 확인했다. 검증 탭과 소유 preview process를 정리했고4200 LISTEN없음이다. 해당 phase의 `M0-06b-stream-consumer.md`를 따른다. 최초문단의 미실행과 앞 store기록의 React/브라우저 진행중은 그 시점 상태이며 이 후속 범위만 해소됐다.
+
+실제 provider transport·서버 동의/lease·승인 연결, 모든 owning 기능과 전체 phase 수용·독립검토/main·최종 실제 제품 기기 gate는 별도다. synthetic composition은 OS IME 증거가 아니며 이번에는 iPhone/독립 시험 앱을 실행하지 않았다. local 노드 완료를 선언하지 않는다.
