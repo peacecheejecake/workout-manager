@@ -1350,3 +1350,31 @@ Gallery 코스선택6후보는 현재 live통합 unit75/75·TS/lint/format0이�
 후속준비중이다. backend등록/actualSQL/URL/back-forward/legacyalbum 공백을 보존한다.
 Gallery19 actual17pass2fail0skip은 유지하고 getter-safe 단언단계로 진단한다. EXT native row
 projection pure NEW2 구현은 독립 agent가 진행하며239카탈로그 관측을 trusted restore로 승격하지 않는다.
+
+### 중앙 통합과 병렬 후속 · 2026-10-10
+
+검토된 main e7fb1d0b를 중앙 phase/m2-02에 충돌 없이 통합했다(merge b9d90164).
+과거 V9 proof의333개 입력 중 lock1개가 달라졌으므로 원proof/source_drift와 원asset를
+보존하고 새 source-build V1·닫힌 Root registration을 구현 중이다. 기존 tuple9/25/142와
+named5 port의 fresh command admission은 유지한다. 새로운 source proof verified를 현재
+기능·복원·운영 통과로 쓰지 않는다. configured 전체 external AST는 아직 미검증이다.
+Native Agent A/B의 NEW8과 Root wiring 관련/legacy 호환 단위136/136·skip0·exit0를 실제
+확인했다. 최종 source 동결·독립 manifest 검토·실제 compile 및 Root literal pin·새 configured
+PG/HTTP와 fullphase/identity×2·독립 phase review는 후속이다. 기존 V9 asset/pin/mock는 보존한다.
+
+Gallery phase/m2-03 a63a8c43은 현재 소유 코스의 정확한 리비전을 명시적으로 필터에 적용하는
+UI다. 최종 단위85/85·GalleryTS/lint/format0·실제productionbuild0 및 합성 browser32/32를
+확인했다. R1 browser24/8fail, R2 28/4fail도 별도 보존하고 R3만 통과로 기록했다. Chrome으로
+실제 선택·적용을 확인했으며 Aside auth-challenge fetch 실패를 기록한다. 제품 Host/backend
+연결·actualSQL/profile·restore·최종제품 iPhone은 미완료다.
+
+Gallery 실제19case는17pass2fail/skip0이고 strict DTO 진단으로 case5 값 동일·raw키순서
+차이를 확인했다. 원실패를 유지하며 strictparse fixture 교정과 CLOSED authoring guard22
+준비를 병렬 진행한다. protected SQL143/원14case는 변경0이다. EXT C1 native row producer의
+underreported row 최대바이트를 거절하는 순수 교정은15/15·TS/lint/format0이며 실제239관계
+projection/13타입/순서 검증 준비 중이다. metadata239 관측은 trusted restore가 아니다.
+
+Root는 실제DB/Docker/브라우저/Git/공통graph/exports를 직렬 소유한다. 세 native agents는
+중앙 compilation 준비·Gallery guard actual 준비·EXT native projection actual 준비를 계속
+병렬 진행한다. 주간잔여량을 이유로 중단하지 않는다. 새graph완료판정/main변경/push/운영/
+실기기수용은 이 후속으로 승격하지 않는다. EXT-HOSTING 보호4줄 WIP와 각stash는 유지한다.
