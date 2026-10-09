@@ -1320,3 +1320,15 @@ Aside는 guide/repl을 읽었으나 daemon authchallenge fetch가 실패했다. 
 Root는 M0 새 전용UnixPG 진단을 실행하고 공통Git/graph/실제DB를 직렬 소유한다.
 Native agents는 Gallery19 실제실행 준비·native239 원소타입엄격수정·M2opt-in 준비를 병렬로
 진행한다. graph완료상태/main/push/운영/기기는 변경하지 않았다.
+
+### 최신 실제 검증 · 병렬 진행 유지
+
+사용자가 주간 잔여량 중단 조건을 다시 철회했다. 잔여량을 이유로 작업을 멈추지 않는다.
+
+M0 동일 source60e4의 focused REASSIGN 진단은17/17pass·실제 REASSIGN 성공이며 원인 미확정이다. 원본 canonicalPG 전체 R2는 upgrade1/1pass, normal1487pass/4skip/0fail·exit0, source/deps 동일·임시 DB 정리다. `phase/m0-06b`7695d8ac에 기록했다. 이전 full4fail/R1full1fail을 보존한다. identity 원 fixture는3suite/328case·migration105라는 실제 pure census를 확인했으며 원래 UnixPG17.11 방식 두 회차 실행 준비 중이다. 전체 gate와 별도 contextless gpt-6-sol high phase 검토 전 main은 유지한다.
+
+EXT V2e는 Root 실제PG170006의 normalized catalog239relations/1887columns/704namespace,870600bytes carrier와 receiver를 통과했다. `phase/ext-restore`7cda8bf7의 metadata_observed 범위이며 authority none/registryTrusted false·native ordering/highwater/dump 대응 미검증을 유지한다. durable collector NEW4의 agent 단위26/26 및 TS/lint/format0은 Root 검토·actual port 재검증 중이다. 과거 V2/V2b/V2c/V2d 실패는 보존한다.
+
+Gallery V3 코스 사용 불가 tuple 보존은 Root unit100/100·소비TS/lint·Next/Vitebuild0, Chrome keyboard viewer 및 Chromium320/390/768/1280px16/16pass 검증 후 `phase/m2-03`877e81ac에 커밋했다. 합성 HTTP transport 범위이며 actual backend/Host/실기기는 미실행이다. 실제albumadapter19 검증은 최초 Docker preflight 미실행 뒤 PG17.6 재실행에서 beforeAll setup 실패·0pass/19skip로 종료했다. source 불변·DB/role 정리·정확 소유 컨테이너 삭제를 확인했고 좁은 finite 단계 진단을 준비한다. SQL143초안/원14case는 그대로 untracked다.
+
+M2-01k-local opt-in은 graph sample5pass/1skip, missing data Next1pass/Vite1fail·no-WebGL 미실행으로 종료했다. `824b5530`의 별도 기록을 따른다. 기존 Vite preview basemap 차단 정책을 보존하고 Next guarded basemap에만 결속하는 로컬 identity test-host 조합을 native agent가 구현 중이다. Root는 Git/graph/공통 config/실제DB를 직렬 소유한다. phase 완료상태·main·push·운영·기기는 변경하지 않았다.
