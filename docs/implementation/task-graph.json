@@ -2467,7 +2467,7 @@
         "M0-06b-odbl-gpx"
       ],
       "kind": "task",
-      "status": "in_progress",
+      "status": "completed",
       "scope": "사용자 결정 2026-10-09: adapter·라이선스·coverage·브라우저 등 기존 M0-06b의 비실기기 구현 수용을 분리한다. 실제 증거를 대조한 뒤 완료하며 계획 변경만으로 passed가 되지 않는다. 실기기 성능·touch·IME는 구현 완료 후 실제 제품 앱의 M3-03b에서 검증하고 공개 ODbL 응답은 EXT-HOSTING에 남긴다. standalone 시험 앱 작업은 중단한다.",
       "evidence": "docs/implementation/progress/M0-06b-local.md"
     },

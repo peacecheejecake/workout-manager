@@ -142,3 +142,58 @@ Gallery viewer·caption/speed/fullscreen·carousel·파생물의 제품 저장/w
 Aside daemon 인증 실패로 사용할 수 없어 실제 Chrome Vite preview에서 텍스트/도구결과 plaintext·초안보존·완료의 비승인·실행교체/늦은입력거절·세션교체 초안제거를 별도로 확인했다. 검증 탭과 소유 preview process를 정리했고4200 LISTEN없음이다. 해당 phase의 `M0-06b-stream-consumer.md`를 따른다. 최초문단의 미실행과 앞 store기록의 React/브라우저 진행중은 그 시점 상태이며 이 후속 범위만 해소됐다.
 
 실제 provider transport·서버 동의/lease·승인 연결, 모든 owning 기능과 전체 phase 수용·독립검토/main·최종 실제 제품 기기 gate는 별도다. synthetic composition은 OS IME 증거가 아니며 이번에는 iPhone/독립 시험 앱을 실행하지 않았다. local 노드 완료를 선언하지 않는다.
+
+## 최신 closure·slider·전체 phase 검사 연결 · 2026-10-09
+
+이 절은 앞의 101/103-package 감사와 날짜별 미실행·실패를 보존하는 후속 기록이다. 입력은 `phase/m0-06b` commit `7695d8acd13f667232d7dd291efa510bb1fe0815`(tree `6d3c796e3870424cc29aa4d7ca6f2cbc487f11cf`), 전체 phase 비교 기준은 main `1d55735865c827f3870e6fa4b2effd418ed63677`이다. 아래 phase 문서는 현재 central에 아직 없으므로 repo path·commit·source SHA로 연결한다. main/central 도착 뒤 Root가 상대 링크로 전환할 수 있다. 해당 phase 기록의 연결이며, 이 연결로 M0-06b-local 완료나 독립 phase 승인을 선언하지 않는다.
+
+### 104-package 고지와 실제 native slider
+
+`phase/m0-06b`의 `docs/implementation/progress/M0-06b-local-license-slider-20261009.md`(commit `7695d8acd13f667232d7dd291efa510bb1fe0815`, source SHA `7ecca51a7df7ff31a6c13dcd5c68c1d1fb4283a0e8337719afeaf1358299fe3c`)은 실제 설치 production/peer closure **104 packages / 외부100 / required unresolved0 / optional unresolved1**을 기록한다. 원 101에서 table-kit와 기존 고정 virtual-core3.17.11을 더한 103, 이어 conversation-kit workspace를 더한 104를 구분한다. 기존103 metadata/notice SHA 변경·삭제0이며 새 외부 버전은 없다. 현재 lock SHA `bbabb56dc23270a59c98ca8189817406352d53402dc80898156ffa8cda7de5b2`와 104 수집 입력이 일치한다. 현재104 inventory SHA는 `39f864f702fb3dc6339e224bbcb4ec896b8d348ccf1fffc8df4a252b2d9e8462`다. 저장소의 `ui-spike-license-inventory-20261009.json`은 앞선103 역사 입력이며 104로 소급 변경하지 않는다.
+
+같은 공개 generator가 만든 bundle SHA `b8234435241c195578b0145ccdd6f51e15a707591e234a72417ea9617ec8a8d0`, Web/mobile-web/Storybook의 세 manifest SHA `4056f80ac944e749ad3a9a18572305cf664c39c390ca10022c64f71780f96b0a`가 실제 비교에서 각각 정확 일치했다. 기존 murmurhash README MIT 및 ECharts supplement 검증·optional immer 부재를 보존한다. 이 근거는 설치·고지 대응이며 법적 승인, 유료 extension, 공개 ODbL 이행 또는 실제 제품 native bundle 수용이 아니다.
+
+Slider는 기존 UI source를 유지하고 원 shell spec에 실제 keyboard 행동 하나를 추가했다. Aside 인증 실패를 보존한 뒤 **Chrome Next/Vite**에서 Home/ArrowRight/ArrowLeft/End/Home, 값0/1/0/80/0, focus 및 실제 SVG label 범위를 확인했다. 원 Playwright config의 focused **2case/2pass, fail·skip·flaky·retry0, exit0** 결과 SHA는 `da8d1d4e503e92ec752652eb589f83211e8f1a903df4dd53e4e6cd0445057ce6`다. 최초 anchored grep의 등록0 실패는 별도 보존했다. source1877/build1168 전후 동일·소유 artifact/port cleanup이며 전체20case 재실행이나 물리 touch 증거로 확대하지 않는다.
+
+`phase/m0-06b`의 `docs/implementation/research/ui-library-selection-adr-20261009.md`(같은 commit, source SHA `fb0d3362c1ec76e4d47ca92d4e1187fa5977cc86a41ee62c816c3e8acb0b83aa`)은 기존6개 stack의 정확 버전을 유지하고 미채택 후보별 자체 구현 선택·이유·한계를 연결한다. 후보 미설치를 실패로 기록하지 않는다. Gallery full viewer/carousel/video/album/파생물의 실제 제품 기능은 M2-03a/b/c, 실제 provider stream·동의/lease·승인 연결은 owning 코칭 구현에 남는다. Presentation store와 synthetic tool result 성공으로 이를 완료하지 않는다.
+
+### 최신 실행 코드와 전체 검사
+
+`phase/m0-06b`의 `docs/implementation/progress/M0-06b-current-phase-gates-20261009.md`(같은 commit, source SHA `dff41c8469c09481621aa54da8e0f7f56da1a0872303c17dc0c0142120c67e02`)의 실제 실행 clone은 `60e4fa4f42028ffde6932da423c47f12e0a456fa`다. 원 source2333과 Python/JAR를 고정한 install offline/frozen, generated, lint, typecheck, build, format, unit **7단계 exit0**이며 unit391files/4672pass/기존2skip이다. 결과 `/private/tmp/wm-m0-60e4fa4f-static-seven-actual-20261009-terminal.json` SHA `e2c001b692e0502b960cf1e56f5f9957870d35f51853976eba24ee5c2bed2a1d`에 연결한다.
+
+같은 원 source의 실제 local PostgreSQL17.11 canonical R2는 upgrade1pass, normal1487pass/기존4skip, 157files pass/1file skip, exit0·source/dependency 불변·새 scratch0이었다. 결과 `/private/tmp/wm-m0-60e4fa4f-canonical-pg-actual-r2-20261009.json` SHA `31c5b43398471a186a2c5fe23ed1a6c6f5670656f0dbb9c3705a5f499582338a`다. 최초 full4fail과 후속 full1fail, REASSIGN 진단 첫0case 실패 및 R2 focused17pass를 각각 보존한다. REASSIGN은 focused R2에서 성공/SQLSTATE null이었으며 앞선 전체 실패 원인은 미확정이고 추가 소유권 교정은 없었다.
+
+Literal source 대조에서 clone의 tracked2333 중 현재 나머지2331개는 byte 동일하고 차이2개는 committed phase 검사 문서와 기존 WIP 진행 문서다. 실행 코드 변경0이며 현재 문서 HEAD 전체 bytes를 실행했다고 쓰지 않는다. 최신 slider freeze와 현재 source의 차이2개는 위 PG fixture 시험이고, 최신 stream freeze의 차이3개는 같은 PG 시험2개와 추가 slider spec뿐이다. UI/Host/package/lock 연속성은 이 범위로 연결한다. 과거 overlay/table/coaching의 전체 freeze는 후속 workspace/importer 변경 때문에 current 전체 동일로 주장하지 않는다.
+
+이 M0 branch의 public `migrationFileNames` actual pure census는 **105개**이며 V9 source-proof asset·해당 proof tests는 없다. Central의333-source/V9 readiness 또는 normal107을 이 branch 실행 결과로 표시하지 않는다. Source continuity 대조는 실행 입력 신원 확인이며 runtime admission 권한이 아니다.
+
+### Identity ×2 실제 종료와 독립 phase 검토
+
+Root 원 PostgreSQL17.11 identity 세 fixture 두 회차가 실제 exit0으로 종료됐다.
+각 general311pass/12skip, app-consent4pass, AI lifecycle1pass로328등록 중316pass/12skip이다.
+실패/flaky0, original migration105 및 UnixPG recipe 유지, exact roster와 source/build/deps/
+geo/보호 WIP 불변을 확인했다. 새TMP잔존0·protected5 ports 반환이다. per-suite DB/role/slot
+원자적 정리는 not_observed다. 상세 범위는 main에 승인 병합된 current-phase-gates 문서의
+후속 기록을 따른다. run1 SHA59b54cabb5e1fc7dd8b5cabcfb792bd4952ee69bb5cfd79a15b4f3eaec597f97,
+run2 SHAc41ef87355442011a54101ea8e38875e45b43f84a4d6af3bd1ca6eedb69363e3,
+aggregate SHAbc3c47e7476c1dfac1362931eeca9dac4ecc8e7d79fc14b4906161d26fe95a07.
+실제 skip12를 정적 skip7 또는 passed로 바꾸지 않는다.
+
+현재 phase65파일은 UI presentation/controlled store/table primitive 및 PG 시험 fixture 교정이고 제품 persistence SQL·새 migration·backup/admission 코드 변경은 없다. 원 canonical restore/RLS/worker/upgrade 회귀와 UI dispose/cancel/unavailable 부정시험을 scoped local 근거로 연결한다. 이 diff 때문에 운영 backup/restore/failover drill을 새 필수 로컬 요구로 추가하지 않는다. 기존 운영 복원·독립 witness 및 배포 수용은 해당 외부 owning gate에 유지한다.
+
+Coverage의 requirement 독립 채점은 [M2-01az](M2-01az.md)의 새 기준75.5/82·필수23층·실격0과 실제2probe이며 phase 코드 검토와 별개다. 원 P8 failed68/82와 ay inadequate는 유지한다. 이번 M0 diff는 routing/coverage 정책이나 course-sharing 정책을 변경하지 않았으며 과거 requirement review를 현재 phase review로 대체하지 않는다. 기존 M0 ODbL28-file APPROVE도 이번65-file diff 승인이 아니다.
+
+Identity 두 실제 회차 종료와 최신 evidence 연결 뒤 final committed HEAD·main base의 전체 diff를 context-less 독립 phase review에 제공한다. 그 승인·지적 해결·필요 재검토 완료 전에는 phase/main 통합을 선언하지 않는다. 공개 HTTPS·활성 ODbL 산출물/원문 script SHA·운영 위치 로그/보존은 EXT-HOSTING에 남는다. [최종 제품 기기 계획](../device-validation-plan.md)에 따라 실제 제품 HealthKit은 M3-02h, physical touch/OS IME/GPU/memory/성능/back/offline/lifecycle은 M3-03b에서 `org.workoutmanager.app`으로 마지막에 검증한다. Standalone 시험 앱은 재개하지 않고 기존 not_executed/partial/failed를 유지한다.
+
+### 최종 로컬 판정 · 승인된 phase main 반영
+
+별도 context-less `gpt-6-sol high` subagent가 base `1d55735865c827f3870e6fa4b2effd418ed63677`
+→HEAD `e7fb1d0b33eeaa52e6d1e5cb7765687a641a1193`65파일 전체를 read-only 검토하여 APPROVE했다.
+차단 findings0, code2331·actual gate SHA 연결과 protected WIP14 제외를 확인했다. Root는
+완료된 보고를 읽고 clean main/base/head를 재확인해 정확 HEAD만 fast-forward했다. push0.
+[별도 phase review 기록](M0-06b-phase-review-e7fb1d0b-20261009.md)을 따른다.
+
+이후 M0-06b-local은 **completed**로 판정한다. 이는 후보/adapter/로컬 coverage·ODbL·라이선스·
+실제 두 shell 브라우저 수용을 분리한 로컬 범위다. M0-06b 전체/공개 ODbL/운영·최종 실제
+제품 기기/전체 제품 기능은 해당 owning node의 실패·미실행과 선행 조건을 그대로 유지한다.
+Central phase는 검토된 main의 통합과 자신의 최종 전체검사/별도phase 검토를 추가로 요구한다.

@@ -1332,3 +1332,21 @@ EXT V2e는 Root 실제PG170006의 normalized catalog239relations/1887columns/704
 Gallery V3 코스 사용 불가 tuple 보존은 Root unit100/100·소비TS/lint·Next/Vitebuild0, Chrome keyboard viewer 및 Chromium320/390/768/1280px16/16pass 검증 후 `phase/m2-03`877e81ac에 커밋했다. 합성 HTTP transport 범위이며 actual backend/Host/실기기는 미실행이다. 실제albumadapter19 검증은 최초 Docker preflight 미실행 뒤 PG17.6 재실행에서 beforeAll setup 실패·0pass/19skip로 종료했다. source 불변·DB/role 정리·정확 소유 컨테이너 삭제를 확인했고 좁은 finite 단계 진단을 준비한다. SQL143초안/원14case는 그대로 untracked다.
 
 M2-01k-local opt-in은 graph sample5pass/1skip, missing data Next1pass/Vite1fail·no-WebGL 미실행으로 종료했다. `824b5530`의 별도 기록을 따른다. 기존 Vite preview basemap 차단 정책을 보존하고 Next guarded basemap에만 결속하는 로컬 identity test-host 조합을 native agent가 구현 중이다. Root는 Git/graph/공통 config/실제DB를 직렬 소유한다. phase 완료상태·main·push·운영·기기는 변경하지 않았다.
+
+### 검토된 main 반영 및 로컬 후속 · 2026-10-09
+
+사용자 최신 지시: 주간 잔여량 중단 조건을 해제하고 병렬 진행을 계속한다.
+M0 전체65파일은 fresh context-less gpt-6-sol high 독립검토 APPROVE 뒤 exact `e7fb1d0b`
+HEAD를 main에 fast-forward했다. identity 두 회차 각316pass/12skip, full seven/PG R2와
+보호WIP 보존을 [최신 로컬 수용](progress/M0-06b-local.md)에 연결하고 M0-06b-local만 completed로
+판정했다. 기존실패·외부·최종제품기기 gate는 보존한다. push는 사용자 행동이다.
+
+M2 지도 opt-in은 새 guarded identity mobile host로 실제10/10pass/0skip/0flaky·세명령exit0,
+전용 PG/Java/port/artifact 정리 뒤 `b290c05b`에커밋했다. 원 Vitefail/미실행은 별도 보존한다.
+이는 canonical358 전체identity/phase/운영/실기기 완료가 아니다. central 최종phase검사 전에
+새 main을 phase/m2-02에 통합해야 한다. EXT-HOSTING 기존4줄 WIP/stash는 변경하지 않는다.
+
+Gallery 코스선택6후보는 현재 live통합 unit75/75·TS/lint/format0이며 실제browser/build는
+후속준비중이다. backend등록/actualSQL/URL/back-forward/legacyalbum 공백을 보존한다.
+Gallery19 actual17pass2fail0skip은 유지하고 getter-safe 단언단계로 진단한다. EXT native row
+projection pure NEW2 구현은 독립 agent가 진행하며239카탈로그 관측을 trusted restore로 승격하지 않는다.
