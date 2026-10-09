@@ -1435,3 +1435,11 @@ Gallery `d065ee37`은 grouped source record strict parser를 검증해 커밋했
 EXT `40262057`은 C4 raw metadata actual 성공을 기록했다:239관계/1887컬럼/1704constraints/domain0/sequence1. 실제관측 성공과 reviewed expected 검증은 구분하며 C4 positive는 미실행이다. source/native 대조의 남은 trigger58 metadata NULL, default/CHECK 의미 및 sequence highwater를 해결한다. raw를 그대로 trusted expected로 채택하지 않는다.
 
 다음 작업은 원3파일 collection roster 정확확인 및 체크인 시각 경계의 fixture 진단, C4 versioned trigger metadata query/codec 후속, Gallery physical parser dependency closure 통합이다. 공통 graph와 manifests는 Root가 직렬 소유한다. local 수용 완료 뒤 full canonical/identity 두회차와 독립 wholephase 검토를 수행한다. 운영 backup·restore/HTTPS/외부 수용/실제 제품앱 iPhone/출시 선행조건은 유지한다. main `e7fb1d0b`와 push는 변경하지 않았다.
+
+### 2026-10-10 병렬 로컬 후속 통합
+
+- 중앙 `a59a8a61`: exact check-in/resource replay fixture2의 시각을 DB clock text로 교체. 원25단언 실제 후보 clone25/25·skip0, TS/lint/format0. 이전 whole4fail·baseline2fail·진단1fail은 보존하며 현재 전체integration/identityx2 성공은 아직 없다. R7 sourceproof342와 current fixture10에는 두 integration fixture가 없어 asset/pin은 그대로다.
+- EXT `77ad4535`: C4 V2 constraint trigger 구조 companion/query/test. 원 pg_get_expr의 actual22023 실패를 보존하고 tgqual native node tree를 유지하는 최소 수정. actual raw query에서239relations/1887columns/trigger58digest nonNULL·NULL0, unit37/37. expected authority 등록과 C4 positive/wholeinverse/운영 수용은 미완료다.
+- Gallery `a1685d26`: generic physical boundary2+test2와 Gallery A3 source/test2/publicexports4 통합. unit66/66·persistence/API/worker/publicexport TS0. JSON ESLint 미지원 최초경고 실패는 보존했다. 보호 SQL143·원 integration2는 미커밋 그대로이며 정식installer/profile/sourceproof/publication/전체복원은 남는다.
+
+다음은 중앙 canonical 전체integration과 identityx2의 새 정확입력 검증, source 기반 C4 trigger 예상 구조 검토 준비, Gallery A1 정식 forward 등록 준비를 native 병렬로 진행한다. Root는 shared manifest/graph/Git/DB lane만 직렬 통합한다. phase 검토 전main 반영·push는 하지 않으며 운영 backup/restore→HTTPS→외부 수용→실제 제품iPhone→출시 순서를 유지한다. 주간 잔여량 기준 중단은 사용자 결정으로 해제됐다.
