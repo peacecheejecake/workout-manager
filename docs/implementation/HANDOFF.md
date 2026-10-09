@@ -154,7 +154,7 @@ APPROVE를 받았다. 당시 기록 갱신의 검토 refresh 후 main에 반영�
 
 모든 구현을 먼저 완료하고 실기기 검증은 마지막에 실제 제품 앱으로 진행한다. standalone 시험 앱의 추가 작업과 수동 20회 측정 요청은 중단한다. [최종 제품 검증 계획](device-validation-plan.md)의 M0-06b-local → 전체 구현/phase 통합 → M3-03a → M3-02h/M3-03b → 출시 순서를 우선 적용한다. 비실기기 검증·독립 phase 검토·운영/복원/HTTPS gate는 유지한다. 기존 실기기 미검증은 통과로 바꾸지 않는다.
 
-현재 먼저 수정할 회귀는 HEAD6a00c113 canonical identity 둘째 회차의 영양 approve-v4 HTTP500 두 건이다. 첫 회차346pass/12skip, 둘째344pass/2fail/12skip을 별도 보존하며 두 회차 등록/skip 대조는 일치한다. main 병합 전 수정과 실제 재검증이 필요하다. 아래 2026-10-08 순서는 과거 진행 기록이다.
+앞선 회귀 조사 출발점은 HEAD6a00c113 canonical identity 둘째 회차의 영양 approve-v4 HTTP500 두 건이었다. 첫 회차346pass/12skip, 둘째344pass/2fail/12skip을 별도 보존하며 두 회차 등록/skip 대조는 일치한다. main 병합 전 수정과 실제 재검증이 필요하다. 아래 2026-10-08 순서는 과거 진행 기록이다.
 
 2026-10-08 추가 진행: source116 인증 수신기 unit36/실제PG 복합1, 공개 최신성 추가 실제PG10, 새 preview/template contracts unit40 및 contracts 전체 TS/build를 Root가 검증·phase 커밋했다. 이전 setup 실패·skip는 별도 보존했다. SQL123 template producer는 Root unit17/두 프로필 실제PG18 및 consumerTS/lint/format을 통과해 phase에 커밋했다. template 소비 helper·공개 frozen before/after mapper·공개 소비 경로 준비는 native subagent 병렬 작업 중이며 Root만 공유파일/실제PG를 통합한다. parent 없는 unplanned run은 top-level roster로 계약을 수정하고 unit27을 재검증했다. source116222 profile은 그대로이고123 포함 새 profile·export/복원/이미 적용된 erasure postimage는 별도 미완료다. AWS STS는 SSO 만료로 실패하여 서버/503/배포 검증은 갱신하지 않았다. 상세 SHA/실제 결과·한계는 [I 기록](progress/M2-02i.md)을 따른다.
 
@@ -1029,3 +1029,12 @@ iPhone 재연결의 읽기 관측은 paired/connected1개·정확 합성 bundle/
 ## 2026-10-09 S17 미구현 수용 추적
 
 FUT-03 후보 감사에서 기존 M2-03 기록이 S17 viewer/codec·앨범/날짜/코스·파생물 미구현을 명시함을 확인했다. [M2-03 후속](progress/M2-03-follow-up.md)의 ready 노드 a~c를 추가하고 M2-06의 필수 선행으로 연결했다. 특정 라이브러리 미설치를 제품 실패로 간주하거나 기존 core 완료를 전체 기능 완료로 확대하지 않는다. clean이며 main의 조상인 이 채팅의 기존 managed worktree를 재사용하여 main 기준 phase/m2-03을 만들었다. 구현과 독립 phase 검토 전 main에 반영하지 않는다.
+
+## 구현 선행 진행 후속 · 2026-10-09
+
+사용자 결정대로 standalone iPhone 시험 앱은 실행하지 않았다. 실기기 수용은 모든 구현 후 실제 제품 앱에 남긴다. main은 `1d557358` clean이며 이번 unreviewed 작업을 병합하지 않았다.
+
+- `phase/m0-06b`의 `52f6579e`는 scoped Streaming React consumer/lazy panel을 실제 단위 및 두Host Playwright12/12·Chrome으로 검증·커밋했다. 기존 비공개 실기기 WIP14파일은 byte불변으로 보존했다. 실제 provider transport·전체 phase 및 제품 기기 gate는 남는다. [중앙 수용 연결](progress/M0-06b-local.md)을 따른다.
+- `phase/m2-03`의 `fd3a4052`/`dafb7f9e`는 codec input/output frames 및 native core 연결 entry/좁은 JavaScript emission을 구현했다. Root 기본 unit53/53·actual compiled native 이미지 변환/semantic correlation을 확인했다. Linux image/OS fence/broker/worker/DB 통합은 미완료다. SQL143 앨범은 아직 draft·미등록이며 pure authoring의 잘못된 core app consent 요구를 교정했다. restored CLOSED admission 조건은 미해결이어서 실제 저장 수용·완료를 선언하지 않는다. 앨범 조회 port와 Linux artifact pin 준비를 native agent에 비중복 배정했다.
+- `phase/m2-02` 전체 normal v7은3,069pass/1fail/14skip·exit1을 보존했다. 이후 원 course-share5case 실제5/5, 호스트 시계 의존 제거와 직접 future-time rollback 추가 뒤 실제6/6·skip0·exit0을 확인해 `27eb7362`에 커밋했다. 원 v7 실패의 정확 OR 분기는 미확정이며 좁은 성공을 whole pass로 바꾸지 않는다. [전체 gate 기록](progress/M2-02-full-gates-600d0417.md)을 따른다.
+- 갱신1093입력 freeze SHA `9fc74fdf6e2ceb197843e3baa2b689b40c566b50811b1e82dac106b5cb15c496`에서 원 whole normal/upgrade **v8 실행 중**이다. 실제 실행 handle72423, artifact `/private/tmp/wm-fullnormal176-v8-9d25ac3b-d5ef-47c5-a115-79c2e0b91135`; 마지막 실제 poll은 진행 중이며 `canonical_full_normal_running`/PG170006을 확인했다. 같은 handle을 이어 관측하고 timeout만으로 재시작하지 않는다. 최종 결과·최신 identity×2·전체phase·독립review/main 및 운영/제품실기기 수용은 아직 없다.
