@@ -11,6 +11,7 @@
   },
   "exports": {
     "./transcript": "./src/transcript.tsx",
-    "./composer": "./src/composer.tsx"
+    "./composer": "./src/composer.tsx",
+    "./stream-presentation-store": "./src/stream-presentation-store.ts"
   }
 }
