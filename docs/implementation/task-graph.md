@@ -802,7 +802,7 @@ Native shell·collector는 M1c 통합과 native feasibility 이후 M2 Web 확장
 | M2-05 RAG·검토 자료·코치 | M2-04, M2-03 | retrieval/coaching; 인용·삭제 누출 시험·검토된 콘텐츠 |
 | M2-06 전체 화면·내부 통합 검증 | M2-02, M2-05, M0-06b, M1-06b-tmp | S01–S35·보안·운영·내부 수용 기준 대조; 비공식 수집의 선택 기능·fixture 회귀와 실계정 미검증 구분 |
 | G2 Web MVP 내부 준비 gate | M2-06 | 공식 Garmin 제외 내부 준비 판정; HTTPS 공개 배포 승인은 아님 |
-| G2-PUBLIC Web MVP 공개 출시 gate | G2, EXT-HOSTING | 실제 HTTPS/TLS·운영 OIDC·보안 쿠키·secret manager·지도 재빌드 증거가 있어야 공개 출시 |
+| G2-PUBLIC Web MVP 공개 출시 gate | G2, EXT-HOSTING, M2-05d, EXT-RESTORE, EXT-BACKCHANNEL | 실제 HTTPS/TLS·운영 OIDC/back-channel 전파·보안 쿠키·secret manager·지도 재빌드·전체 복원·실제 OpenAI 증거가 있어야 공개 출시 |
 | M3-01a Native bridge 계약·웹 어댑터 경계 | M1c-04, M0-06c | 완료; versioned handshake·capability·허용 명령·응답 ID·timeout/cancel. 제품 iOS shell은 부모 단계 |
 | M3-01b 제품 Capacitor iOS shell·제한 bridge | M3-01a | 완료; 번들 Vite 산출물·v2 hello/app.openSettings Swift plugin·외부 navigation 격리. Native 인증·HealthKit·제품 실기기 수용은 부모 단계 |
 | M3-01c Native OIDC 일회성 교환·세션 서버 경계 | M3-01b, EXT-OIDC | 완료; 고정 redirect·device PKCE·일회성 code·browser/native 세션 격리. 구현된 Back-channel logout의 로컬 철회만 시험했으며 실제 공급자 전파 gate는 별개. 제품 iOS 인증·운영 HTTPS 검증은 후속 |
@@ -895,3 +895,5 @@ M2-01k-v-a~f는 app 처리 의미 확정 뒤 새 admission·직접 저장·basis
 ## 2026-10-09 전체 복원 구현 착수
 
 `EXT-RESTOREa`는 `phase/ext-restore`의 `11014164`에서 strict inventory descriptor parser를 구현하고 실제 Node24 단위14/14·persistence 타입/lint/format을 확인해 in_progress로 갱신했다. 선행 v-c/i/j/k/l 상태는 completed지만 M2-02 전체 phase 검토/main 및 SQL143 최종 registry는 아직 미완료다. parser의 structural validated 결과는 authority none이며 전체 row/tail/서명/loader·원자 admission·실PG 및 운영 gate 완료가 아니다. 기존 요구·dependsOn·외부 not_executed는 유지한다.
+
+최종 출시 dependency 대조(2026-10-09): 계획에 이미 요구된 실제 OIDC back-channel 전파 수용을 `G2-PUBLIC → EXT-BACKCHANNEL`로 명시했다. HTTPS 배포 후 공급자 시험이 가능하도록 EXT-HOSTING에 역방향 의존성을 추가하지 않았다. 과거 구현 완료·미실행 증거와 현재 node status는 보존한다.
