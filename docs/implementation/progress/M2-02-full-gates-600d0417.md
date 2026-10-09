@@ -67,3 +67,9 @@ logical 첫 v3 실행에서는 시험 1/1이 통과했지만 Node/tsx 캐시 두
 갱신 fixture SHA `aed03bb672c2779f0a1fee287c640b65b687531cbfec730889cbc3dc46cf349a`와 원1,093개의 새freeze SHA `9fc74fdf6e2ceb197843e3baa2b689b40c566b50811b1e82dac106b5cb15c496`에서 실제 원파일전체6/6·skip0·unhandled0·exit0,1,793.421375ms였다. 이전freeze와 비교해 변경입력은 정확 fixture한파일이며 sourceproof333/asset은 불변이다. 최종 persistence TS·scoped lint/format exit0이다. source전후동일·post역할1/DB1/slot0·pool종료·소유container제거도 확인했다. finite reporter SHA `9e8e805af6ce56c2db2393bc00007ed40280a82c70d4af2b03990853564f31f9`, terminal SHA `4b6cf65754a4532d716020f7e97cb03f402e97b85feb626aece53d53af020f3e`, lifecycle SHA `d33f7da001ce9204ab6e0bfa7078f333b3d0e9782e537d9faf76cf074a711298`다.
 
 이 좁은 검증은 전체 normal v7 실패를 passed로 변경하지 않는다. 갱신입력 whole normal·최신 identity 두 회차·fullphase·독립검토/main·운영/최종실기기 수용은 별도다.
+
+## 전체 normal 후속 v8 · FAILED
+
+동일 normal registry107/config/시간 제한과 freeze1,093개 SHA `9fc74fdf6e2ceb197843e3baa2b689b40c566b50811b1e82dac106b5cb15c496`의 실제 전체 실행은 terminal exit1이었다. upgrade1/1, 일반300파일 통과·1실패·3skip, 3,070통과·1실패·14skip/3,085등록, error1이다. elapsed2,155,832.279125ms, 실행 구간은2026-10-09 06:28:57.003Z~07:04:52.841Z다. 실패 위치는 `race-source-deletion.integration.test.ts:665:24`, `:45:20`, `:662:5`, marker는 `RESTORE_REPLAY_INVALID_ENTRY`이며 정확 내부 OR 분기는 미관측이다. 이전 course-share 실패와 좁은6/6을 보존한다.
+
+source 전후동일·normal registry107/FORCE RLS 확인, poststate 역할17/DB1/slot0·pool종료·소유container제거·stdout/stderr drain 완료를 확인했다. artifact `/private/tmp/wm-fullnormal176-v8-9d25ac3b-d5ef-47c5-a115-79c2e0b91135`, finite-terminal SHA `e31384ec213817d4d193b20ed37b3a1ccfc1191c7938ad6adb5a2cb77f9e30dc`, lifecycle SHA `b249f503aaf3513627f6b40759e31ab4ba3bebe59f7cf9937733c33a1e994927`다. handle72423은 terminal이며 다시 poll하거나 timeout 재시작 대상으로 취급하지 않는다. 최신 whole/identity×2·fullphase·독립review/main은 미완료다.
