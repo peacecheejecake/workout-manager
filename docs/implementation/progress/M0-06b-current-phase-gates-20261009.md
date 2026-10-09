@@ -63,3 +63,18 @@ source/clone 전후 동일·새 PG scratch 잔존0이다. owner transfer 유한 
 구체 권한/SQLSTATE 관측을 주장하지 않는다. loader는 이번 집중 실행에서 통과했으나 이전
 전체 실패 원인은 미확정이다. 기존 full PG1483pass/4fail/4skip과 R2 unit4fail은 보존한다.
 전체 PG 재검증·identity×2·독립 phase 검토·main 병합은 여전히 미완료다.
+
+## 60e4fa4f 고정 입력 전체 정적·단위 재검증
+
+Root는 fixture 교정을 포함한 `60e4fa4f`의 새 깨끗한 로컬 복제본을 만들었다. source2333과
+Python/JAR를 독립 핀으로 동결해 install offline/frozen·generated·lint·typecheck·build·
+format·unit을 원 명령대로 실행했다. **일곱 단계 exit0, unit391파일/4672passed/기존2skip**이다.
+원 WIP는 포함하지 않았고 source/dependency 전후 동일·세 build root 존재를 확인했다.
+
+- 입력 SHA: `ac69ae2eaf6b5ed4aed8b55da5748e9efdf22abeca3e19117f29be8add8cbce0`
+- 전체 실제 결과: `/private/tmp/wm-m0-60e4fa4f-static-seven-actual-20261009-terminal.json`
+- 결과 SHA: `e2c001b692e0502b960cf1e56f5f9957870d35f51853976eba24ee5c2bed2a1d`
+
+새 build가 생성돼 identity는 새 build freeze를 사용해야 한다. 동일 복제본의 원 canonical
+PostgreSQL17.11 전체 통합을 별도 실행 중이며 종료 전 성공으로 기록하지 않는다.
+이 결과는 이전 unit4fail·전체PG4fail·집중 진단의 범위를 덮어쓰지 않는다.
