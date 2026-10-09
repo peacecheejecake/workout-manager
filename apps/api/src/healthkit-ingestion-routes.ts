@@ -1,15 +1,20 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import {
-  healthKitIngestionAckSchema,
-  healthKitIngestionBatchSchema,
-} from '@workout/contracts/healthkit-ingestion';
+  healthKitRegisteredIngestionAckSchema,
+  healthKitRegisteredIngestionBatchSchema,
+} from '@workout/contracts/healthkit-registration';
 import {
   HealthKitIngestionError,
   type HealthKitIngestionRepository,
 } from '@workout/server-persistence/healthkit-ingestion';
 import type { Principal } from './ports.js';
-import { emptyQuery, input, ProductRequestError } from './product-boundary.js';
+import {
+  emptyQuery,
+  input,
+  command as executeCommand,
+  ProductRequestError,
+} from './product-boundary.js';
 
 export function registerHealthKitIngestionRoutes(
   routes: FastifyInstance,
@@ -20,7 +25,14 @@ export function registerHealthKitIngestionRoutes(
     input(emptyQuery, request.query);
     const owner = principal(request);
     if (owner.method !== 'bearer') throw new ProductRequestError(403, 'BEARER_REQUIRED');
-    const batch = input(healthKitIngestionBatchSchema, request.body);
+    if (
+      request.body !== null &&
+      typeof request.body === 'object' &&
+      'schemaVersion' in request.body &&
+      request.body.schemaVersion === 1
+    )
+      throw new ProductRequestError(409, 'LEGACY_BATCH_UNSUPPORTED');
+    const batch = input(healthKitRegisteredIngestionBatchSchema, request.body);
     const revisionHeader = request.headers['x-healthkit-consent-revision'];
     const consentRevision = input(
       z
@@ -30,15 +42,14 @@ export function registerHealthKitIngestionRoutes(
         .pipe(z.number().int().max(2_147_483_647)),
       revisionHeader,
     );
-    try {
-      return healthKitIngestionAckSchema.parse(
-        await repository.ingestBatch(owner.athleteId, batch, consentRevision),
-      );
-    } catch (error) {
-      if (error instanceof HealthKitIngestionError) {
-        throw new ProductRequestError(error.code === 'CONSENT_REQUIRED' ? 403 : 409, error.code);
-      }
-      throw error;
-    }
+    return healthKitRegisteredIngestionAckSchema.parse(
+      await executeCommand(
+        () => repository.ingestBatch(owner.athleteId, batch, consentRevision),
+        (error) =>
+          error instanceof HealthKitIngestionError
+            ? new ProductRequestError(error.code === 'CONSENT_REQUIRED' ? 403 : 409, error.code)
+            : undefined,
+      ),
+    );
   });
 }

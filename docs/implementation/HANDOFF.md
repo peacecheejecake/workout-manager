@@ -197,6 +197,18 @@ M0-06c의 실제 wake는 위 최신 기록으로 확인했다. 미저장 Back �
   `adequate`(75.5/82)를 받았다. [실행 기록](research/m0-06b-coverage-execution-m2-01az.md)과
   [채점 기록](research/m0-06b-coverage-review-grading-m2-01az.md)을 참조한다. 기존 `failed`는 바꾸지 않는다.
 
+## HealthKit 계정 귀속 후속 결정·서버 로컬 수용(2026-10-05)
+
+- 사용자의 명시적 운동 선택·등록은 현재 제품 계정에 대한 귀속 선언이다. HealthKit 자체는 실제 인간 소유자를 확인하지 못한다.
+- 개별 등록 해제는 제품 내 관련 기록을 삭제·정리한 뒤 귀속을 해제한다. 다른 계정은 정리가 완료된 뒤 같은 UUID를 명시 재등록할 수 있다.
+- 계정이 남아 있어도 HealthKit 동의 철회 시 귀속을 삭제해 다른 계정의 명시 재등록을 허용한다. 계정 말소도 귀속 삭제 후 재등록을 허용한다. 모두 유효 동의와 새 사용자 선언이 필요하다.
+- [ADR](research/healthkit-account-registration-adr.md), [M3-02k](progress/M3-02k.md)에 결정과 구현 범위를 기록했다. 094 AFTER consent trigger가 claim/등록 receipt/head를 기존 raw purge와 같은 거래에서 정리한다. 등록·수신과 기존 HealthKit persistence 회귀 **8개 suite·79개 테스트**, 집중 재실행 **6개 테스트**가 실제 PostgreSQL에서 통과했다. 최초 회귀의 **72개 통과·1개 실패**(철회 후 claim/등록 receipt/registry head 기대 0/0/0·실제 1/1/1)는 실패 이력으로 보존했다.
+- M3-02k는 **로컬 PostgreSQL 수용 완료 / 루트 최종 확인 후 그래프 완료 반영 대상**이다. export v29 owner projection, 095 DB protocol fence, 합성 자료의 실제 dump/restore와 철회 suppression replay, 동시 철회 commit/rollback에 따른 B 등록 대기·결과를 검증했다. 전체 실DB 재실행은 초기 smoke 1/1 및 1,057개 통과·3개 건너뜀·0개 실패다. 중간 export assertion 5개 실패와 첫 전체 assertion 2개·hook 8개 실패는 M3-02k에 보존했다. DB rollback 검증을 운영 이미지 rollback 증거로 사용하지 않는다. 개별 해제 runtime 계약/API와 v1→v2 API는 l, native 선택/등록/수집은 m/n, 운영 이미지 rollback·공개 배포·실기기는 o/h에 남는다. 개인 운동이 있는 현재 iPhone에서 Release collector를 실행하지 않는다. M3-02h 실기기 행은 **not_executed**다.
+
+## M3-02l 로컬 서버 수용과 다음 작업(2026-10-05)
+
+M3-02l은 2026-10-05 로컬 서버·계약 수용을 완료했다. 개별 해제 DTO/API·096/097 정리 worker와 좁은 권한·owner exact replay·export v30을 연결했다. 실제 객체 삭제 뒤 claim release/B 등록, 소비자 TS 6패키지, 전체 PostgreSQL 선행 1/1과 본 1,087 통과·3 건너뜀·0 실패를 확인했다. [M3-02l](progress/M3-02l.md)에 최초 전체 5실패와 좁은 1실패를 보존한다. 역사적 v1 unknown receipt 계정의 개별 해제는 failclosed이며 안전한 기존 자료 처리 경로는 M3-02o에 남는다. 다음 ready node는 M3-02m의 ACK된 UUID 범위 native 수집이다. 현재 제품 collector 실행은 계속 금지하며 m/n/o/h의 운영·실기기와 phase 독립 검토는 완료하지 않았다.
+
 ## 알려진 흔들리는 시험
 
 - `tests/identity/session-attendance.spec.ts:123`("계획 초안 편집" 버튼이 보이지 않음)이 높은 부하(1분 load 32–40)에서 한 번 실패했고
@@ -242,3 +254,46 @@ M0-06c의 실제 wake는 위 최신 기록으로 확인했다. 미저장 Back �
 다음 세션은 working tree와 위 "다음 작업 순서"의 완료 여부를 git 기록으로 확인하고,
 남은 M2-01k 수용 항목과 외부 gate를 이어 간다. 실제 외부·실환경 증거가 필요한 gate를
 문서 검토나 합성 fixture로 완료 처리하지 않는다.
+
+## 재개 결정과 서버 준비 실행 · 2026-10-05 오후
+
+- 사용자 승인한 정확한 v4 script SHA `83c51165936b5665934ace5dfe8521d5f10439ca46dc18b58c780c8092bd1bc9`를 서버에서 13:35:03 KST에 1회 실행해 준비 설치·읽기 전용 검증이 성공했다. [EXT-HOSTING 실행 기록](progress/EXT-HOSTING.md#승인된-v4-서버-준비-1회-실행--2026-10-05)을 따른다. 기존 container·데이터는 유지, Workout503/apex200과 timer masked 유지. UID 전환·container 재생성·운영 원장/백업/복원·503 해제는 아직 미실행이다.
+- 사용자가 합성 자료를 사용하는 iPhone 성능 **측정 진행**을 승인했다. 개인 HealthKit/GPS 수집을 포함하지 않으며 실제 측정 후 별도 예산을 정한다. 아직 측정값이 없어 기존 realDevice not_executed/budget null을 통과로 바꾸지 않는다.
+- FUT-09는 과거 공유 계획 이식을 위한 원문·미리보기·승인 항목임을 설명했다. 전체 텍스트·Markdown·PDF·확인 가능한 export를 받거나 이식 범위를 별도로 결정한다. 원문 처리 답변은 아직 기다리는 중이며 일반 계획 편집기 개발은 계속 가능하다.
+
+## M3-02m 로컬 native 수용과 다음 작업(2026-10-05)
+
+등록 UUID/claim epoch 전체 목록 검증 뒤에만 제한된 native observer·anchored query·v2 outbox를 실행하도록 연결했다. 루트가 소스와 실제 합성 218 단언·arm64 네 소비자 typecheck/compile을 확인했다. [M3-02m](progress/M3-02m.md)에 실제 결과와 실패·미실행을 분리했다. 다음 ready node는 M3-02n 운동 선택 UI/native bridge다. 제품 collector의 개인 실기기 실행은 n/o 안전 통합 전 계속 금지하고, M3-02h와 phase 독립 검토는 별도다.
+
+## 재개와 다음 작업 · 2026-10-06
+
+- M3-02n의 명시 선택·계정 귀속 등록과 M3-02o의 비식별 감사/개별 해제/배포 준비를 phase/m3-02에 커밋했다. 로컬 수용은 [n](progress/M3-02n.md)·[o](progress/M3-02o.md), 전체 phase 검사·독립 검토 상태는 [phase 기록](progress/M3-02-phase-review-20261006.md)을 따른다. o의 실제 운영 감사·선배포·rollback과 h의 제품 HTTPS/실기기 수용은 in_progress/not_executed를 유지한다. 검토된 main 포함 여부는 최종 Git HEAD와 annotated review tag로 확인한다.
+- 전체 identity 최초 완료는 공통 export helper의 28/실제 producer30 불일치로 301통과·8실패·12skip였다. 후속 focus/MFA 응답 경합도 [M3-02p](progress/M3-02p.md)에 별도로 보존·수정했다. 최종 고정 HEAD `bd625ee8`에서 두 전체 회차가 각각309통과·12skip·0실패·exit0으로 완료돼 p만 로컬 completed다. 첫 전체 phase 독립 검토는 stale native outbox의 후속 동기화 차단 P1로 REQUEST_CHANGES였다. UUID/epoch 대조·mixed 유효 tombstone 보존·새 key/원래 sequence 정리를 수정하고 State92 및 iOS15 compiler로 검증했다. 새 HEAD 전체 독립 재검토와 승인 뒤 main 병합이 다음 단계다. 실패·중단·외부 미실행을 통과로 바꾸지 않는다.
+- 10월5일 UID v3의 후속 실행은 old container 정지와 ubuntu 권한 회수 뒤 sudo 판정 조건에서 fail-stop했다. 해당 정확한 1회 승인은 사용됐으며 전체 v3를 다시 실행하지 않는다. 마지막 관측에서 UID 소유권 전환과 새 container 시작은 미실행, Workout503·apex307→200·timer mask는 유지됐다. 이는 오늘의 새 서버 관측이 아니다. EXT-HOSTING 별도 branch의 부분 실행 기록 `8a78619d`와 원본 서버 record를 확인한다.
+- 남은 UID 작업을 위한 정확한 resume-v2 script SHA-256 `dce43db9ab995d003a75241ef6dc5f33c82abb7da1a6b9c9457712d131466060`은 fresh context-less 독립 읽기 전용 검토를 통과했다. 설치/실행은 하지 않았다. AWS SSO 재연결 후 새 Linux 상태·copied baseline 무결성·권한을 확인하고, 정확한 새 실행 승인을 받은 다음 진행한다. 과거 v3 승인은 이 script 승인으로 전용하지 않는다. 운영 원장·전체 백업/격리 복원·503 해제는 별도 gate다.
+- 사용자 답변 대기: 비루트 AWS SSO 로그인 재연결 가능 시점, HealthKit 없는 WM Synthetic Performance가 실제 iPhone에서 지도/그리기 값을 표시하고 계속 열려 있는지, FUT-09 원문 제공 또는 원문 이식 보류 결정. 합성 성능값/예산은 미확정이며 기존 제품 collector를 개인 건강 자료에서 실행하지 않는다.
+- S22 추가 정책 답변 대기: generic app 동의의 처리 대상·철회 효과, generic provider를 개별 연동 기준으로 둘지 공통 상위 수집 gate로 사용할지. 별도 M2-01k 읽기 전용 대조에서 두 kind의 원장 저장은 확인했으나 실제 업무 gate consumer를 찾지 못했다. 기존 HealthKit/Garmin 결정은 유지하며 새 의미를 임의 구현하지 않는다.
+
+## 로컬 phase 통합 최신 상태 · 2026-10-06
+
+- M3 전체 독립 재검토는 base173d8d6 → headd132fb41 **APPROVE**, 이전 stale outbox P1 **FIXED**였다. main에 d132fb41을 fast-forward했고 clean을 확인했다. 정확한 diff·검토·실행/미실행 증거는 annotated tag `review/m3-02-20261006-registration-refresh`와 [phase 기록](progress/M3-02-phase-review-20261006.md)을 따른다. 앞선 대기/수정 중 문단은 그 시점 기록이며 o/h 운영·실기기 gate는 여전히 in_progress/not_executed다.
+- 병렬 M2 URL callback 로그·S22 준비는 [M2-01k §44](progress/M2-01k.md#44-url-로그s22-준비-전체-phase-통합-검증2026-10-06)의 고정 입력에서 전체 unit4398·PG1095(+upgrade1/pgoutput7) 및 identity 두 회차각309통과/12skip를 실제 확인했다. 승인된 main 위에 통합했고 exact diff의 독립 phase 검토는 이후 APPROVE를 받아 main `6b46cf30`에 반영됐다(`review/m2-01k-20261006-url-consent-preparation`). app/provider 정책 답변과 운영/기기 증거를 로컬 검사로 대신하지 않는다.
+
+## S22 확정 고지 회귀 후속 · 2026-10-06
+
+- [M2-01k-u](progress/M2-01k-u.md)는 명시 mutation 전 고지/권한 분리와 이전 계정의 늦은 삭제 응답 보호를 테스트 세 파일에 보강했다. Root 집중64/64 재검증 및 phase 고정 입력79fc5d34에서 unit4401, PG1095(+upgrade1/pgoutput7), identity 실제2회 각309/12skip와 전체 gate를 확인했다. final 문서 포함 새 independent phase review는 별도로 진행한다. app/provider 새 업무 gate는 정책 답변 대기이며 V2-F31 partial과 운영/기기 미실행은 유지한다.
+- 출시 잔여 감사에서 M2-02는 계약만 구현된 상태임을 다시 확인했다. 별도 phase/m2-02에서 명령 계약 및 PostgreSQL 후속 저장 작업을 분리 진행하며, 이 S22 phase 검증에 그 다른 브랜치의 결과를 포함하지 않는다.
+
+## 실제 AWS UID 재개 결과 · 2026-10-06
+
+- 사용자 새 CLI 로그인 완료 후 비루트 `workout-admin` 신원과 pinned recovery SSH를 확인했다. 새 v2 설치/검사/1회 실행을 명시 승인받았다. 정확한 script SHA `dce43db9ab995d003a75241ef6dc5f33c82abb7da1a6b9c9457712d131466060`을 root0700 경로에 독점 설치했고 `--check` exit0, `--execute --external-gates-confirmed` **정확히 1회 exit0 / UID_RESUME_LOCAL_CHECKED**였다. 이전 v3 실패/보존본은 덮지 않았다.
+- 별도 fresh Ubuntu 단기 SSH에서 root 권한 거절·8개 write 및4개 private read 거절을 실제 확인했다. 이어 recovery 읽기 전용 posttransition 점검은 **2026-10-06 11:18:18 UTC exit0**: 현재 앱/GH fixed image·UID20001/20002·세 runtime identity, 원본 PG/system ID·schema/slot/publication metadata 유지, 전체 tree/mount·original13/copy7 보존본·current fence pin·source digest·timers masked·Workout503/TLS0·apex307→persona200/TLS0를 확인했다. posttransition payload 자체의 freshSSH 미실행 표시는 그 payload 범위이고 별도 SSH 실행 로그와 구별한다.
+- 원본 로그 `/private/tmp/wm-uid-resume-v2-{install,check,execution}-20261006.log`, `/private/tmp/wm-fresh-ubuntu-readonly-20261006.log`, `/private/tmp/wm-uid-posttransition-readonly-20261006.log`. 이 결과는 UID/runtime 전환의 실제 증거다. backup fence의 실제 held window·운영 원장/키/slot/tail·full backup/upload/격리 restore·latest product/serverfirst migration·503 해제와 공개/native 수용은 여전히 **not_executed**다. EXT-HOSTING 전체 완료가 아니다.
+
+## S22 확정 처리 정책과 후속 실행 · 2026-10-06
+
+사용자는 app 동의를 핵심 계획·실제기록·대화 저장/처리 허가로 정의하고, 철회 후 새 처리 금지·기존 조회/export/delete 허용을 승인했다. 부재는 false/revision0이며 자동 동의하지 않는다. generic provider는 호환 기록만 유지하고 HealthKit/Garmin 개별 허가를 유지한다. 새 M2-01k-v-a~f가 공통 admission·직접 처리·versioned basis·영양/회복/루틴·provider worker·UI/native 연결을 분리한다. 준비 대조는 읽기 전용이며 실제 gate 완료가 아니다. 독립 library/gallery/course authoring 전체를 이 동의 목적으로 임의 확대하지 않으며, actual 첨부·코칭 retrieval의 core 처리 경계는 포함한다. 기존 성공 receipt는 새로운 app gate 이전에 재반환하되 AI/HK 철회·redaction 의미를 우회하지 않는다. 같은 tenant lock0→기존 domain lock 순서를 지켜 철회와 처리 거래를 직렬화한다. strict manifest v1/v2에 필드를 임의 추가하지 않고 명시 version compatibility를 만든다. 완료/전체 검증/phase review 전 main에 넣지 않는다.
+
+## S22 처리 경계·화면 로컬 수용 · 2026-10-07
+
+M2-01k-v-a~f의 각 로컬 구현·수용이 완료됐다. Root 통합 화면RTL274/274와 두Host 실제Chrome E2E4/4를 확인했고 native fixed app 계약은 별도M3-02q 로컬55시험/Swift40/SDK로 추적한다. 운영 제공자·기기·전체 backup/복원·생리학 결과가 아니다. M2-01k 부모와 phase 전체 검사·fresh context-less 독립 검토는 다음 단계이며 최신HEAD 검토 이전 main에 넣지 않는다. 과거 검토 승인과 전체 gate 기록은 그때의 고정입력에만 적용한다.

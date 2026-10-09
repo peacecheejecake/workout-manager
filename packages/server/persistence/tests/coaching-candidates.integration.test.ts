@@ -37,6 +37,9 @@ const adminUrl = process.env['TEST_DATABASE_ADMIN_URL'];
 const runtimeUrl = process.env['TEST_DATABASE_URL'];
 if (!adminUrl || !runtimeUrl) throw new Error('Use isolated PostgreSQL integration harness');
 const admin = new Pool({ connectionString: adminUrl });
+const ownerUrl = process.env['TEST_DATABASE_OWNER_URL'];
+if (!ownerUrl) throw new Error('Owner maintenance requires the plain migration owner URL');
+const ownerPool = new Pool({ connectionString: ownerUrl });
 let database: Database;
 let workerDatabase: Database;
 const policy = { id: 'running-core-v2-training', version: '1' };
@@ -70,6 +73,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await database?.close();
   await workerDatabase?.close();
+  await ownerPool.end();
   await admin.end();
 });
 
@@ -122,6 +126,12 @@ async function seed(
   adapter: CoachingEvaluationAdapter = createDeterministicFixtureAdapter('synthetic-v1'),
   initialDraft: PlanDraft = plan(),
 ) {
+  await createConsentRepository(database).setConsent(athleteId, {
+    kind: 'app',
+    granted: true,
+    expectedRevision: 0,
+    idempotencyKey: randomUUID(),
+  });
   const savedPlan = await createPlanningRepository(database).save(athleteId, {
     source: 'manual',
     confirmed: true,
@@ -181,6 +191,166 @@ async function candidateRowCounts(athleteId: string) {
     return rows.rows[0];
   });
 }
+async function candidateWriteState(athleteId: string) {
+  return database.tenant(athleteId, async (tx) => {
+    const result = await tx.query(
+      `SELECT
+        (SELECT count(*)::integer FROM coaching_decision WHERE athlete_id=$1) AS decisions,
+        (SELECT count(*)::integer FROM coaching_proposal WHERE athlete_id=$1) AS proposals,
+        (SELECT count(*)::integer FROM coaching_candidate WHERE athlete_id=$1) AS candidates,
+        (SELECT count(*)::integer FROM command_receipt WHERE athlete_id=$1) AS receipts,
+        (SELECT count(*)::integer FROM outbox WHERE athlete_id=$1) AS events,
+        (SELECT count(*)::integer FROM plan_snapshot WHERE athlete_id=$1) AS plans,
+        (SELECT jsonb_agg(jsonb_build_object('id',id,'status',status) ORDER BY id)
+          FROM coaching_run WHERE athlete_id=$1) AS runs`,
+      [athleteId],
+    );
+    return result.rows[0];
+  });
+}
+
+const creationPaths = ['prepared', 'fixture'] as const;
+function createThrough(path: (typeof creationPaths)[number], athleteId: string, runId: string) {
+  const input = command(runId);
+  return path === 'prepared'
+    ? candidates().create(athleteId, input)
+    : candidates().createFromFixture(athleteId, {
+        runId,
+        idempotencyKey: input.idempotencyKey,
+      });
+}
+
+it.each(creationPaths)(
+  'fresh %s creation rejects foreign and missing runs without writes after own app opt-in',
+  async (path) => {
+    const athleteId = randomUUID();
+    const otherId = randomUUID();
+    const { run } = await seed(athleteId);
+    await createConsentRepository(database).setConsent(otherId, {
+      kind: 'app',
+      granted: true,
+      expectedRevision: 0,
+      idempotencyKey: randomUUID(),
+    });
+    const ownerBefore = await candidateWriteState(athleteId);
+    const otherBefore = await candidateWriteState(otherId);
+    for (const id of [run.id, randomUUID()]) {
+      await expect(createThrough(path, otherId, id)).rejects.toMatchObject({
+        code: 'RUN_NOT_FOUND',
+      });
+      expect(await candidateWriteState(otherId)).toEqual(otherBefore);
+      expect(await candidateWriteState(athleteId)).toEqual(ownerBefore);
+    }
+  },
+);
+
+it.each(creationPaths)(
+  'fresh %s creation keeps absent and false app consent ahead of foreign ownership',
+  async (path) => {
+    const { run } = await seed(randomUUID());
+    const otherId = randomUUID();
+    const consent = createConsentRepository(database);
+    for (const state of ['absent', 'false'] as const) {
+      if (state === 'false')
+        await consent.setConsent(otherId, {
+          kind: 'app',
+          granted: false,
+          expectedRevision: 0,
+          idempotencyKey: randomUUID(),
+        });
+      const before = await candidateWriteState(otherId);
+      await expect(createThrough(path, otherId, run.id)).rejects.toMatchObject({
+        code: 'APP_CONSENT_REQUIRED',
+      });
+      expect(await candidateWriteState(otherId)).toEqual(before);
+    }
+  },
+);
+
+it.each(creationPaths)(
+  'fresh %s creation keeps owned missing admission binding unavailable',
+  async (path) => {
+    const athleteId = randomUUID();
+    const { run } = await seed(athleteId);
+    // Synthetic plain-owner maintenance models a historical unbound run; no runtime bypass/grant.
+    const owner = await ownerPool.connect();
+    try {
+      await owner.query('BEGIN');
+      await owner.query("SELECT set_config('app.athlete_id',$1,true)", [athleteId]);
+      const deleted = await owner.query(
+        'DELETE FROM run_app_admission_binding WHERE athlete_id=$1 AND run_id=$2',
+        [athleteId, run.id],
+      );
+      expect(deleted.rowCount).toBe(1);
+      await owner.query('COMMIT');
+    } catch (error) {
+      await owner.query('ROLLBACK');
+      throw error;
+    } finally {
+      owner.release();
+    }
+    const before = await candidateWriteState(athleteId);
+    await expect(createThrough(path, athleteId, run.id)).rejects.toMatchObject({
+      code: 'APP_BINDING_UNAVAILABLE',
+    });
+    expect(await candidateWriteState(athleteId)).toEqual(before);
+  },
+);
+
+it.each(creationPaths)(
+  'fresh %s creation keeps the owned original binding stale after app regrant',
+  async (path) => {
+    const athleteId = randomUUID();
+    const { run } = await seed(athleteId);
+    const consent = createConsentRepository(database);
+    for (const [granted, expectedRevision] of [
+      [false, 1],
+      [true, 2],
+    ] as const)
+      await consent.setConsent(athleteId, {
+        kind: 'app',
+        granted,
+        expectedRevision,
+        idempotencyKey: randomUUID(),
+      });
+    const before = await candidateWriteState(athleteId);
+    await expect(createThrough(path, athleteId, run.id)).rejects.toMatchObject({
+      code: 'STALE_APP_ADMISSION',
+    });
+    expect(await candidateWriteState(athleteId)).toEqual(before);
+  },
+);
+
+it.each(creationPaths)(
+  'successful %s creation receipt remains first after app withdrawal without new writes',
+  async (path) => {
+    const athleteId = randomUUID();
+    const { run } = await seed(athleteId);
+    const repo = candidates();
+    const input = command(run.id);
+    const invoke = () =>
+      path === 'prepared'
+        ? repo.create(athleteId, input)
+        : repo.createFromFixture(athleteId, {
+            runId: run.id,
+            idempotencyKey: input.idempotencyKey,
+          });
+    const saved = await invoke();
+    await createConsentRepository(database).setConsent(athleteId, {
+      kind: 'app',
+      granted: false,
+      expectedRevision: 1,
+      idempotencyKey: randomUUID(),
+    });
+    const before = await candidateWriteState(athleteId);
+    expect(await invoke()).toEqual(saved);
+    expect(await candidateWriteState(athleteId)).toEqual(before);
+    await expect(createThrough(path, athleteId, run.id)).rejects.toMatchObject({
+      code: 'APP_CONSENT_REQUIRED',
+    });
+    expect(await candidateWriteState(athleteId)).toEqual(before);
+  },
+);
 async function approvalState(athleteId: string) {
   return database.tenant(athleteId, async (tx) => {
     const result = await tx.query(
@@ -554,8 +724,15 @@ it('derives a two-change subset as a new immutable proposal under the same decis
   });
   expect(await repo.status(randomUUID(), partial.candidate.id)).toBeNull();
   expect(await repo.status(athleteId, randomUUID())).toBeNull();
+  const foreign = randomUUID();
+  await createConsentRepository(database).setConsent(foreign, {
+    kind: 'app',
+    granted: true,
+    expectedRevision: 0,
+    idempotencyKey: randomUUID(),
+  });
   await expect(
-    repo.derivePartial(randomUUID(), parent.candidate.id, {
+    repo.derivePartial(foreign, parent.candidate.id, {
       ...selection,
       idempotencyKey: randomUUID(),
     }),
@@ -731,7 +908,7 @@ it('returns stale metadata for a corrupt physical candidate link and rejects it 
   const repo = candidates();
   const parent = await repo.create(athleteId, command(run.id));
   const forgedId = randomUUID();
-  const owner = await admin.connect();
+  const owner = await ownerPool.connect();
   try {
     await owner.query('BEGIN');
     await owner.query("SELECT set_config('app.athlete_id',$1,true)", [athleteId]);
@@ -855,7 +1032,7 @@ it('scrubs source-derived bodies without leaving proposed text in the idempotenc
   const { evidence, run } = await seed(athleteId);
   const input = command(run.id);
   const created = await candidates().create(athleteId, input);
-  const owner = await admin.connect();
+  const owner = await ownerPool.connect();
   try {
     await owner.query('BEGIN');
     await owner.query("SELECT set_config('app.athlete_id',$1,true)", [athleteId]);
@@ -961,7 +1138,14 @@ it('rejects foreign, wrong-digest and stale candidates without approval writes',
     confirmed: true as const,
     idempotencyKey: randomUUID(),
   };
-  await expect(repo.approve(randomUUID(), sealed.candidate.id, approval)).rejects.toMatchObject({
+  const foreign = randomUUID();
+  await createConsentRepository(database).setConsent(foreign, {
+    kind: 'app',
+    granted: true,
+    expectedRevision: 0,
+    idempotencyKey: randomUUID(),
+  });
+  await expect(repo.approve(foreign, sealed.candidate.id, approval)).rejects.toMatchObject({
     code: 'CANDIDATE_UNAVAILABLE',
   });
   await expect(repo.approve(athleteId, randomUUID(), approval)).rejects.toMatchObject({
@@ -1171,7 +1355,7 @@ it('keeps an approved plan replayable while withdrawal redacts candidates and er
   expect(await repo.approve(athleteId, candidate.candidate.id, approval)).toEqual(saved);
   const operations = createOperationsRepository(database);
   const exported = await operations.exportAccount(athleteId);
-  if (exported.schemaVersion !== 28) throw new Error('Expected the latest account export');
+  if (exported.schemaVersion !== 33) throw new Error('Expected the latest account export');
   expect(exported.data.planHistory).toContainEqual({
     version_id: saved.id,
     action: 'candidate_approved',
@@ -1181,4 +1365,166 @@ it('keeps an approved plan replayable while withdrawal redacts candidates and er
   );
   await expect(operations.eraseAccount(athleteId)).resolves.toEqual({ erased: true });
   await expect(operations.exportAccount(athleteId)).rejects.toThrow();
+});
+
+it('S22 source actual fixture candidate approval denied after regrant leaves every approval write unchanged', async () => {
+  const athleteId = randomUUID();
+  const seeded = await seed(athleteId);
+  const repo = candidates();
+  const sealed = await repo.createFromFixture(athleteId, {
+    runId: seeded.run.id,
+    idempotencyKey: randomUUID(),
+  });
+  const before = await approvalState(athleteId);
+  const consent = createConsentRepository(database);
+  await consent.setConsent(athleteId, {
+    kind: 'app',
+    granted: false,
+    expectedRevision: 1,
+    idempotencyKey: randomUUID(),
+  });
+  await consent.setConsent(athleteId, {
+    kind: 'app',
+    granted: true,
+    expectedRevision: 2,
+    idempotencyKey: randomUUID(),
+  });
+  await expect(
+    repo.approve(athleteId, sealed.candidate.id, {
+      expectedDigest: sealed.candidate.digest,
+      confirmed: true,
+      idempotencyKey: randomUUID(),
+    }),
+  ).rejects.toMatchObject({ code: 'STALE_APP_ADMISSION' });
+  await expect(
+    repo.derivePartial(athleteId, sealed.candidate.id, {
+      sessionIds: ['session'],
+      periodIds: [],
+      includeTitle: false,
+      idempotencyKey: randomUUID(),
+    }),
+  ).rejects.toMatchObject({ code: 'STALE_APP_ADMISSION' });
+  expect(await approvalState(athleteId)).toEqual(before);
+  const rows = await database.tenant(athleteId, (tx) =>
+    tx.query(
+      'SELECT e.app_revision FROM candidate_app_admission_binding c JOIN run_app_admission_binding r USING(athlete_id,run_id) JOIN evidence_app_admission_binding e USING(athlete_id,evidence_snapshot_id) WHERE c.athlete_id=$1 AND c.candidate_id=$2',
+      [athleteId, sealed.candidate.id],
+    ),
+  );
+  expect(rows.rows).toEqual([{ app_revision: 1 }]);
+});
+it('S22 source successful approval receipt replay remains exact after revoked app without new binding', async () => {
+  const athleteId = randomUUID();
+  const seeded = await seed(athleteId);
+  const repo = candidates();
+  const sealed = await repo.createFromFixture(athleteId, {
+    runId: seeded.run.id,
+    idempotencyKey: randomUUID(),
+  });
+  const command = {
+    expectedDigest: sealed.candidate.digest,
+    confirmed: true as const,
+    idempotencyKey: randomUUID(),
+  };
+  const result = await repo.approve(athleteId, sealed.candidate.id, command);
+  const before = await approvalState(athleteId);
+  await createConsentRepository(database).setConsent(athleteId, {
+    kind: 'app',
+    granted: false,
+    expectedRevision: 1,
+    idempotencyKey: randomUUID(),
+  });
+  expect(await repo.approve(athleteId, sealed.candidate.id, command)).toEqual(result);
+  expect(await approvalState(athleteId)).toEqual(before);
+  const binding = await database.tenant(athleteId, (tx) =>
+    tx.query(
+      'SELECT e.app_revision FROM approval_app_admission_binding a JOIN candidate_app_admission_binding c USING(athlete_id,candidate_id) JOIN run_app_admission_binding r USING(athlete_id,run_id) JOIN evidence_app_admission_binding e USING(athlete_id,evidence_snapshot_id) WHERE a.athlete_id=$1',
+      [athleteId],
+    ),
+  );
+  expect(binding.rows).toEqual([{ app_revision: 1 }]);
+});
+
+it('S22 source apptrue foreign candidate preserves original unavailable contract', async () => {
+  const athleteId = randomUUID(),
+    foreign = randomUUID();
+  const seeded = await seed(athleteId);
+  const sealed = await candidates().createFromFixture(athleteId, {
+    runId: seeded.run.id,
+    idempotencyKey: randomUUID(),
+  });
+  await createConsentRepository(database).setConsent(foreign, {
+    kind: 'app',
+    granted: true,
+    expectedRevision: 0,
+    idempotencyKey: randomUUID(),
+  });
+  await expect(
+    candidates().approve(foreign, sealed.candidate.id, {
+      expectedDigest: sealed.candidate.digest,
+      confirmed: true,
+      idempotencyKey: randomUUID(),
+    }),
+  ).rejects.toMatchObject({ code: 'CANDIDATE_UNAVAILABLE' });
+});
+
+it('S22 source appabsence takes priority over foreign candidate ownership for fresh processing', async () => {
+  const athleteId = randomUUID(),
+    foreign = randomUUID();
+  const seeded = await seed(athleteId);
+  const sealed = await candidates().createFromFixture(athleteId, {
+    runId: seeded.run.id,
+    idempotencyKey: randomUUID(),
+  });
+  await expect(
+    candidates().approve(foreign, sealed.candidate.id, {
+      expectedDigest: sealed.candidate.digest,
+      confirmed: true,
+      idempotencyKey: randomUUID(),
+    }),
+  ).rejects.toMatchObject({ code: 'APP_CONSENT_REQUIRED' });
+  await expect(
+    candidates().derivePartial(foreign, sealed.candidate.id, {
+      sessionIds: ['session'],
+      periodIds: [],
+      includeTitle: false,
+      idempotencyKey: randomUUID(),
+    }),
+  ).rejects.toMatchObject({ code: 'APP_CONSENT_REQUIRED' });
+});
+
+it('historical app audit existing candidate stays readable while new approval remains denied', async () => {
+  const athleteId = randomUUID();
+  const { run } = await seed(athleteId);
+  const bundle = await candidates().create(athleteId, command(run.id));
+  expect(await candidates().read(athleteId, bundle.candidate.id)).toEqual(bundle);
+  const consent = createConsentRepository(database);
+  for (const [granted, expectedRevision, code] of [
+    [false, 1, 'APP_CONSENT_REQUIRED'],
+    [true, 2, 'STALE_APP_ADMISSION'],
+  ] as const) {
+    await consent.setConsent(athleteId, {
+      kind: 'app',
+      granted,
+      expectedRevision,
+      idempotencyKey: randomUUID(),
+    });
+    expect(await candidates().read(athleteId, bundle.candidate.id)).toEqual(bundle);
+    const before = await approvalState(athleteId);
+    await expect(
+      candidates().approve(athleteId, bundle.candidate.id, {
+        confirmed: true,
+        expectedDigest: bundle.candidate.digest,
+        idempotencyKey: randomUUID(),
+      }),
+    ).rejects.toThrow(code);
+    expect(await approvalState(athleteId)).toEqual(before);
+  }
+  await consent.setConsent(athleteId, {
+    kind: 'ai',
+    granted: false,
+    expectedRevision: 1,
+    idempotencyKey: randomUUID(),
+  });
+  expect(await candidates().read(athleteId, bundle.candidate.id)).toBeNull();
 });

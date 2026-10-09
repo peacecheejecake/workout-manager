@@ -119,6 +119,9 @@ async function state(athleteId: string) {
       outbox_count: string;
       sample_count: string;
       digest_count: string;
+      claim_count: string;
+      registration_count: string;
+      registry_count: string;
     }>(
       `SELECT
         (SELECT revision FROM consent WHERE athlete_id=$1 AND kind='healthkit') revision,
@@ -131,7 +134,10 @@ async function state(athleteId: string) {
           AND idempotency_key LIKE 'restore:healthkit_consent:%') outbox_count,
         (SELECT count(*)::text FROM healthkit_workout_sample WHERE athlete_id=$1) sample_count,
         (SELECT count(*)::text FROM healthkit_workout_batch_receipt
-          WHERE athlete_id=$1 AND request_digest IS NOT NULL) digest_count`,
+          WHERE athlete_id=$1 AND request_digest IS NOT NULL) digest_count,
+        (SELECT count(*)::text FROM healthkit_workout_claim WHERE athlete_id=$1) claim_count,
+        (SELECT count(*)::text FROM healthkit_workout_registration_receipt WHERE athlete_id=$1) registration_count,
+        (SELECT count(*)::text FROM healthkit_workout_registry_head WHERE athlete_id=$1) registry_count`,
       [athleteId],
     ),
   );
@@ -173,8 +179,32 @@ describe('owner-only exact HealthKit consent replay', () => {
       );
       await client.query(
         `INSERT INTO healthkit_workout_batch_receipt(athlete_id,installation_id,batch_id,
-           request_digest,accepted_count) VALUES($1,$2,$3,$4,1)`,
+           request_digest,accepted_count,pre_registration_historical) VALUES($1,$2,$3,$4,1,true)`,
         [athleteId, randomUUID(), randomUUID(), 'b'.repeat(64)],
+      );
+    });
+    // These rows model the pre-withdrawal backup image restored before replaying
+    // its authenticated consent tail. Portable exports never provide epochs.
+    await tenant(owner, athleteId, async (client) => {
+      const sampleId = randomUUID(),
+        epoch = randomUUID();
+      await client.query(
+        'INSERT INTO healthkit_workout_claim(sample_id,athlete_id,claim_epoch,consent_revision) VALUES($1,$2,$3,1)',
+        [sampleId, athleteId, epoch],
+      );
+      await client.query('INSERT INTO healthkit_workout_registry_head VALUES($1,1)', [athleteId]);
+      await client.query(
+        'INSERT INTO healthkit_workout_registration_receipt VALUES($1,$2,$3,$4::jsonb)',
+        [
+          athleteId,
+          randomUUID(),
+          'c'.repeat(64),
+          JSON.stringify({
+            schemaVersion: 1,
+            registryRevision: 1,
+            claims: [{ sampleId, claimEpoch: epoch }],
+          }),
+        ],
       );
     });
     const withdraw = await entry(athleteId, 2, false, true);
@@ -197,6 +227,9 @@ describe('owner-only exact HealthKit consent replay', () => {
       receipt_count: '1',
       sample_count: '1',
       digest_count: '1',
+      claim_count: '1',
+      registration_count: '1',
+      registry_count: '1',
     });
     expect(await replay(owner, withdraw)).toBe('transitioned');
     expect(await state(athleteId)).toMatchObject({
@@ -207,6 +240,9 @@ describe('owner-only exact HealthKit consent replay', () => {
       outbox_count: '2',
       sample_count: '0',
       digest_count: '0',
+      claim_count: '0',
+      registration_count: '0',
+      registry_count: '0',
     });
     const reconsent = await entry(athleteId, 3, true, false);
     expect(await replay(owner, reconsent)).toBe('transitioned');
@@ -221,6 +257,9 @@ describe('owner-only exact HealthKit consent replay', () => {
       outbox_count: '3',
       sample_count: '0',
       digest_count: '0',
+      claim_count: '0',
+      registration_count: '0',
+      registry_count: '0',
     });
     const event = await tenant(owner, athleteId, (client) =>
       client.query<{

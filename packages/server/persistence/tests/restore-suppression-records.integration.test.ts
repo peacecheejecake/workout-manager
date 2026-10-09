@@ -42,6 +42,14 @@ const namesAndOids: readonly (readonly [string, number])[] = [
   ['course_share_audit_occurred_at', 1184],
   ['actual_previous_revision_id', 2950],
   ['actual_deleted_revision_id', 2950],
+  ['healthkit_claim_epoch', 2950],
+  ['healthkit_operation_id', 2950],
+  ['healthkit_consent_revision', 23],
+  ['healthkit_registry_previous_revision', 23],
+  ['healthkit_registry_revision', 23],
+  ['healthkit_object_scopes', 3802],
+  ['race_previous_revision', 23],
+  ['race_deleted_revision', 23],
 ];
 
 const targetId = randomUUID();
@@ -294,6 +302,80 @@ describe('local replay record decoder', () => {
     expect(() => validateSuppressionRecord(missing)).toThrow('PGOUTPUT_SCHEMA_CHANGED');
   });
 
+  it.each([
+    'healthkit_claim_epoch',
+    'healthkit_operation_id',
+    'healthkit_consent_revision',
+    'healthkit_registry_previous_revision',
+    'healthkit_registry_revision',
+    'healthkit_object_scopes',
+  ])('rejects %s on v2 actual deletion', (field) => {
+    expect(() =>
+      validateSuppressionRecord(
+        values('intake_entry_deleted', {
+          record_version: '2',
+          target_id: targetId,
+          actual_deletion_revision: '2',
+          actual_previous_revision_id: randomUUID(),
+          actual_deleted_revision_id: randomUUID(),
+          [field]:
+            field === 'healthkit_object_scopes'
+              ? '[]'
+              : field.endsWith('_revision')
+                ? '1'
+                : randomUUID(),
+        }),
+      ),
+    ).toThrow('PGOUTPUT_UNEXPECTED_FIELD');
+  });
+
+  it('authenticates bounded v3 workout deregistration epochs and rejects foreign fields', () => {
+    const fields = {
+      record_version: '3',
+      target_id: targetId,
+      healthkit_claim_epoch: randomUUID(),
+      healthkit_operation_id: randomUUID(),
+      healthkit_consent_revision: '1',
+      healthkit_registry_previous_revision: '0',
+      healthkit_registry_revision: '1',
+      healthkit_object_scopes: JSON.stringify([{ kind: 'activity', id: randomUUID() }]),
+    };
+    for (const kind of [
+      'healthkit_workout_deregistration_pending',
+      'healthkit_workout_deregistration_released',
+    ]) {
+      const row = values(kind, fields);
+      const record = validateSuppressionRecord(row);
+      expect(record).toMatchObject({
+        schemaVersion: 3,
+        kind,
+        healthKitRegistryPreviousRevision: 0,
+        healthKitRegistryRevision: 1,
+      });
+      expect(decodeSuppressionPgoutputRecords(messages(row), '0/100')[0]?.records).toEqual([
+        record,
+      ]);
+      for (const invalid of [
+        { record_version: '2' },
+        { healthkit_registry_revision: '2' },
+        { healthkit_claim_epoch: randomUUID().toUpperCase() },
+        {
+          healthkit_object_scopes: JSON.stringify([
+            { kind: 'activity', id: targetId },
+            { kind: 'activity', id: targetId },
+          ]),
+        },
+        {
+          healthkit_object_scopes: JSON.stringify([
+            { kind: 'activity', id: targetId, extra: true },
+          ]),
+        },
+        { source_id: 'foreign' },
+      ])
+        expect(() => validateSuppressionRecord(values(kind, { ...fields, ...invalid }))).toThrow();
+    }
+  });
+
   it('accepts complete future course and actual provenance while preserving v1 shape', () => {
     const auditId = randomUUID();
     const previousId = randomUUID();
@@ -416,4 +498,108 @@ describe('local replay record decoder', () => {
       'PGOUTPUT_UNKNOWN_EVENT',
     );
   });
+});
+
+describe('v4 race deletion minimal records', () => {
+  it.each(['race_event_deleted', 'race_result_deleted', 'training_best_deleted'])(
+    'decodes %s and terminal privacy deletion without extra values',
+    (kind) => {
+      for (const [previous, deleted] of [
+        [1, 2],
+        [2147483647, 2147483647],
+      ]) {
+        const row = values(kind, {
+          record_version: '4',
+          target_id: targetId,
+          race_previous_revision: String(previous),
+          race_deleted_revision: String(deleted),
+        });
+        const decoded = validateSuppressionRecord(row);
+        expect(decoded).toEqual({
+          schemaVersion: 4,
+          eventId: base.event_id,
+          athleteId: base.athlete_id,
+          occurredAt: base.occurred_at,
+          kind,
+          targetId,
+          racePreviousRevision: previous,
+          raceDeletedRevision: deleted,
+        });
+        expect(decodeSuppressionPgoutputRecords(messages(row), '0/100')[0]?.records).toEqual([
+          decoded,
+        ]);
+        for (const extra of [
+          { race_deleted_revision: String(previous === 1 ? 1 : 2147483646) },
+          { record_version: '1' },
+          { race_previous_revision: '0' },
+          { source_id: 'forbidden' },
+          { healthkit_operation_id: shareId },
+          { target_id: null },
+        ])
+          expect(() =>
+            validateSuppressionRecord(new Map([...row, ...Object.entries(extra)])),
+          ).toThrow();
+      }
+    },
+  );
+  it('keeps legacy discriminator strict when new columns exist', () => {
+    const row = values('tenant_erased');
+    expect(validateSuppressionRecord(row).kind).toBe('tenant_erased');
+    for (const extra of [
+      { record_version: '4' },
+      { race_previous_revision: '1', race_deleted_revision: '2' },
+    ])
+      expect(() =>
+        validateSuppressionRecord(new Map([...row, ...Object.entries(extra)])),
+      ).toThrow();
+  });
+});
+
+it('accepts only v5 app transitions with exact nullable one-step epochs and closed payloads', () => {
+  const app = {
+    record_version: '5',
+    consent_previous_revision: null,
+    consent_previous_granted: null,
+    consent_revision: '1',
+    consent_granted: 't',
+  };
+  expect(validateSuppressionRecord(values('app_consent_transition', app))).toMatchObject({
+    schemaVersion: 5,
+    kind: 'app_consent_transition',
+    consentPreviousRevision: null,
+    consentPreviousGranted: null,
+    consentRevision: 1,
+    consentGranted: true,
+  });
+  expect(
+    validateSuppressionRecord(
+      values('app_consent_transition', {
+        ...app,
+        consent_previous_revision: '2147483646',
+        consent_previous_granted: 'f',
+        consent_revision: '2147483647',
+      }),
+    ),
+  ).toMatchObject({ consentRevision: 2147483647 });
+  for (const change of [
+    { record_version: '1' },
+    { record_version: '2' },
+    { record_version: '3' },
+    { record_version: '4' },
+    { record_version: '6' },
+    { consent_revision: '2' },
+    { consent_previous_granted: 'f' },
+    { consent_granted: null },
+    { consent_granted: 'true' },
+    { consent_previous_revision: '1', consent_previous_granted: 't', consent_revision: '3' },
+    { target_id: targetId },
+    { race_previous_revision: '1' },
+    { healthkit_registry_revision: '1' },
+    { occurred_at: '2026-02-30 00:00:00+00' },
+  ])
+    expect(() =>
+      validateSuppressionRecord(values('app_consent_transition', { ...app, ...change })),
+    ).toThrow();
+  expect(() => validateSuppressionRecord(values('ai_consent_transition', app))).toThrow();
+  expect(() => validateSuppressionRecord(values('healthkit_consent_transition', app))).toThrow();
 });

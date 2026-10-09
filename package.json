@@ -27,7 +27,7 @@
     "check:generated": "node scripts/generate-responsive.mjs --check",
     "dev:storybook": "pnpm --filter @workout/storybook dev",
     "dev:api": "pnpm --filter @workout/api dev",
-    "test:identity": "playwright test --config playwright.identity.config.ts"
+    "test:identity": "node scripts/test-identity.mjs"
   },
   "devDependencies": {
     "@capacitor/cli": "8.5.2",

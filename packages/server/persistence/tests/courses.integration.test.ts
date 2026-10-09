@@ -41,6 +41,9 @@ const adminUrl = process.env['TEST_DATABASE_ADMIN_URL'];
 const runtimeUrl = process.env['TEST_DATABASE_URL'];
 if (!adminUrl || !runtimeUrl) throw new Error('Run pnpm test:integration with isolated PostgreSQL');
 const admin = new Pool({ connectionString: adminUrl });
+const migrationOwnerUrl = process.env['TEST_DATABASE_OWNER_URL'];
+if (!migrationOwnerUrl) throw new Error('Explicit plain migration owner required for maintenance');
+const migrationOwner = new Pool({ connectionString: migrationOwnerUrl, max: 4 });
 let database: Database;
 let courses: CourseRepository;
 let tracks: ActivityTrackRepository;
@@ -65,6 +68,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await database?.close();
+  await migrationOwner.end();
   await admin.end();
 });
 
@@ -228,6 +232,7 @@ function content(input: {
 /** One activity with a stored recording and one course cut from it. */
 async function athleteWithCourse(name = 'Seoul loop') {
   const athlete = randomUUID();
+  await grantAppPurpose(athlete);
   const imported = await activities.importActivity(athlete, importInput());
   const stored = await storeTrack(athlete, imported.activityId, imported.revision);
   const created = await courses.create(
@@ -498,6 +503,7 @@ describe('M2-01f private course ledger', () => {
     if (copy.status !== 'available') throw new Error('copy was not created');
     // A second activity with its own course, which must survive untouched.
     const other = await athleteWithCourse('Other athlete loop');
+    await grantAppPurpose(athlete);
     const unrelatedActivity = await activities.importActivity(athlete, importInput());
     const unrelatedTrack = await storeTrack(
       athlete,
@@ -744,6 +750,7 @@ describe('M2-01f private course ledger', () => {
 
   it('exports courses and revisions without coordinates and keeps a reclaimed head', async () => {
     const { athlete, imported, stored, course } = await athleteWithCourse();
+    await grantAppPurpose(athlete);
     const secondActivity = await activities.importActivity(athlete, importInput());
     const secondTrack = await storeTrack(
       athlete,
@@ -763,7 +770,7 @@ describe('M2-01f private course ledger', () => {
       expectedRevision: imported.revision,
     });
     const exported = await createOperationsRepository(database).exportAccount(athlete);
-    if (exported.schemaVersion !== 28) throw new Error('expected v28');
+    if (exported.schemaVersion !== 33) throw new Error('expected v33');
     expect(exported.data.courses).toHaveLength(2);
     const reclaimed = exported.data.courses.find(
       (row) => row['course_id'] === course.course.courseId,
@@ -2463,10 +2470,11 @@ describe('M2-01i target-distance candidates', () => {
     //
     // `reaperSide` stands where the reaper stands after it has locked the search and before
     // the cascade reaches the candidates; `deleteSide` runs the real `delete_course`.
-    const reaperSide = await admin.connect();
+    const reaperSide = await migrationOwner.connect();
     const deleteRunner = new Pool({ connectionString: runtimeUrl });
     try {
       await reaperSide.query('BEGIN');
+      await reaperSide.query("SELECT set_config('app.athlete_id',$1,true)", [athlete]);
       await reaperSide.query(
         `SELECT 1 FROM course_route_candidate_set
          WHERE athlete_id=$1 AND candidate_set_id=$2 FOR UPDATE`,
@@ -2510,10 +2518,11 @@ describe('M2-01i target-distance candidates', () => {
       athlete,
       candidateSetInput(course.course.courseId),
     );
-    const reaperSide = await admin.connect();
+    const reaperSide = await migrationOwner.connect();
     const eraser = new Pool({ connectionString: runtimeUrl });
     try {
       await reaperSide.query('BEGIN');
+      await reaperSide.query("SELECT set_config('app.athlete_id',$1,true)", [athlete]);
       await reaperSide.query(
         `SELECT 1 FROM course_route_candidate_set
          WHERE athlete_id=$1 AND candidate_set_id=$2 FOR UPDATE`,
@@ -2557,13 +2566,13 @@ describe('M2-01i target-distance candidates', () => {
     const { athlete, course } = await athleteWithCourse('Target loop');
     const input = candidateSetInput(course.course.courseId);
     const stored = await courses.storeRouteCandidateSet(athlete, input);
-    const runtime = new Pool({ connectionString: runtimeUrl });
+    const ownerWriter = new Pool({ connectionString: migrationOwnerUrl });
     try {
-      const writer = await runtime.connect();
+      const writer = await ownerWriter.connect();
       await writer.query('BEGIN');
       await writer.query('SELECT set_config($1,$2,true)', ['app.athlete_id', athlete]);
       await writer.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [athlete]);
-      await admin.query(
+      await writer.query(
         'DELETE FROM course_route_candidate_set WHERE athlete_id=$1 AND candidate_set_id=$2',
         [athlete, stored.candidateSetId],
       );
@@ -2594,7 +2603,7 @@ describe('M2-01i target-distance candidates', () => {
       writer.release();
       await expect(deletion).resolves.toEqual({ deleted: true });
     } finally {
-      await runtime.end();
+      await ownerWriter.end();
     }
     const left = await admin.query(
       'SELECT count(*)::int AS total FROM course_route_candidate_set WHERE athlete_id=$1',
@@ -2617,9 +2626,10 @@ describe('M2-01i target-distance candidates', () => {
       candidateSetInput(courseId, { count: 4, ttlSeconds: 1 }),
     );
     await new Promise((resolve) => setTimeout(resolve, 1200));
-    const reaperSide = await admin.connect();
+    const reaperSide = await migrationOwner.connect();
     try {
       await reaperSide.query('BEGIN');
+      await reaperSide.query("SELECT set_config('app.athlete_id',$1,true)", [athlete]);
       await reaperSide.query(
         `SELECT 1 FROM course_route_candidate_set
          WHERE athlete_id=$1 AND candidate_set_id=$2 FOR UPDATE`,
@@ -3114,7 +3124,7 @@ describe('M2-01an card read', () => {
 
   /** Put a head revision's thumbnail row into one state, as the owner role can. */
   async function thumbnail(athlete: string, courseId: string, revision: number, set: string) {
-    await admin.query(
+    await maintainThumbnail(
       `UPDATE course_thumbnail SET ${set} WHERE athlete_id=$1 AND course_id=$2 AND course_revision=$3`,
       [athlete, courseId, revision],
     );
@@ -3148,6 +3158,7 @@ describe('M2-01an card read', () => {
   it('gives the same cards as the whole head reads, for every kind of course', async () => {
     // A course cut from a recording, and one reclaimed when its recording was deleted.
     const { athlete } = await athleteWithCourse('Recorded');
+    await grantAppPurpose(athlete);
     const doomed = await activities.importActivity(athlete, importInput());
     const doomedTrack = await storeTrack(athlete, doomed.activityId, doomed.revision);
     await courses.create(
@@ -3216,7 +3227,7 @@ describe('M2-01an card read', () => {
       [west - 0.01, south - 0.01],
     ];
     const onCorner = await create(athlete, lineContent('Corner', corner, imported));
-    await admin.query('DELETE FROM course_thumbnail WHERE athlete_id=$1 AND course_id=$2', [
+    await maintainThumbnail('DELETE FROM course_thumbnail WHERE athlete_id=$1 AND course_id=$2', [
       athlete,
       onCorner.course.courseId,
     ]);
@@ -3445,3 +3456,52 @@ describe('M2-01an card read', () => {
     ).rejects.toThrow();
   });
 });
+
+// Explicit permission for this synthetic positive core-storage fixture only.
+// Preserve any existing withdrawal/revision and never recreate an erased tenant.
+async function grantAppPurpose(athleteId: string): Promise<void> {
+  const client = await admin.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock_shared(77210,1)');
+    // Serialize the absence check before the app event trigger, like the consent command.
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [athleteId]);
+    await client.query("SELECT set_config('app.athlete_id',$1,true)", [athleteId]);
+    await client.query(
+      "INSERT INTO consent(athlete_id,kind,granted,revision) SELECT $1,'app',true,1 WHERE NOT EXISTS (SELECT 1 FROM tenant_erasure WHERE athlete_id=$1) ON CONFLICT (athlete_id,kind) DO NOTHING",
+      [athleteId],
+    );
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+// Internal fixture maintenance runs as the actual migration owner, with one derived tenant.
+async function maintainThumbnail(sql: string, values: readonly unknown[]) {
+  const identity = values[0];
+  if (typeof identity !== 'string') throw new Error('THUMBNAIL_FIXTURE_ID_REQUIRED');
+  const scope = await admin.query<{ athlete_id: string }>(
+    'SELECT DISTINCT athlete_id FROM course_thumbnail WHERE athlete_id=$1 OR job_id::text=$1 OR course_id::text=$1',
+    [identity],
+  );
+  const athleteId = scope.rows[0]?.athlete_id;
+  if (scope.rows.length !== 1 || typeof athleteId !== 'string')
+    throw new Error('THUMBNAIL_FIXTURE_SCOPE_REQUIRED');
+  const client = await migrationOwner.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query("SELECT set_config('app.athlete_id',$1,true)", [athleteId]);
+    const result = await client.query(sql, [...values]);
+    await client.query('COMMIT');
+    return result;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}

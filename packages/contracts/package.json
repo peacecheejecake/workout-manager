@@ -25,6 +25,10 @@
       "types": "./src/healthkit-ingestion.ts",
       "default": "./dist/healthkit-ingestion.js"
     },
+    "./healthkit-registration": {
+      "types": "./src/healthkit-registration.ts",
+      "default": "./dist/healthkit-registration.js"
+    },
     "./native-bridge": {
       "types": "./src/native-bridge.ts",
       "default": "./dist/native-bridge.js"
@@ -220,6 +224,10 @@
     "./map-data-licence": {
       "types": "./src/map-data-licence.ts",
       "default": "./dist/map-data-licence.js"
+    },
+    "./ai-settings": {
+      "types": "./src/ai-settings.ts",
+      "default": "./dist/ai-settings.js"
     }
   },
   "scripts": {

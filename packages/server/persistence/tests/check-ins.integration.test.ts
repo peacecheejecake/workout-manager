@@ -18,6 +18,17 @@ beforeAll(async () => {
   database = createDatabase({ connectionString: runtimeUrl, max: 8 });
   repository = createCheckInRepository(database);
 });
+
+// Explicit synthetic purpose grant for these pre-existing domain regression tests.
+// No production account is granted implicitly; admission denial has its own suite.
+async function grantedAthlete(): Promise<string> {
+  const athlete = randomUUID();
+  await admin.query(
+    "WITH scope AS MATERIALIZED (SELECT set_config('app.athlete_id',$1,true)) INSERT INTO consent(athlete_id,kind,granted,revision) SELECT $1,'app',true,1 FROM scope",
+    [athlete],
+  );
+  return athlete;
+}
 afterAll(async () => {
   await database?.close();
   await admin.end();
@@ -33,7 +44,7 @@ const values = () => ({
 const create = () => ({ idempotencyKey: randomUUID(), values: values() });
 const query = { from: '2026-01-03', toExclusive: '2026-01-04', limit: 50, offset: 0 };
 it('concurrent replay creates once, preserves zero/null and local date, and conflicts on changed input', async () => {
-  const athlete = randomUUID(),
+  const athlete = await grantedAthlete(),
     input = create();
   const [a, b] = await Promise.all([
     repository.createCheckIn(athlete, input),
@@ -63,7 +74,7 @@ it('concurrent replay creates once, preserves zero/null and local date, and conf
   expect(counts.rows[0]).toEqual({ revisions: 1, events: 1 });
 });
 it('serializes competing corrections and returns historical receipt without overwriting current values', async () => {
-  const athlete = randomUUID(),
+  const athlete = await grantedAthlete(),
     initial = await repository.createCheckIn(athlete, create());
   const input = {
     idempotencyKey: randomUUID(),
@@ -89,7 +100,7 @@ it('serializes competing corrections and returns historical receipt without over
   expect(history.rows[0]?.['count']).toBe(2);
 });
 it('deletion scrubs payload history and safely replays old receipts without resurrection', async () => {
-  const athlete = randomUUID(),
+  const athlete = await grantedAthlete(),
     input = create(),
     created = await repository.createCheckIn(athlete, input);
   const deletion = { idempotencyKey: randomUUID(), expectedRevision: 1 };
@@ -116,8 +127,8 @@ it('deletion scrubs payload history and safely replays old receipts without resu
   ).rejects.toThrow('CHECK_IN_NOT_FOUND');
 });
 it('isolates tenants in reads, writes, RLS and empty collection revision', async () => {
-  const athlete = randomUUID(),
-    other = randomUUID(),
+  const athlete = await grantedAthlete(),
+    other = await grantedAthlete(),
     created = await repository.createCheckIn(athlete, create());
   expect(await repository.getCheckIn(other, created.id)).toBeNull();
   expect(await repository.listCheckIns(other, query)).toEqual({
@@ -137,7 +148,7 @@ it('isolates tenants in reads, writes, RLS and empty collection revision', async
   expect(rows.rowCount).toBe(0);
 });
 it('rolls back all writes when outbox persistence fails', async () => {
-  const athlete = randomUUID();
+  const athlete = await grantedAthlete();
   const broken: Database = {
     ...database,
     tenant: (id, operation) =>
@@ -165,7 +176,7 @@ it('rolls back all writes when outbox persistence fails', async () => {
   expect(rows.rows[0]?.['count']).toBe(0);
 });
 it('validates future time, report ranges and bounded date windows', async () => {
-  const athlete = randomUUID();
+  const athlete = await grantedAthlete();
   await expect(
     repository.createCheckIn(athlete, {
       ...create(),
@@ -189,7 +200,7 @@ it('validates future time, report ranges and bounded date windows', async () => 
   ).toBe(0);
 });
 it('account erasure removes all rows and blocks stale creation', async () => {
-  const athlete = randomUUID(),
+  const athlete = await grantedAthlete(),
     input = create();
   await repository.createCheckIn(athlete, input);
   await database.exclusiveTenant(athlete, (tx) =>
@@ -204,7 +215,7 @@ it('account erasure removes all rows and blocks stale creation', async () => {
 });
 
 it('serializes correction against deletion without resurrecting deleted data', async () => {
-  const athlete = randomUUID(),
+  const athlete = await grantedAthlete(),
     created = await repository.createCheckIn(athlete, create());
   const results = await Promise.allSettled([
     repository.updateCheckIn(athlete, created.id, {
@@ -225,7 +236,7 @@ it('serializes correction against deletion without resurrecting deleted data', a
   expect((await repository.listCheckIns(athlete, query)).collectionRevision).toBe(2);
 });
 it('fences a concurrent create against account erasure', async () => {
-  const athlete = randomUUID();
+  const athlete = await grantedAthlete();
   const results = await Promise.allSettled([
     repository.createCheckIn(athlete, create()),
     database.exclusiveTenant(athlete, (tx) =>
@@ -243,7 +254,7 @@ it('fences a concurrent create against account erasure', async () => {
 
 it('uses an injected clock for the exact future boundary and pads ancient local years', async () => {
   const fixed = createCheckInRepository(database, { now: () => new Date('2026-01-03T00:00:00Z') });
-  const athlete = randomUUID();
+  const athlete = await grantedAthlete();
   const boundary = await fixed.createCheckIn(athlete, {
     ...create(),
     values: { ...values(), observedAt: '2026-01-03T00:05:00Z' },

@@ -19,11 +19,16 @@ if (!adminUrl) throw new Error('Run pnpm test:integration with isolated PostgreS
 const admin = new Pool({ connectionString: adminUrl });
 const database = `erase_watched_${randomUUID().replaceAll('-', '').slice(0, 12)}`;
 const runtimeRole = `erase_watched_${randomUUID().replaceAll('-', '').slice(0, 10)}`;
-const upgradeUrl = () => {
+const upgradeUrl = (user?: string) => {
   const url = new URL(adminUrl);
   url.pathname = `/${database}`;
+  if (user !== undefined) {
+    url.username = user;
+    url.password = '';
+  }
   return url.toString();
 };
+const ownerRole = `upgrade_owner_${randomUUID().replaceAll('-', '').slice(0, 10)}`;
 let upgraded: Pool;
 // The head just before this migration, found by name rather than by number. It was written as
 // "040, then the next file", and M2-01p's 041 landed in between at merge — so the migration is
@@ -39,10 +44,15 @@ const thumbnailRef = `private/v1/tenants/${athlete}/courses/${randomUUID()}/thum
 const otherTenantRef = `private/v1/tenants/${randomUUID()}/courses/${randomUUID()}/thumbnails/temporary/${randomUUID()}`;
 
 beforeAll(async () => {
-  await admin.query(`CREATE DATABASE ${database}`);
+  await admin.query(
+    `CREATE ROLE "${ownerRole}" LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE`,
+  );
+  await admin.query(`CREATE DATABASE ${database} OWNER "${ownerRole}"`);
   await admin.query(`CREATE ROLE "${runtimeRole}" LOGIN NOSUPERUSER NOBYPASSRLS`);
   upgraded = new Pool({ connectionString: upgradeUrl() });
-  await migrate(upgradeUrl(), versionsBeforeErasure);
+  // Administrative fixture inspection remains separate from the plain installer.
+  await upgraded.query(`ALTER SCHEMA public OWNER TO "${ownerRole}"`);
+  await migrate(upgradeUrl(ownerRole), versionsBeforeErasure);
   // The 040-era grant `grantOperations` gave the runtime role, written out.
   await upgraded.query(`GRANT USAGE ON SCHEMA public TO "${runtimeRole}"`);
   await upgraded.query(`GRANT EXECUTE ON FUNCTION public.erase_account(text) TO "${runtimeRole}"`);
@@ -70,6 +80,7 @@ afterAll(async () => {
   await upgraded?.end();
   await dropIsolatedDatabase(admin, database);
   await admin.query(`DROP ROLE IF EXISTS "${runtimeRole}"`);
+  await admin.query(`DROP ROLE IF EXISTS "${ownerRole}"`);
   await admin.end();
 });
 
@@ -107,7 +118,9 @@ describe('erasure watched-ref migration upgrade of a populated database', () => 
     expect(bodyAt040).toContain('course_thumbnail_object_ref');
     expect(await granteesOf('erase_account')).toEqual([runtimeRole]);
 
-    await expect(migrate(upgradeUrl(), versionsBeforeErasure + 1)).resolves.toBeUndefined();
+    await expect(
+      migrate(upgradeUrl(ownerRole), versionsBeforeErasure + 1),
+    ).resolves.toBeUndefined();
 
     const after = await checksums();
     expect(after.size).toBe(versionsBeforeErasure + 1);
@@ -122,8 +135,19 @@ describe('erasure watched-ref migration upgrade of a populated database', () => 
     expect(await granteesOf('erase_account')).toEqual([]);
     // The grant helpers name tables from every migration, so they run on a fully migrated
     // schema, as in deployment (migrate, then grant).
-    await migrate(upgradeUrl());
-    await grantOperations(upgradeUrl(), runtimeRole);
+    await migrate(upgradeUrl(ownerRole));
+    const installer = await upgraded.query(
+      'SELECT rolsuper,rolbypassrls FROM pg_roles WHERE rolname=$1',
+      [ownerRole],
+    );
+    expect(installer.rows).toEqual([{ rolsuper: false, rolbypassrls: false }]);
+    const guarded = await upgraded.query(`SELECT pg_get_userbyid(relowner) AS owner FROM pg_class
+      WHERE relnamespace='public'::regnamespace AND relname IN
+      ('openai_budget_fx_definition','openai_budget_price_definition','openai_budget_activation','openai_budget_month','openai_budget_reservation','openai_budget_journal')`);
+    expect(guarded.rows).toHaveLength(6);
+    for (const row of guarded.rows) expect(row.owner).toBe(ownerRole);
+
+    await grantOperations(upgradeUrl(ownerRole), runtimeRole);
     expect(await granteesOf('erase_account')).toEqual([runtimeRole]);
     expect(await granteesOf('erase_account_before_watched_ref_queue')).toEqual([]);
   });

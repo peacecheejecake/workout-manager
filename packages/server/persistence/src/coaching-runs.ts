@@ -1,3 +1,4 @@
+import { requireAppAdmission, requireAppBinding } from './app-admission.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import {
@@ -141,13 +142,39 @@ const preflightSql = `SELECT t.revision AS conversation_revision,
  ON e.athlete_id=t.athlete_id AND e.thread_id=t.id AND e.id=$3
  WHERE t.athlete_id=$1 AND t.id=$2`;
 
-async function currentWorkerEvidence(
+async function hasCurrentRunAppBinding(tx: Transaction, runId: string): Promise<boolean> {
+  // A failed SQL gate aborts the transaction unless rolled back to a savepoint.
+  // Keep the caller's lease/run locks so stale work can still be cancelled and acknowledged.
+  await tx.query('SAVEPOINT coaching_run_app_binding');
+  try {
+    await requireAppBinding(tx, 'run', runId);
+    await tx.query('RELEASE SAVEPOINT coaching_run_app_binding');
+    return true;
+  } catch (error) {
+    await tx.query('ROLLBACK TO SAVEPOINT coaching_run_app_binding');
+    await tx.query('RELEASE SAVEPOINT coaching_run_app_binding');
+    if (
+      error instanceof Error &&
+      ['APP_CONSENT_REQUIRED', 'STALE_APP_ADMISSION', 'APP_BINDING_UNAVAILABLE'].includes(
+        error.message,
+      )
+    )
+      return false;
+    throw error;
+  }
+}
+
+async function currentRunEvidence(
   tx: Transaction,
   run: Record<string, unknown>,
   policy: z.infer<typeof trainingCoachingPolicySchema>,
   source: CoachingRunModelSource,
+  purpose: 'processing' | 'historical_read',
 ): Promise<CoreEvidenceBodyV2 | null> {
   const stored = decode(run);
+  // App withdrawal blocks new processing; it does not hide an already stored output.
+  // Both purposes still recheck AI consent, evidence, policy and retrieval below.
+  if (purpose === 'processing' && !(await hasCurrentRunAppBinding(tx, stored.id))) return null;
   if (
     stored.policy.id !== policy.id ||
     stored.policy.version !== policy.version ||
@@ -288,6 +315,84 @@ async function changeWorkerStatus(
   if (result.rowCount !== 1) throw new Error('COACHING_WORKER_RUN_MISSING');
 }
 
+/** Caller owns global→lifecycle→tenant0→domain locks. Shared preparation of
+ * the existing core-v2 basis; retrieval may write cache/audit facts. Not a complete outbound freshness/admission proof. */
+export async function prepareOwnedCoachingEvidenceIn(
+  tx: Transaction,
+  threadId: string,
+  input: unknown,
+  configuredPolicy: unknown,
+) {
+  const athleteId = tx.athleteId;
+  const id = uuid.parse(threadId);
+  const command = coachingRunCreateCommandV1Schema.omit({ idempotencyKey: true }).parse(input);
+  const policy = trainingCoachingPolicySchema.parse(configuredPolicy);
+  await requireAppAdmission(tx);
+  const result = await tx.query(preflightSql, [athleteId, id, command.evidenceSnapshotId]);
+  const current = result.rows[0];
+  if (!current) throw new CoachingRunError('THREAD_NOT_FOUND');
+  if (current['conversation_revision'] !== command.expectedConversationRevision)
+    throw new CoachingRunError('CONVERSATION_REVISION_CONFLICT');
+  if (!current['evidence_id'] || current['body'] === null)
+    throw new CoachingRunError('EVIDENCE_UNAVAILABLE');
+  await requireAppBinding(tx, 'evidence', command.evidenceSnapshotId);
+  const snapshot = coreEvidenceSnapshotSchema.safeParse({
+    id: current['evidence_id'],
+    threadId: id,
+    createdAt: iso(current['evidence_created_at']),
+    status: 'available',
+    body: current['body'],
+  });
+  if (!snapshot.success) throw new CoachingRunError('UNSUPPORTED_EVIDENCE_VERSION');
+  // Retrieval runs before the basis is built so the pinned manifest and
+  // the stored excerpts come from the same observation. It reads only
+  // resources the query-time gate authorizes and calls no provider.
+  const prepared =
+    command.retrieval.kind === 'resource-access-v1'
+      ? await prepareRunGrounding(tx, command.retrieval.query)
+      : null;
+  const retrieval: CoachingRetrievalBasis = prepared
+    ? {
+        kind: 'resource-access-v1',
+        query: prepared.query,
+        manifest: prepared.manifest,
+      }
+    : { kind: 'none' };
+  const built = buildTrainingCoachingBasis({
+    athleteId,
+    snapshot: snapshot.data,
+    policy,
+    retrieval,
+  });
+  if (!built.ok) {
+    if (built.reason === 'AI_CONSENT_REQUIRED') throw new CoachingRunError('AI_CONSENT_REQUIRED');
+    if (built.reason === 'PINNED_PLAN_NOT_CURRENT') throw new CoachingRunError('STALE_BASIS');
+    throw new CoachingRunError('UNSUPPORTED_EVIDENCE_VERSION');
+  }
+  const dependencies = coreEvidenceDependencyManifestV2Schema.parse(current['dependencies']);
+  if (dependencies.aiConsent.kind !== 'exists' || !dependencies.aiConsent.granted)
+    throw new CoachingRunError('AI_CONSENT_REQUIRED');
+  const compared = compareTrainingCoachingBasis(built.basis, {
+    schemaVersion: 1,
+    scope: 'running-core-v2-training',
+    athleteId,
+    evidence: {
+      id: snapshot.data.id,
+      threadId: id,
+      createdAt: snapshot.data.createdAt,
+      status: 'available',
+    },
+    conversationRevision: current['conversation_revision'],
+    dependencies,
+    // The pin was captured in this same transaction, so it is by
+    // construction the current observation; later reads recapture it.
+    policy,
+    retrieval,
+  });
+  if (compared.status !== 'fresh') throw new CoachingRunError('STALE_BASIS');
+  return { snapshot: snapshot.data, prepared, basis: built.basis, dependencies };
+}
+
 export function createCoachingRunRepository(
   database: Database,
   options: CoachingRunRepositoryOptions,
@@ -317,7 +422,11 @@ export function createCoachingRunRepository(
         const row = result.rows[0];
         if (!row) return null;
         const body = storedFixtureOutputSchema.safeParse(row['output_body']);
-        if (!body.success || !(await currentWorkerEvidence(tx, row, policy, source))) return null;
+        if (
+          !body.success ||
+          !(await currentRunEvidence(tx, row, policy, source, 'historical_read'))
+        )
+          return null;
         return coachingRunOutputV1Schema.parse({
           schemaVersion: 1,
           runId,
@@ -374,68 +483,17 @@ export function createCoachingRunRepository(
           if (!run) throw new Error('COACHING_RUN_RECEIPT_MISSING_RUN');
           return run;
         }
-        const result = await tx.query(preflightSql, [athleteId, id, command.evidenceSnapshotId]);
-        const current = result.rows[0];
-        if (!current) throw new CoachingRunError('THREAD_NOT_FOUND');
-        if (current['conversation_revision'] !== command.expectedConversationRevision)
-          throw new CoachingRunError('CONVERSATION_REVISION_CONFLICT');
-        if (!current['evidence_id'] || current['body'] === null)
-          throw new CoachingRunError('EVIDENCE_UNAVAILABLE');
-        const snapshot = coreEvidenceSnapshotSchema.safeParse({
-          id: current['evidence_id'],
-          threadId: id,
-          createdAt: iso(current['evidence_created_at']),
-          status: 'available',
-          body: current['body'],
-        });
-        if (!snapshot.success) throw new CoachingRunError('UNSUPPORTED_EVIDENCE_VERSION');
-        // Retrieval runs before the basis is built so the pinned manifest and
-        // the stored excerpts come from the same observation. It reads only
-        // resources the query-time gate authorizes and calls no provider.
-        const prepared =
-          command.retrieval.kind === 'resource-access-v1'
-            ? await prepareRunGrounding(tx, command.retrieval.query)
-            : null;
-        const retrieval: CoachingRetrievalBasis = prepared
-          ? {
-              kind: 'resource-access-v1',
-              query: prepared.query,
-              manifest: prepared.manifest,
-            }
-          : { kind: 'none' };
-        const built = buildTrainingCoachingBasis({
-          athleteId,
-          snapshot: snapshot.data,
-          policy,
-          retrieval,
-        });
-        if (!built.ok) {
-          if (built.reason === 'AI_CONSENT_REQUIRED')
-            throw new CoachingRunError('AI_CONSENT_REQUIRED');
-          if (built.reason === 'PINNED_PLAN_NOT_CURRENT') throw new CoachingRunError('STALE_BASIS');
-          throw new CoachingRunError('UNSUPPORTED_EVIDENCE_VERSION');
-        }
-        const dependencies = coreEvidenceDependencyManifestV2Schema.parse(current['dependencies']);
-        if (dependencies.aiConsent.kind !== 'exists' || !dependencies.aiConsent.granted)
-          throw new CoachingRunError('AI_CONSENT_REQUIRED');
-        const compared = compareTrainingCoachingBasis(built.basis, {
-          schemaVersion: 1,
-          scope: 'running-core-v2-training',
-          athleteId,
-          evidence: {
-            id: snapshot.data.id,
-            threadId: id,
-            createdAt: snapshot.data.createdAt,
-            status: 'available',
+        const { prepared, basis } = await prepareOwnedCoachingEvidenceIn(
+          tx,
+          id,
+          {
+            schemaVersion: 1,
+            evidenceSnapshotId: command.evidenceSnapshotId,
+            expectedConversationRevision: command.expectedConversationRevision,
+            retrieval: command.retrieval,
           },
-          conversationRevision: current['conversation_revision'],
-          dependencies,
-          // The pin was captured in this same transaction, so it is by
-          // construction the current observation; later reads recapture it.
           policy,
-          retrieval,
-        });
-        if (compared.status !== 'fresh') throw new CoachingRunError('STALE_BASIS');
+        );
         const inserted = await tx.query(
           `INSERT INTO coaching_run(athlete_id,id,thread_id,evidence_snapshot_id,conversation_revision,policy,source,basis)
            VALUES($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,$8::jsonb) RETURNING *`,
@@ -447,7 +505,7 @@ export function createCoachingRunRepository(
             command.expectedConversationRevision,
             JSON.stringify(policy),
             JSON.stringify(source),
-            JSON.stringify(built.basis),
+            JSON.stringify(basis),
           ],
         );
         const run = decode(inserted.rows[0]);
@@ -580,7 +638,7 @@ export function createCoachingRunWorkerStore(
           await acknowledgeWorkerLease(tx, lease);
           return { kind: 'skipped' };
         }
-        const evidence = await currentWorkerEvidence(tx, row, currentPolicy(), source);
+        const evidence = await currentRunEvidence(tx, row, currentPolicy(), source, 'processing');
         if (!evidence) {
           await changeWorkerStatus(tx, lease.runId, { kind: 'cancelled', reason: 'stale_basis' });
           await acknowledgeWorkerLease(tx, lease);
@@ -630,7 +688,7 @@ export function createCoachingRunWorkerStore(
           await acknowledgeWorkerLease(tx, lease);
           return 'skipped';
         }
-        if (!(await currentWorkerEvidence(tx, row, currentPolicy(), source))) {
+        if (!(await currentRunEvidence(tx, row, currentPolicy(), source, 'processing'))) {
           await changeWorkerStatus(tx, lease.runId, { kind: 'cancelled', reason: 'stale_basis' });
           await acknowledgeWorkerLease(tx, lease);
           return 'skipped';

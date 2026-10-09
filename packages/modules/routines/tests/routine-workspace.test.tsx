@@ -419,3 +419,39 @@ describe('generic routine shell', () => {
     );
   });
 });
+
+it.each([
+  ['APP_CONSENT_REQUIRED', '앱 데이터 처리 동의가 필요합니다.'],
+  ['STALE_APP_ADMISSION', '앱 데이터 처리 동의가 변경되어'],
+  ['APP_BINDING_UNAVAILABLE', '앱 데이터 처리 동의 기준을 확인할 수 없어'],
+] as const)('keeps the blueprint draft on %s without saved success', async (code, message) => {
+  let writes = 0;
+  const transport: AuthenticatedTransport = {
+    async request(input) {
+      if (input.method === 'GET')
+        return { status: 200, body: { items: [], hasMore: false }, traceId: null };
+      writes += 1;
+      return { status: 409, body: { error: { code } }, traceId: null };
+    },
+  };
+  const user = userEvent.setup();
+  render(
+    <RoutineWorkspace
+      athleteId="a"
+      sessionId="s"
+      transport={transport}
+      route={{ kind: 'library' }}
+    />,
+  );
+  await user.click(await screen.findByRole('button', { name: '새 루틴' }));
+  const title = screen.getByRole('textbox', { name: '제목' });
+  await user.type(title, '유지할 루틴');
+  await user.click(screen.getByRole('button', { name: '단계 추가' }));
+  await user.type(screen.getByRole('textbox', { name: '단계 제목' }), '유지할 단계');
+  await user.click(screen.getByRole('button', { name: '루틴 버전 저장' }));
+  expect(await screen.findByText(new RegExp(message))).toBeTruthy();
+  expect((title as HTMLInputElement).value).toBe('유지할 루틴');
+  expect(writes).toBe(1);
+  expect(screen.queryByText(/루틴 버전 1을 저장했습니다/)).toBeNull();
+  expect(screen.queryByText(/다른 기기에서 변경됐습니다/)).toBeNull();
+});

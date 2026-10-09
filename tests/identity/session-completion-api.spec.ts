@@ -59,6 +59,7 @@ test('completion reports protect saved scheduling until explicit retraction with
   page.setDefaultTimeout(5000);
   page.setDefaultNavigationTimeout(5000);
   const headers = await login(page, 'Alice');
+  await grantAppProcessingForScenario(page);
   cleanupHeaders.set(page, headers);
   const get = async (path: string) => {
     const response = await page.request.get(path, { headers, timeout: 5000 });
@@ -164,6 +165,8 @@ test('completion reports protect saved scheduling until explicit retraction with
   try {
     const other = await otherContext.newPage();
     const otherHeaders = await login(other, 'Bob');
+    // App purpose does not confer ownership of Alice's completion target.
+    await grantAppProcessingForScenario(other);
     expect((await other.request.get(path, { headers: otherHeaders, timeout: 5000 })).status()).toBe(
       404,
     );
@@ -237,3 +240,4 @@ test('completion reports protect saved scheduling until explicit retraction with
     sessionCompletionListSchema.parse(await get('/bff/v1/plans/current/session-completions')).items,
   ).toHaveLength(1);
 });
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';

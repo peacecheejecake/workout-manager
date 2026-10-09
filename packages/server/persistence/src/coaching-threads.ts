@@ -1,3 +1,4 @@
+import { requireAppAdmission } from './app-admission.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { planDraftSchema } from '@workout/contracts/planning';
@@ -171,6 +172,7 @@ export function createCoachingThreadRepository(database: Database): CoachingThre
         await tx.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [athleteId]);
         const prior = await replay(tx, key, request);
         if (prior) return prior;
+        await requireAppAdmission(tx);
         const plans = await tx.query(
           'SELECT draft FROM plan_snapshot WHERE athlete_id=$1 AND id=$2',
           [athleteId, command.planVersionId],
@@ -214,6 +216,7 @@ export function createCoachingThreadRepository(database: Database): CoachingThre
         await tx.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [athleteId]);
         const prior = await replay(tx, key, request);
         if (prior) return prior;
+        await requireAppAdmission(tx);
         const selected = await tx.query(
           'SELECT * FROM coaching_thread WHERE athlete_id=$1 AND id=$2',
           [athleteId, parsedId],

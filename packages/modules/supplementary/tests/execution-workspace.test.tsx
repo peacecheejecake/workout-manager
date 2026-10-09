@@ -769,3 +769,34 @@ describe('execution workspace delivery and freshness', () => {
     expect(screen.getByText(/한 탭에서 계속하세요/)).toBeTruthy();
   });
 });
+
+it.each([
+  ['APP_CONSENT_REQUIRED', '앱 데이터 처리 동의가 필요합니다.'],
+  ['STALE_APP_ADMISSION', '앱 데이터 처리 동의가 변경되어'],
+  ['APP_BINDING_UNAVAILABLE', '앱 데이터 처리 동의 기준을 확인할 수 없어'],
+] as const)(
+  'keeps set correction fields on %s without resetting or saved notice',
+  async (code, message) => {
+    const writes: TransportRequest[] = [];
+    const transport: AuthenticatedTransport = {
+      async request(input) {
+        if (input.method === 'PATCH') {
+          writes.push(input);
+          return { status: 409, body: { error: { code } }, traceId: null };
+        }
+        return baseReply(input, 1, 1);
+      },
+    };
+    const { user } = mount(transport);
+    await user.click(await screen.findByRole('button', { name: '정정' }));
+    const count = screen.getByRole('spinbutton', { name: /실제 횟수/ });
+    await user.clear(count);
+    await user.type(count, '7');
+    await user.click(screen.getByRole('button', { name: '확인하고 실제 세트 저장' }));
+    expect(await screen.findByText(new RegExp(message))).toBeTruthy();
+    expect((count as HTMLInputElement).value).toBe('7');
+    expect(writes).toHaveLength(1);
+    expect(screen.queryByText('세트 기록을 저장했습니다.')).toBeNull();
+    expect(screen.queryByText(/세트 버전이 변경됐습니다/)).toBeNull();
+  },
+);

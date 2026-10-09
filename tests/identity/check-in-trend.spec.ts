@@ -1,3 +1,4 @@
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
@@ -40,8 +41,7 @@ test.afterEach(async ({ page }) => {
   });
   expect(result.status()).toBe(200);
 });
-async function seed(page: Page, count: number) {
-  const headers = await login(page);
+async function seed(page: Page, count: number, headers: Awaited<ReturnType<typeof login>>) {
   cleanup.set(page, headers);
   const created = [];
   for (let index = 0; index < count; index++) {
@@ -69,7 +69,9 @@ test('trend pages retain every observation, zero and unknown independently of th
   page,
 }) => {
   test.setTimeout(90000);
-  const { headers, created } = await seed(page, 101);
+  const scenarioHeaders = await login(page);
+  await grantAppProcessingForScenario(page);
+  const { headers, created } = await seed(page, 101, scenarioHeaders);
   const firstPageResponse = await page.request.get(
     '/bff/v1/check-ins?from=2024-03-10&toExclusive=2024-03-11&limit=100&offset=0',
     { headers },
@@ -178,7 +180,9 @@ test('trend pages retain every observation, zero and unknown independently of th
 test('trend refresh reflects corrections and deletion and recovers explicitly from a failed trend read', async ({
   page,
 }) => {
-  const { headers, created } = await seed(page, 2),
+  const scenarioHeaders = await login(page);
+  await grantAppProcessingForScenario(page);
+  const { headers, created } = await seed(page, 2, scenarioHeaders),
     target = created[1];
   assert.ok(target);
   await page.goto(url);

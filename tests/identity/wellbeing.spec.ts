@@ -72,6 +72,7 @@ test('check-in UI preserves zero and unknown values across reload, correction an
   page,
 }) => {
   const headers = await login(page);
+  await grantAppProcessingForScenario(page);
   const observedAt = '2026-09-15T23:30:01Z';
   const note = `합성 체크인 UI ${randomUUID()}`;
   const created = await createCheckIn(page, observedAt, note);
@@ -139,6 +140,7 @@ test('a stale UI correction retains the draft until explicit comparison and resu
   page,
 }) => {
   const headers = await login(page);
+  await grantAppProcessingForScenario(page);
   const observedAt = '2026-09-15T23:31:02Z';
   const note = `합성 동시 수정 ${randomUUID()}`;
   const created = await createCheckIn(page, observedAt, note);
@@ -234,3 +236,4 @@ test('generated viewport boundaries preserve the focused check-in draft without 
   await Promise.all([discardConfirmation, page.reload()]);
   await expect(note).toHaveValue('');
 });
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';

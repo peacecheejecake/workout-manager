@@ -118,6 +118,7 @@ async function bootstrap() {
   const runtimeGrants = [
     'grantIdentityFunctions',
     'grantOperations',
+    'grantAiSettings',
     'grantNutritionCore',
     'grantSupplementaryCore',
     'grantRoutineCore',

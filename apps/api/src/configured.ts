@@ -21,6 +21,8 @@ import { createStretchingRepository } from '@workout/server-persistence/stretchi
 import { createRoutineRepository } from '@workout/server-persistence/routine-core';
 import { createRecoveryRepository } from '@workout/server-persistence/recovery-core';
 import { createActivityRepository } from '@workout/server-persistence/activities';
+import { createHealthKitDeregistrationRepository } from '@workout/server-persistence/healthkit-deregistration';
+import { createHealthKitRegistrationRepository } from '@workout/server-persistence/healthkit-registration';
 import { createHealthKitIngestionRepository } from '@workout/server-persistence/healthkit-ingestion';
 import { createHealthKitBindingRepository } from '@workout/server-persistence/healthkit-binding';
 import { createHealthKitActivityRepository } from '@workout/server-persistence/healthkit-activity';
@@ -57,6 +59,8 @@ import { createResourceFileUploadRepository } from '@workout/server-persistence/
 import { createResourceUrlIngestionRepository } from '@workout/server-persistence/resource-url-ingestions';
 import { createResourceAccessRepository } from '@workout/server-persistence/resource-access';
 import { createLocalFilesystemObjectStorage } from '@workout/server-media/local-filesystem';
+import { randomUUID } from 'node:crypto';
+import type { FastifyBaseLogger } from 'fastify';
 import { isAbsolute, parse, resolve } from 'node:path';
 import type { Writable } from 'node:stream';
 import { z } from 'zod';
@@ -66,7 +70,7 @@ import { createConsentRepository } from '@workout/server-persistence/repositorie
 import { createIdentityRepository } from '@workout/server-persistence/identity';
 import { createIdentityService } from '@workout/server-identity/service';
 import { createBackchannelLogoutService } from '@workout/server-identity/backchannel';
-import { createOidcProvider, type OidcEvent } from '@workout/server-identity/oidc';
+import { createOidcProvider } from '@workout/server-identity/oidc';
 import { configuredGarmin } from '@workout/server-identity/garmin-config';
 import {
   createGarminService,
@@ -78,6 +82,8 @@ import { createGarminUnofficialWorker } from '@workout/server-integrations/garmi
 import { createGarminUnofficialService } from '@workout/server-integrations/garmin-unofficial-service';
 import { configuredGarminUnofficial } from './garmin-unofficial-deployment.js';
 import { createApi } from './app.js';
+import { createAiSettingsRepository } from '@workout/server-persistence/ai-settings';
+import { createAiSettingsService } from './ai-settings-service.js';
 
 const environmentSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('production'),
@@ -108,6 +114,66 @@ const environmentSchema = z.object({
     .min(1)
     .refine((value) => isAbsolute(value) && resolve(value) !== parse(value).root),
 });
+
+const oidcLogEventSchema = z.discriminatedUnion('event', [
+  z.object({
+    event: z.literal('oidc_discovery_failed'),
+    reason: z.enum(['issuer_mismatch', 'insecure_endpoint', 'network', 'other']),
+  }),
+  z.object({
+    event: z.literal('oidc_provider_logout_disabled'),
+    reason: z.literal('insecure_endpoint'),
+  }),
+]);
+const routingLogEventSchema = z.object({
+  reason: z.enum(['engine_capacity', 'limiter_unavailable', 'limiter_contended']),
+  engineInFlight: z.number().int().min(0).max(1024).nullable(),
+  engineConcurrency: z.number().int().min(1).max(1024),
+});
+const garminLogEventSchema = z.object({
+  event: z.enum([
+    'garmin_collection_import_failed',
+    'garmin_collection_activity_failed',
+    'garmin_collection_failed',
+    'garmin_collection_session_not_stored',
+    'garmin_collection_finish_failed',
+    'garmin_collection_finished',
+    'garmin_unofficial_login_failed',
+    'garmin_unofficial_profile_refused',
+    'garmin_unofficial_connected',
+    'garmin_unofficial_disconnected',
+    'garmin_unofficial_sandbox_file_refused',
+  ]),
+  code: z.unknown().optional(),
+  state: z
+    .enum([
+      'running',
+      'succeeded',
+      'partial',
+      'rate_limited',
+      'reconnect_required',
+      'failed_transient',
+      'failed_permanent',
+      'cancelled',
+    ])
+    .optional(),
+});
+// Provider error names are arbitrary strings, even if they match a length/character bound.
+const garminLogCodeSchema = z.enum([
+  'auth',
+  'mfa_invalid',
+  'rate_limited',
+  'CREDENTIAL_UNREADABLE',
+  'RUNNER_ERROR',
+  'NOT_FOUND',
+  'PROTOCOL',
+  'WORKER_ABORTED',
+  'WORKER_EXITED',
+  'WORKER_PROTOCOL',
+  'WORKER_TIMEOUT',
+  'MFA_EXPIRED',
+  'SANDBOX_FILE_LEFT',
+]);
 
 /**
  * `process.env` is not a plain object (its prototype is not `Object.prototype`), and a zod 4
@@ -141,6 +207,10 @@ export async function createConfiguredApi(
   options: ConfiguredApiOptions = {},
 ) {
   const env = environmentSchema.parse(environment);
+  // One configuration-instance trace, unrelated to request/session/collector or CLI IDs.
+  const runId = randomUUID();
+  const version = env.WORKOUT_RELEASE ?? 'unreleased';
+  let backgroundLog: Pick<FastifyBaseLogger, 'warn' | 'info'> | undefined;
   if (env.NODE_ENV === 'production' && env.ALLOW_INSECURE_LOCALHOST === 'true')
     throw new Error('Insecure production configuration');
   if (env.NODE_ENV === 'production' && env.COACHING_FIXTURE_ENABLED === 'true')
@@ -158,9 +228,6 @@ export async function createConfiguredApi(
   const garminUnofficialDeployment = configuredGarminUnofficial(environment);
   // Discovery failures carry only a fixed reason (never provider text). Before the API's
   // logger exists they go to stderr as the same one-line JSON.
-  let log: { warn(event: OidcEvent): void } | undefined;
-  let routingLog: { warn(event: object): void } | undefined;
-  let garminUnofficialLog: { info(event: object): void } | undefined;
   const provider = await createOidcProvider(
     {
       issuer: env.OIDC_ISSUER,
@@ -173,8 +240,12 @@ export async function createConfiguredApi(
     },
     {
       onEvent: (event) => {
-        if (log === undefined) process.stderr.write(`${JSON.stringify(event)}\n`);
-        else log.warn(event);
+        const parsed = oidcLogEventSchema.safeParse(event);
+        const line = parsed.success
+          ? { event: parsed.data.event, reason: parsed.data.reason, runId, version }
+          : { event: 'oidc_event_refused', runId, version };
+        if (backgroundLog === undefined) process.stderr.write(`${JSON.stringify(line)}\n`);
+        else backgroundLog.warn(line);
       },
     },
   );
@@ -226,9 +297,19 @@ export async function createConfiguredApi(
     const routingAdmission = createConfiguredRoutingAdmission(database, routingEnvironment, {
       onRefusal: (event) => {
         if (event.reason === 'rate' || event.reason === 'concurrency') return;
-        const line = { event: 'routing_admission_refused', ...event };
-        if (routingLog === undefined) process.stderr.write(`${JSON.stringify(line)}\n`);
-        else routingLog.warn(line);
+        const parsed = routingLogEventSchema.safeParse(event);
+        const line = parsed.success
+          ? {
+              event: 'routing_admission_refused',
+              reason: parsed.data.reason,
+              engineInFlight: parsed.data.engineInFlight,
+              engineConcurrency: parsed.data.engineConcurrency,
+              runId,
+              version,
+            }
+          : { event: 'routing_admission_event_refused', runId, version };
+        if (backgroundLog === undefined) process.stderr.write(`${JSON.stringify(line)}\n`);
+        else backgroundLog.warn(line);
       },
     });
     const routing = await createConfiguredWalkingRoutes(routingEnvironment, {
@@ -248,7 +329,19 @@ export async function createConfiguredApi(
     const activities = createActivityRepository(database);
     const garminUnofficialStore = createGarminUnofficialStore(database);
     // Fixed event names and codes only; never provider text, a session or a password.
-    const garminUnofficialEvent = (event: object) => garminUnofficialLog?.info(event);
+    const garminUnofficialEvent = (event: object) => {
+      const parsed = garminLogEventSchema.safeParse(event);
+      if (!parsed.success) {
+        backgroundLog?.info({ event: 'garmin_unofficial_event_refused' });
+        return;
+      }
+      const code = garminLogCodeSchema.safeParse(parsed.data.code);
+      backgroundLog?.info({
+        event: parsed.data.event,
+        code: parsed.data.code === undefined ? undefined : code.success ? code.data : 'other',
+        state: parsed.data.state,
+      });
+    };
     const garminUnofficial =
       garminUnofficialDeployment === null
         ? undefined
@@ -275,6 +368,7 @@ export async function createConfiguredApi(
           ? createUnconfiguredGarminService(createGarminStore(database))
           : createGarminService({ store: createGarminStore(database), ...garminConfiguration }),
       consent: createConsentRepository(database),
+      aiSettings: createAiSettingsService(createAiSettingsRepository(database)),
       planning: createPlanningRepository(database),
       nutrition: createNutritionRepository(database),
       restoreGeneration: createRestoreGenerationRepository(database),
@@ -318,6 +412,8 @@ export async function createConfiguredApi(
           }
         : {}),
       activities,
+      healthKitRegistration: createHealthKitRegistrationRepository(database),
+      healthKitDeregistration: createHealthKitDeregistrationRepository(database),
       healthKitIngestion: createHealthKitIngestionRepository(database),
       healthKitBinding: createHealthKitBindingRepository(database),
       healthKitActivity: createHealthKitActivityRepository(database),
@@ -409,15 +505,13 @@ export async function createConfiguredApi(
         await Promise.all([store.close(), database.close(), sharedCourseReader?.close()]);
       },
     });
-    log = app.log;
-    routingLog = app.log;
-    garminUnofficialLog = app.log;
+    backgroundLog = app.log.child({ runId });
     if (garminUnofficial !== undefined) {
-      app.log.info({ event: 'garmin_unofficial_enabled', official: false });
+      backgroundLog.info({ event: 'garmin_unofficial_enabled', official: false });
       garminUnofficial.start();
     }
     if (routing !== null)
-      app.log.info({
+      backgroundLog.info({
         event: 'routing_admission_configured',
         limiter: 'postgresql',
         engineConcurrency: routingAdmission.engineConcurrency,

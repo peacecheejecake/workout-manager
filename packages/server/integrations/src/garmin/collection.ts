@@ -76,7 +76,11 @@ export interface GarminCredentialCipher {
   open(athleteId: string, sealed: GarminSealedCredential): string;
 }
 export interface GarminActivityImportPort {
-  importActivity(athleteId: string, input: ActivityImport): Promise<ActivityImportResult>;
+  importActivity(
+    athleteId: string,
+    input: ActivityImport,
+    execution?: { expectedAppRevision: number },
+  ): Promise<ActivityImportResult>;
 }
 export type GarminCollectionRunState =
   | 'succeeded'
@@ -98,11 +102,17 @@ export interface GarminCollectionCounts {
 export interface GarminCollectionStorePort {
   acquireRun(input: { athleteId: string; runId: string; leaseId: string; now: Date }): Promise<{
     trigger: 'manual' | 'scheduled';
+    appRevision: number;
     sessionGeneration: number;
     encryptedSession: GarminSealedCredential;
     profileHash: string;
   } | null>;
-  holdsRun(athleteId: string, leaseId: string, now: Date): Promise<boolean>;
+  holdsRun(
+    athleteId: string,
+    leaseId: string,
+    now: Date,
+    expectedAppRevision: number,
+  ): Promise<boolean>;
   commitSession(input: {
     athleteId: string;
     leaseId: string;
@@ -125,6 +135,7 @@ export interface GarminCollectionStorePort {
     athleteId: string;
     garminActivityId: string;
     provider: GarminCollectionProvider;
+    appRevision: number;
     outcome: 'imported' | 'unchanged' | 'stale' | 'suppressed';
     sources: readonly { kind: string; sourceId: string }[];
     now: Date;
@@ -188,6 +199,8 @@ class CredentialUnreadable extends Error {
   }
 }
 
+class CollectionCancelled extends Error {}
+
 /**
  * Run at most one collection for `athleteId`, if one is due. Returns the final run state, or
  * null when nothing was due (not connected, leased elsewhere, blocked, or not requested).
@@ -203,6 +216,7 @@ export async function runGarminCollection(
     leaseId = randomUUID();
   const lease = await options.store.acquireRun({ athleteId, runId, leaseId, now: now() });
   if (lease === null) return null;
+  const pinnedAppRevision = lease.appRevision;
   const counts: GarminCollectionCounts = {
     listed: 0,
     imported: 0,
@@ -220,12 +234,13 @@ export async function runGarminCollection(
   let lost = false;
   async function stillHeld() {
     if (controller.signal.aborted) return false;
-    if (await options.store.holdsRun(athleteId, leaseId, now())) return true;
+    if (await options.store.holdsRun(athleteId, leaseId, now(), pinnedAppRevision)) return true;
     lost = true;
     controller.abort();
     return false;
   }
   try {
+    if (!(await stillHeld())) throw new CollectionCancelled();
     let credential: string;
     try {
       credential = options.cipher.open(athleteId, lease.encryptedSession);
@@ -259,6 +274,7 @@ export async function runGarminCollection(
                 await options.activities.importActivity(
                   athleteId,
                   collectorCommand(options.collector.provider, command),
+                  { expectedAppRevision: pinnedAppRevision },
                 )
               ).outcome,
             );
@@ -271,17 +287,25 @@ export async function runGarminCollection(
         if (outcome === 'imported') counts.imported += 1;
         else if (outcome === 'suppressed') counts.suppressed += 1;
         else counts.unchanged += 1;
-        await options.store.recordCollected({
-          athleteId,
-          garminActivityId: activity.id,
-          provider: options.collector.provider,
-          outcome,
-          sources: activity.imports.map((command) => ({
-            kind: command.source.kind,
-            sourceId: command.source.sourceId,
-          })),
-          now: now(),
-        });
+        try {
+          await options.store.recordCollected({
+            athleteId,
+            garminActivityId: activity.id,
+            provider: options.collector.provider,
+            appRevision: lease.appRevision,
+            outcome,
+            sources: activity.imports.map((command) => ({
+              kind: command.source.kind,
+              sourceId: command.source.sourceId,
+            })),
+            now: now(),
+          });
+        } catch (error) {
+          // The attribution commit is another short transaction. A lost app epoch
+          // here cancels the run; already committed imports keep their exact facts.
+          if (!(await stillHeld())) throw new CollectionCancelled();
+          throw error;
+        }
       },
       acceptFailure: async (_id, code) => {
         counts.failed += 1;
@@ -326,7 +350,9 @@ export async function runGarminCollection(
       if (!stored) options.onEvent?.({ event: 'garmin_collection_session_not_stored' });
     }
   } catch (error) {
-    if (error instanceof CredentialUnreadable) {
+    if (error instanceof CollectionCancelled || lost || controller.signal.aborted) {
+      state = 'cancelled';
+    } else if (error instanceof CredentialUnreadable) {
       // A lost or unknown key (or a damaged envelope) never heals by retrying: the envelope
       // is dropped (reconnect required) and the owner logs in again.
       state = 'reconnect_required';

@@ -349,6 +349,181 @@ const accountExportV28Schema = accountExportV27Schema.extend({
       .max(1000),
   }),
 });
+/** v29 exports attribution facts, never command receipts or reusable claim epochs.
+ * A portable account artifact is not a command to restore active ownership. */
+const accountExportV29Schema = accountExportV28Schema.extend({
+  schemaVersion: z.literal(29),
+  data: accountExportV28Schema.shape.data.extend({
+    healthKitWorkoutClaims: z
+      .array(
+        z.strictObject({
+          sample_id: z.uuid(),
+          consent_revision: z.number().int().min(1).max(2_147_483_647),
+          created_at: z.iso.datetime({ offset: true }),
+        }),
+      )
+      .max(1000),
+    healthKitWorkoutRegistryHeads: z
+      .array(
+        z.strictObject({
+          revision: z.number().int().min(1).max(2_147_483_647),
+        }),
+      )
+      .max(1),
+    healthKitWorkoutRegistrations: z
+      .array(
+        z.strictObject({
+          registry_revision: z.number().int().min(1).max(2_147_483_647),
+          registered_count: z.number().int().min(1).max(50),
+        }),
+      )
+      .max(1000),
+  }),
+});
+/** v30 distinguishes claims awaiting cleanup and portable deregistration facts.
+ * These facts never carry executable ownership or suppression replay commands. */
+const accountExportV30Schema = accountExportV29Schema.extend({
+  schemaVersion: z.literal(30),
+  data: accountExportV29Schema.shape.data.extend({
+    healthKitWorkoutClaims: z
+      .array(
+        accountExportV29Schema.shape.data.shape.healthKitWorkoutClaims.element.extend({
+          state: z.enum(['active', 'pending_cleanup']),
+        }),
+      )
+      .max(1000),
+    healthKitWorkoutDeregistrations: z
+      .array(
+        z
+          .strictObject({
+            operation_id: z.uuid(),
+            sample_id: z.uuid(),
+            state: z.enum(['pending_cleanup', 'released']),
+            registry_revision: z.number().int().min(1).max(2_147_483_647),
+            requested_at: z.iso.datetime({ offset: true }),
+            released_at: z.iso.datetime({ offset: true }).nullable(),
+          })
+          .refine(
+            (operation) => (operation.state === 'released') === (operation.released_at !== null),
+            {
+              message:
+                'Released operations require a release timestamp; pending operations cannot have one',
+            },
+          ),
+      )
+      .max(1000),
+  }),
+});
+/** v31 adds planned races and separate user-reported performance ledgers. */
+const accountExportV31Schema = accountExportV30Schema.extend({
+  schemaVersion: z.literal(31),
+  data: accountExportV30Schema.shape.data.extend({
+    raceEvents: rows,
+    raceEventRevisions: rows,
+    raceResults: rows,
+    raceResultRevisions: rows,
+    trainingBests: rows,
+    trainingBestRevisions: rows,
+    raceCollectionHeads: rows,
+  }),
+});
+/** v32 exports immutable app attribution facts, never receipt keys or replay commands.
+ * Portable facts cannot authorize processing or recreate admission bindings. */
+const accountExportV32Schema = accountExportV31Schema.extend({
+  schemaVersion: z.literal(32),
+  data: accountExportV31Schema.shape.data.extend({
+    evidenceAppBindings: z
+      .array(
+        z.strictObject({
+          evidence_snapshot_id: z.uuid(),
+          binding_version: z.literal(1),
+          app_revision: z.number().int().min(1).max(2147483647),
+          captured_at: z.iso.datetime({ offset: true }),
+        }),
+      )
+      .max(1000),
+    runAppBindings: z
+      .array(
+        z.strictObject({
+          run_id: z.uuid(),
+          evidence_snapshot_id: z.uuid(),
+          binding_version: z.literal(1),
+        }),
+      )
+      .max(1000),
+    candidateAppBindings: z
+      .array(
+        z.strictObject({
+          candidate_id: z.uuid(),
+          run_id: z.uuid(),
+          binding_version: z.literal(1),
+        }),
+      )
+      .max(1000),
+    integratedCandidateAppBindings: z
+      .array(
+        z.strictObject({
+          candidate_id: z.uuid(),
+          evidence_snapshot_id: z.uuid(),
+          binding_version: z.literal(1),
+        }),
+      )
+      .max(1000),
+    approvalAppBindings: z
+      .array(
+        z
+          .strictObject({
+            candidate_id: z.uuid().nullable(),
+            integrated_candidate_id: z.uuid().nullable(),
+            integrated_approval_id: z.uuid().nullable(),
+            binding_version: z.literal(1),
+            created_at: z.iso.datetime({ offset: true }),
+          })
+          .refine(
+            (value) => (value.candidate_id === null) !== (value.integrated_candidate_id === null),
+          )
+          .refine(
+            (value) =>
+              value.integrated_approval_id === null || value.integrated_candidate_id !== null,
+          ),
+      )
+      .max(1000),
+  }),
+});
+// Preference history is portable data, never executable consent or model permission.
+const aiSettingIdentifier = z.string().regex(/^[a-z][a-z0-9._-]{0,99}$/);
+const aiSettingDefinition = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,99}$/);
+const aiSettingsExportRevision = z
+  .strictObject({
+    revision: z.number().int().min(1).max(2147483647),
+    updated_at: z.iso.datetime({ offset: true }),
+    catalog_revision: z.number().int().min(1).max(2147483647),
+    policy_version: aiSettingDefinition,
+    disclosure_version: aiSettingDefinition,
+    default_provider_id: aiSettingIdentifier.nullable(),
+    default_model_id: aiSettingIdentifier.nullable(),
+    comparison_kind: z.enum(['off', 'selected']),
+    comparison_provider_id: aiSettingIdentifier.nullable(),
+    comparison_model_id: aiSettingIdentifier.nullable(),
+  })
+  .refine((row) => (row.default_provider_id === null) === (row.default_model_id === null))
+  .refine((row) =>
+    row.comparison_kind === 'off'
+      ? row.comparison_provider_id === null && row.comparison_model_id === null
+      : row.comparison_provider_id !== null && row.comparison_model_id !== null,
+  );
+// Shape spread avoids adding another nested Extend layer to the historical schema chain.
+const accountExportV33Schema = z.strictObject({
+  ...accountExportV32Schema.shape,
+  schemaVersion: z.literal(33),
+  data: z.strictObject({
+    ...accountExportV32Schema.shape.data.shape,
+    aiSettingsHeads: z
+      .array(z.strictObject({ revision: z.number().int().min(1).max(2147483647) }))
+      .max(1),
+    aiSettingsRevisions: z.array(aiSettingsExportRevision).max(1000),
+  }),
+});
 // Read historical artifacts unchanged; never manufacture absent collections.
 export const accountExportSchema = z.discriminatedUnion('schemaVersion', [
   accountExportV2Schema,
@@ -378,6 +553,11 @@ export const accountExportSchema = z.discriminatedUnion('schemaVersion', [
   accountExportV26Schema,
   accountExportV27Schema,
   accountExportV28Schema,
+  accountExportV29Schema,
+  accountExportV30Schema,
+  accountExportV31Schema,
+  accountExportV32Schema,
+  accountExportV33Schema,
 ]);
 export const operationsStatusSchema = z.strictObject({
   checkedAt: z.iso.datetime({ offset: true }),

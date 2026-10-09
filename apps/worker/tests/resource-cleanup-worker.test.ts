@@ -176,6 +176,11 @@ function setup(input: {
     createStorage: vi.fn(async () => storage),
     createRepository: vi.fn(() => repository),
     createDerivedRepository: vi.fn(() => derivedRepository),
+    createDeregistrationRepository: vi.fn(() => ({
+      processOne: vi.fn(async () => 'empty' as const),
+      deadLetterCount: vi.fn(async () => 0),
+      close: vi.fn(async () => undefined),
+    })),
     now: input.now ?? vi.fn(() => new Date('2026-09-19T00:00:00.000Z')),
   };
   return { dependencies, repository, derivedRepository, deleteObject, storage };
@@ -1329,4 +1334,84 @@ describe('resource object cleanup worker', () => {
       });
     });
   });
+});
+
+describe('HealthKit deregistration cleanup composition', () => {
+  it('checks finalization only after physical scope and derived cleanup and closes its repository', async () => {
+    const { dependencies, repository, derivedRepository } = setup({});
+    const processOne = vi.fn(async () => 'empty' as const);
+    const close = vi.fn(async () => undefined);
+    dependencies.createDeregistrationRepository = () => ({
+      processOne,
+      close,
+      deadLetterCount: vi.fn(async () => 0),
+    });
+    const result = await runResourceCleanupWorker({ connectionString, storageRoot }, dependencies);
+    expect(result.healthKitDeregistrations).toEqual({
+      dead_letter_count_capped: 0,
+      empty: 1,
+      released: 0,
+      pending_cleanup: 0,
+      retry_scheduled: 0,
+      lease_lost: 0,
+    });
+    expect(vi.mocked(repository.leaseObjectScopePurge).mock.invocationCallOrder[0]).toBeLessThan(
+      processOne.mock.invocationCallOrder[0] ?? 0,
+    );
+    expect(vi.mocked(derivedRepository.lease).mock.invocationCallOrder[0]).toBeLessThan(
+      processOne.mock.invocationCallOrder[0] ?? 0,
+    );
+    expect(close).toHaveBeenCalledOnce();
+  });
+  it('closes every repository when finalization fails and does not report cleanup success', async () => {
+    const { dependencies, repository, derivedRepository } = setup({});
+    const close = vi.fn(async () => undefined);
+    dependencies.createDeregistrationRepository = () => ({
+      deadLetterCount: vi.fn(async () => 0),
+      processOne: vi.fn(async () => {
+        throw new Error('bounded database failure');
+      }),
+      close,
+    });
+    await expect(
+      runResourceCleanupWorker({ connectionString, storageRoot }, dependencies),
+    ).rejects.toThrow('bounded database failure');
+    expect(close).toHaveBeenCalledOnce();
+    expect(repository.close).toHaveBeenCalledOnce();
+    expect(derivedRepository.close).toHaveBeenCalledOnce();
+  });
+});
+
+it('bounds HealthKit finalization, counts pending truthfully and stops after a failed lease', async () => {
+  const { dependencies } = setup({});
+  const outcomes = ['pending_cleanup', 'released', 'retry_scheduled'] as const;
+  let index = 0;
+  const processOne = vi.fn(async () => outcomes[index++] ?? 'empty');
+  dependencies.createDeregistrationRepository = () => ({
+    processOne,
+    deadLetterCount: vi.fn(async () => 0),
+    close: vi.fn(async () => undefined),
+  });
+  const result = await runResourceCleanupWorker({ connectionString, storageRoot }, dependencies);
+  expect(result.healthKitDeregistrations).toEqual({
+    dead_letter_count_capped: 0,
+    empty: 0,
+    released: 1,
+    pending_cleanup: 1,
+    retry_scheduled: 1,
+    lease_lost: 0,
+  });
+  expect(processOne).toHaveBeenCalledTimes(3);
+  const busy = setup({});
+  const alwaysPending = vi.fn(async () => 'pending_cleanup' as const);
+  busy.dependencies.createDeregistrationRepository = () => ({
+    processOne: alwaysPending,
+    deadLetterCount: vi.fn(async () => 0),
+    close: vi.fn(async () => undefined),
+  });
+  expect(
+    (await runResourceCleanupWorker({ connectionString, storageRoot }, busy.dependencies))
+      .healthKitDeregistrations.pending_cleanup,
+  ).toBe(10);
+  expect(alwaysPending).toHaveBeenCalledTimes(10);
 });

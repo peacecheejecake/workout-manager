@@ -1,3 +1,4 @@
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';
 import { identityMobileOrigin, identityWebOrigin } from '../../scripts/fixtures/identity-ports';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
@@ -74,6 +75,7 @@ test('versioned exercise and routine feed one Activity execution with confirmed 
   test.setTimeout(120_000);
   page.setDefaultTimeout(8_000);
   const headers = await login(page);
+  await grantAppProcessingForScenario(page);
   const marker = randomUUID();
   const exerciseName = `Synthetic plyometric ${marker}`;
   const routineName = `Synthetic strength routine ${marker}`;

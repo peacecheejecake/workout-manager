@@ -1,3 +1,4 @@
+import { requireAppAdmission, requireAppBinding } from './app-admission.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import {
@@ -241,6 +242,19 @@ async function observeCandidateRetrieval(
     query: basis.retrieval.query,
     manifest: await captureResourceCoachUseManifest(tx),
   };
+}
+
+/** Read only an owned existence fact before checking the private run's admission binding. */
+async function requireOwnedRun(tx: Transaction, runId: string): Promise<void> {
+  const selected = await tx.query(
+    'SELECT EXISTS(SELECT 1 FROM coaching_run WHERE athlete_id=$1 AND id=$2) AS owned',
+    [tx.athleteId, runId],
+  );
+  const [fact] = z
+    .array(z.strictObject({ owned: z.boolean() }))
+    .length(1)
+    .parse(selected.rows);
+  if (!fact?.owned) throw new TrainingCandidateError('RUN_NOT_FOUND');
 }
 
 async function currentContext(
@@ -719,6 +733,9 @@ export function createTrainingCandidateRepository(
       return guarded(athleteId, async (tx) => {
         const replay = await replayCandidate(tx, key, request, policy, source);
         if (replay) return replay;
+        await requireAppAdmission(tx);
+        await requireOwnedRun(tx, command.runId);
+        await requireAppBinding(tx, 'run', command.runId);
         const context = await currentContext(tx, command.runId, policy, source);
         requireStatus(context.row, 'analysis_ready');
         return sealCandidate(tx, context, command, key, request);
@@ -735,6 +752,9 @@ export function createTrainingCandidateRepository(
       return guarded(athleteId, async (tx) => {
         const replay = await replayCandidate(tx, key, request, policy, source);
         if (replay) return replay;
+        await requireAppAdmission(tx);
+        await requireOwnedRun(tx, command.runId);
+        await requireAppBinding(tx, 'run', command.runId);
         const context = await currentContext(tx, command.runId, policy, source);
         requireStatus(context.row, 'analysis_ready');
         if (source.kind !== 'deterministic_fixture' || source.fixtureId !== 'synthetic-v1')
@@ -765,8 +785,10 @@ export function createTrainingCandidateRepository(
             throw new TrainingCandidateError('CANDIDATE_UNAVAILABLE');
           return replay;
         }
+        await requireAppAdmission(tx);
         const parent = await readBundle(tx, parentId);
         if (!parent) throw new TrainingCandidateError('CANDIDATE_UNAVAILABLE');
+        await requireAppBinding(tx, 'candidate', parentId);
         const context = await currentCandidateContext(tx, parent, policy, source);
         const count = await tx.query(
           `SELECT count(*)::integer AS count FROM coaching_candidate c
@@ -962,19 +984,23 @@ export function createTrainingCandidateRepository(
       const id = uuid.parse(candidateId);
       const command = approveCommandSchema.parse(input);
       const key = receiptKey(command.idempotencyKey, 'approve');
-      const request = receiptRequest({
+      const approvalRequest = {
         schemaVersion: 1,
         operation: 'training_candidate_approve',
         candidateId: id,
         expectedDigest: command.expectedDigest,
         confirmed: command.confirmed,
-      });
+      };
+      const request = receiptRequest(approvalRequest);
+      const canonicalRequest = canonicalJson(approvalRequest);
       return guarded(athleteId, async (tx) => {
         // A successful retry returns the committed version even after the candidate becomes stale.
         const replay = await replayApproval(tx, key, request);
         if (replay) return replay;
+        await requireAppAdmission(tx);
         const bundle = await readBundle(tx, id);
         if (!bundle) throw new TrainingCandidateError('CANDIDATE_UNAVAILABLE');
+        await requireAppBinding(tx, 'candidate', id);
         if (bundle.candidate.digest !== command.expectedDigest)
           throw new TrainingCandidateError('CANDIDATE_DIGEST_MISMATCH');
         let context: CandidateContext;
@@ -1030,6 +1056,11 @@ export function createTrainingCandidateRepository(
           'INSERT INTO command_receipt(athlete_id,idempotency_key,request,result) VALUES($1,$2,$3::jsonb,$4::jsonb)',
           [athleteId, key, JSON.stringify(request), JSON.stringify({ versionId: saved.id })],
         );
+        await tx.query('SELECT public.record_approval_app_binding($1,$2,$3)', [
+          key,
+          id,
+          canonicalRequest,
+        ]);
         return saved;
       });
     },

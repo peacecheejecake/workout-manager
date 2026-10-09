@@ -1,3 +1,4 @@
+import { requireAppAdmission } from './app-admission.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 
@@ -694,6 +695,7 @@ export function createSupplementaryRepository(
           command.executionId,
         );
         if (prior) return prior;
+        await requireAppAdmission(tx);
         await assertMatchingSession(tx, command.plannedSession);
         let activityId: string;
         if (command.activity.kind === 'match_existing') {
@@ -897,6 +899,7 @@ export function createSupplementaryRepository(
           command.logId,
         );
         if (prior) return prior;
+        await requireAppAdmission(tx);
         const currentExecution = await execution(tx, command.executionId, true);
         if (!currentExecution) throw new SupplementaryReferenceError('EXECUTION_NOT_FOUND');
         if (currentExecution.revision !== command.expectedExecutionRevision)
@@ -953,6 +956,7 @@ export function createSupplementaryRepository(
           command.logId,
         );
         if (prior) return prior;
+        await requireAppAdmission(tx);
         const currentExecution = await execution(tx, command.executionId, true);
         if (!currentExecution) throw new SupplementaryReferenceError('EXECUTION_NOT_FOUND');
         const current = await setLog(tx, command.logId, true);
@@ -1098,6 +1102,8 @@ export function createSupplementaryRepository(
           command.executionId,
         );
         if (prior) return prior;
+        if (command.action === 'start' || command.action === 'resume')
+          await requireAppAdmission(tx);
         const currentExecution = await execution(tx, command.executionId, true);
         if (!currentExecution) throw new SupplementaryReferenceError('EXECUTION_NOT_FOUND');
         if (currentExecution.status !== 'active')

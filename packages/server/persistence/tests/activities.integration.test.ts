@@ -22,6 +22,17 @@ beforeAll(async () => {
   database = createDatabase({ connectionString: runtimeUrl, max: 6 });
   repository = createActivityRepository(database);
 });
+
+// Explicit synthetic purpose grant for these pre-existing domain regression tests.
+// No production account is granted implicitly; admission denial has its own suite.
+async function grantedAthlete(): Promise<string> {
+  const athlete = randomUUID();
+  await admin.query(
+    "WITH scope AS MATERIALIZED (SELECT set_config('app.athlete_id',$1,true)) INSERT INTO consent(athlete_id,kind,granted,revision) SELECT $1,'app',true,1 FROM scope",
+    [athlete],
+  );
+  return athlete;
+}
 afterAll(async () => {
   await database?.close();
   await admin.end();
@@ -43,7 +54,7 @@ function input(): ActivityImport {
 }
 describe('M1-03 canonical activity transactional ingestion', () => {
   it('advances the integrated activity dependency head across delete and replacement', async () => {
-    const athlete = randomUUID();
+    const athlete = await grantedAthlete();
     const first = await repository.importActivity(athlete, input());
     await repository.deleteActivity(athlete, first.activityId, { expectedRevision: 1 });
     await repository.importActivity(athlete, input());
@@ -55,7 +66,7 @@ describe('M1-03 canonical activity transactional ingestion', () => {
     expect(head.rows[0]?.['activity_revision']).toBe(3);
   });
   it('concurrent duplicate deliveries and outbox replay apply exactly one canonical and event', async () => {
-    const athlete = randomUUID();
+    const athlete = await grantedAthlete();
     const command = input();
     const results = await Promise.all([
       repository.importActivity(athlete, command),
@@ -86,7 +97,7 @@ describe('M1-03 canonical activity transactional ingestion', () => {
     });
   });
   it('keeps source revision history and user corrections across reordered imports', async () => {
-    const athlete = randomUUID();
+    const athlete = await grantedAthlete();
     const command = input();
     const initial = await repository.importActivity(athlete, command);
     const correction = {
@@ -133,7 +144,7 @@ describe('M1-03 canonical activity transactional ingestion', () => {
     expect(raw.rows[0]?.['count']).toBe(3);
   });
   it('rejects changed payloads at the same source revision and idempotency key', async () => {
-    const athlete = randomUUID();
+    const athlete = await grantedAthlete();
     const command = input();
     await repository.importActivity(athlete, command);
     await expect(
@@ -155,7 +166,7 @@ describe('M1-03 canonical activity transactional ingestion', () => {
     ).toBe('unchanged');
   });
   it('local deletion suppresses future revisions and repeated deletes without resurrection', async () => {
-    const athlete = randomUUID();
+    const athlete = await grantedAthlete();
     const command = input();
     const created = await repository.importActivity(athlete, command);
     await repository.deleteActivity(athlete, created.activityId, { expectedRevision: 1 });
@@ -175,8 +186,8 @@ describe('M1-03 canonical activity transactional ingestion', () => {
     expect(raw.rows[0]?.['count']).toBe(1);
   });
   it('is tenant isolated including raw records, overlays, deletion and independently shared source IDs', async () => {
-    const first = randomUUID(),
-      second = randomUUID();
+    const first = await grantedAthlete(),
+      second = await grantedAthlete();
     const command = input();
     const created = await repository.importActivity(first, command);
     expect(await repository.getActivity(second, created.activityId)).toBeNull();
@@ -199,7 +210,7 @@ describe('M1-03 canonical activity transactional ingestion', () => {
     expect(own.activityId).not.toBe(created.activityId);
   });
   it('rolls back canonical, source, receipt and event atomically when outbox enqueue fails', async () => {
-    const athlete = randomUUID();
+    const athlete = await grantedAthlete();
     const command = input();
     const failing = createActivityRepository({
       close: async () => undefined,
@@ -228,7 +239,7 @@ describe('M1-03 canonical activity transactional ingestion', () => {
     expect((await repository.importActivity(athlete, command)).outcome).toBe('imported');
   });
   it('does not merge separate workouts with identical bytes and returns bounded stable pages', async () => {
-    const athlete = randomUUID();
+    const athlete = await grantedAthlete();
     const first = input();
     const second = { ...input(), activity: { ...first.activity, distanceMeters: null } };
     await Promise.all([
@@ -249,7 +260,7 @@ describe('M1-03 canonical activity transactional ingestion', () => {
 });
 
 it('serializes competing overlay corrections and retains immutable reasons while null differs from omission', async () => {
-  const athlete = randomUUID();
+  const athlete = await grantedAthlete();
   const created = await repository.importActivity(athlete, input());
   const command = {
     expectedRevision: 1,
@@ -291,7 +302,7 @@ it('serializes competing overlay corrections and retains immutable reasons while
 });
 
 it('keeps timer and elapsed totals separate instead of silently adding different measurement definitions', async () => {
-  const athlete = randomUUID();
+  const athlete = await grantedAthlete();
   const first = input();
   first.activity.durationSeconds = 60;
   first.activity.durationKind = 'timer';
@@ -309,7 +320,7 @@ it('keeps timer and elapsed totals separate instead of silently adding different
 });
 
 it('pins a corrected duration definition across newer source revisions and preserves aggregate semantics', async () => {
-  const athlete = randomUUID();
+  const athlete = await grantedAthlete();
   const command = input();
   command.activity.durationSeconds = 100;
   command.activity.durationKind = 'timer';
@@ -345,7 +356,7 @@ it('pins a corrected duration definition across newer source revisions and prese
 });
 
 it('combines timezone DST date, kind, source and literal title filters with one filtered total', async () => {
-  const athlete = randomUUID();
+  const athlete = await grantedAthlete();
   async function add(
     startedAt: string | null,
     title: string,
@@ -387,7 +398,7 @@ it('combines timezone DST date, kind, source and literal title filters with one 
 });
 
 it('sorts effective zero and null distances with nulls last in both directions and finds corrected titles', async () => {
-  const athlete = randomUUID();
+  const athlete = await grantedAthlete();
   const imported = [];
   for (const distanceMeters of [0, 10, 20]) {
     const command = input();
@@ -425,7 +436,7 @@ it('sorts effective zero and null distances with nulls last in both directions a
 });
 
 it('keeps stable ID ties across pages and places unknown start times last without date filters', async () => {
-  const athlete = randomUUID();
+  const athlete = await grantedAthlete();
   const ids: string[] = [];
   for (let index = 0; index < 3; index++) {
     const command = input();
@@ -468,7 +479,7 @@ function manualInput(): ManualActivityCreate {
   };
 }
 it('creates manual actuals atomically once with server provenance and metadata-only replay after deletion', async () => {
-  const athlete = randomUUID(),
+  const athlete = await grantedAthlete(),
     command = manualInput();
   command.report = { sessionRpe: 0, note: '건강메모'.repeat(1000), planLink: null };
   const fixed = createActivityRepository(database, { now: () => new Date('2026-01-02T00:00:00Z') });
@@ -503,7 +514,7 @@ it('creates manual actuals atomically once with server provenance and metadata-o
   expect(await repository.getActivity(athlete, a.activityId)).toBeNull();
 });
 it('preserves RPE timestamp on note correction, stamps changed RPE and clears null without default zero', async () => {
-  const athlete = randomUUID();
+  const athlete = await grantedAthlete();
   let time = new Date('2026-01-02T00:00:00Z');
   const fixed = createActivityRepository(database, { now: () => time });
   const created = await fixed.createManualActivity(athlete, manualInput());
@@ -532,7 +543,7 @@ it('preserves RPE timestamp on note correction, stamps changed RPE and clears nu
   });
 });
 it('validates future corrected times and uses effective kind/start in list filters', async () => {
-  const athlete = randomUUID(),
+  const athlete = await grantedAthlete(),
     fixed = createActivityRepository(database, { now: () => new Date('2026-01-02T00:00:00Z') });
   const command = manualInput();
   await expect(
@@ -589,7 +600,7 @@ it('validates future corrected times and uses effective kind/start in list filte
   ).toBe(0);
 });
 it('validates immutable owned plan session links without advancing the plan or duplicating actuals', async () => {
-  const athlete = randomUUID(),
+  const athlete = await grantedAthlete(),
     plans = createPlanningRepository(database);
   const levels = ['season', 'wave', 'phase', 'block'] as const;
   const draft = {
@@ -647,7 +658,10 @@ it('validates immutable owned plan session links without advancing the plan or d
   );
   expect((await plans.read(athlete)).head?.id).toBe(latest.id);
   await expect(
-    repository.createManualActivity(randomUUID(), { ...command, idempotencyKey: randomUUID() }),
+    repository.createManualActivity(await grantedAthlete(), {
+      ...command,
+      idempotencyKey: randomUUID(),
+    }),
   ).rejects.toMatchObject({ code: 'PLAN_LINK_INVALID' });
   await expect(
     repository.createManualActivity(athlete, {
@@ -659,7 +673,7 @@ it('validates immutable owned plan session links without advancing the plan or d
   expect((await repository.listActivities(athlete)).total).toBe(1);
 });
 it('keeps imported user reports and kind/time corrections through newer source revisions and old overlay receipts', async () => {
-  const athlete = randomUUID(),
+  const athlete = await grantedAthlete(),
     command = input();
   const created = await repository.importActivity(athlete, command);
   const correction = {
@@ -687,7 +701,7 @@ it('keeps imported user reports and kind/time corrections through newer source r
   );
 });
 it('rolls back all manual rows and receipt when outbox fails', async () => {
-  const athlete = randomUUID();
+  const athlete = await grantedAthlete();
   const broken: Database = {
     ...database,
     tenant: (id, operation) =>
@@ -740,7 +754,7 @@ function details(): NonNullable<ActivityImport['details']> {
 }
 describe('M1-04x source revision activity details', () => {
   it('enriches the same canonical once under concurrent delivery and replays the old summary receipt', async () => {
-    const athlete = randomUUID();
+    const athlete = await grantedAthlete();
     const legacy = input();
     const first = await repository.importActivity(athlete, legacy);
     expect((await repository.getActivityDetails(athlete, first.activityId))?.details).toBeNull();
@@ -785,7 +799,7 @@ describe('M1-04x source revision activity details', () => {
     ).rejects.toMatchObject({ code: 'REVISION_CONFLICT' });
   });
   it('reads exactly the current source revision, never falls back, and keeps source clocks through overlays', async () => {
-    const athlete = randomUUID();
+    const athlete = await grantedAthlete();
     const command = { ...input(), details: details() };
     const first = await repository.importActivity(athlete, command);
     await repository.updateOverlay(athlete, first.activityId, {
@@ -825,7 +839,7 @@ describe('M1-04x source revision activity details', () => {
     expect(await repository.getActivityDetails(randomUUID(), first.activityId)).toBeNull();
   });
   it('hides deleted details and suppresses later enrichment without rewriting source history', async () => {
-    const athlete = randomUUID();
+    const athlete = await grantedAthlete();
     const command = { ...input(), details: details() };
     const first = await repository.importActivity(athlete, command);
     await repository.deleteActivity(athlete, first.activityId, { expectedRevision: 1 });
@@ -850,7 +864,7 @@ describe('M1-04x source revision activity details', () => {
 });
 
 it('rolls back source detail enrichment and its head when outbox delivery cannot be enqueued', async () => {
-  const athlete = randomUUID();
+  const athlete = await grantedAthlete();
   const legacy = input();
   const first = await repository.importActivity(athlete, legacy);
   const before = await repository.getActivity(athlete, first.activityId);
@@ -940,7 +954,7 @@ describe('M2-01k-g old-version detail replay across date boundaries', () => {
     ['v1', legacyDetails],
     ['v2', summaryDetails],
   ] as const)('reads and replays %s details exactly as written', async (_version, written) => {
-    const athlete = randomUUID();
+    const athlete = await grantedAthlete();
     const command: ActivityImport = { ...input(), details: written };
     const first = await repository.importActivity(athlete, command);
     const read = await repository.getActivityDetails(athlete, first.activityId);
@@ -968,7 +982,7 @@ describe('M2-01k-g old-version detail replay across date boundaries', () => {
   });
 
   it('keeps an old-version revision replayable after a newer version supersedes it', async () => {
-    const athlete = randomUUID();
+    const athlete = await grantedAthlete();
     const legacy: ActivityImport = { ...input(), details: legacyDetails };
     const first = await repository.importActivity(athlete, legacy);
     const newer: ActivityImport = {

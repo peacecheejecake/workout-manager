@@ -24,11 +24,16 @@ const admin = new Pool({ connectionString: adminUrl });
 const database = `tenant_purge_${randomUUID().replaceAll('-', '').slice(0, 12)}`;
 const runtimeRole = `tenant_purge_rt_${randomUUID().replaceAll('-', '').slice(0, 8)}`;
 const workerRole = `tenant_purge_wk_${randomUUID().replaceAll('-', '').slice(0, 8)}`;
-const upgradeUrl = () => {
+const upgradeUrl = (user?: string) => {
   const url = new URL(adminUrl);
   url.pathname = `/${database}`;
+  if (user !== undefined) {
+    url.username = user;
+    url.password = '';
+  }
   return url.toString();
 };
+const ownerRole = `upgrade_owner_${randomUUID().replaceAll('-', '').slice(0, 10)}`;
 let upgraded: Pool;
 // Found by name, never by number or position: a migration merged in before it renumbers it.
 const purgeIndex = migrationFileNames.findIndex((name) =>
@@ -56,11 +61,16 @@ async function eraseAs(pool: Pool, tenant: string): Promise<void> {
 }
 
 beforeAll(async () => {
-  await admin.query(`CREATE DATABASE ${database}`);
+  await admin.query(
+    `CREATE ROLE "${ownerRole}" LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE`,
+  );
+  await admin.query(`CREATE DATABASE ${database} OWNER "${ownerRole}"`);
   for (const role of [runtimeRole, workerRole])
     await admin.query(`CREATE ROLE "${role}" LOGIN NOSUPERUSER NOBYPASSRLS`);
   upgraded = new Pool({ connectionString: upgradeUrl() });
-  await migrate(upgradeUrl(), versionsBefore);
+  // Administrative fixture inspection remains separate from the plain installer.
+  await upgraded.query(`ALTER SCHEMA public OWNER TO "${ownerRole}"`);
+  await migrate(upgradeUrl(ownerRole), versionsBefore);
   await upgraded.query(`GRANT USAGE ON SCHEMA public TO "${runtimeRole}","${workerRole}"`);
   // The grant `grantOperations` gave the runtime role before this migration, written out.
   await upgraded.query(`GRANT EXECUTE ON FUNCTION public.erase_account(text) TO "${runtimeRole}"`);
@@ -73,6 +83,7 @@ afterAll(async () => {
   await upgraded?.end();
   await dropIsolatedDatabase(admin, database);
   for (const role of [runtimeRole, workerRole]) await admin.query(`DROP ROLE IF EXISTS "${role}"`);
+  await admin.query(`DROP ROLE IF EXISTS "${ownerRole}"`);
   await admin.end();
 });
 
@@ -110,7 +121,7 @@ describe('tenant object purge migration upgrade of a populated database', () => 
     expect(previousBody).toContain('erase_account_before_watched_ref_queue');
     expect(await granteesOf('erase_account')).toEqual([runtimeRole]);
 
-    await expect(migrate(upgradeUrl(), versionsBefore + 1)).resolves.toBeUndefined();
+    await expect(migrate(upgradeUrl(ownerRole), versionsBefore + 1)).resolves.toBeUndefined();
 
     const after = await checksums();
     expect(after.size).toBe(versionsBefore + 1);
@@ -122,9 +133,20 @@ describe('tenant object purge migration upgrade of a populated database', () => 
     expect(await granteesOf('erase_account')).toEqual([]);
     // Grant helpers name the objects of every migration, so they run on a fully migrated
     // database only (a later migration, such as M2-01y's 045, adds objects they grant).
-    await migrate(upgradeUrl());
+    await migrate(upgradeUrl(ownerRole));
+    const installer = await upgraded.query(
+      'SELECT rolsuper,rolbypassrls FROM pg_roles WHERE rolname=$1',
+      [ownerRole],
+    );
+    expect(installer.rows).toEqual([{ rolsuper: false, rolbypassrls: false }]);
+    const guarded = await upgraded.query(`SELECT pg_get_userbyid(relowner) AS owner FROM pg_class
+      WHERE relnamespace='public'::regnamespace AND relname IN
+      ('openai_budget_fx_definition','openai_budget_price_definition','openai_budget_activation','openai_budget_month','openai_budget_reservation','openai_budget_journal')`);
+    expect(guarded.rows).toHaveLength(6);
+    for (const row of guarded.rows) expect(row.owner).toBe(ownerRole);
+
     expect(await granteesOf('erase_account')).toEqual([]);
-    await grantOperations(upgradeUrl(), runtimeRole);
+    await grantOperations(upgradeUrl(ownerRole), runtimeRole);
     expect(await granteesOf('erase_account')).toEqual([runtimeRole]);
     expect(await granteesOf('erase_account_before_tenant_object_purge')).toEqual([]);
   });
@@ -166,7 +188,7 @@ describe('tenant object purge migration upgrade of a populated database', () => 
       });
     for (const name of ['lease_tenant_object_purge', 'finish_tenant_object_purge'])
       expect(await granteesOf(name), name).toEqual([]);
-    await grantResourceObjectCleanupWorker(upgradeUrl(), workerRole);
+    await grantResourceObjectCleanupWorker(upgradeUrl(ownerRole), workerRole);
     for (const name of ['lease_tenant_object_purge', 'finish_tenant_object_purge'])
       expect(await granteesOf(name), name).toEqual([workerRole]);
     // The worker still cannot erase, and the runtime cannot purge.

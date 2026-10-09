@@ -1,3 +1,4 @@
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
@@ -251,6 +252,7 @@ test('one account carries a recording through courses, thumbnails, exports and d
     );
 
   const headers = await login(page, 'Alice');
+  await grantAppProcessingForScenario(page);
   const origin = new URL(page.url()).origin;
   await page.setViewportSize({ width: 1280, height: 900 });
   const { result: activity, importBody } = await storeTrack(page, headers);

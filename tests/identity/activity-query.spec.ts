@@ -1,3 +1,4 @@
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
@@ -36,6 +37,7 @@ test('activity query uses effective values, literal search and requested local d
   page,
 }) => {
   const headers = await login(page);
+  await grantAppProcessingForScenario(page);
   const marker = `activity-query-${randomUUID()}`;
   const created = new Map<string, number>();
   const importActivity = async (

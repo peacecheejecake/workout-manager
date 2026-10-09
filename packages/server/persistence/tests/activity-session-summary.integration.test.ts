@@ -63,6 +63,7 @@ it('upgrades source revisions in place, preserves reports/tags and legacy receip
   const athlete = randomUUID(),
     repo = createActivityRepository(database),
     legacy = input();
+  await grantAppPurpose(athlete);
   const first = await repo.importActivity(athlete, legacy);
   const report = await repo.updateOverlay(athlete, first.activityId, {
     expectedRevision: 1,
@@ -122,7 +123,7 @@ it('upgrades source revisions in place, preserves reports/tags and legacy receip
   ).toBe('unchanged');
   expect((await repo.getActivityDetails(athlete, first.activityId))?.details).toEqual(detail2);
   const exported = await createOperationsRepository(database).exportAccount(athlete);
-  expect(exported.schemaVersion).toBe(28);
+  expect(exported.schemaVersion).toBe(33);
   expect(
     exported.data.sourceRevisions.map((row) => ({
       revision: row['source_revision'],
@@ -141,12 +142,13 @@ it('upgrades source revisions in place, preserves reports/tags and legacy receip
 it('rolls back summary enrichment on outbox failure and retries with the original command', async () => {
   const athlete = randomUUID(),
     repo = createActivityRepository(database),
-    legacy = input(),
-    base = await repo.importActivity(athlete, {
-      ...legacy,
-      source: { ...legacy.source, revision: 2 },
-      details: detail1,
-    });
+    legacy = input();
+  await grantAppPurpose(athlete);
+  const base = await repo.importActivity(athlete, {
+    ...legacy,
+    source: { ...legacy.source, revision: 2 },
+    details: detail1,
+  });
   const command = {
     ...legacy,
     idempotencyKey: randomUUID(),
@@ -195,8 +197,9 @@ it('rolls back summary enrichment on outbox failure and retries with the origina
 it('enforces ownership and suppression for session summaries and erases immutable source history', async () => {
   const athlete = randomUUID(),
     repo = createActivityRepository(database),
-    command = { ...input(), details: detail2 },
-    first = await repo.importActivity(athlete, command);
+    command = { ...input(), details: detail2 };
+  await grantAppPurpose(athlete);
+  const first = await repo.importActivity(athlete, command);
   expect(await repo.getActivityDetails(randomUUID(), first.activityId)).toBeNull();
   await repo.deleteActivity(athlete, first.activityId, { expectedRevision: 1 });
   expect(await repo.getActivityDetails(athlete, first.activityId)).toBeNull();
@@ -229,6 +232,7 @@ it('imports one mixed FIT parent with run, strength and unallocated bouts withou
   if (!command) throw new Error('Missing FIT parent');
   const athlete = randomUUID();
   const repository = createActivityRepository(database);
+  await grantAppPurpose(athlete);
   const first = await repository.importActivity(athlete, command);
   expect(first.outcome).toBe('imported');
   expect(await repository.importActivity(athlete, command)).toEqual(first);
@@ -262,3 +266,26 @@ it('imports one mixed FIT parent with run, strength and unallocated bouts withou
     ).outcome,
   ).toBe('suppressed');
 });
+
+// Explicit permission for this synthetic positive core-storage fixture only.
+// Preserve any existing withdrawal/revision and never recreate an erased tenant.
+async function grantAppPurpose(athleteId: string): Promise<void> {
+  const client = await admin.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock_shared(77210,1)');
+    // Serialize the absence check before the app event trigger, like the consent command.
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [athleteId]);
+    await client.query("SELECT set_config('app.athlete_id',$1,true)", [athleteId]);
+    await client.query(
+      "INSERT INTO consent(athlete_id,kind,granted,revision) SELECT $1,'app',true,1 WHERE NOT EXISTS (SELECT 1 FROM tenant_erasure WHERE athlete_id=$1) ON CONFLICT (athlete_id,kind) DO NOTHING",
+      [athleteId],
+    );
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}

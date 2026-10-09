@@ -1,3 +1,4 @@
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';
 import { identityMobileOrigin, identityWebOrigin } from '../../scripts/fixtures/identity-ports';
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
@@ -55,6 +56,7 @@ for (const shell of shells) {
   }) => {
     test.setTimeout(120_000);
     const alice = await login(page, 'Alice', shell.origin);
+    await grantAppProcessingForScenario(page);
     const apiOrigin = alice.apiOrigin;
     const marker = `Alice private ${randomUUID()}`;
 

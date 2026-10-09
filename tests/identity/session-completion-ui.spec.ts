@@ -48,11 +48,12 @@ test.afterEach(async ({ page }) => {
   expect((await page.request.get('/bff/v1/session', { timeout: 5000 })).status()).toBe(401);
 });
 
-async function setup(page: Page) {
+async function setup(page: Page, beforeProtectedWrite: (page: Page) => Promise<void>) {
   page.setDefaultTimeout(5000);
   page.setDefaultNavigationTimeout(5000);
   const headers = await login(page, 'Alice');
   cleanupHeaders.set(page, headers);
+  await beforeProtectedWrite(page);
   const previousResponse = await page.request.get('/bff/v1/plans/current', { headers });
   expect(previousResponse.status()).toBe(200);
   const previous = planReadSchema.parse(await previousResponse.json());
@@ -124,7 +125,7 @@ test('explicit completion and reasoned retraction preserve drafts and protect on
   page,
 }) => {
   await page.setViewportSize({ width: 320, height: 850 });
-  const fixture = await setup(page);
+  const fixture = await setup(page, grantAppProcessingForScenario);
   const before = await fixture.actualCount();
   let posts = 0;
   page.on('request', (request) => {
@@ -195,7 +196,7 @@ test('explicit completion and reasoned retraction preserve drafts and protect on
 test('a committed completion with a lost browser response retries the exact command once', async ({
   page,
 }) => {
-  const fixture = await setup(page);
+  const fixture = await setup(page, grantAppProcessingForScenario);
   const attempts: { key: string | undefined; body: string | null }[] = [];
   const pattern = '**/bff/v1/plans/session-completion?*';
   await page.route(pattern, async (route) => {
@@ -234,7 +235,7 @@ test('a committed completion with a lost browser response retries the exact comm
 test('a stale saved-plan confirmation requires fresh reading and a new explicit confirmation', async ({
   page,
 }) => {
-  const fixture = await setup(page);
+  const fixture = await setup(page, grantAppProcessingForScenario);
   await fixture.panel.getByRole('button', { name: '완료 확인하기', exact: true }).click();
   const newer = await fixture.save(fixture.saved.id, {
     ...fixture.draft,
@@ -268,3 +269,4 @@ test('a stale saved-plan confirmation requires fresh reading and a new explicit 
   });
   await expect(fixture.note).toHaveValue('Keep this unsaved synthetic note');
 });
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';

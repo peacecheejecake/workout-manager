@@ -1,3 +1,4 @@
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';
 import { test, expect } from '@playwright/test';
 import { fileURLToPath } from 'node:url';
 const fixture = fileURLToPath(new URL('../fixtures/fit-activity-export.json', import.meta.url));
@@ -8,6 +9,7 @@ test('FIT export import, correction, replay and deletion suppression use canonic
   await page.goto('/account');
   await page.getByRole('link', { name: 'OIDC로 로그인' }).click();
   await page.getByRole('link', { name: 'Sign in as Alice' }).click();
+  await grantAppProcessingForScenario(page);
   await page.getByRole('link', { name: '가져온 활동', exact: true }).click();
   await page.getByRole('link', { name: 'FIT 가져오기·정정', exact: true }).click();
   await page.getByLabel('가져올 활동 JSON').setInputFiles(fixture);

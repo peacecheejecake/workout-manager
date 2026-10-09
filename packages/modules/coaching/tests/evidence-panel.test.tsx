@@ -220,3 +220,27 @@ describe('stored evidence panel recovery', () => {
     expect(f.store.getState().drafts[id]?.timezone).toBe('UTC');
   });
 });
+
+it.each([
+  ['APP_CONSENT_REQUIRED', '앱 데이터 처리 동의가 필요합니다.'],
+  ['STALE_APP_ADMISSION', '앱 데이터 처리 동의가 변경되어'],
+  ['APP_BINDING_UNAVAILABLE', '앱 데이터 처리 동의 기준을 확인할 수 없어'],
+] as const)(
+  'keeps the evidence draft on %s without a conversation conflict',
+  async (code, message) => {
+    const f = setup();
+    f.request.mockImplementation(async (input) =>
+      input.method === 'POST'
+        ? reply({ error: { code, detail: 'private source' } }, 409)
+        : reply({ items: [], total: 0 }),
+    );
+    await userEvent.click(screen.getByRole('button', { name: '근거 저장' }));
+    expect(await screen.findByText(new RegExp(message))).toBeTruthy();
+    expect(screen.getByLabelText('근거 시작일')).toHaveValue('2026-09-17');
+    expect(f.store.getState().drafts[id]?.from).toBe('2026-09-17');
+    expect(f.props.onSearchChange).not.toHaveBeenCalled();
+    expect(f.request.mock.calls.filter(([input]) => input.method === 'POST')).toHaveLength(1);
+    expect(screen.queryByText(/상담 기록 또는 요청이 충돌했습니다/)).toBeNull();
+    expect(screen.queryByText(/private source/)).toBeNull();
+  },
+);

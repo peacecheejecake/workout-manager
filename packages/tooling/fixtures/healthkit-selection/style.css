@@ -1,0 +1,35 @@
+:root {
+  font-family: system-ui, sans-serif;
+  color: #182131;
+  background: #f4f6fb;
+  font-size: 16px;
+}
+body {
+  margin: 0;
+}
+main {
+  max-width: 960px;
+  margin-inline: auto;
+  padding: 16px;
+  overflow-wrap: anywhere;
+}
+main.narrow {
+  max-width: 280px;
+}
+label {
+  display: block;
+  margin-block: 12px;
+}
+button,
+select {
+  max-width: 100%;
+  min-height: 44px;
+  font: inherit;
+}
+button {
+  white-space: normal;
+}
+*:focus-visible {
+  outline: 3px solid #6256b8;
+  outline-offset: 3px;
+}

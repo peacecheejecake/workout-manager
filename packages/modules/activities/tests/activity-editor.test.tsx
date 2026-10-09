@@ -407,3 +407,34 @@ it('selects a session from a validated plan snapshot and submits its exact versi
     ),
   ).toBe(true);
 });
+
+it.each([
+  [
+    'APP_CONSENT_REQUIRED',
+    '앱 저장·처리 동의가 필요합니다. 계정에서 동의 상태를 확인하세요. 초안은 유지됩니다.',
+  ],
+  [
+    'STALE_APP_ADMISSION',
+    '앱 동의 상태가 변경되었습니다. 이전 검토를 다시 확인하세요. 초안은 유지됩니다.',
+  ],
+  [
+    'APP_BINDING_UNAVAILABLE',
+    '앱 처리 허용 근거를 확인할 수 없습니다. 계정과 최신 자료를 다시 확인하세요. 초안은 유지됩니다.',
+  ],
+] as const)(
+  'preserves editable actual draft for %s without a false success or implicit grant',
+  async (code, message) => {
+    const { request } = setup(async (input) =>
+      input.method === 'GET' ? reply({ head: null, history: [] }) : reply({ error: { code } }, 409),
+    );
+    const user = await prepare();
+    await user.click(screen.getByRole('button', { name: '실제 활동 확인하고 저장' }));
+    await screen.findByText(message);
+    expect(screen.getByLabelText('활동 제목')).toHaveValue('직접 보고');
+    expect(screen.getByLabelText('활동 제목')).toBeEnabled();
+    expect(screen.queryByText(/기록이 변경되었거나/)).not.toBeInTheDocument();
+    expect(screen.queryByText('활동 저장이 확인되었습니다.')).not.toBeInTheDocument();
+    expect(request.mock.calls.filter(([r]) => r.method === 'POST')).toHaveLength(1);
+    expect(request.mock.calls.some(([r]) => r.path.includes('/consents/'))).toBe(false);
+  },
+);

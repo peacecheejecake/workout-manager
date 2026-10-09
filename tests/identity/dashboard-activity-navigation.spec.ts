@@ -1,3 +1,4 @@
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
@@ -57,6 +58,7 @@ test('dashboard activity links use the applied plan timezone and exact effective
 }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   const headers = await login(page, 'Alice');
+  await grantAppProcessingForScenario(page);
   cleanupHeaders.set(page, headers);
   const previous = await page.request.get('/bff/v1/plans/current', { headers });
   expect(previous.status()).toBe(200);

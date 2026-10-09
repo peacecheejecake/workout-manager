@@ -53,11 +53,12 @@ test.afterEach(async ({ page }) => {
   expect((await page.request.get('/bff/v1/session', { timeout: 5000 })).status()).toBe(401);
 });
 
-async function setup(page: Page) {
+async function setup(page: Page, beforeProtectedWrite: (page: Page) => Promise<void>) {
   page.setDefaultTimeout(5000);
   page.setDefaultNavigationTimeout(5000);
   const headers = await login(page, 'Alice');
   cleanupHeaders.set(page, headers);
+  await beforeProtectedWrite(page);
   const previousResponse = await page.request.get('/bff/v1/plans/current', { headers });
   expect(previousResponse.status()).toBe(200);
   const previous = planReadSchema.parse(await previousResponse.json());
@@ -163,7 +164,7 @@ test('linked actuals aggregate beyond list pages and stay distinct from saved ta
 }) => {
   test.setTimeout(120000);
   await page.setViewportSize({ width: 1440, height: 1000 });
-  const fixture = await setup(page);
+  const fixture = await setup(page, grantAppProcessingForScenario);
   const session = fixture.saved.draft.sessions[0];
   assert.ok(session);
   const first = row(page, 'Synthetic completion session 1');
@@ -246,7 +247,7 @@ test('range comparison uses explicit links and handles missing values, failures 
   page,
 }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
-  const fixture = await setup(page),
+  const fixture = await setup(page, grantAppProcessingForScenario),
     session = fixture.saved.draft.sessions[1];
   assert.ok(session);
   const second = row(page, 'Synthetic completion session 2');
@@ -316,3 +317,4 @@ test('range comparison uses explicit links and handles missing values, failures 
   await expect(second).toContainText('연결된 활동 없음');
   await expect(second).toContainText('완료 확인 기록 없음');
 });
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';

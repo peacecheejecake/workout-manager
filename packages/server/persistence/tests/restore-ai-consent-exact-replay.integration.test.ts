@@ -180,6 +180,9 @@ describe('owner-only exact AI consent replay', () => {
            '{"kind":"session","targetId":"session"}'::jsonb,1)`,
         [athleteId, threadId, planId],
       );
+      // Explicit app admission for this new evidence fixture; AI withdrawal
+      // below must still purge it independently of the app consent state.
+      await client.query("INSERT INTO consent VALUES($1,'app',true,1)", [athleteId]);
       await client.query(
         `INSERT INTO core_evidence_snapshot(athlete_id,id,thread_id,created_at,body)
          VALUES($1,$2,$3,clock_timestamp(),$4::jsonb)`,

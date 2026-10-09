@@ -33,6 +33,7 @@ const upgradeUrl = (user?: string) => {
   }
   return url.toString();
 };
+const ownerRole = `upgrade_owner_${randomUUID().replaceAll('-', '').slice(0, 10)}`;
 let upgraded: Pool;
 let versionsBefore = 0;
 const tables = [
@@ -43,14 +44,19 @@ const tables = [
 ];
 
 beforeAll(async () => {
-  await admin.query(`CREATE DATABASE ${database}`);
+  await admin.query(
+    `CREATE ROLE "${ownerRole}" LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE`,
+  );
+  await admin.query(`CREATE DATABASE ${database} OWNER "${ownerRole}"`);
   await admin.query(`CREATE ROLE "${runtimeRole}" LOGIN NOSUPERUSER NOBYPASSRLS`);
   upgraded = new Pool({ connectionString: upgradeUrl() });
+  // Administrative fixture inspection remains separate from the plain installer.
+  await upgraded.query(`ALTER SCHEMA public OWNER TO "${ownerRole}"`);
   // Found by name, not by number: renumbering at merge time must not move the starting point.
   const index = migrationFileNames.findIndex((file) => /^\d+_garmin_unofficial\.sql$/.test(file));
   expect(index).toBeGreaterThan(0);
   versionsBefore = index;
-  await migrate(upgradeUrl(), versionsBefore);
+  await migrate(upgradeUrl(ownerRole), versionsBefore);
   await upgraded.query(`GRANT USAGE ON SCHEMA public TO "${runtimeRole}"`);
 });
 
@@ -58,6 +64,7 @@ afterAll(async () => {
   await upgraded?.end();
   await dropIsolatedDatabase(admin, database);
   await admin.query(`DROP ROLE IF EXISTS "${runtimeRole}"`);
+  await admin.query(`DROP ROLE IF EXISTS "${ownerRole}"`);
   await admin.end();
 });
 
@@ -95,7 +102,7 @@ describe('unofficial collector migration upgrade of a database built by every ea
     expect(eraseBefore).toBeDefined();
     const grantsBefore = await tableGrants();
 
-    await expect(migrate(upgradeUrl(), versionsBefore + 1)).resolves.toBeUndefined();
+    await expect(migrate(upgradeUrl(ownerRole), versionsBefore + 1)).resolves.toBeUndefined();
 
     const after = await checksums();
     expect(after.size).toBe(versionsBefore + 1);
@@ -135,10 +142,21 @@ describe('unofficial collector migration upgrade of a database built by every ea
   });
 
   it('gives the runtime role its own rows only, and erasure removes them', async () => {
-    await migrate(upgradeUrl());
-    await grantOperations(upgradeUrl(), runtimeRole);
-    await grantGarmin(upgradeUrl(), runtimeRole);
-    await grantGarminUnofficial(upgradeUrl(), runtimeRole);
+    await migrate(upgradeUrl(ownerRole));
+    const installer = await upgraded.query(
+      'SELECT rolsuper,rolbypassrls FROM pg_roles WHERE rolname=$1',
+      [ownerRole],
+    );
+    expect(installer.rows).toEqual([{ rolsuper: false, rolbypassrls: false }]);
+    const guarded = await upgraded.query(`SELECT pg_get_userbyid(relowner) AS owner FROM pg_class
+      WHERE relnamespace='public'::regnamespace AND relname IN
+      ('openai_budget_fx_definition','openai_budget_price_definition','openai_budget_activation','openai_budget_month','openai_budget_reservation','openai_budget_journal')`);
+    expect(guarded.rows).toHaveLength(6);
+    for (const row of guarded.rows) expect(row.owner).toBe(ownerRole);
+
+    await grantOperations(upgradeUrl(ownerRole), runtimeRole);
+    await grantGarmin(upgradeUrl(ownerRole), runtimeRole);
+    await grantGarminUnofficial(upgradeUrl(ownerRole), runtimeRole);
     const privileges = await upgraded.query(
       `SELECT has_table_privilege($1,'garmin_private.revocation','INSERT') AS queue,
          has_function_privilege($1,'public.erase_account_before_garmin_unofficial(text)',

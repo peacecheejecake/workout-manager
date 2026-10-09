@@ -35,7 +35,7 @@ const occurredAt = z
       Number.isFinite(Date.parse(value)),
   );
 const base = z.object({
-  schemaVersion: z.union([z.literal(1), z.literal(2)]),
+  schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5)]),
   eventId: uuid,
   athleteId: boundedIdentifier,
   occurredAt,
@@ -43,6 +43,31 @@ const base = z.object({
 const record = z
   .discriminatedUnion('kind', [
     base.extend({ kind: z.literal('tenant_erased') }).strict(),
+    base
+      .extend({
+        kind: z.enum(['race_event_deleted', 'race_result_deleted', 'training_best_deleted']),
+        targetId: uuid,
+        racePreviousRevision: revision,
+        raceDeletedRevision: revision,
+      })
+      .strict(),
+    base
+      .extend({
+        kind: z.enum([
+          'healthkit_workout_deregistration_pending',
+          'healthkit_workout_deregistration_released',
+        ]),
+        targetId: uuid,
+        healthKitClaimEpoch: uuid,
+        healthKitOperationId: uuid,
+        healthKitConsentRevision: revision,
+        healthKitRegistryPreviousRevision: z.number().int().min(0).max(2147483646),
+        healthKitRegistryRevision: revision,
+        healthKitObjectScopes: z
+          .array(z.object({ kind: z.enum(['activity', 'course']), id: uuid }).strict())
+          .max(1000),
+      })
+      .strict(),
     base.extend({ kind: z.literal('course_deleted'), targetId: uuid }).strict(),
     base
       .extend({
@@ -72,6 +97,31 @@ const record = z
     base
       .extend({
         kind: z.literal('healthkit_consent_transition'),
+        consentPreviousRevision: revision.nullable(),
+        consentPreviousGranted: z.boolean().nullable(),
+        consentRevision: revision,
+        consentGranted: z.boolean(),
+      })
+      .strict(),
+    base
+      .extend({
+        schemaVersion: z.literal(5),
+        kind: z.literal('app_consent_transition'),
+        occurredAt: occurredAt.refine((value) => {
+          const date = value.slice(0, 10);
+          const midnight = new Date(`${date}T00:00:00Z`);
+          const hour = Number(value.slice(11, 13));
+          const minute = Number(value.slice(14, 16));
+          const second = Number(value.slice(17, 19));
+          return (
+            Number(date.slice(0, 4)) >= 1 &&
+            Number.isFinite(midnight.getTime()) &&
+            midnight.toISOString().slice(0, 10) === date &&
+            hour < 24 &&
+            minute < 60 &&
+            second < 60
+          );
+        }),
         consentPreviousRevision: revision.nullable(),
         consentPreviousGranted: z.boolean().nullable(),
         consentRevision: revision,
@@ -128,8 +178,24 @@ const record = z
   .superRefine((item, context) => {
     let valid = true;
     switch (item.kind) {
+      case 'race_event_deleted':
+      case 'race_result_deleted':
+      case 'training_best_deleted':
+        valid =
+          item.schemaVersion === 4 &&
+          item.raceDeletedRevision === Math.min(item.racePreviousRevision + 1, 2147483647);
+        break;
+      case 'healthkit_workout_deregistration_pending':
+      case 'healthkit_workout_deregistration_released':
+        valid =
+          item.schemaVersion === 3 &&
+          item.healthKitRegistryRevision === item.healthKitRegistryPreviousRevision + 1 &&
+          new Set(item.healthKitObjectScopes.map((scope) => `${scope.kind}:${scope.id}`)).size ===
+            item.healthKitObjectScopes.length;
+        break;
       case 'healthkit_consent_transition':
       case 'ai_consent_transition':
+      case 'app_consent_transition':
         valid =
           (item.consentPreviousRevision === null) === (item.consentPreviousGranted === null) &&
           (item.consentPreviousRevision === null
@@ -182,6 +248,20 @@ const record = z
       case 'activity_deleted':
         break;
     }
+    if (item.schemaVersion === 5 && item.kind !== 'app_consent_transition') valid = false;
+    if (
+      item.schemaVersion === 4 &&
+      item.kind !== 'race_event_deleted' &&
+      item.kind !== 'race_result_deleted' &&
+      item.kind !== 'training_best_deleted'
+    )
+      valid = false;
+    if (
+      item.schemaVersion === 3 &&
+      item.kind !== 'healthkit_workout_deregistration_pending' &&
+      item.kind !== 'healthkit_workout_deregistration_released'
+    )
+      valid = false;
     if (
       item.schemaVersion === 2 &&
       item.kind !== 'resource_share_revoked' &&

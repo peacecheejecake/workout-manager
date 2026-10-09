@@ -14,6 +14,7 @@
   "exports": {
     "./runner": "./src/runner.ts",
     "./candidates": "./src/candidates.ts",
-    "./joint-candidates": "./src/joint-candidates.ts"
+    "./joint-candidates": "./src/joint-candidates.ts",
+    "./coaching-execution-selection": "./src/coaching-execution-selection.ts"
   }
 }

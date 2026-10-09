@@ -50,11 +50,12 @@ test.afterEach(async ({ page }) => {
 
 const plannerUrl =
   '/planner?lens=calendar&from=2026-09-14&to=2026-09-28&plannedView=agenda&plannedSession=quantity-session&view=stack';
-async function setup(page: Page) {
+async function setup(page: Page, beforeProtectedWrite: (page: Page) => Promise<void>) {
   page.setDefaultTimeout(5000);
   page.setDefaultNavigationTimeout(5000);
   const headers = await login(page, 'Alice');
   cleanupHeaders.set(page, headers);
+  await beforeProtectedWrite(page);
   const get = async (path: string) => {
     const response = await page.request.get(path, { headers, timeout: 5000 });
     expect(response.status()).toBe(200);
@@ -134,7 +135,7 @@ test('explicit range targets persist without scalar guesses and appear in dashbo
   page,
 }) => {
   await page.setViewportSize({ width: 320, height: 900 });
-  const fixture = await setup(page);
+  const fixture = await setup(page, grantAppProcessingForScenario);
   await ranges(page);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   expect((await fixture.read()).head).toEqual(fixture.saved);
@@ -204,7 +205,7 @@ test('explicit range targets persist without scalar guesses and appear in dashbo
 test('invalid range edits cannot save, and saved intensity protection also applies to range targets while duplication preserves them', async ({
   page,
 }) => {
-  const fixture = await setup(page);
+  const fixture = await setup(page, grantAppProcessingForScenario);
   await ranges(page);
   await page.getByLabel('계획 시간 하한 (초)', { exact: true }).fill('121');
   await expect(page.getByRole('button', { name: '변경 미리보기', exact: true })).toBeDisabled();
@@ -250,3 +251,4 @@ test('invalid range edits cannot save, and saved intensity protection also appli
     fixture.actuals,
   );
 });
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';

@@ -59,6 +59,26 @@ export interface JointCandidateReviewWorkspaceProps {
   createId?: () => string;
 }
 
+const knownCandidateErrors = new Set([
+  'UNSUPPORTED_SCHEMA_VERSION',
+  'CANDIDATE_UNAVAILABLE',
+  'CANDIDATE_DIGEST_MISMATCH',
+  'CANDIDATE_MISMATCH',
+  'CANDIDATE_NOT_APPROVABLE',
+  'CANDIDATE_LIMIT_REACHED',
+  'STALE_BASIS',
+  'AI_CONSENT_REQUIRED',
+  'INVALID_PROJECTION',
+  'INVALID_PARTIAL_SELECTION',
+  'IDEMPOTENCY_CONFLICT',
+  'INVALID_REQUEST',
+  'UNAUTHENTICATED',
+  'FORBIDDEN',
+  'APP_CONSENT_REQUIRED',
+  'STALE_APP_ADMISSION',
+  'APP_BINDING_UNAVAILABLE',
+]);
+
 class JointCandidateRequestError extends Error {
   constructor(
     readonly status: number,
@@ -91,7 +111,9 @@ function createJointCandidateApi(transport: AuthenticatedTransport) {
       const parsed = z.object({ error: z.object({ code: z.string() }) }).safeParse(reply.body);
       throw new JointCandidateRequestError(
         reply.status,
-        parsed.success ? parsed.data.error.code : 'REQUEST_FAILED',
+        parsed.success && knownCandidateErrors.has(parsed.data.error.code)
+          ? parsed.data.error.code
+          : 'REQUEST_FAILED',
       );
     }
     return schema.parse(reply.body);
@@ -474,9 +496,9 @@ function Review({
   const [activeCandidateId, setActiveCandidateId] = useState(() => uuid.parse(candidateId));
   const [selection, setSelection] = useState<Selection>(emptySelection);
   const [reviewed, setReviewed] = useState(false);
-  const [phase, setPhase] = useState<'idle' | 'sending' | 'uncertain' | 'conflict' | 'approved'>(
-    'idle',
-  );
+  const [phase, setPhase] = useState<
+    'idle' | 'sending' | 'uncertain' | 'conflict' | 'admission_blocked' | 'approved'
+  >('idle');
   const [feedback, setFeedback] = useState('');
   const [approved, setApproved] = useState<ApprovalResult | null>(null);
   const pending = useRef<PendingCommand | null>(null);
@@ -551,7 +573,13 @@ function Review({
       }
     } catch (error) {
       if (signal.aborted) return;
-      if (
+      const admissionMessage = appAdmissionMessage(error);
+      if (admissionMessage) {
+        pending.current = null;
+        setReviewed(false);
+        setPhase('admission_blocked');
+        setFeedback(admissionMessage);
+      } else if (
         error instanceof JointCandidateRequestError &&
         error.status >= 400 &&
         error.status < 500
@@ -607,7 +635,7 @@ function Review({
     if (latest.isSuccess && latest.data?.id === activeCandidateId) {
       setReviewed(false);
       setSelection(emptySelection);
-      if (phase !== 'conflict')
+      if (phase !== 'conflict' && phase !== 'admission_blocked')
         setFeedback('최신 후보를 다시 불러왔습니다. 변경 내용을 검토하세요.');
     } else {
       setReviewed(false);
@@ -754,7 +782,11 @@ function Review({
       {phase === 'conflict' ? (
         <p role="alert">기준이 변경됐거나 요청이 거절됐습니다. 이 후보의 승인을 중단했습니다.</p>
       ) : null}
-      {feedback ? <p role={phase === 'conflict' ? 'alert' : 'status'}>{feedback}</p> : null}
+      {feedback ? (
+        <p role={phase === 'conflict' || phase === 'admission_blocked' ? 'alert' : 'status'}>
+          {feedback}
+        </p>
+      ) : null}
       {approved ? (
         <p role="status">
           적용 완료 · 훈련 {approved.training?.id ?? '변경 없음'} · 영양 버전{' '}
@@ -763,4 +795,18 @@ function Review({
       ) : null}
     </section>
   );
+}
+
+function appAdmissionMessage(error: unknown): string | null {
+  if (!(error instanceof JointCandidateRequestError)) return null;
+  switch (error.code) {
+    case 'APP_CONSENT_REQUIRED':
+      return '앱 데이터 처리 동의가 필요합니다. 초안과 후보는 유지했습니다. 동의 상태를 확인해 주세요.';
+    case 'STALE_APP_ADMISSION':
+      return '앱 데이터 처리 동의가 변경되어 요청을 적용하지 않았습니다. 초안과 후보는 유지했습니다. 동의 상태와 최신 근거를 확인해 주세요.';
+    case 'APP_BINDING_UNAVAILABLE':
+      return '이 요청의 앱 데이터 처리 동의 기준을 확인할 수 없어 적용하지 않았습니다. 초안과 후보는 유지했습니다. 최신 근거를 다시 확인해 주세요.';
+    default:
+      return null;
+  }
 }

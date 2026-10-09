@@ -1,3 +1,4 @@
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';
 import { identityMobileOrigin, identityWebOrigin } from '../../scripts/fixtures/identity-ports';
 import assert from 'node:assert/strict';
 import { expect, test, type Page } from '@playwright/test';
@@ -49,6 +50,19 @@ async function login(page: Page, name: 'Bob' | 'Carol') {
 }
 function panel(page: Page) {
   return page.getByRole('region', { name: '비공식 임시 Garmin 연결', exact: true });
+}
+async function submitUnofficialLogin(page: Page, expectedStatus: 200 | 409) {
+  // Login includes a real Python fixture call. Observe its bounded HTTP receipt before
+  // applying the unchanged UI assertion deadline; a click is not a completed login.
+  const receipt = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'POST' &&
+      new URL(response.url()).pathname === '/bff/v1/integrations/garmin-unofficial/login',
+  );
+  await panel(page).getByRole('button', { name: '비공식 연결 로그인' }).click();
+  const response = await receipt;
+  expect(response.status()).toBe(expectedStatus);
+  expect(await response.finished()).toBeNull();
 }
 async function unofficialState(page: Page, headers: Record<string, string>) {
   const response = await page.request.get(statusPath, { headers });
@@ -136,6 +150,7 @@ test('Next shell: the owner connects with MFA, imports, sees the unofficial labe
   page,
 }) => {
   const owner = await login(page, 'Carol');
+  await grantAppProcessingForScenario(page);
   expect(owner.athleteId).toBe(unofficialOwner.athleteId);
   const checkPassword = watchForPassword(page, unofficialAccounts.mfa.password);
   const section = panel(page);
@@ -150,7 +165,7 @@ test('Next shell: the owner connects with MFA, imports, sees the unofficial labe
 
   await section.getByLabel('Garmin 이메일').fill(unofficialAccounts.mfa.email);
   await section.getByLabel('Garmin 비밀번호').fill(unofficialAccounts.mfa.password);
-  await section.getByRole('button', { name: '비공식 연결 로그인' }).click();
+  await submitUnofficialLogin(page, 200);
   await expect(section.getByText('비공식 연결 상태: 인증 코드 입력 대기')).toBeVisible();
   await section.getByLabel('Garmin 인증 코드').fill('000000');
   await section.getByRole('button', { name: '인증 코드 확인' }).click();
@@ -215,12 +230,13 @@ test('Vite shell: the owner reconnects without MFA, the rerun imports nothing ne
   page,
 }) => {
   const owner = await login(page, 'Carol');
+  await grantAppProcessingForScenario(page);
   await page.goto(`${shells.Vite}/account`);
   const section = panel(page);
   await expect(section).toBeVisible();
   await section.getByLabel('Garmin 이메일').fill(unofficialAccounts.plain.email);
   await section.getByLabel('Garmin 비밀번호').fill(unofficialAccounts.plain.password);
-  await section.getByRole('button', { name: '비공식 연결 로그인' }).click();
+  await submitUnofficialLogin(page, 200);
   await expect(section.getByText('비공식 연결 상태: 연결됨')).toBeVisible();
   expect(await importNow(page, owner.headers)).toMatchObject({ imported: 0, skipped: 2 });
   for (const width of [320, 768]) {
@@ -238,7 +254,7 @@ test('a different Garmin account is refused after the first one was pinned', asy
   const section = panel(page);
   await section.getByLabel('Garmin 이메일').fill(unofficialAccounts.otherProfile.email);
   await section.getByLabel('Garmin 비밀번호').fill(unofficialAccounts.otherProfile.password);
-  await section.getByRole('button', { name: '비공식 연결 로그인' }).click();
+  await submitUnofficialLogin(page, 409);
   await expect(section.getByRole('alert')).toContainText(
     '처음 연결한 Garmin 계정과 다른 계정이라 연결하지 않았습니다',
   );

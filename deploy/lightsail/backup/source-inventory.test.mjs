@@ -56,8 +56,9 @@ function compare(overrides = {}) {
 
 test('candidate pin matches 001–093 file bytes and covers all 16 row-HMAC relations', () => {
   assert.equal(registry.pinStatus, 'candidate_migrations_001_093_pg14');
-  assert.equal(migrationFileNames.length, 93);
-  for (const [index, file] of migrationFileNames.entries()) {
+  // This historical candidate pin remains limited to93; newer schemas are not covered.
+  assert.ok(migrationFileNames.length >= 93);
+  for (const [index, file] of migrationFileNames.slice(0, 93).entries()) {
     const checksum = createHash('sha256')
       .update(
         readFileSync(
@@ -242,6 +243,24 @@ test('runtime role, changed snapshot, excessive catalog and raw row data are ref
   };
   await assert.rejects(
     buildSourceInventory({ client: runtime, expectedSnapshotId: '1:2:' }),
+    /BACKUP_SOURCE_INVENTORY_UNVERIFIED/,
+  );
+});
+
+test('current migration extensions cannot satisfy the historical93 catalog pin', () => {
+  assert.ok(migrationFileNames.length >= 100);
+  const currentMigrations = migrationFileNames.map((file, index) => ({
+    version: index + 1,
+    checksum: createHash('sha256')
+      .update(
+        readFileSync(
+          new URL(`../../../packages/server/persistence/migrations/${file}`, import.meta.url),
+        ),
+      )
+      .digest('hex'),
+  }));
+  assert.throws(
+    () => compare({ migrations: currentMigrations }),
     /BACKUP_SOURCE_INVENTORY_UNVERIFIED/,
   );
 });

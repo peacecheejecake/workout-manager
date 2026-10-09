@@ -1,6 +1,10 @@
 import { Writable } from 'node:stream';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createApi } from '../src/app.js';
+import {
+  AppConsentRequiredError,
+  AppAdmissionBindingError,
+} from '@workout/server-persistence/app-admission';
 import type { Principal } from '../src/ports.js';
 import { PersistenceConflict } from '@workout/server-persistence/repositories';
 
@@ -214,5 +218,32 @@ describe('M0-05 API boundary (FUT-01; V2-F31)', () => {
     await app.ready();
     await app.close();
     expect(close).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('app admission errors at the shared API boundary', () => {
+  it.each([
+    new AppConsentRequiredError(),
+    new AppAdmissionBindingError('APP_CONSENT_REQUIRED'),
+    new AppAdmissionBindingError('STALE_APP_ADMISSION'),
+    new AppAdmissionBindingError('APP_BINDING_UNAVAILABLE'),
+  ])('returns a stable conflict for the trusted gate class ($code)', async (failure) => {
+    const { app, consent } = fixture();
+    consent.getConsent.mockRejectedValueOnce(failure);
+    const response = await app.inject({ url: '/bff/v1/consents/app', headers });
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({ error: { code: failure.code } });
+  });
+
+  it('does not treat an arbitrary thrown code as a trusted app conflict', async () => {
+    const { app, consent } = fixture();
+    const failure = Object.assign(new Error('private provider detail'), {
+      code: 'APP_CONSENT_REQUIRED',
+    });
+    consent.getConsent.mockRejectedValueOnce(failure);
+    const response = await app.inject({ url: '/bff/v1/consents/app', headers });
+    expect(response.statusCode).toBe(500);
+    expect(response.json()).toMatchObject({ error: { code: 'INTERNAL_ERROR' } });
+    expect(response.body).not.toContain('private provider detail');
   });
 });

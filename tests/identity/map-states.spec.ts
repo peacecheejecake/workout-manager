@@ -1,3 +1,4 @@
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
 import {
@@ -128,6 +129,7 @@ for (const shell of shells) {
     }) => {
       test.setTimeout(60_000);
       const headers = await login(page);
+      await grantAppProcessingForScenario(page);
       test.skip(
         !(await hasBasemapDeployment(page, shell.origin)),
         'No self-hosted basemap deployment on this machine (scripts/build-basemap.mjs is opt-in).',
@@ -247,6 +249,7 @@ for (const shell of shells) {
     }) => {
       test.setTimeout(60_000);
       const headers = await login(page);
+      await grantAppProcessingForScenario(page);
       await page.setViewportSize({ width: 1280, height: 900 });
       const S = [126.978, 37.566] as const;
       const F = [126.982, 37.569] as const;

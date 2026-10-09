@@ -10,10 +10,12 @@ export default defineConfig({
           include: [
             'packages/tooling/tests/**/*.test.{ts,mjs}',
             'packages/api-client/tests/**/*.test.ts',
+            'packages/modules/*/tests/**/*.test.ts',
             'packages/platform/tests/**/*.test.ts',
             'apps/api/tests/**/*.test.ts',
             'packages/server/identity/tests/**/*.test.ts',
             'packages/server/coaching/tests/**/*.test.ts',
+            'packages/server/persistence/tests/**/*.test.ts',
             'packages/server/media/tests/**/*.test.ts',
             // These two packages ship their own vitest config, so their tests
             // never reached the default suite or CI. Retrieval chunking and the

@@ -47,11 +47,12 @@ test.afterEach(async ({ page }) => {
   expect((await page.request.get('/bff/v1/session', { timeout: 5000 })).status()).toBe(401);
 });
 
-async function setupTimeline(page: Page) {
+async function setupTimeline(page: Page, beforeProtectedWrite: (page: Page) => Promise<void>) {
   page.setDefaultTimeout(5000);
   page.setDefaultNavigationTimeout(5000);
   const headers = await login(page);
   cleanupHeaders.set(page, headers);
+  await beforeProtectedWrite(page);
   const readPlan = async () => {
     const response = await page.request.get('/bff/v1/plans/current', { headers });
     expect(response.status()).toBe(200);
@@ -174,7 +175,7 @@ function preservedQuery(page: Page) {
 test('timeline preserves leap-day proportions, gaps and shared selection across keyboard, Orbit, list and URL history', async ({
   page,
 }) => {
-  const f = await setupTimeline(page);
+  const f = await setupTimeline(page, grantAppProcessingForScenario);
   await page.goto(f.path);
   const region = explorer(page);
   const timelineView = region.getByRole('button', { name: '기간 타임라인 보기', exact: true });
@@ -272,7 +273,7 @@ test('timeline preserves leap-day proportions, gaps and shared selection across 
 test('timeline view changes and responsive focus retain an unsaved draft while summary stays on the saved version', async ({
   page,
 }) => {
-  const f = await setupTimeline(page);
+  const f = await setupTimeline(page, grantAppProcessingForScenario);
   await page.goto(f.path.replace('periodView=timeline', 'periodView=invalid'));
   const region = explorer(page);
   await expect(region.getByRole('button', { name: '기간 원형 보기', exact: true })).toHaveAttribute(
@@ -327,3 +328,4 @@ test('timeline view changes and responsive focus retain an unsaved draft while s
   preservedQuery(page);
   await f.unchanged();
 });
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';

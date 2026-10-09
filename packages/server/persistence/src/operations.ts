@@ -43,6 +43,76 @@ const candidateEvidenceAvailable = `EXISTS(SELECT 1 FROM coaching_decision d
 const candidateAvailable = `(${candidateEvidenceAvailable} AND EXISTS(SELECT 1 FROM consent c
   WHERE c.athlete_id=coaching_candidate.athlete_id AND c.kind='ai' AND c.granted))`;
 const collections = [
+  ['aiSettingsHeads', 'ai_settings_head', 'revision', 'revision'],
+  [
+    'aiSettingsRevisions',
+    'ai_settings_revision',
+    'revision,updated_at,catalog_revision,policy_version,disclosure_version,default_provider_id,default_model_id,comparison_kind,comparison_provider_id,comparison_model_id',
+    'revision',
+  ],
+  [
+    'evidenceAppBindings',
+    'evidence_app_admission_binding',
+    'evidence_snapshot_id,binding_version,app_revision,captured_at',
+    'evidence_snapshot_id',
+  ],
+  [
+    'runAppBindings',
+    'run_app_admission_binding',
+    'run_id,evidence_snapshot_id,binding_version',
+    'run_id',
+  ],
+  [
+    'candidateAppBindings',
+    'candidate_app_admission_binding',
+    'candidate_id,run_id,binding_version',
+    'candidate_id',
+  ],
+  [
+    'integratedCandidateAppBindings',
+    'integrated_candidate_app_admission_binding',
+    'candidate_id,evidence_snapshot_id,binding_version',
+    'candidate_id',
+  ],
+  // A receipt key is executable command metadata and is deliberately not projected.
+  [
+    'approvalAppBindings',
+    'approval_app_admission_binding',
+    'candidate_id,integrated_candidate_id,integrated_approval_id,binding_version,created_at',
+    'created_at,candidate_id,integrated_candidate_id,integrated_approval_id',
+  ],
+  ['raceEvents', 'race_event', 'id,revision,values_json,deleted,recorded_at,updated_at', 'id'],
+  [
+    'raceEventRevisions',
+    'race_event_revision',
+    'entity_id,revision,values_json,created_at',
+    'entity_id,revision',
+  ],
+  ['raceResults', 'race_result', 'id,revision,values_json,deleted,recorded_at,updated_at', 'id'],
+  [
+    'raceResultRevisions',
+    'race_result_revision',
+    'entity_id,revision,values_json,created_at',
+    'entity_id,revision',
+  ],
+  [
+    'trainingBests',
+    'training_best',
+    'id,revision,values_json,deleted,recorded_at,updated_at',
+    'id',
+  ],
+  [
+    'trainingBestRevisions',
+    'training_best_revision',
+    'entity_id,revision,values_json,created_at',
+    'entity_id,revision',
+  ],
+  [
+    'raceCollectionHeads',
+    'race_collection_head',
+    'kind,revision,privacy_generation::text AS "privacyGeneration"',
+    'kind',
+  ],
   [
     'coachingDecisions',
     'coaching_decision',
@@ -533,6 +603,34 @@ const collections = [
     'installation_id,batch_id,accepted_count,received_at,purged_at',
     'received_at,installation_id,batch_id',
   ],
+  // Portable attribution facts only. Receipt digests, keys, result JSON and
+  // claim epochs remain command internals; this export cannot restore ownership.
+  [
+    'healthKitWorkoutClaims',
+    `(SELECT c.athlete_id,c.sample_id,c.consent_revision,c.created_at,
+       CASE WHEN EXISTS(SELECT 1 FROM healthkit_workout_deregistration d
+         WHERE d.athlete_id=c.athlete_id AND d.sample_id=c.sample_id
+           AND d.claim_epoch=c.claim_epoch AND d.state='pending_cleanup')
+         THEN 'pending_cleanup' ELSE 'active' END AS state
+      FROM healthkit_workout_claim c) healthkit_claim_facts`,
+    'sample_id,consent_revision,created_at,state',
+    'sample_id',
+  ],
+  [
+    'healthKitWorkoutDeregistrations',
+    'healthkit_workout_deregistration',
+    'operation_id,sample_id,state,registry_revision,requested_at,released_at',
+    'requested_at,operation_id',
+  ],
+  ['healthKitWorkoutRegistryHeads', 'healthkit_workout_registry_head', 'revision', 'revision'],
+  [
+    'healthKitWorkoutRegistrations',
+    `(SELECT athlete_id,(result_json->>'registryRevision')::integer AS registry_revision,
+       jsonb_array_length(result_json->'claims') AS registered_count
+      FROM healthkit_workout_registration_receipt) healthkit_registration_facts`,
+    'registry_revision,registered_count',
+    'registry_revision',
+  ],
   ['healthKitWorkoutLineage', 'healthkit_workout_lineage', 'sample_id,state', 'sample_id'],
   [
     'healthKitExistingBindings',
@@ -574,7 +672,7 @@ export function createOperationsRepository(database: Database): OperationsReposi
         if (!row.ok) throw new OperationsError('EXPORT_TOO_LARGE');
         const data = Object.fromEntries(collections.map(([name]) => [name, row.data[name] ?? []]));
         const artifact = accountExportSchema.parse({
-          schemaVersion: 28,
+          schemaVersion: 33,
           athleteId,
           exportedAt: new Date().toISOString(),
           data,

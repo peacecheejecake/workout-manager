@@ -1,3 +1,4 @@
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';
 import { identityWebOrigin } from '../../scripts/fixtures/identity-ports';
 import { test, expect } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
@@ -11,6 +12,7 @@ test('exports scoped data then erases the account, revokes other tabs and starts
   await page.goto('/account');
   await page.getByRole('link', { name: 'OIDC로 로그인' }).click();
   await page.getByRole('link', { name: 'Sign in as Bob' }).click();
+  await grantAppProcessingForScenario(page);
   const before = await (await page.request.get('/bff/v1/session')).json();
   const headers = {
     'x-workout-session-id': before.sessionId,

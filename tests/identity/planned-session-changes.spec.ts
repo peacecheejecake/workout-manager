@@ -47,11 +47,12 @@ test.afterEach(async ({ page }) => {
   expect((await page.request.get('/bff/v1/session', { timeout: 5000 })).status()).toBe(401);
 });
 
-async function setup(page: Page) {
+async function setup(page: Page, beforeProtectedWrite: (page: Page) => Promise<void>) {
   page.setDefaultTimeout(5000);
   page.setDefaultNavigationTimeout(5000);
   const headers = await login(page, 'Alice');
   cleanupHeaders.set(page, headers);
+  await beforeProtectedWrite(page);
   const previousResponse = await page.request.get('/bff/v1/plans/current', { headers });
   expect(previousResponse.status()).toBe(200);
   const previous = planReadSchema.parse(await previousResponse.json());
@@ -127,7 +128,7 @@ test('session markers track isolated draft edits, undo, copies and deletion unti
   page,
 }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
-  const fixture = await setup(page);
+  const fixture = await setup(page, grantAppProcessingForScenario);
   const first = tableRow(page, 'Synthetic change session 1');
   const second = tableRow(page, 'Synthetic change session 2');
   const beforeActuals = await fixture.actualCount();
@@ -190,7 +191,7 @@ test('session markers preserve draft and selection across calendar, agenda and n
   page,
 }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
-  const fixture = await setup(page);
+  const fixture = await setup(page, grantAppProcessingForScenario);
   await page.getByRole('button', { name: '계획 초안 편집', exact: true }).click();
   await page.getByLabel('계획 제목', { exact: true }).fill('Only plan metadata changed');
   await expect(
@@ -234,3 +235,4 @@ test('session markers preserve draft and selection across calendar, agenda and n
     tableRow(page, 'Synthetic change session 2').getByText('저장본', { exact: true }),
   ).toBeVisible();
 });
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';

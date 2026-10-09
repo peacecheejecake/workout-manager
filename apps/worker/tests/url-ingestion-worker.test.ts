@@ -7,14 +7,17 @@ import type {
   TransportResponse,
 } from '@workout/server-resource-ingestion';
 import type { ResourceUrlIngestionLease } from '@workout/server-persistence/resource-url-ingestions';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   runUrlIngestionWorker,
   type ClosableObjectStorage,
   type UrlIngestionWorkerDependencies,
+  type UrlIngestionWorkerEvent,
   type UrlIngestionWorkerRepository,
 } from '../src/url-ingestion-worker.js';
+
+afterEach(() => vi.unstubAllEnvs());
 
 const config = {
   connectionString: 'postgres://workout_resource_ingestion_worker:secret@db/workout',
@@ -163,7 +166,7 @@ function setup(input: {
       return next;
     }),
   };
-  const logger = vi.fn();
+  const logger = vi.fn<(event: UrlIngestionWorkerEvent) => void>();
   const dependencies: UrlIngestionWorkerDependencies = {
     createStorage: vi.fn(async () => storage),
     createRepository: vi.fn(() => repository),
@@ -175,6 +178,154 @@ function setup(input: {
 }
 
 describe('resource URL ingestion worker', () => {
+  it('emits only fixed outcome facts after cleanup, without fetched content or lease/config secrets', async () => {
+    vi.stubEnv('WORKOUT_RELEASE', 'release-20261006+worker.1');
+    const payload = '# PRIVATE_PAYLOAD_SENTINEL';
+    const context = setup({
+      lease: baseLease,
+      responses: [response(200, { body: payload, contentType: 'text/markdown' })],
+    });
+
+    await expect(runUrlIngestionWorker(config, context.dependencies)).resolves.toBe(
+      'raw_published',
+    );
+
+    expect(context.logger).toHaveBeenCalledExactlyOnceWith({
+      event: 'resource_url_ingestion_finished',
+      phase: 'fetch',
+      result: 'raw_published',
+      runId: expect.stringMatching(
+        /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/,
+      ),
+      version: 'release-20261006+worker.1',
+    });
+    const emitted = JSON.stringify(context.logger.mock.calls);
+    for (const privateValue of [
+      payload,
+      config.connectionString,
+      config.storageRoot,
+      ...config.allowedHosts,
+      baseLease.athleteId,
+      baseLease.requestId,
+      baseLease.resourceId,
+      baseLease.versionId,
+      baseLease.leaseToken,
+      baseLease.requestedUrl,
+      baseLease.displayUrl,
+      baseLease.rawTemporaryRef,
+      baseLease.parsedTemporaryRef,
+      'token=secret',
+      '93.184.216.34',
+    ])
+      expect(emitted).not.toContain(privateValue);
+    expect(vi.mocked(context.repository.close).mock.invocationCallOrder[0]).toBeLessThan(
+      context.logger.mock.invocationCallOrder[0] ?? 0,
+    );
+    expect(vi.mocked(context.storage.close)?.mock.invocationCallOrder[0]).toBeLessThan(
+      context.logger.mock.invocationCallOrder[0] ?? 0,
+    );
+  });
+
+  it.each([
+    undefined,
+    '',
+    ' private-release ',
+    'bad\nrelease',
+    'https://secret.example/?token=PRIVATE_RELEASE',
+    'x'.repeat(65),
+  ])('uses unreleased for an absent or invalid release (%j)', async (release) => {
+    vi.stubEnv('WORKOUT_RELEASE', release);
+    const context = setup({ lease: baseLease, responses: [response(404)] });
+
+    await expect(runUrlIngestionWorker(config, context.dependencies)).resolves.toBe('failed');
+
+    expect(context.logger).toHaveBeenCalledExactlyOnceWith({
+      event: 'resource_url_ingestion_finished',
+      phase: 'fetch',
+      result: 'failed',
+      runId: expect.any(String),
+      version: 'unreleased',
+    });
+    if (release) expect(JSON.stringify(context.logger.mock.calls)).not.toContain(release);
+  });
+
+  it('captures the release per call before asynchronous work and generates a fresh call ID', async () => {
+    vi.stubEnv('WORKOUT_RELEASE', 'a'.repeat(64));
+    const first = setup({ lease: baseLease, responses: [response(404)] });
+    first.storage.close = vi.fn(async () => {
+      vi.stubEnv('WORKOUT_RELEASE', 'next.release');
+    });
+    const second = setup({ lease: baseLease, responses: [response(404)] });
+
+    await runUrlIngestionWorker(config, first.dependencies);
+    await runUrlIngestionWorker(config, second.dependencies);
+
+    expect(first.logger.mock.calls[0]?.[0].version).toBe('a'.repeat(64));
+    expect(second.logger.mock.calls[0]?.[0].version).toBe('next.release');
+    expect(first.logger.mock.calls[0]?.[0].runId).not.toBe(second.logger.mock.calls[0]?.[0].runId);
+  });
+
+  it('reports lease loss as lease loss, without logging the underlying transport exception', async () => {
+    const context = setup({ lease: baseLease, fail: false });
+    context.dependencies.transport.request = vi.fn(async () => {
+      throw new Error('PRIVATE_TRANSPORT_URL?token=PRIVATE_TOKEN');
+    });
+
+    await expect(runUrlIngestionWorker(config, context.dependencies)).resolves.toBe('lease_lost');
+
+    expect(context.logger).toHaveBeenCalledExactlyOnceWith({
+      event: 'resource_url_ingestion_finished',
+      phase: 'fetch',
+      result: 'lease_lost',
+      runId: expect.any(String),
+      version: expect.any(String),
+    });
+    expect(JSON.stringify(context.logger.mock.calls)).not.toContain('PRIVATE_');
+  });
+
+  it('does not emit a finished event after an unexpected processing error and still closes both resources', async () => {
+    const context = setup({ lease: baseLease });
+    const failure = new Error('PRIVATE_DATABASE_ERROR');
+    context.repository.lease = vi.fn(async () => {
+      throw failure;
+    });
+
+    await expect(runUrlIngestionWorker(config, context.dependencies)).rejects.toBe(failure);
+
+    expect(context.logger).not.toHaveBeenCalled();
+    expect(context.repository.close).toHaveBeenCalledOnce();
+    expect(context.storage.close).toHaveBeenCalledOnce();
+  });
+
+  it('does not log a finished phase when closing a resource fails', async () => {
+    const context = setup({ lease: baseLease, responses: [response(404)] });
+    const failure = new Error('PRIVATE_CLOSE_PATH');
+    context.repository.close = vi.fn(async () => {
+      throw failure;
+    });
+
+    await expect(runUrlIngestionWorker(config, context.dependencies)).rejects.toBe(failure);
+
+    expect(context.logger).not.toHaveBeenCalled();
+    expect(context.repository.close).toHaveBeenCalledOnce();
+    expect(context.storage.close).toHaveBeenCalledOnce();
+  });
+
+  it('preserves a logger failure after both resources have already closed', async () => {
+    const context = setup({ lease: baseLease, responses: [response(404)] });
+    const failure = new Error('PRIVATE_LOGGER_FAILURE');
+    context.logger.mockImplementation(() => {
+      throw failure;
+    });
+
+    await expect(runUrlIngestionWorker(config, context.dependencies)).rejects.toBe(failure);
+
+    expect(context.repository.close).toHaveBeenCalledOnce();
+    expect(context.storage.close).toHaveBeenCalledOnce();
+    expect(context.logger).toHaveBeenCalledOnce();
+    expect(JSON.stringify(context.logger.mock.calls)).not.toContain(failure.message);
+  });
+
   it('fetches one job, records every redirect hop without query data, and publishes raw in order', async () => {
     const first = response(302, { location: 'https://docs.example.com/final?code=hidden' });
     const second = response(200, { body: '# Guide', contentType: 'text/markdown' });
@@ -475,6 +626,7 @@ describe('resource URL ingestion worker', () => {
     expect(context.repository.lease).toHaveBeenCalledOnce();
     expect(context.repository.close).toHaveBeenCalledOnce();
     expect(context.storage.close).toHaveBeenCalledOnce();
+    expect(context.logger).not.toHaveBeenCalled();
   });
 
   it('closes storage when repository creation fails before a lease', async () => {

@@ -33,6 +33,14 @@ const columnNames = [
   'course_share_audit_occurred_at',
   'actual_previous_revision_id',
   'actual_deleted_revision_id',
+  'healthkit_claim_epoch',
+  'healthkit_operation_id',
+  'healthkit_consent_revision',
+  'healthkit_registry_previous_revision',
+  'healthkit_registry_revision',
+  'healthkit_object_scopes',
+  'race_previous_revision',
+  'race_deleted_revision',
 ] as const;
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -41,7 +49,7 @@ const timestamp =
   /^(\d{4})-(\d\d)-(\d\d) (\d\d):(\d\d):(\d\d)(?:\.\d{1,6})?([+-])(\d\d)(?::(\d\d))?$/;
 
 type Base = {
-  schemaVersion: 1 | 2;
+  schemaVersion: 1 | 2 | 3 | 4 | 5;
   eventId: string;
   athleteId: string;
   occurredAt: string;
@@ -49,6 +57,23 @@ type Base = {
 
 export type SuppressionRecord = Base &
   (
+    | {
+        kind:
+          'healthkit_workout_deregistration_pending' | 'healthkit_workout_deregistration_released';
+        targetId: string;
+        healthKitClaimEpoch: string;
+        healthKitOperationId: string;
+        healthKitConsentRevision: number;
+        healthKitRegistryPreviousRevision: number;
+        healthKitRegistryRevision: number;
+        healthKitObjectScopes: { kind: 'activity' | 'course'; id: string }[];
+      }
+    | {
+        kind: 'race_event_deleted' | 'race_result_deleted' | 'training_best_deleted';
+        targetId: string;
+        racePreviousRevision: number;
+        raceDeletedRevision: number;
+      }
     | { kind: 'tenant_erased' }
     | { kind: 'course_deleted'; targetId: string }
     | {
@@ -63,7 +88,7 @@ export type SuppressionRecord = Base &
     | { kind: 'resource_deleted'; targetId: string; resourceAccessRevision: number }
     | { kind: 'gallery_media_deleted'; targetId: string; galleryAccessRevision: number }
     | {
-        kind: 'healthkit_consent_transition' | 'ai_consent_transition';
+        kind: 'healthkit_consent_transition' | 'ai_consent_transition' | 'app_consent_transition';
         consentPreviousRevision: number | null;
         consentPreviousGranted: boolean | null;
         consentRevision: number;
@@ -203,12 +228,19 @@ function only(values: Values, allowed: readonly string[]): void {
 export function validateSuppressionRecord(values: Values): SuppressionRecord {
   const eventId = match(required(values, 'event_id'), uuid);
   const version = required(values, 'record_version');
-  if (version !== '1' && version !== '2') throw new Error('PGOUTPUT_UNKNOWN_EVENT');
+  if (version !== '1' && version !== '2' && version !== '3' && version !== '4' && version !== '5')
+    throw new Error('PGOUTPUT_UNKNOWN_EVENT');
   const athleteId = required(values, 'athlete_id');
   if ([...athleteId].length < 1 || [...athleteId].length > 200 || hasControl(athleteId))
     throw new Error('PGOUTPUT_INVALID_RECORD');
   const occurredAt = validTimestamp(required(values, 'occurred_at'));
-  const base: Base = { schemaVersion: version === '1' ? 1 : 2, eventId, athleteId, occurredAt };
+  const base: Base = {
+    schemaVersion:
+      version === '1' ? 1 : version === '2' ? 2 : version === '3' ? 3 : version === '4' ? 4 : 5,
+    eventId,
+    athleteId,
+    occurredAt,
+  };
   const kind = required(values, 'kind');
   if (
     version === '2' &&
@@ -218,7 +250,93 @@ export function validateSuppressionRecord(values: Values): SuppressionRecord {
     kind !== 'recovery_action_deleted'
   )
     throw new Error('PGOUTPUT_UNKNOWN_EVENT');
+  if (
+    version === '3' &&
+    kind !== 'healthkit_workout_deregistration_pending' &&
+    kind !== 'healthkit_workout_deregistration_released'
+  )
+    throw new Error('PGOUTPUT_UNKNOWN_EVENT');
+  if (
+    version === '4' &&
+    kind !== 'race_event_deleted' &&
+    kind !== 'race_result_deleted' &&
+    kind !== 'training_best_deleted'
+  )
+    throw new Error('PGOUTPUT_UNKNOWN_EVENT');
+  if (version === '5' && kind !== 'app_consent_transition')
+    throw new Error('PGOUTPUT_UNKNOWN_EVENT');
   switch (kind) {
+    case 'race_event_deleted':
+    case 'race_result_deleted':
+    case 'training_best_deleted': {
+      if (version !== '4') throw new Error('PGOUTPUT_UNKNOWN_EVENT');
+      only(values, ['target_id', 'race_previous_revision', 'race_deleted_revision']);
+      const previous = revision(values, 'race_previous_revision');
+      const deleted = revision(values, 'race_deleted_revision');
+      if (deleted !== Math.min(previous + 1, 2147483647))
+        throw new Error('PGOUTPUT_INVALID_RECORD');
+      return {
+        ...base,
+        kind,
+        targetId: target(values),
+        racePreviousRevision: previous,
+        raceDeletedRevision: deleted,
+      };
+    }
+    case 'healthkit_workout_deregistration_pending':
+    case 'healthkit_workout_deregistration_released': {
+      if (version !== '3') throw new Error('PGOUTPUT_UNKNOWN_EVENT');
+      only(values, [
+        'target_id',
+        'healthkit_claim_epoch',
+        'healthkit_operation_id',
+        'healthkit_consent_revision',
+        'healthkit_registry_previous_revision',
+        'healthkit_registry_revision',
+        'healthkit_object_scopes',
+      ]);
+      const previousRaw = required(values, 'healthkit_registry_previous_revision');
+      if (!/^(0|[1-9]\d*)$/.test(previousRaw)) throw new Error('PGOUTPUT_INVALID_RECORD');
+      const previous = Number(previousRaw);
+      if (!Number.isSafeInteger(previous) || previous > 2147483646)
+        throw new Error('PGOUTPUT_INVALID_RECORD');
+      const current = revision(values, 'healthkit_registry_revision');
+      if (current !== previous + 1) throw new Error('PGOUTPUT_INVALID_RECORD');
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(required(values, 'healthkit_object_scopes'));
+      } catch {
+        throw new Error('PGOUTPUT_INVALID_RECORD');
+      }
+      if (!Array.isArray(parsed) || parsed.length > 1000)
+        throw new Error('PGOUTPUT_INVALID_RECORD');
+      const scopes: { kind: 'activity' | 'course'; id: string }[] = parsed.map((item: unknown) => {
+        if (
+          typeof item !== 'object' ||
+          item === null ||
+          !('kind' in item) ||
+          !('id' in item) ||
+          Object.keys(item).length !== 2 ||
+          (item.kind !== 'activity' && item.kind !== 'course') ||
+          typeof item.id !== 'string'
+        )
+          throw new Error('PGOUTPUT_INVALID_RECORD');
+        return { kind: item.kind, id: match(item.id, uuid) };
+      });
+      if (new Set(scopes.map((scope) => scope.kind + ':' + scope.id)).size !== scopes.length)
+        throw new Error('PGOUTPUT_INVALID_RECORD');
+      return {
+        ...base,
+        kind,
+        targetId: target(values),
+        healthKitClaimEpoch: match(required(values, 'healthkit_claim_epoch'), uuid),
+        healthKitOperationId: match(required(values, 'healthkit_operation_id'), uuid),
+        healthKitConsentRevision: revision(values, 'healthkit_consent_revision'),
+        healthKitRegistryPreviousRevision: previous,
+        healthKitRegistryRevision: current,
+        healthKitObjectScopes: scopes,
+      };
+    }
     case 'tenant_erased':
       only(values, []);
       return { ...base, kind };
@@ -273,7 +391,10 @@ export function validateSuppressionRecord(values: Values): SuppressionRecord {
         galleryAccessRevision: revision(values, 'gallery_access_revision', 1, 2147483646),
       };
     case 'healthkit_consent_transition':
-    case 'ai_consent_transition': {
+    case 'ai_consent_transition':
+    case 'app_consent_transition': {
+      if (kind === 'app_consent_transition' && version !== '5')
+        throw new Error('PGOUTPUT_UNKNOWN_EVENT');
       only(values, [
         'consent_previous_revision',
         'consent_previous_granted',

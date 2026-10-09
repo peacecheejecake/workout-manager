@@ -6,7 +6,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { HealthKitIngestionBatch } from '@workout/contracts/healthkit-ingestion';
 
 import { createDatabase, type Database } from '../src/database.js';
-import { createHealthKitIngestionRepository } from '../src/healthkit-ingestion.js';
+import { createHealthKitIngestionRepository as createRawHealthKitIngestionRepository } from '../src/healthkit-ingestion.js';
+import { createHealthKitRegistrationRepository } from '../src/healthkit-registration.js';
 import { grantHealthKitIngestion, grantOperations, migrate } from '../src/migrate.js';
 import { createOperationsRepository } from '../src/operations.js';
 import { createConsentRepository } from '../src/repositories.js';
@@ -77,19 +78,82 @@ afterAll(async () => {
   await admin.end();
 });
 
+const syntheticDeclaredEpochs = new Map<string, string>();
+
+async function registeredBatch(
+  db: Database,
+  athleteId: string,
+  batch: HealthKitIngestionBatch,
+  consentRevision: number,
+) {
+  const registration = createHealthKitRegistrationRepository(db);
+  const current = await registration.listWorkouts(athleteId, {});
+  const epochs = new Map(current.claims.map((claim) => [claim.sampleId, claim.claimEpoch]));
+  const missing = [...new Set(batch.events.map((event) => event.sampleId))].filter((sampleId) => {
+    if (epochs.has(sampleId)) return false;
+    const previousEpoch = syntheticDeclaredEpochs.get(`${athleteId}:${sampleId}`);
+    if (previousEpoch) {
+      epochs.set(sampleId, previousEpoch);
+      return false;
+    }
+    return true;
+  });
+  if (missing.length) {
+    const result = await registration.registerWorkouts(athleteId, {
+      schemaVersion: 1,
+      sampleIds: missing,
+      accountAttributionDeclared: true,
+      expectedConsentRevision: consentRevision,
+      expectedRegistryRevision: current.registryRevision,
+      idempotencyKey: randomUUID(),
+    });
+    for (const claim of result.claims) {
+      epochs.set(claim.sampleId, claim.claimEpoch);
+      syntheticDeclaredEpochs.set(`${athleteId}:${claim.sampleId}`, claim.claimEpoch);
+    }
+  }
+  return {
+    ...batch,
+    schemaVersion: 2 as const,
+    events: batch.events.map((event) => {
+      const claimEpoch = epochs.get(event.sampleId);
+      if (!claimEpoch) throw new Error('Missing synthetic claim epoch');
+      return { ...event, claimEpoch };
+    }),
+  };
+}
+
+function createRegisteredFixtureIngestionRepository(db: Database) {
+  const raw = createRawHealthKitIngestionRepository(db);
+  return {
+    async ingestBatch(athleteId: string, batch: HealthKitIngestionBatch, consentRevision: number) {
+      return raw.ingestBatch(
+        athleteId,
+        await registeredBatch(db, athleteId, batch, consentRevision),
+        consentRevision,
+      );
+    },
+  };
+}
+
 describe('transaction-local HealthKit consent epoch event', () => {
   it('records grant, withdrawal and re-consent without restoring old raw data', async () => {
     const tenant = randomUUID();
+    const otherTenant = randomUUID();
     const consents = createConsentRepository(database);
-    const ingestion = createHealthKitIngestionRepository(database);
+    const ingestion = createRegisteredFixtureIngestionRepository(database);
+    const registration = createHealthKitRegistrationRepository(database);
     const grant = {
       kind: 'healthkit',
       granted: true,
       expectedRevision: 0,
       idempotencyKey: randomUUID(),
     } as const;
+    await declareSyntheticAppConsent(tenant);
     await consents.setConsent(tenant, grant);
     const oldBatch = batch();
+    const oldSampleId = oldBatch.events[0]?.sampleId;
+    if (!oldSampleId) throw new Error('Expected old synthetic sample');
     await ingestion.ingestBatch(tenant, oldBatch, 1);
     const withdrawal = {
       kind: 'healthkit',
@@ -105,6 +169,27 @@ describe('transaction-local HealthKit consent epoch event', () => {
           WHERE purged_at IS NOT NULL AND request_digest IS NULL) AS purged_receipts`),
     );
     expect(purged.rows[0]).toEqual({ raw_count: 0, purged_receipts: 1 });
+    const erasedRegistration = await admin.query(
+      `SELECT
+        (SELECT count(*)::int FROM healthkit_workout_claim WHERE athlete_id=$1) AS claims,
+        (SELECT count(*)::int FROM healthkit_workout_registration_receipt WHERE athlete_id=$1) AS receipts,
+        (SELECT count(*)::int FROM healthkit_workout_registry_head WHERE athlete_id=$1) AS heads`,
+      [tenant],
+    );
+    expect(erasedRegistration.rows[0]).toEqual({ claims: 0, receipts: 0, heads: 0 });
+    await consents.setConsent(otherTenant, grant);
+    const newOwner = await registration.registerWorkouts(otherTenant, {
+      schemaVersion: 1,
+      sampleIds: [oldSampleId],
+      accountAttributionDeclared: true,
+      expectedConsentRevision: 1,
+      expectedRegistryRevision: 0,
+      idempotencyKey: randomUUID(),
+    });
+    expect(newOwner.claims[0]?.sampleId).toBe(oldSampleId);
+    expect(newOwner.claims[0]?.claimEpoch).not.toBe(
+      syntheticDeclaredEpochs.get(`${tenant}:${oldSampleId}`),
+    );
     const regrant = {
       kind: 'healthkit',
       granted: true,
@@ -154,7 +239,7 @@ describe('transaction-local HealthKit consent epoch event', () => {
       ingestion.ingestBatch(tenant, { ...oldBatch, batchId: randomUUID() }, 1),
     ).rejects.toMatchObject({ code: 'CONSENT_EPOCH_EXPIRED' });
     await expect(ingestion.ingestBatch(tenant, oldBatch, 3)).rejects.toMatchObject({
-      code: 'CONSENT_EPOCH_EXPIRED',
+      code: 'REGISTRATION_REQUIRED',
     });
     const freshBatch = batch();
     await expect(ingestion.ingestBatch(tenant, freshBatch, 3)).resolves.toMatchObject({
@@ -176,6 +261,7 @@ describe('transaction-local HealthKit consent epoch event', () => {
     });
     await createOperationsRepository(database).eraseAccount(tenant);
     expect(await events(tenant)).toEqual(recorded);
+    expect((await registration.listWorkouts(otherTenant, {})).claims).toEqual(newOwner.claims);
   });
 
   it('rolls back a consent event with its command and denies another tenant', async () => {
@@ -237,3 +323,15 @@ describe('transaction-local HealthKit consent epoch event', () => {
     ).rejects.toMatchObject({ code: '23514' });
   });
 });
+
+// Explicit synthetic user permission for named positive collection scenarios only.
+async function declareSyntheticAppConsent(athleteId: string): Promise<void> {
+  expect(
+    await createConsentRepository(database).setConsent(athleteId, {
+      kind: 'app',
+      granted: true,
+      expectedRevision: 0,
+      idempotencyKey: randomUUID(),
+    }),
+  ).toEqual({ kind: 'app', granted: true, revision: 1 });
+}

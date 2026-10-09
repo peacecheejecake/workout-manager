@@ -52,6 +52,7 @@ test('planned table sorting and columns remain display-only through reload and r
   page.setDefaultTimeout(5000);
   page.setDefaultNavigationTimeout(5000);
   const headers = await login(page, 'Alice');
+  await grantAppProcessingForScenario(page);
   cleanupHeaders.set(page, headers);
   const marker = `Synthetic table ${randomUUID()}`;
   const readPlan = async () => {
@@ -181,3 +182,4 @@ test('planned table sorting and columns remain display-only through reload and r
   expect(writes).toBe(0);
   expect((await readPlan()).head).toEqual(saved);
 });
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';

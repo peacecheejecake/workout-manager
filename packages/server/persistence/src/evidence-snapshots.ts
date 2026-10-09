@@ -143,6 +143,7 @@ export function createCoreEvidenceSnapshotRepository(
           if (!snapshot) throw new Error('EVIDENCE_RECEIPT_MISSING_SNAPSHOT');
           return snapshot;
         }
+        await tx.query('SELECT public.require_app_admission_revision(NULL)');
         const result = await tx.query(captureSql, [
           athleteId,
           id,

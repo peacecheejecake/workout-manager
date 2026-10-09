@@ -58,6 +58,9 @@ const adminUrl = process.env['TEST_DATABASE_ADMIN_URL'];
 const runtimeUrl = process.env['TEST_DATABASE_URL'];
 if (!adminUrl || !runtimeUrl) throw new Error('Run pnpm test:integration with isolated PostgreSQL');
 const admin = new Pool({ connectionString: adminUrl });
+const migrationOwnerUrl = process.env['TEST_DATABASE_OWNER_URL'];
+if (!migrationOwnerUrl) throw new Error('Explicit plain migration owner required for maintenance');
+const migrationOwner = new Pool({ connectionString: migrationOwnerUrl, max: 4 });
 let database: Database;
 let courses: CourseRepository;
 let tracks: ActivityTrackRepository;
@@ -113,6 +116,7 @@ afterAll(async () => {
   await renderer?.close();
   await cleanup?.close();
   await database?.close();
+  await migrationOwner.end();
   await admin.end();
   if (objectRoot) await rm(objectRoot, { recursive: true, force: true });
 });
@@ -259,6 +263,7 @@ function content(input: {
 
 async function athleteWithCourse(name = 'Seoul loop') {
   const athlete = randomUUID();
+  await grantAppPurpose(athlete);
   const imported = await activities.importActivity(athlete, importInput());
   const stored = await storeTrack(athlete, imported.activityId, imported.revision);
   const created = await courses.create(
@@ -445,7 +450,7 @@ async function publishDrawn(
 
 /** Push one render's lease, fence and deadline into the past, as a real stall would. */
 async function stallRender(jobId: string, hours: number) {
-  await admin.query(
+  await maintainThumbnail(
     `UPDATE course_thumbnail
        SET created_at=clock_timestamp()-make_interval(hours=>$2+1),
            updated_at=clock_timestamp()-make_interval(hours=>$2+1),
@@ -459,7 +464,7 @@ async function stallRender(jobId: string, hours: number) {
 
 /** Age a closed render past the seven days `prune_course_thumbnail_history` waits. */
 async function ageClosedRender(jobId: string, days: number) {
-  await admin.query(
+  await maintainThumbnail(
     `UPDATE course_thumbnail
        SET created_at=clock_timestamp()-make_interval(days=>$2+1),
            expires_at=clock_timestamp()-make_interval(days=>$2)-interval '1 hour',
@@ -859,6 +864,7 @@ describe('M2-01l stored course thumbnails', () => {
     // queue: course edits, course deletions, renders that insert into the queue, and a
     // cleanup drain that leases out of it. Then the account is erased under all of it.
     const athlete = randomUUID();
+    await grantAppPurpose(athlete);
     const imported = await activities.importActivity(athlete, importInput());
     const stored = await storeTrack(athlete, imported.activityId, imported.revision);
     const failures: string[] = [];
@@ -1112,7 +1118,7 @@ describe('M2-01l stored course thumbnails', () => {
       }),
       `edit-${randomUUID()}`,
     );
-    await admin.query(
+    await maintainThumbnail(
       `UPDATE course_thumbnail SET publication_lease_until=clock_timestamp()-interval '1 second'
        WHERE job_id=$1`,
       [lease.jobId],
@@ -1187,7 +1193,7 @@ describe('M2-01l stored course thumbnails', () => {
     // per-object ceiling, so it takes the real number of them to reach the tenant ceiling —
     // which is the point: the bound is on the tenant, not on one object.
     const needed = Math.ceil(courseThumbnailLimits.tenantBytes / courseThumbnailLimits.maxBytes);
-    await admin.query(
+    await maintainThumbnail(
       `WITH created AS (
          INSERT INTO course(athlete_id,course_id,name,visibility,status,unavailable_reason,
            reclaimed_at,created_at,updated_at)
@@ -1204,7 +1210,7 @@ describe('M2-01l stored course thumbnails', () => {
        FROM created c`,
       [athlete, needed],
     );
-    await admin.query(
+    await maintainThumbnail(
       `UPDATE course_thumbnail t SET state='ready',ready_at=clock_timestamp(),
          storage_ref='private/v1/tenants/'||t.athlete_id||'/courses/'||t.course_id||
            '/thumbnails/revisions/'||t.revision_id||'/sha256/'||
@@ -1300,7 +1306,7 @@ describe('M2-01l stored course thumbnails', () => {
     // The worker dies here: the lease runs out with the row still `prepared`. This is the
     // only path back for it, and the object it may already have published must be accounted
     // for either way.
-    await admin.query(
+    await maintainThumbnail(
       `UPDATE course_thumbnail SET lease_until=clock_timestamp()-interval '1 second'
        WHERE job_id=$1`,
       [lease.jobId],
@@ -1318,7 +1324,7 @@ describe('M2-01l stored course thumbnails', () => {
     const { athlete, course } = await athleteWithCourse('Out of time');
     // The whole row is moved into the past together: the table refuses a deadline that
     // precedes its own creation, which is itself the bound on how long a render may live.
-    await admin.query(
+    await maintainThumbnail(
       `UPDATE course_thumbnail SET created_at=clock_timestamp()-interval '2 hours',
          updated_at=clock_timestamp()-interval '2 hours',
          expires_at=clock_timestamp()-interval '1 hour'
@@ -1338,7 +1344,7 @@ describe('M2-01l stored course thumbnails', () => {
     const { athlete, course } = await athleteWithCourse('Housekeeping');
     const rendered = await renderedFor(course.course.courseId);
     // A live picture is never pruned, however old it is.
-    await admin.query(
+    await maintainThumbnail(
       `UPDATE course_thumbnail SET created_at=clock_timestamp()-interval '31 days',
          updated_at=clock_timestamp()-interval '30 days',
          expires_at=clock_timestamp()-interval '31 days'+interval '1 hour'
@@ -1377,7 +1383,7 @@ describe('M2-01l stored course thumbnails', () => {
       `edit-${randomUUID()}`,
     );
     const age = async () =>
-      admin.query(
+      maintainThumbnail(
         `UPDATE course_thumbnail SET created_at=clock_timestamp()-interval '31 days',
            updated_at=clock_timestamp()-interval '30 days',
            expires_at=clock_timestamp()-interval '31 days'+interval '1 hour'
@@ -1428,7 +1434,7 @@ describe('M2-01l stored course thumbnails', () => {
     // A revision row without a head advance: the render is queued but must never be drawn,
     // because a picture of a line the course is not showing is not a picture of the course.
     const orphan = randomUUID();
-    await admin.query(
+    await maintainThumbnail(
       `INSERT INTO course_revision(athlete_id,course_id,course_revision,revision_id,name,geometry,
          waypoints,generation,edit,vertex_count,distance_meters,content_digest,created_at)
        SELECT r.athlete_id,r.course_id,2,$3,r.name,r.geometry,r.waypoints,r.generation,r.edit,
@@ -1446,7 +1452,7 @@ describe('M2-01l stored course thumbnails', () => {
     expect((await renderer.lease(60))?.courseId ?? null).not.toBe(course.course.courseId);
     // And a course marked unavailable is not drawn either, even with a revision still there.
     const other = await athleteWithCourse('Reclaimed but present');
-    await admin.query(
+    await maintainThumbnail(
       `UPDATE course SET status='unavailable',head_revision=NULL,revision_id=NULL,
          unavailable_reason='source_activity_deleted',reclaimed_at=clock_timestamp(),
          updated_at=clock_timestamp()
@@ -1491,8 +1497,8 @@ describe('M2-01l stored course thumbnails', () => {
     const { athlete, course } = await athleteWithCourse('Exported course');
     const rendered = await renderedFor(course.course.courseId);
     const artifact = await operations.exportAccount(athlete);
-    expect(artifact.schemaVersion).toBe(28);
-    if (artifact.schemaVersion !== 28) throw new Error('expected the current export version');
+    expect(artifact.schemaVersion).toBe(33);
+    if (artifact.schemaVersion !== 33) throw new Error('expected the current export version');
     const exported = artifact.data.courseThumbnails;
     expect(exported).toHaveLength(1);
     const row = exported[0] as Record<string, unknown>;
@@ -1513,12 +1519,12 @@ describe('M2-01l stored course thumbnails', () => {
     await renderedFor(owner.course.course.courseId);
     const stranger = randomUUID();
     const artifact = await operations.exportAccount(stranger);
-    if (artifact.schemaVersion !== 28) throw new Error('expected the current export version');
+    if (artifact.schemaVersion !== 33) throw new Error('expected the current export version');
     // The property comes from row level security plus the projection's own
     // `WHERE athlete_id=$1`; nothing but this pins it.
     expect(artifact.data.courseThumbnails).toEqual([]);
     const owned = await operations.exportAccount(owner.athlete);
-    if (owned.schemaVersion !== 28) throw new Error('expected the current export version');
+    if (owned.schemaVersion !== 33) throw new Error('expected the current export version');
     expect(owned.data.courseThumbnails).toHaveLength(1);
   });
 
@@ -1538,7 +1544,7 @@ describe('M2-01l stored course thumbnails', () => {
       `edit-${randomUUID()}`,
     );
     const artifact = await operations.exportAccount(athlete);
-    if (artifact.schemaVersion !== 28) throw new Error('expected the current export version');
+    if (artifact.schemaVersion !== 33) throw new Error('expected the current export version');
     expect(artifact.data.courseThumbnails).toEqual([]);
   });
 });
@@ -1654,14 +1660,14 @@ describe('M2-01m thumbnail object reconciliation', () => {
     await drainCleanup();
     await publishDrawn(render.temporaryKey, render.finalKey, render.drawn);
     // Move the closed render's fence back inside the grace: minutes ago, not hours.
-    await admin.query(
+    await maintainThumbnail(
       `UPDATE course_thumbnail SET publication_lease_until=clock_timestamp()-interval '2 minutes'
        WHERE job_id=$1`,
       [render.lease.jobId],
     );
     expect(await sweepThumbnailReference(render.finalKey)).toMatchObject({ queued: 0 });
     expect(await pendingCleanupRows(render.finalKey)).toBe(0);
-    await admin.query(
+    await maintainThumbnail(
       `UPDATE course_thumbnail SET publication_lease_until=clock_timestamp()-interval '61 minutes'
        WHERE job_id=$1`,
       [render.lease.jobId],
@@ -1711,7 +1717,7 @@ describe('M2-01m thumbnail object reconciliation', () => {
     // Age the whole thing: the picture was drawn a month ago, so the render's own deadline
     // and every lease of it are long past. Being the live picture is the only thing left
     // keeping this reference in the window.
-    await admin.query(
+    await maintainThumbnail(
       `UPDATE course_thumbnail
          SET created_at=clock_timestamp()-interval '30 days',
              updated_at=clock_timestamp()-interval '30 days'+interval '1 hour',
@@ -1741,7 +1747,7 @@ describe('M2-01m thumbnail object reconciliation', () => {
     await drainCleanup();
     expect(await storage.stat(validateObjectKey(render.finalKey))).toBeNull();
     expect(await pendingCleanupRows(render.finalKey)).toBe(0);
-    await admin.query(
+    await maintainThumbnail(
       `UPDATE course_thumbnail SET publication_lease_until=clock_timestamp()-interval '2 minutes'
        WHERE job_id=$1`,
       [render.lease.jobId],
@@ -1754,7 +1760,7 @@ describe('M2-01m thumbnail object reconciliation', () => {
     expect(await sweepThumbnailReference(render.finalKey)).toMatchObject({ queued: 0 });
     expect(await watchedRef(render.finalKey)).toMatchObject({ settled_at: null });
     // Past the grace, with everything else closed, it settles.
-    await admin.query(
+    await maintainThumbnail(
       `UPDATE course_thumbnail SET publication_lease_until=clock_timestamp()-interval '61 minutes'
        WHERE job_id=$1`,
       [render.lease.jobId],
@@ -1805,17 +1811,18 @@ describe('M2-01m thumbnail object reconciliation', () => {
     expect(await watchedRef(render.finalKey)).toMatchObject({ settled_at: null });
   });
 
-  it('reads exactly one index row per candidate and touches no ledger table', async () => {
-    // A window of N candidates must cost N rows. This measures what the database actually
-    // read inside one transaction, not what the plan looked like.
-    await athleteWithCourse('Bounded window');
+  it('returns one candidate without exceeding reported transaction counters', async () => {
+    // Preserve the transaction-counter regression signal. Nested PL/pgSQL queries can
+    // report zero on PostgreSQL14; separate nested-execution evidence proves scan bounds.
+    const { athlete } = await athleteWithCourse('Bounded window');
     const watched = await admin.query(
       'SELECT count(*)::int AS count FROM course_thumbnail_object_ref WHERE settled_at IS NULL',
     );
     expect(watched.rows[0]?.['count']).toBeGreaterThan(5);
-    const client = await admin.connect();
+    const client = await migrationOwner.connect();
     try {
       await client.query('BEGIN');
+      await client.query("SELECT set_config('app.athlete_id',$1,true)", [athlete]);
       const counters = async () =>
         (
           await client.query<{ ledger: string; refs: string }>(
@@ -1832,6 +1839,17 @@ describe('M2-01m thumbnail object reconciliation', () => {
         ['', 1],
       );
       const after = await counters();
+      // The window size is clamped in the database, not trusted from the caller.
+      const clamped = await client.query(
+        'SELECT count(*)::int AS total FROM public.course_thumbnail_reconcile_candidates($1,$2)',
+        ['', 100000],
+      );
+      expect(Number(clamped.rows[0]?.['total'])).toBeLessThanOrEqual(1000);
+      const atLeastOne = await client.query(
+        'SELECT count(*)::int AS total FROM public.course_thumbnail_reconcile_candidates($1,$2)',
+        ['', 0],
+      );
+      expect(Number(atLeastOne.rows[0]?.['total'])).toBe(1);
       await client.query('ROLLBACK');
       expect(window.rows).toHaveLength(1);
       const read = (key: 'ledger' | 'refs') =>
@@ -1841,17 +1859,6 @@ describe('M2-01m thumbnail object reconciliation', () => {
     } finally {
       client.release();
     }
-    // The window size is clamped in the database, not trusted from the caller.
-    const clamped = await admin.query(
-      'SELECT count(*)::int AS total FROM public.course_thumbnail_reconcile_candidates($1,$2)',
-      ['', 100000],
-    );
-    expect(Number(clamped.rows[0]?.['total'])).toBeLessThanOrEqual(1000);
-    const atLeastOne = await admin.query(
-      'SELECT count(*)::int AS total FROM public.course_thumbnail_reconcile_candidates($1,$2)',
-      ['', 0],
-    );
-    expect(Number(atLeastOne.rows[0]?.['total'])).toBe(1);
   });
 
   it('gives the runtime role no reach into the reference index at all', async () => {
@@ -1860,7 +1867,7 @@ describe('M2-01m thumbnail object reconciliation', () => {
     const grants = await admin.query(
       `SELECT count(*)::int AS total FROM information_schema.role_table_grants
        WHERE table_name IN ('course_thumbnail_object_ref','course_thumbnail_reconcile_state')
-         AND grantee<>'workout_admin'`,
+         AND grantee<>pg_get_userbyid((SELECT relowner FROM pg_class WHERE oid=to_regclass('public.'||table_name)))`,
     );
     expect(Number(grants.rows[0]?.['total'])).toBe(0);
     await expect(
@@ -1986,8 +1993,57 @@ describe('M2-01m thumbnail object reconciliation', () => {
     const rendered = await renderedFor(course.course.courseId);
     expect(await watchedRef(rendered.storageRef)).toMatchObject({ athlete_id: athlete });
     const artifact = await operations.exportAccount(athlete);
-    expect(artifact.schemaVersion).toBe(28);
+    expect(artifact.schemaVersion).toBe(33);
     expect(JSON.stringify(artifact)).not.toContain(rendered.storageRef);
     expect(JSON.stringify(artifact)).not.toContain('settled_at');
   });
 });
+
+// Explicit permission for this synthetic positive core-storage fixture only.
+// Preserve any existing withdrawal/revision and never recreate an erased tenant.
+async function grantAppPurpose(athleteId: string): Promise<void> {
+  const client = await admin.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock_shared(77210,1)');
+    // Serialize the absence check before the app event trigger, like the consent command.
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [athleteId]);
+    await client.query("SELECT set_config('app.athlete_id',$1,true)", [athleteId]);
+    await client.query(
+      "INSERT INTO consent(athlete_id,kind,granted,revision) SELECT $1,'app',true,1 WHERE NOT EXISTS (SELECT 1 FROM tenant_erasure WHERE athlete_id=$1) ON CONFLICT (athlete_id,kind) DO NOTHING",
+      [athleteId],
+    );
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+// Internal fixture maintenance runs as the actual migration owner, with one derived tenant.
+async function maintainThumbnail(sql: string, values: readonly unknown[]) {
+  const identity = values[0];
+  if (typeof identity !== 'string') throw new Error('THUMBNAIL_FIXTURE_ID_REQUIRED');
+  const scope = await admin.query<{ athlete_id: string }>(
+    'SELECT DISTINCT athlete_id FROM course_thumbnail WHERE athlete_id=$1 OR job_id::text=$1 OR course_id::text=$1 OR storage_ref=$1',
+    [identity],
+  );
+  const athleteId = scope.rows[0]?.athlete_id;
+  if (scope.rows.length !== 1 || typeof athleteId !== 'string')
+    throw new Error('THUMBNAIL_FIXTURE_SCOPE_REQUIRED');
+  const client = await migrationOwner.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query("SELECT set_config('app.athlete_id',$1,true)", [athleteId]);
+    const result = await client.query(sql, [...values]);
+    await client.query('COMMIT');
+    return result;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}

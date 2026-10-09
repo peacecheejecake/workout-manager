@@ -24,6 +24,17 @@ beforeAll(async () => {
   );
   database = createDatabase({ connectionString: runtimeUrl, max: 6 });
 });
+
+// Explicit synthetic purpose grant for these pre-existing domain regression tests.
+// No production account is granted implicitly; admission denial has its own suite.
+async function grantedAthlete(): Promise<string> {
+  const athlete = randomUUID();
+  await admin.query(
+    "WITH scope AS MATERIALIZED (SELECT set_config('app.athlete_id',$1,true)) INSERT INTO consent(athlete_id,kind,granted,revision) SELECT $1,'app',true,1 FROM scope",
+    [athlete],
+  );
+  return athlete;
+}
 afterAll(async () => {
   await database?.close();
   await admin.end();
@@ -79,7 +90,7 @@ const command = (version: string) => ({
   idempotencyKey: randomUUID(),
 });
 it('pins owned historical plans and preserves user messages, original receipts, and plan state through concurrent append', async () => {
-  const athlete = randomUUID(),
+  const athlete = await grantedAthlete(),
     plan = await seed(athlete),
     repo = createCoachingThreadRepository(database);
   const newest = await createPlanningRepository(database).save(athlete, {
@@ -166,8 +177,8 @@ it('pins owned historical plans and preserves user messages, original receipts, 
   });
 });
 it('rejects foreign or mismatched scope, pages owned threads including past-end totals, exports and erases messages', async () => {
-  const athlete = randomUUID(),
-    other = randomUUID(),
+  const athlete = await grantedAthlete(),
+    other = await grantedAthlete(),
     plan = await seed(athlete),
     repo = createCoachingThreadRepository(database);
   await expect(repo.create(other, command(plan.id))).rejects.toMatchObject({
@@ -221,8 +232,8 @@ it('rejects foreign or mismatched scope, pages owned threads including past-end 
     ),
   ).rejects.toMatchObject({ code: '42501' });
   const exported = await createOperationsRepository(database).exportAccount(athlete);
-  expect(exported.schemaVersion).toBe(28);
-  if (exported.schemaVersion !== 28) throw new Error('Expected current export schema');
+  expect(exported.schemaVersion).toBe(33);
+  if (exported.schemaVersion !== 33) throw new Error('Expected current export schema');
   expect(exported.data.coachingThreads).toHaveLength(3);
   expect(exported.data.coachingMessages).toHaveLength(3);
   expect(JSON.stringify(exported.data.coachingMessages)).toContain('Synthetic user message');
@@ -238,7 +249,7 @@ it('rejects foreign or mismatched scope, pages owned threads including past-end 
     ).toBe(0);
 });
 it('rolls back initial and appended messages together with head and receipt when outbox insertion fails', async () => {
-  const athlete = randomUUID(),
+  const athlete = await grantedAthlete(),
     plan = await seed(athlete);
   const failing: Database = {
     ...database,
@@ -268,7 +279,7 @@ it('rolls back initial and appended messages together with head and receipt when
   expect((await repo.append(athlete, first.thread.id, append)).thread.revision).toBe(2);
 });
 it('reads page and head from one MVCC statement even when append commits before result decoding', async () => {
-  const athlete = randomUUID(),
+  const athlete = await grantedAthlete(),
     plan = await seed(athlete),
     repo = createCoachingThreadRepository(database),
     first = await repo.create(athlete, command(plan.id));

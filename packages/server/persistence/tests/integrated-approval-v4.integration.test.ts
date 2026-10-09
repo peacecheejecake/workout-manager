@@ -1,3 +1,6 @@
+import { createConsentRepository } from '../src/repositories.js';
+import { createNutritionRepository } from '../src/nutrition-core.js';
+import { createIntegratedFixtureV4Repository } from '../src/integrated-fixture-v4.js';
 import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -92,6 +95,12 @@ interface Seed {
 
 async function seed(aiConsentGranted: boolean | null = true): Promise<Seed> {
   const athleteId = randomUUID();
+  await createConsentRepository(database).setConsent(athleteId, {
+    kind: 'app',
+    granted: true,
+    expectedRevision: 0,
+    idempotencyKey: randomUUID(),
+  });
   const planVersionId = randomUUID();
   const threadId = randomUUID();
   const messageId = randomUUID();
@@ -408,7 +417,14 @@ describe('M1c-04 integrated approval v4 persistence', () => {
         trainingAggregateId: randomUUID(),
       }),
     ).rejects.toMatchObject({ code: 'STALE_BASIS' });
-    await expect(repository().captureBasis(randomUUID(), capture)).rejects.toMatchObject({
+    const foreign = randomUUID();
+    await createConsentRepository(database).setConsent(foreign, {
+      kind: 'app',
+      granted: true,
+      expectedRevision: 0,
+      idempotencyKey: randomUUID(),
+    });
+    await expect(repository().captureBasis(foreign, capture)).rejects.toMatchObject({
       code: 'STALE_BASIS',
     });
     await database.tenant(fixture.athleteId, (tx) =>
@@ -805,4 +821,196 @@ describe('M1c-04 integrated approval v4 persistence', () => {
       events: 0,
     });
   });
+});
+async function sourceFixture() {
+  const s = await seed();
+  const nutrition = await createNutritionRepository(database).savePlan(s.athleteId, {
+    kind: 'create',
+    confirmed: true,
+    idempotencyKey: randomUUID(),
+    draft: {
+      period: { from: '2080-01-01', toInclusive: '2080-01-31' },
+      timezone: 'UTC',
+      purpose: 'Synthetic',
+      linkedTrainingPlanVersionId: s.planVersionId,
+      items: [],
+    },
+  });
+  const evidence = await createCoreEvidenceSnapshotRepository(database).capture(
+    s.athleteId,
+    s.threadId,
+    {
+      expectedConversationRevision: 1,
+      window: { from: '2080-01-01', toExclusive: '2080-01-08', timezone: 'UTC' },
+      idempotencyKey: randomUUID(),
+    },
+  );
+  const cmd = {
+    threadId: s.threadId,
+    evidenceSnapshotId: evidence.id,
+    expectedConversationRevision: 1,
+    trainingPlanVersionId: s.planVersionId,
+    nutritionPlanId: nutrition.planId,
+    nutritionPlanVersionId: nutrition.versionId,
+    routineBlueprintId: s.blueprintId,
+    routineBlueprintVersionId: s.blueprintVersionId,
+    recoveryStrategyId: randomUUID(),
+    routineScheduleId: randomUUID(),
+    window: { from: '2080-01-01', toExclusive: '2080-01-08', timezone: 'UTC' },
+    idempotencyKey: randomUUID(),
+  };
+  return {
+    s,
+    cmd,
+    repo: repository(),
+    fixture: createIntegratedFixtureV4Repository(database, repository(), {
+      enabled: true,
+      environment: 'test',
+    }),
+  };
+}
+it('S22 source integrated fixture real producer concurrent replay then epoch stale approval no writes', async () => {
+  const { s, cmd, repo, fixture } = await sourceFixture();
+  const [first, replay] = await Promise.all([
+    fixture.create(s.athleteId, cmd),
+    fixture.create(s.athleteId, cmd),
+  ]);
+  expect(replay).toEqual(first);
+  const before = await database.tenant(s.athleteId, (tx) =>
+    tx.query('SELECT count(*)::int n FROM integrated_approval_v4 WHERE athlete_id=$1', [
+      s.athleteId,
+    ]),
+  );
+  await createConsentRepository(database).setConsent(s.athleteId, {
+    kind: 'app',
+    granted: false,
+    expectedRevision: 1,
+    idempotencyKey: randomUUID(),
+  });
+  expect(await fixture.create(s.athleteId, cmd)).toEqual(first);
+  await createConsentRepository(database).setConsent(s.athleteId, {
+    kind: 'app',
+    granted: true,
+    expectedRevision: 2,
+    idempotencyKey: randomUUID(),
+  });
+  await expect(repo.approve(s.athleteId, approval(first))).rejects.toMatchObject({
+    code: 'STALE_APP_ADMISSION',
+  });
+  const after = await database.tenant(s.athleteId, (tx) =>
+    tx.query('SELECT count(*)::int n FROM integrated_approval_v4 WHERE athlete_id=$1', [
+      s.athleteId,
+    ]),
+  );
+  expect(after.rows).toEqual(before.rows);
+  const bound = await database.tenant(s.athleteId, (tx) =>
+    tx.query(
+      'SELECT e.app_revision FROM integrated_candidate_app_admission_binding c JOIN evidence_app_admission_binding e USING(athlete_id,evidence_snapshot_id) WHERE c.athlete_id=$1 AND c.candidate_id=$2',
+      [s.athleteId, first.id],
+    ),
+  );
+  expect(bound.rows).toEqual([{ app_revision: 1 }]);
+});
+
+it('S22 v4 source apptrue ownership and missing errors preserved while appabsence denies first', async () => {
+  const { s, cmd, repo, fixture } = await sourceFixture();
+  const candidate = await fixture.create(s.athleteId, cmd);
+  const capture = {
+    evidenceSnapshotId: cmd.evidenceSnapshotId,
+    trainingAggregateId: cmd.trainingPlanVersionId,
+    nutritionAggregateId: cmd.nutritionPlanId,
+    recoveryAggregateId: cmd.recoveryStrategyId,
+    routineScheduleAggregateId: cmd.routineScheduleId,
+  };
+  await expect(
+    repo.captureBasis(s.athleteId, { ...capture, evidenceSnapshotId: randomUUID() }),
+  ).rejects.toMatchObject({ code: 'STALE_BASIS' });
+  await expect(
+    repo.approve(s.athleteId, { ...approval(candidate), candidateId: randomUUID() }),
+  ).rejects.toMatchObject({ code: 'CANDIDATE_UNAVAILABLE' });
+  const foreign = randomUUID();
+  await expect(repo.captureBasis(foreign, capture)).rejects.toMatchObject({
+    code: 'APP_CONSENT_REQUIRED',
+  });
+  await expect(repo.approve(foreign, approval(candidate))).rejects.toMatchObject({
+    code: 'APP_CONSENT_REQUIRED',
+  });
+  await createConsentRepository(database).setConsent(foreign, {
+    kind: 'app',
+    granted: true,
+    expectedRevision: 0,
+    idempotencyKey: randomUUID(),
+  });
+  await expect(repo.captureBasis(foreign, capture)).rejects.toMatchObject({ code: 'STALE_BASIS' });
+  await expect(repo.approve(foreign, approval(candidate))).rejects.toMatchObject({
+    code: 'CANDIDATE_UNAVAILABLE',
+  });
+  await createConsentRepository(database).setConsent(s.athleteId, {
+    kind: 'app',
+    granted: false,
+    expectedRevision: 1,
+    idempotencyKey: randomUUID(),
+  });
+  await expect(repo.captureBasis(s.athleteId, capture)).rejects.toMatchObject({
+    code: 'APP_CONSENT_REQUIRED',
+  });
+  await expect(repo.approve(s.athleteId, approval(candidate))).rejects.toMatchObject({
+    code: 'APP_CONSENT_REQUIRED',
+  });
+  const counts = await database.tenant(s.athleteId, (tx) =>
+    tx.query('SELECT count(*)::int n FROM integrated_approval_v4 WHERE athlete_id=$1', [
+      s.athleteId,
+    ]),
+  );
+  expect(counts.rows[0]?.['n']).toBe(0);
+});
+it('S22 v4 source original successful approval replay after regrant cannot upgrade owned evidence binding', async () => {
+  const { s, cmd, repo, fixture } = await sourceFixture();
+  const candidate = await fixture.create(s.athleteId, cmd),
+    input = approval(candidate);
+  const first = await repo.approve(s.athleteId, input);
+  const before = await database.tenant(s.athleteId, (tx) =>
+    tx.query(
+      "SELECT (SELECT count(*)::int FROM integrated_approval_v4 WHERE athlete_id=$1) approvals,(SELECT count(*)::int FROM approval_app_admission_binding WHERE athlete_id=$1) bindings,(SELECT count(*)::int FROM outbox WHERE athlete_id=$1 AND topic='integrated.candidate_approved_v4') events",
+      [s.athleteId],
+    ),
+  );
+  const consent = createConsentRepository(database);
+  await consent.setConsent(s.athleteId, {
+    kind: 'app',
+    granted: false,
+    expectedRevision: 1,
+    idempotencyKey: randomUUID(),
+  });
+  expect(await repo.approve(s.athleteId, input)).toEqual(first);
+  await consent.setConsent(s.athleteId, {
+    kind: 'app',
+    granted: true,
+    expectedRevision: 2,
+    idempotencyKey: randomUUID(),
+  });
+  expect(await repo.approve(s.athleteId, input)).toEqual(first);
+  await expect(
+    repo.captureBasis(s.athleteId, {
+      evidenceSnapshotId: cmd.evidenceSnapshotId,
+      trainingAggregateId: cmd.trainingPlanVersionId,
+      nutritionAggregateId: cmd.nutritionPlanId,
+      recoveryAggregateId: cmd.recoveryStrategyId,
+      routineScheduleAggregateId: cmd.routineScheduleId,
+    }),
+  ).rejects.toMatchObject({ code: 'STALE_APP_ADMISSION' });
+  const after = await database.tenant(s.athleteId, (tx) =>
+    tx.query(
+      "SELECT (SELECT count(*)::int FROM integrated_approval_v4 WHERE athlete_id=$1) approvals,(SELECT count(*)::int FROM approval_app_admission_binding WHERE athlete_id=$1) bindings,(SELECT count(*)::int FROM outbox WHERE athlete_id=$1 AND topic='integrated.candidate_approved_v4') events",
+      [s.athleteId],
+    ),
+  );
+  expect(after.rows).toEqual(before.rows);
+  const rows = await database.tenant(s.athleteId, (tx) =>
+    tx.query(
+      'SELECT e.app_revision FROM approval_app_admission_binding a JOIN integrated_candidate_app_admission_binding c ON c.athlete_id=a.athlete_id AND c.candidate_id=a.integrated_candidate_id JOIN evidence_app_admission_binding e ON e.athlete_id=c.athlete_id AND e.evidence_snapshot_id=c.evidence_snapshot_id WHERE a.athlete_id=$1',
+      [s.athleteId],
+    ),
+  );
+  expect(rows.rows).toEqual([{ app_revision: 1 }]);
 });

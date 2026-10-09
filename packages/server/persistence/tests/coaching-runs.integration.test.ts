@@ -29,6 +29,9 @@ const adminUrl = process.env['TEST_DATABASE_ADMIN_URL'];
 const runtimeUrl = process.env['TEST_DATABASE_URL'];
 if (!adminUrl || !runtimeUrl) throw new Error('Use isolated PostgreSQL integration harness');
 const admin = new Pool({ connectionString: adminUrl });
+const ownerUrl = process.env['TEST_DATABASE_OWNER_URL'];
+if (!ownerUrl) throw new Error('Owner maintenance requires the plain migration owner URL');
+const ownerPool = new Pool({ connectionString: ownerUrl });
 let database: Database;
 let workerDatabase: Database;
 
@@ -58,6 +61,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await database?.close();
   await workerDatabase?.close();
+  await ownerPool.end();
   await admin.end();
 });
 
@@ -78,7 +82,14 @@ const workerStore = (
     ...(currentPolicy ? { currentPolicy } : {}),
   });
 
-async function seed(athleteId: string) {
+async function seed(athleteId: string, grantApp = true) {
+  if (grantApp)
+    await createConsentRepository(database).setConsent(athleteId, {
+      kind: 'app',
+      granted: true,
+      expectedRevision: 0,
+      idempotencyKey: randomUUID(),
+    });
   const draft: PlanDraft = {
     title: 'Training',
     timezone: 'UTC',
@@ -320,7 +331,7 @@ it.each(['consent_withdrawn', 'source_deleted'] as const)(
         idempotencyKey: randomUUID(),
       });
     } else {
-      const owner = await admin.connect();
+      const owner = await ownerPool.connect();
       try {
         await owner.query('BEGIN');
         await owner.query("SELECT set_config('app.athlete_id',$1,true)", [athleteId]);
@@ -554,7 +565,7 @@ it.each(['consent_withdrawn', 'source_deleted'] as const)(
         idempotencyKey: randomUUID(),
       });
     } else {
-      const owner = await admin.connect();
+      const owner = await ownerPool.connect();
       try {
         await owner.query('BEGIN');
         await owner.query("SELECT set_config('app.athlete_id',$1,true)", [athleteId]);
@@ -998,4 +1009,247 @@ it('rolls output and status back when the bound outbox acknowledgement fails', a
     ),
   );
   expect(output.rows[0]?.['n']).toBe(0);
+});
+
+it('S22 app absence blocks the source seed before any evidence or run artifacts', async () => {
+  const athleteId = randomUUID();
+  await expect(seed(athleteId, false)).rejects.toThrow('APP_CONSENT_REQUIRED');
+  const rows = await database.tenant(athleteId, (tx) =>
+    tx.query(
+      `SELECT (SELECT count(*)::int FROM core_evidence_snapshot WHERE athlete_id=$1) evidence,(SELECT count(*)::int FROM evidence_app_admission_binding WHERE athlete_id=$1) bindings,(SELECT count(*)::int FROM coaching_run WHERE athlete_id=$1) runs,(SELECT count(*)::int FROM command_receipt WHERE athlete_id=$1 AND idempotency_key LIKE 'evidence:capture:%') capture_receipts`,
+      [athleteId],
+    ),
+  );
+  expect(rows.rows[0]).toEqual({ evidence: 0, bindings: 0, runs: 0, capture_receipts: 0 });
+});
+it('S22 source receipt replay stays readable revoked then regrant never upgrades evidence run bindings', async () => {
+  const athleteId = randomUUID();
+  const seeded = await seed(athleteId);
+  const capture = {
+    expectedConversationRevision: 1,
+    window: { from: '2080-01-01', toExclusive: '2080-01-08', timezone: 'UTC' },
+    idempotencyKey: randomUUID(),
+  };
+  const snapshots = createCoreEvidenceSnapshotRepository(database);
+  const evidence = await snapshots.capture(athleteId, seeded.thread.id, capture);
+  const command = {
+    ...seeded.command,
+    evidenceSnapshotId: evidence.id,
+    idempotencyKey: randomUUID(),
+  };
+  const runs = repository();
+  const run = await runs.create(athleteId, seeded.thread.id, command);
+  const consent = createConsentRepository(database);
+  await consent.setConsent(athleteId, {
+    kind: 'app',
+    granted: false,
+    expectedRevision: 1,
+    idempotencyKey: randomUUID(),
+  });
+  expect(await snapshots.capture(athleteId, seeded.thread.id, capture)).toEqual(evidence);
+  expect(await runs.create(athleteId, seeded.thread.id, command)).toEqual(run);
+  expect(await runs.read(athleteId, run.id)).toEqual(run);
+  await expect(
+    runs.create(athleteId, seeded.thread.id, { ...command, idempotencyKey: randomUUID() }),
+  ).rejects.toMatchObject({ code: 'APP_CONSENT_REQUIRED' });
+  await consent.setConsent(athleteId, {
+    kind: 'app',
+    granted: true,
+    expectedRevision: 2,
+    idempotencyKey: randomUUID(),
+  });
+  await expect(
+    runs.create(athleteId, seeded.thread.id, { ...command, idempotencyKey: randomUUID() }),
+  ).rejects.toMatchObject({ code: 'STALE_APP_ADMISSION' });
+  const fresh = await snapshots.capture(athleteId, seeded.thread.id, {
+    ...capture,
+    idempotencyKey: randomUUID(),
+  });
+  const freshRun = await runs.create(athleteId, seeded.thread.id, {
+    ...command,
+    evidenceSnapshotId: fresh.id,
+    idempotencyKey: randomUUID(),
+  });
+  const rows = await database.tenant(athleteId, (tx) =>
+    tx.query(
+      'SELECT r.run_id,e.app_revision FROM run_app_admission_binding r JOIN evidence_app_admission_binding e USING(athlete_id,evidence_snapshot_id) WHERE r.athlete_id=$1 ORDER BY e.app_revision',
+      [athleteId],
+    ),
+  );
+  expect(rows.rows).toEqual([
+    { run_id: run.id, app_revision: 1 },
+    { run_id: freshRun.id, app_revision: 3 },
+  ]);
+});
+it('S22 source in-flight worker output fails after withdraw regrant and actual output rolls back', async () => {
+  const athleteId = randomUUID();
+  const seeded = await seed(athleteId);
+  const run = await repository().create(athleteId, seeded.thread.id, seeded.command);
+  let entered!: () => void, release!: () => void;
+  const entry = new Promise<void>((resolve) => (entered = resolve)),
+    held = new Promise<void>((resolve) => (release = resolve));
+  const pending = runOneCoachingJob({
+    athleteId,
+    store: workerStore(),
+    adapter: {
+      evaluate: async () => {
+        entered();
+        await held;
+        return { kind: 'analysis', content: { summary: 'Synthetic output after epoch change' } };
+      },
+    },
+  });
+  await entry;
+  const consent = createConsentRepository(database);
+  await consent.setConsent(athleteId, {
+    kind: 'app',
+    granted: false,
+    expectedRevision: 1,
+    idempotencyKey: randomUUID(),
+  });
+  await consent.setConsent(athleteId, {
+    kind: 'app',
+    granted: true,
+    expectedRevision: 2,
+    idempotencyKey: randomUUID(),
+  });
+  release();
+  expect(await pending).toBe('skipped');
+  expect((await repository().read(athleteId, run.id))?.status).toEqual({
+    kind: 'cancelled',
+    reason: 'stale_basis',
+  });
+  const rows = await database.tenant(athleteId, (tx) =>
+    tx.query('SELECT count(*)::int n FROM coaching_analysis_output WHERE athlete_id=$1', [
+      athleteId,
+    ]),
+  );
+  expect(rows.rows[0]?.['n']).toBe(0);
+});
+
+it('historical app audit saved output remains readable after app-only withdrawal and regrant', async () => {
+  const athleteId = randomUUID();
+  const { plan, thread, command } = await seed(athleteId);
+  const repo = repository();
+  const run = await repo.create(athleteId, thread.id, command);
+  expect(
+    await runOneCoachingJob({
+      athleteId,
+      store: workerStore(),
+      adapter: createDeterministicFixtureAdapter('synthetic-v1'),
+    }),
+  ).toBe('stored');
+  const baseline = await repo.readOutput(athleteId, run.id);
+  expect(baseline).not.toBeNull();
+  const consent = createConsentRepository(database);
+  for (const [granted, expectedRevision] of [
+    [false, 1],
+    [true, 2],
+  ] as const) {
+    await consent.setConsent(athleteId, {
+      kind: 'app',
+      granted,
+      expectedRevision,
+      idempotencyKey: randomUUID(),
+    });
+    expect(await repo.readOutput(athleteId, run.id)).toEqual(baseline);
+    expect((await repo.read(athleteId, run.id))?.status.kind).toBe('analysis_ready');
+    expect((await createPlanningRepository(database).read(athleteId)).head?.id).toBe(plan.id);
+    expect(
+      await createCoachingThreadRepository(database).read(athleteId, thread.id),
+    ).not.toBeNull();
+    expect(
+      (await createCoachingThreadRepository(database).messages(athleteId, thread.id))?.messages,
+    ).toHaveLength(1);
+    const rows = await database.tenant(athleteId, (tx) =>
+      tx.query(
+        `SELECT o.body IS NOT NULL AS body_retained,o.purged_reason,
+      (SELECT granted FROM consent WHERE athlete_id=$1 AND kind='ai') AS ai_true,
+      (SELECT app_revision FROM evidence_app_admission_binding WHERE athlete_id=$1 LIMIT 1) AS pinned_revision
+      FROM coaching_analysis_output o WHERE o.athlete_id=$1 AND o.run_id=$2`,
+        [athleteId, run.id],
+      ),
+    );
+    expect(rows.rows).toEqual([
+      { body_retained: true, purged_reason: null, ai_true: true, pinned_revision: 1 },
+    ]);
+    const exported = await createOperationsRepository(database).exportAccount(athleteId);
+    if (exported.schemaVersion !== 33) throw new Error('Expected current export schema');
+    expect(exported.data.coachingAnalysisOutputs[0]?.['body']).not.toBeNull();
+  }
+  await consent.setConsent(athleteId, {
+    kind: 'ai',
+    granted: false,
+    expectedRevision: 1,
+    idempotencyKey: randomUUID(),
+  });
+  expect(await repo.readOutput(athleteId, run.id)).toBeNull();
+  const purged = await database.tenant(athleteId, (tx) =>
+    tx.query(
+      'SELECT body IS NULL AS body_purged,purged_reason FROM coaching_analysis_output WHERE athlete_id=$1 AND run_id=$2',
+      [athleteId, run.id],
+    ),
+  );
+  expect(purged.rows).toEqual([{ body_purged: true, purged_reason: 'consent_withdrawn' }]);
+});
+
+it('historical app audit missing legacy run binding permits saved read but blocks queued worker processing', async () => {
+  const athleteId = randomUUID();
+  const seeded = await seed(athleteId);
+  const repo = repository();
+  const saved = await repo.create(athleteId, seeded.thread.id, seeded.command);
+  expect(
+    await runOneCoachingJob({
+      athleteId,
+      store: workerStore(),
+      adapter: createDeterministicFixtureAdapter('synthetic-v1'),
+    }),
+  ).toBe('stored');
+  const baseline = await repo.readOutput(athleteId, saved.id);
+  expect(baseline).not.toBeNull();
+  const queued = await repo.create(athleteId, seeded.thread.id, {
+    ...seeded.command,
+    idempotencyKey: randomUUID(),
+  });
+  const owner = await ownerPool.connect();
+  try {
+    await owner.query('BEGIN');
+    await owner.query("SELECT set_config('app.athlete_id',$1,true)", [athleteId]);
+    // Migration100's owner/tenant DELETE permission creates the missing-binding storage fixture.
+    // No trigger disable or bypass GUC. This is not a pre-100 loader/restore acceptance claim.
+    await owner.query('DELETE FROM run_app_admission_binding WHERE athlete_id=$1', [athleteId]);
+    expect(
+      (
+        await owner.query(
+          'SELECT count(*)::int n FROM run_app_admission_binding WHERE athlete_id=$1',
+          [athleteId],
+        )
+      ).rows[0]?.['n'],
+    ).toBe(0);
+    await owner.query('COMMIT');
+  } catch (error) {
+    await owner.query('ROLLBACK');
+    throw error;
+  } finally {
+    owner.release();
+  }
+  expect(await repo.readOutput(athleteId, saved.id)).toEqual(baseline);
+  let calls = 0;
+  expect(
+    await runOneCoachingJob({
+      athleteId,
+      store: workerStore(),
+      adapter: {
+        evaluate: async () => {
+          calls++;
+          return { kind: 'analysis', content: { synthetic: true } };
+        },
+      },
+    }),
+  ).toBe('skipped');
+  expect(calls).toBe(0);
+  expect((await repo.read(athleteId, queued.id))?.status).toEqual({
+    kind: 'cancelled',
+    reason: 'stale_basis',
+  });
 });

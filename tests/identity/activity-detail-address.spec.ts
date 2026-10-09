@@ -1,3 +1,4 @@
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';
 import { identityMobileOrigin, identityWebOrigin } from '../../scripts/fixtures/identity-ports';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
@@ -56,8 +57,11 @@ test.afterEach(async ({ page }) => {
 });
 
 /** A synthetic activity with observation records, so the intervals and source panels have content. */
-async function importActivity(page: Page, title: string) {
-  const headers = await login(page, 'Alice');
+async function importActivity(
+  page: Page,
+  title: string,
+  headers: Awaited<ReturnType<typeof login>>,
+) {
   const start = Date.parse('2023-06-15T12:00:00Z');
   const command = importActivitySchema.parse({
     idempotencyKey: randomUUID(),
@@ -119,7 +123,9 @@ for (const [shell, origin] of shells) {
     page,
   }) => {
     const title = `S09 주소 별칭 ${randomUUID()}`;
-    const activityId = await importActivity(page, title);
+    const scenarioHeaders = await login(page, 'Alice');
+    await grantAppProcessingForScenario(page);
+    const activityId = await importActivity(page, title, scenarioHeaders);
     const tablist = page.getByRole('tablist', { name: '활동 상세 보기', exact: true });
 
     for (const [tab, label, region] of tabs) {
@@ -160,7 +166,9 @@ for (const [shell, origin] of shells) {
     browser,
   }) => {
     const title = `S09 주소 별칭 오류 ${randomUUID()}`;
-    const activityId = await importActivity(page, title);
+    const scenarioHeaders = await login(page, 'Alice');
+    await grantAppProcessingForScenario(page);
+    const activityId = await importActivity(page, title, scenarioHeaders);
     const tablist = page.getByRole('tablist', { name: '활동 상세 보기', exact: true });
 
     // An unknown tab: the screen's unsupported-view state, no tab selected, a way back to overview.

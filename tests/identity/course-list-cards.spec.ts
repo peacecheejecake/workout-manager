@@ -1,3 +1,4 @@
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
@@ -336,6 +337,7 @@ for (const shell of shells) {
     }) => {
       test.setTimeout(90_000);
       const headers = await login(page);
+      await grantAppProcessingForScenario(page);
       const tag = `${shell.name} ${randomUUID().slice(0, 8)}`;
       const names = {
         recorded: `카드 기록 ${tag}`,

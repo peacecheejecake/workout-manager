@@ -195,6 +195,12 @@ function expectedBasis(
 }
 async function seed(withSetPrerequisites = false) {
   const athleteId = randomUUID();
+  await createConsentRepository(database).setConsent(athleteId, {
+    kind: 'app',
+    granted: true,
+    expectedRevision: 0,
+    idempotencyKey: randomUUID(),
+  });
   const training = await createPlanningRepository(database).save(athleteId, {
     source: 'manual',
     confirmed: true,
@@ -653,4 +659,60 @@ describe('M1b-03 V022-A30–A32 atomic joint approval', () => {
     expect(result.training?.draft.sessions[0]?.date).toBe('2080-01-02');
     expect(result.nutrition).toEqual([]);
   });
+});
+
+it('S22 joint withdrawal and regrant reject fresh approval and partial writes atomically', async () => {
+  // The existing seed includes explicit SQL run/output fixtures; prepare and approval use real repositories.
+  const data = await seed();
+  const candidate = await prepare(data);
+  const before = await counts(data.athleteId);
+  const consent = createConsentRepository(database);
+  for (const [granted, expectedRevision, code] of [
+    [false, 1, 'APP_CONSENT_REQUIRED'],
+    [true, 2, 'STALE_APP_ADMISSION'],
+  ] as const) {
+    await consent.setConsent(data.athleteId, {
+      kind: 'app',
+      granted,
+      expectedRevision,
+      idempotencyKey: randomUUID(),
+    });
+    await expect(repository().approve(data.athleteId, approval(candidate))).rejects.toMatchObject({
+      code,
+    });
+    await expect(
+      repository().derivePartial(data.athleteId, candidate.id, {
+        selection: {
+          includeTrainingTitle: true,
+          trainingPeriodIds: [],
+          trainingSessionIds: [],
+          nutritionPlanIds: [],
+        },
+        idempotencyKey: randomUUID(),
+      }),
+    ).rejects.toMatchObject({ code });
+    expect(await counts(data.athleteId)).toEqual(before);
+  }
+});
+
+it('S22 joint successful receipt replay preserves the atomic result after app withdrawal and regrant', async () => {
+  const data = await seed();
+  const candidate = await prepare(data);
+  const command = approval(candidate);
+  const first = await repository().approve(data.athleteId, command);
+  const before = await counts(data.athleteId);
+  const consent = createConsentRepository(database);
+  for (const [granted, expectedRevision] of [
+    [false, 1],
+    [true, 2],
+  ] as const) {
+    await consent.setConsent(data.athleteId, {
+      kind: 'app',
+      granted,
+      expectedRevision,
+      idempotencyKey: randomUUID(),
+    });
+    expect(await repository().approve(data.athleteId, command)).toEqual(first);
+    expect(await counts(data.athleteId)).toEqual(before);
+  }
 });

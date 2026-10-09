@@ -1,3 +1,4 @@
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
@@ -86,6 +87,7 @@ test('manual editor previews before explicit recording and reloads zero, unknown
   page,
 }) => {
   const headers = await login(page);
+  await grantAppProcessingForScenario(page);
   const marker = `editor-manual-${randomUUID()}`;
   try {
     await page.goto('/activities/new');
@@ -161,6 +163,7 @@ test('imported activity conflict preserves the draft until comparison and explic
   page,
 }) => {
   const headers = await login(page);
+  await grantAppProcessingForScenario(page);
   const marker = `editor-conflict-${randomUUID()}`;
   const importedResponse = await page.request.post('/bff/v1/activity-imports', {
     headers: { ...headers, 'idempotency-key': randomUUID() },
@@ -236,6 +239,7 @@ test('lost create response locks the reviewed command and retries the same real 
   page,
 }) => {
   const headers = await login(page);
+  await grantAppProcessingForScenario(page);
   const marker = `editor-retry-${randomUUID()}`;
   const attempts: { key: string; body: unknown }[] = [];
   const createRoute = '**/bff/v1/activities';

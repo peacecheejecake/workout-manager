@@ -1,3 +1,4 @@
+import { requireAppAdmission } from './app-admission.js';
 import {
   preservesSessionCompletions,
   sessionCompletionSchema,
@@ -215,6 +216,7 @@ export function createPlanningRepository(database: Database): PlanningRepository
             throw new PersistenceConflict('IDEMPOTENCY_CONFLICT');
           return planSnapshotSchema.parse(receipt.rows[0]?.['result']);
         }
+        await requireAppAdmission(transaction);
         const saved = await persistPlanVersion(transaction, {
           expectedVersionId: command.expectedVersionId,
           draft: command.draft,

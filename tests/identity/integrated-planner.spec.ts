@@ -1,3 +1,4 @@
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';
 import { identityMobileOrigin, identityWebOrigin } from '../../scripts/fixtures/identity-ports';
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
@@ -58,6 +59,7 @@ test('integrated Planner shows approved plans and one canonical actual per ledge
 }) => {
   test.setTimeout(120_000);
   const headers = await login(page);
+  await grantAppProcessingForScenario(page);
   const marker = randomUUID();
   const occurredAt = new Date(Date.now() - 3_600_000).toISOString();
   const day = occurredAt.slice(0, 10);

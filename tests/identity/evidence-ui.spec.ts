@@ -1,3 +1,4 @@
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
@@ -70,11 +71,7 @@ async function openEvidenceGroup(page: Page, name: string) {
   return details;
 }
 
-async function setup(page: Page) {
-  page.setDefaultTimeout(5000);
-  page.setDefaultNavigationTimeout(5000);
-  const headers = await login(page);
-  cleanupHeaders.set(page, headers);
+async function setup(page: Page, headers: Awaited<ReturnType<typeof login>>) {
   const get = async (path: string) => {
     const response = await page.request.get(path, { headers });
     expect(response.status()).toBe(200);
@@ -194,7 +191,12 @@ async function capture(page: Page, path: string) {
 test('explicitly captures saved evidence, keeps unsaved text outside the snapshot and refreshes a deleted-source tombstone', async ({
   page,
 }) => {
-  const f = await setup(page);
+  page.setDefaultTimeout(5000);
+  page.setDefaultNavigationTimeout(5000);
+  const headers = await login(page);
+  cleanupHeaders.set(page, headers);
+  await grantAppProcessingForScenario(page);
+  const f = await setup(page, headers);
   const draftText = '근거에 포함되면 안 되는 미저장 합성 메시지';
   await message(page).fill(draftText);
   await message(page).focus();
@@ -318,7 +320,12 @@ test('explicitly captures saved evidence, keeps unsaved text outside the snapsho
 test('retries a committed capture with the identical frozen request and preserves the message draft', async ({
   page,
 }) => {
-  const f = await setup(page);
+  page.setDefaultTimeout(5000);
+  page.setDefaultNavigationTimeout(5000);
+  const headers = await login(page);
+  cleanupHeaders.set(page, headers);
+  await grantAppProcessingForScenario(page);
+  const f = await setup(page, headers);
   const text = '응답 유실 중에도 보존할 합성 초안';
   await message(page).fill(text);
   const attempts: { key: string | null; body: string | null }[] = [];
@@ -368,7 +375,12 @@ test('retries a committed capture with the identical frozen request and preserve
 test('requires explicit conversation refresh after capture conflict and keeps the unsaved message through keyboard reflow', async ({
   page,
 }) => {
-  const f = await setup(page);
+  page.setDefaultTimeout(5000);
+  page.setDefaultNavigationTimeout(5000);
+  const headers = await login(page);
+  cleanupHeaders.set(page, headers);
+  await grantAppProcessingForScenario(page);
+  const f = await setup(page, headers);
   await page.setViewportSize({ width: 320, height: 900 });
   const text = '다른 탭이 수정해도 보존할 합성 초안';
   await message(page).fill(text);

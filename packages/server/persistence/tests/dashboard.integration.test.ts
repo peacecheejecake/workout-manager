@@ -1,3 +1,4 @@
+import { createConsentRepository } from '../src/repositories.js';
 import { emptyActual, emptyPlanned, summarizeDays } from '../src/dashboard-metrics.js';
 import { createPeriodSummaryRepository } from '../src/period-summary.js';
 import { randomUUID } from 'node:crypto';
@@ -9,6 +10,7 @@ import { createDatabase, type Database } from '../src/database.js';
 import {
   migrate,
   grantOperations,
+  grantCorePlanning,
   grantCheckIns,
   grantHealthKitIngestion,
 } from '../src/migrate.js';
@@ -16,7 +18,9 @@ import { createDashboardRepository } from '../src/dashboard.js';
 import { createActivityRepository } from '../src/activities.js';
 import { createCheckInRepository } from '../src/check-ins.js';
 import { createPlanningRepository } from '../src/planning.js';
-import { createHealthKitIngestionRepository } from '../src/healthkit-ingestion.js';
+import type { HealthKitIngestionBatch } from '@workout/contracts/healthkit-ingestion';
+import { createHealthKitIngestionRepository as createRawHealthKitIngestionRepository } from '../src/healthkit-ingestion.js';
+import { createHealthKitRegistrationRepository } from '../src/healthkit-registration.js';
 import { createHealthKitActivityRepository } from '../src/healthkit-activity.js';
 import { createSessionActualsRepository } from '../src/session-actuals.js';
 import { createActivityContextRepository } from '../src/activity-context.js';
@@ -28,6 +32,7 @@ let database: Database;
 beforeAll(async () => {
   await migrate(adminUrl);
   await grantOperations(adminUrl, 'workout_runtime');
+  await grantCorePlanning(adminUrl, 'workout_runtime');
   await grantCheckIns(adminUrl, 'workout_runtime');
   await grantHealthKitIngestion(adminUrl, 'workout_runtime');
   await admin.query(
@@ -63,6 +68,7 @@ it('counts manual actuals once and projects corrected or cleared start times wit
   const athlete = randomUUID();
   const activities = createActivityRepository(database);
   const dashboard = createDashboardRepository(database);
+  await grantAppPurpose(athlete);
   const created = await activities.createManualActivity(athlete, {
     confirmed: true,
     idempotencyKey: randomUUID(),
@@ -144,6 +150,7 @@ function draft(): PlanDraft {
   };
 }
 async function savePlan(athlete: string, value = draft()) {
+  await grantAppPurpose(athlete);
   return createPlanningRepository(database).save(athlete, {
     source: 'manual',
     confirmed: true,
@@ -152,10 +159,69 @@ async function savePlan(athlete: string, value = draft()) {
     draft: value,
   });
 }
+const syntheticDeclaredEpochs = new Map<string, string>();
+
+async function registeredBatch(
+  db: Database,
+  athleteId: string,
+  batch: HealthKitIngestionBatch,
+  consentRevision: number,
+) {
+  const registration = createHealthKitRegistrationRepository(db);
+  const current = await registration.listWorkouts(athleteId, {});
+  const epochs = new Map(current.claims.map((claim) => [claim.sampleId, claim.claimEpoch]));
+  const missing = [...new Set(batch.events.map((event) => event.sampleId))].filter((sampleId) => {
+    if (epochs.has(sampleId)) return false;
+    const previousEpoch = syntheticDeclaredEpochs.get(`${athleteId}:${sampleId}`);
+    if (previousEpoch) {
+      epochs.set(sampleId, previousEpoch);
+      return false;
+    }
+    return true;
+  });
+  if (missing.length) {
+    const result = await registration.registerWorkouts(athleteId, {
+      schemaVersion: 1,
+      sampleIds: missing,
+      accountAttributionDeclared: true,
+      expectedConsentRevision: consentRevision,
+      expectedRegistryRevision: current.registryRevision,
+      idempotencyKey: randomUUID(),
+    });
+    for (const claim of result.claims) {
+      epochs.set(claim.sampleId, claim.claimEpoch);
+      syntheticDeclaredEpochs.set(`${athleteId}:${claim.sampleId}`, claim.claimEpoch);
+    }
+  }
+  return {
+    ...batch,
+    schemaVersion: 2 as const,
+    events: batch.events.map((event) => {
+      const claimEpoch = epochs.get(event.sampleId);
+      if (!claimEpoch) throw new Error('Missing synthetic claim epoch');
+      return { ...event, claimEpoch };
+    }),
+  };
+}
+
+function createRegisteredFixtureIngestionRepository(db: Database) {
+  const raw = createRawHealthKitIngestionRepository(db);
+  return {
+    async ingestBatch(athleteId: string, batch: HealthKitIngestionBatch, consentRevision: number) {
+      return raw.ingestBatch(
+        athleteId,
+        await registeredBatch(db, athleteId, batch, consentRevision),
+        consentRevision,
+      );
+    },
+  };
+}
+
 it('counts one HealthKit canonical Activity across daily, period, session and context reads with tenant isolation', async () => {
   const athlete = randomUUID();
   const otherAthlete = randomUUID();
   const sampleId = randomUUID();
+  await declareSyntheticAppConsent(athlete);
   const consentClient = await admin.connect();
   try {
     await consentClient.query('BEGIN');
@@ -171,7 +237,7 @@ it('counts one HealthKit canonical Activity across daily, period, session and co
   } finally {
     consentClient.release();
   }
-  await createHealthKitIngestionRepository(database).ingestBatch(
+  await createRegisteredFixtureIngestionRepository(database).ingestBatch(
     athlete,
     {
       schemaVersion: 1,
@@ -271,6 +337,7 @@ it('counts one HealthKit canonical Activity across daily, period, session and co
   ).toBeNull();
 });
 async function checkin(athlete: string, observedAt: string, note = 'self report') {
+  await grantAppPurpose(athlete);
   return createCheckInRepository(database).createCheckIn(athlete, {
     idempotencyKey: randomUUID(),
     values: {
@@ -314,6 +381,7 @@ it('returns bounded complete empty dates with unknown metrics and no invented co
 it('groups DST by local calendar date and preserves zero/null and separate duration definitions', async () => {
   const athlete = randomUUID(),
     repo = createActivityRepository(database);
+  await grantAppPurpose(athlete);
   await repo.importActivity(
     athlete,
     activity('2024-03-10T04:59:59Z', {
@@ -358,6 +426,7 @@ it('groups DST by local calendar date and preserves zero/null and separate durat
 it('uses plan timezone and bounded upcoming dates, keeping planned metrics separate', async () => {
   const athlete = randomUUID(),
     plan = await savePlan(athlete);
+  await grantAppPurpose(athlete);
   await createActivityRepository(database).importActivity(
     athlete,
     activity('2024-03-11T02:00:00Z', { distanceMeters: 0 }),
@@ -384,6 +453,7 @@ it('reflects overlays, explicit null correction and tombstone revisions without 
       durationSeconds: 30,
       durationKind: 'timer',
     });
+  await grantAppPurpose(athlete);
   const initial = await repo.importActivity(athlete, input);
   await repo.updateOverlay(athlete, initial.activityId, {
     idempotencyKey: randomUUID(),
@@ -438,6 +508,7 @@ it('reads every component in one SELECT while concurrent commits remain visible 
           query: async (sql, args) => {
             selects++;
             const result = await tx.query(sql, args);
+            await grantAppPurpose(athlete);
             await createActivityRepository(database).importActivity(
               athlete,
               activity('2024-03-10T12:00:00Z', { distanceMeters: 42 }),
@@ -597,6 +668,7 @@ it('matches SQL decimal day sums and JavaScript period/window target sums for fr
     ...input,
     sessions: input.sessions.filter((session) => session.id.startsWith('scalar')),
   };
+  await grantAppPurpose(athlete);
   await plans.save(athlete, {
     source: 'manual',
     confirmed: true,
@@ -609,3 +681,38 @@ it('matches SQL decimal day sums and JavaScript period/window target sums for fr
       ?.durationSeconds,
   ).toEqual({ min: 0.3, max: 0.3, knownCount: 2, missingCount: 0, rangeCount: 0 });
 });
+
+// Explicit permission for this synthetic positive core-storage fixture only.
+// Preserve any existing withdrawal/revision and never recreate an erased tenant.
+async function grantAppPurpose(athleteId: string): Promise<void> {
+  const client = await admin.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock_shared(77210,1)');
+    // Serialize the absence check before the app event trigger, like the consent command.
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [athleteId]);
+    await client.query("SELECT set_config('app.athlete_id',$1,true)", [athleteId]);
+    await client.query(
+      "INSERT INTO consent(athlete_id,kind,granted,revision) SELECT $1,'app',true,1 WHERE NOT EXISTS (SELECT 1 FROM tenant_erasure WHERE athlete_id=$1) ON CONFLICT (athlete_id,kind) DO NOTHING",
+      [athleteId],
+    );
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+// Explicit synthetic user permission for named positive collection scenarios only.
+async function declareSyntheticAppConsent(athleteId: string): Promise<void> {
+  expect(
+    await createConsentRepository(database).setConsent(athleteId, {
+      kind: 'app',
+      granted: true,
+      expectedRevision: 0,
+      idempotencyKey: randomUUID(),
+    }),
+  ).toEqual({ kind: 'app', granted: true, revision: 1 });
+}

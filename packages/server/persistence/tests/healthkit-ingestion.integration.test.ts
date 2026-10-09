@@ -3,8 +3,9 @@ import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { HealthKitIngestionBatch } from '@workout/contracts/healthkit-ingestion';
 import { createDatabase, type Database } from '../src/database.js';
-import { createHealthKitIngestionRepository } from '../src/healthkit-ingestion.js';
+import { createHealthKitIngestionRepository as createRawHealthKitIngestionRepository } from '../src/healthkit-ingestion.js';
 import { createHealthKitProjectionRepository } from '../src/healthkit-projection.js';
+import { createHealthKitRegistrationRepository } from '../src/healthkit-registration.js';
 import { grantHealthKitIngestion, grantOperations, migrate } from '../src/migrate.js';
 import { createOperationsRepository } from '../src/operations.js';
 
@@ -48,13 +49,72 @@ function workout(sampleId = randomUUID()): HealthKitIngestionBatch {
   };
 }
 
+// Explicit synthetic positive fixture: app processing and individual HealthKit permissions.
 async function grantConsent(athleteId: string) {
   await database.tenant(athleteId, (tx) =>
     tx.query(
-      "INSERT INTO consent(athlete_id,kind,granted,revision) VALUES($1,'healthkit',true,1)",
+      "INSERT INTO consent(athlete_id,kind,granted,revision) VALUES($1,'healthkit',true,1),($1,'app',true,1)",
       [athleteId],
     ),
   );
+}
+
+const syntheticDeclaredEpochs = new Map<string, string>();
+
+async function registeredBatch(
+  db: Database,
+  athleteId: string,
+  batch: HealthKitIngestionBatch,
+  consentRevision: number,
+) {
+  const registration = createHealthKitRegistrationRepository(db);
+  const current = await registration.listWorkouts(athleteId, {});
+  const epochs = new Map(current.claims.map((claim) => [claim.sampleId, claim.claimEpoch]));
+  const missing = [...new Set(batch.events.map((event) => event.sampleId))].filter((sampleId) => {
+    if (epochs.has(sampleId)) return false;
+    const previousEpoch = syntheticDeclaredEpochs.get(`${athleteId}:${sampleId}`);
+    if (previousEpoch) {
+      epochs.set(sampleId, previousEpoch);
+      return false;
+    }
+    return true;
+  });
+  if (missing.length) {
+    const result = await registration.registerWorkouts(athleteId, {
+      schemaVersion: 1,
+      sampleIds: missing,
+      accountAttributionDeclared: true,
+      expectedConsentRevision: consentRevision,
+      expectedRegistryRevision: current.registryRevision,
+      idempotencyKey: randomUUID(),
+    });
+    for (const claim of result.claims) {
+      epochs.set(claim.sampleId, claim.claimEpoch);
+      syntheticDeclaredEpochs.set(`${athleteId}:${claim.sampleId}`, claim.claimEpoch);
+    }
+  }
+  return {
+    ...batch,
+    schemaVersion: 2 as const,
+    events: batch.events.map((event) => {
+      const claimEpoch = epochs.get(event.sampleId);
+      if (!claimEpoch) throw new Error('Missing synthetic claim epoch');
+      return { ...event, claimEpoch };
+    }),
+  };
+}
+
+function createRegisteredFixtureIngestionRepository(db: Database) {
+  const raw = createRawHealthKitIngestionRepository(db);
+  return {
+    async ingestBatch(athleteId: string, batch: HealthKitIngestionBatch, consentRevision: number) {
+      return raw.ingestBatch(
+        athleteId,
+        await registeredBatch(db, athleteId, batch, consentRevision),
+        consentRevision,
+      );
+    },
+  };
 }
 
 describe('M3-02a raw HealthKit ingestion', () => {
@@ -100,15 +160,24 @@ describe('M3-02a raw HealthKit ingestion', () => {
 
   it('requires current consent and never creates a canonical Activity', async () => {
     const athlete = randomUUID();
-    const repo = createHealthKitIngestionRepository(database);
+    const repo = createRegisteredFixtureIngestionRepository(database);
     const batch = workout();
     await expect(repo.ingestBatch(athlete, batch, 1)).rejects.toMatchObject({
       code: 'CONSENT_REQUIRED',
     });
+    await expect(
+      createRawHealthKitIngestionRepository(database).ingestBatch(athlete, batch, 1),
+    ).rejects.toMatchObject({ code: 'LEGACY_BATCH_UNSUPPORTED' });
+    const rejectedLegacy = await database.tenant(athlete, (tx) =>
+      tx.query(`SELECT
+        (SELECT count(*)::int FROM healthkit_workout_sample) AS raw_count,
+        (SELECT count(*)::int FROM healthkit_workout_batch_receipt) AS receipt_count`),
+    );
+    expect(rejectedLegacy.rows[0]).toEqual({ raw_count: 0, receipt_count: 0 });
     await grantConsent(athlete);
     const ack = await repo.ingestBatch(athlete, batch, 1);
     expect(ack).toEqual({
-      schemaVersion: 1,
+      schemaVersion: 2,
       installationId: batch.installationId,
       batchId: batch.batchId,
       acceptedCount: 1,
@@ -131,10 +200,11 @@ describe('M3-02a raw HealthKit ingestion', () => {
   it('returns the original ACK for concurrent identical batches, and rejects changed payloads', async () => {
     const athlete = randomUUID();
     await grantConsent(athlete);
-    const repo = createHealthKitIngestionRepository(database);
+    const repo = createRegisteredFixtureIngestionRepository(database);
     const batch = workout();
     const firstEvent = batch.events[0];
     if (firstEvent?.kind !== 'upsert') throw new Error('Expected workout fixture');
+    await registeredBatch(database, athlete, batch, 1);
     const [first, second] = await Promise.all([
       repo.ingestBatch(athlete, batch, 1),
       repo.ingestBatch(athlete, batch, 1),
@@ -160,7 +230,7 @@ describe('M3-02a raw HealthKit ingestion', () => {
   it('deduplicates a sample redelivered after installation identity changes', async () => {
     const athlete = randomUUID();
     await grantConsent(athlete);
-    const repo = createHealthKitIngestionRepository(database);
+    const repo = createRegisteredFixtureIngestionRepository(database);
     const first = workout();
     const sampleId = first.events[0]?.sampleId;
     if (!sampleId) throw new Error('Expected workout fixture');
@@ -201,7 +271,7 @@ describe('M3-02a raw HealthKit ingestion', () => {
   it('preserves an explicit suppression across a later duplicate upsert', async () => {
     const athlete = randomUUID();
     await grantConsent(athlete);
-    const repo = createHealthKitIngestionRepository(database);
+    const repo = createRegisteredFixtureIngestionRepository(database);
     const batch = workout();
     const sampleId = batch.events[0]?.sampleId;
     if (!sampleId) throw new Error('Expected workout fixture');
@@ -224,7 +294,7 @@ describe('M3-02a raw HealthKit ingestion', () => {
     const athlete = randomUUID();
     await grantConsent(athlete);
     const batch = workout();
-    await createHealthKitIngestionRepository(database).ingestBatch(athlete, batch, 1);
+    await createRegisteredFixtureIngestionRepository(database).ingestBatch(athlete, batch, 1);
     const permissions = await database.tenant(athlete, (tx) =>
       tx.query(`SELECT
         has_table_privilege(current_user,'healthkit_workout_lineage','SELECT') AS can_read,
@@ -247,7 +317,7 @@ describe('M3-02a raw HealthKit ingestion', () => {
   it('rolls back raw rows and ACK when the same-transaction projection fails', async () => {
     const athlete = randomUUID();
     await grantConsent(athlete);
-    const repo = createHealthKitIngestionRepository(database);
+    const repo = createRegisteredFixtureIngestionRepository(database);
     const batch = workout();
     const sampleId = batch.events[0]?.sampleId;
     if (!sampleId) throw new Error('Expected workout fixture');
@@ -281,7 +351,7 @@ describe('M3-02a raw HealthKit ingestion', () => {
     const other = randomUUID();
     await grantConsent(athlete);
     await grantConsent(other);
-    const repo = createHealthKitIngestionRepository(database);
+    const repo = createRegisteredFixtureIngestionRepository(database);
     const original = workout();
     const sampleId = original.events[0]?.sampleId;
     if (!sampleId) throw new Error('Expected workout fixture');
@@ -317,7 +387,7 @@ describe('M3-02a raw HealthKit ingestion', () => {
   it('purges raw data on withdrawal and blocks replay of a purged receipt after re-consent', async () => {
     const athlete = randomUUID();
     await grantConsent(athlete);
-    const repo = createHealthKitIngestionRepository(database);
+    const repo = createRegisteredFixtureIngestionRepository(database);
     const batch = workout();
     await repo.ingestBatch(athlete, batch, 1);
     await database.tenant(athlete, (tx) =>
@@ -340,7 +410,7 @@ describe('M3-02a raw HealthKit ingestion', () => {
       lineage_count: 0,
     });
     const exported = await createOperationsRepository(database).exportAccount(athlete);
-    if (exported.schemaVersion !== 28) throw new Error('Expected current export version');
+    if (exported.schemaVersion !== 33) throw new Error('Expected current export version');
     expect(exported.data.healthKitWorkoutBatchReceipts[0]).not.toHaveProperty('request_digest');
     await expect(repo.ingestBatch(athlete, batch, 1)).rejects.toMatchObject({
       code: 'CONSENT_REQUIRED',
@@ -359,7 +429,7 @@ describe('M3-02a raw HealthKit ingestion', () => {
   it('rejects an offline pre-withdrawal batch and accepts only a fresh post-consent scope', async () => {
     const athlete = randomUUID();
     await grantConsent(athlete);
-    const repo = createHealthKitIngestionRepository(database);
+    const repo = createRegisteredFixtureIngestionRepository(database);
     const offline = workout();
     const oldSampleId = offline.events[0]?.sampleId;
     await database.tenant(athlete, (tx) =>
@@ -427,9 +497,10 @@ describe('M3-02a raw HealthKit ingestion', () => {
           }),
         ),
     };
-    const ingest = createHealthKitIngestionRepository(gatedDatabase).ingestBatch(
+    const batch = await registeredBatch(database, athlete, workout(), 1);
+    const ingest = createRawHealthKitIngestionRepository(gatedDatabase).ingestBatch(
       athlete,
-      workout(),
+      batch,
       1,
     );
     await locked;
@@ -472,13 +543,13 @@ describe('M3-02a raw HealthKit ingestion', () => {
   it('includes raw source and tombstone state in owner export, and erases all HealthKit rows', async () => {
     const athlete = randomUUID();
     await grantConsent(athlete);
-    const repo = createHealthKitIngestionRepository(database);
+    const repo = createRegisteredFixtureIngestionRepository(database);
     const batch = workout();
     await repo.ingestBatch(athlete, batch, 1);
     const operations = createOperationsRepository(database);
     const exported = await operations.exportAccount(athlete);
-    expect(exported.schemaVersion).toBe(28);
-    if (exported.schemaVersion !== 28) throw new Error('Expected current export version');
+    expect(exported.schemaVersion).toBe(33);
+    if (exported.schemaVersion !== 33) throw new Error('Expected current export version');
     expect(exported.data.healthKitWorkoutSamples).toHaveLength(1);
     expect(exported.data.healthKitWorkoutBatchReceipts).toHaveLength(1);
     expect(exported.data.healthKitWorkoutLineage).toEqual([

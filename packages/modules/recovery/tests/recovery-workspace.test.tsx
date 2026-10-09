@@ -667,3 +667,39 @@ it('replays an uncertain correction after the server revision appears in a refet
   await waitFor(() => expect(screen.queryByRole('button', { name: '정정 취소' })).toBeNull());
   focusManager.setFocused(undefined);
 });
+
+it.each([
+  ['APP_CONSENT_REQUIRED', '앱 데이터 처리 동의가 필요합니다.'],
+  ['STALE_APP_ADMISSION', '앱 데이터 처리 동의가 변경되어'],
+  ['APP_BINDING_UNAVAILABLE', '앱 데이터 처리 동의 기준을 확인할 수 없어'],
+] as const)('keeps the method form on %s without claiming success', async (code, message) => {
+  let writes = 0;
+  const transport: AuthenticatedTransport = {
+    async request(input) {
+      if (input.method === 'GET')
+        return {
+          status: 200,
+          body: {
+            methods: [],
+            strategies: [],
+            actions: [],
+            observations: [],
+            planRefs: [],
+            reassessment: [],
+          },
+          traceId: null,
+        };
+      writes += 1;
+      return { status: 409, body: { error: { code } }, traceId: null };
+    },
+  };
+  render(<RecoveryWorkspace athleteId="a" sessionId="s" transport={transport} />);
+  const name = await screen.findByRole('textbox', { name: '방법 이름' });
+  await userEvent.type(name, '입력을 유지할 방법');
+  await userEvent.click(screen.getByRole('button', { name: '방법 저장' }));
+  expect(await screen.findByText(new RegExp(message))).toBeTruthy();
+  expect(name).toHaveValue('입력을 유지할 방법');
+  expect(writes).toBe(1);
+  expect(screen.queryByText(/방법 저장 요청이 거절되었습니다/)).toBeNull();
+  expect(screen.queryByRole('heading', { level: 3, name: '입력을 유지할 방법' })).toBeNull();
+});

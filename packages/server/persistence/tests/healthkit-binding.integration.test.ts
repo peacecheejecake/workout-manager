@@ -5,7 +5,8 @@ import type { HealthKitIngestionBatch } from '@workout/contracts/healthkit-inges
 import { createActivityRepository } from '../src/activities.js';
 import { createDatabase, type Database } from '../src/database.js';
 import { createHealthKitBindingRepository } from '../src/healthkit-binding.js';
-import { createHealthKitIngestionRepository } from '../src/healthkit-ingestion.js';
+import { createHealthKitIngestionRepository as createRawHealthKitIngestionRepository } from '../src/healthkit-ingestion.js';
+import { createHealthKitRegistrationRepository } from '../src/healthkit-registration.js';
 import { grantHealthKitIngestion, grantOperations, migrate } from '../src/migrate.js';
 import { createOperationsRepository } from '../src/operations.js';
 
@@ -75,10 +76,11 @@ async function createTarget(athleteId: string, kind: 'manual' | 'fit' | 'fixture
   return { activityId, sourceId, original };
 }
 
+// Explicit synthetic positive fixture: app processing and individual HealthKit permissions.
 async function grantConsent(athleteId: string) {
   await ownerTenant(athleteId, (client) =>
     client.query(
-      "INSERT INTO consent(athlete_id,kind,granted,revision) VALUES($1,'healthkit',true,1)",
+      "INSERT INTO consent(athlete_id,kind,granted,revision) VALUES($1,'healthkit',true,1),($1,'app',true,1)",
       [athleteId],
     ),
   );
@@ -117,7 +119,7 @@ async function prepared(athleteId = randomUUID()) {
   await grantConsent(athleteId);
   const target = await createTarget(athleteId);
   const batch = workout();
-  await createHealthKitIngestionRepository(database).ingestBatch(athleteId, batch, 1);
+  await createRegisteredFixtureIngestionRepository(database).ingestBatch(athleteId, batch, 1);
   const sampleId = batch.events[0]?.sampleId;
   if (!sampleId) throw new Error('Expected sample');
   const expectedSampleDigest = await sampleDigest(athleteId, sampleId);
@@ -135,6 +137,64 @@ function command(input: Awaited<ReturnType<typeof prepared>>, idempotencyKey = r
   };
 }
 
+const syntheticDeclaredEpochs = new Map<string, string>();
+
+async function registeredBatch(
+  db: Database,
+  athleteId: string,
+  batch: HealthKitIngestionBatch,
+  consentRevision: number,
+) {
+  const registration = createHealthKitRegistrationRepository(db);
+  const current = await registration.listWorkouts(athleteId, {});
+  const epochs = new Map(current.claims.map((claim) => [claim.sampleId, claim.claimEpoch]));
+  const missing = [...new Set(batch.events.map((event) => event.sampleId))].filter((sampleId) => {
+    if (epochs.has(sampleId)) return false;
+    const previousEpoch = syntheticDeclaredEpochs.get(`${athleteId}:${sampleId}`);
+    if (previousEpoch) {
+      epochs.set(sampleId, previousEpoch);
+      return false;
+    }
+    return true;
+  });
+  if (missing.length) {
+    const result = await registration.registerWorkouts(athleteId, {
+      schemaVersion: 1,
+      sampleIds: missing,
+      accountAttributionDeclared: true,
+      expectedConsentRevision: consentRevision,
+      expectedRegistryRevision: current.registryRevision,
+      idempotencyKey: randomUUID(),
+    });
+    for (const claim of result.claims) {
+      epochs.set(claim.sampleId, claim.claimEpoch);
+      syntheticDeclaredEpochs.set(`${athleteId}:${claim.sampleId}`, claim.claimEpoch);
+    }
+  }
+  return {
+    ...batch,
+    schemaVersion: 2 as const,
+    events: batch.events.map((event) => {
+      const claimEpoch = epochs.get(event.sampleId);
+      if (!claimEpoch) throw new Error('Missing synthetic claim epoch');
+      return { ...event, claimEpoch };
+    }),
+  };
+}
+
+function createRegisteredFixtureIngestionRepository(db: Database) {
+  const raw = createRawHealthKitIngestionRepository(db);
+  return {
+    async ingestBatch(athleteId: string, batch: HealthKitIngestionBatch, consentRevision: number) {
+      return raw.ingestBatch(
+        athleteId,
+        await registeredBatch(db, athleteId, batch, consentRevision),
+        consentRevision,
+      );
+    },
+  };
+}
+
 describe('M3-02e explicit existing Activity binding', () => {
   it('binds only supplementary lineage, retains the primary source and one Activity count', async () => {
     const fixture = await prepared();
@@ -147,7 +207,7 @@ describe('M3-02e explicit existing Activity binding', () => {
       state: 'linked_existing',
     });
     const otherBatch = workout();
-    await createHealthKitIngestionRepository(database).ingestBatch(
+    await createRegisteredFixtureIngestionRepository(database).ingestBatch(
       fixture.athleteId,
       otherBatch,
       1,
@@ -182,8 +242,8 @@ describe('M3-02e explicit existing Activity binding', () => {
     });
     expect((await createActivityRepository(database).summary(fixture.athleteId)).count).toBe(1);
     const exported = await createOperationsRepository(database).exportAccount(fixture.athleteId);
-    expect(exported.schemaVersion).toBe(28);
-    if (exported.schemaVersion !== 28) throw new Error('Expected current account export');
+    expect(exported.schemaVersion).toBe(33);
+    if (exported.schemaVersion !== 33) throw new Error('Expected current account export');
     expect(exported.data.healthKitExistingBindings).toHaveLength(2);
   });
 
@@ -290,7 +350,7 @@ describe('M3-02e explicit existing Activity binding', () => {
     const fixture = await prepared();
     const repo = createHealthKitBindingRepository(database);
     await repo.bindExisting(fixture.athleteId, command(fixture));
-    await createHealthKitIngestionRepository(database).ingestBatch(
+    await createRegisteredFixtureIngestionRepository(database).ingestBatch(
       fixture.athleteId,
       {
         schemaVersion: 1,
@@ -300,7 +360,7 @@ describe('M3-02e explicit existing Activity binding', () => {
       },
       1,
     );
-    await createHealthKitIngestionRepository(database).ingestBatch(
+    await createRegisteredFixtureIngestionRepository(database).ingestBatch(
       fixture.athleteId,
       {
         ...fixture.batch,
@@ -346,7 +406,7 @@ describe('M3-02e explicit existing Activity binding', () => {
       ),
     );
     expect(result.rows[0]).toEqual({ binding_count: 0, lineage_state: 'suppressed' });
-    await createHealthKitIngestionRepository(database).ingestBatch(
+    await createRegisteredFixtureIngestionRepository(database).ingestBatch(
       fixture.athleteId,
       {
         ...fixture.batch,

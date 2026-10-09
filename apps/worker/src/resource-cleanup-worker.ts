@@ -1,4 +1,9 @@
 import {
+  createHealthKitDeregistrationWorkerRepository,
+  processHealthKitDeregistrations,
+  type HealthKitDeregistrationWorkerRepository,
+} from '@workout/server-persistence/healthkit-deregistration-worker';
+import {
   createLocalFilesystemObjectStorage,
   validateObjectKey,
   type ObjectScopeEnumeration,
@@ -29,6 +34,7 @@ import {
 import type { ResourceCleanupWorkerConfig } from './config.js';
 
 export type ResourceCleanupWorkerResult = {
+  healthKitDeregistrations: Awaited<ReturnType<typeof processHealthKitDeregistrations>>;
   objects: Awaited<ReturnType<typeof processOneResourceObjectCleanup>>;
   derived: Awaited<ReturnType<typeof processOneResourceDerivedCleanup>>;
   /**
@@ -61,6 +67,10 @@ export interface ResourceCleanupWorkerDependencies {
     connectionString: string;
     max: number;
   }): ResourceDerivedCleanupRepository;
+  createDeregistrationRepository(options: {
+    connectionString: string;
+    max: number;
+  }): HealthKitDeregistrationWorkerRepository;
   /**
    * Executors for each derived store named by the manifest. M2-05 installs the
    * real deletions, built from the leased repository itself. A store without an
@@ -84,6 +94,7 @@ const defaultDependencies: ResourceCleanupWorkerDependencies = {
   createRepository: createResourceObjectCleanupRepository,
   createDerivedRepository: createResourceDerivedCleanupRepository,
   derivedPurge: configuredDerivedStorePurge,
+  createDeregistrationRepository: createHealthKitDeregistrationWorkerRepository,
 };
 
 /** Runs exactly one bounded queue attempt and always releases the database pool. */
@@ -97,6 +108,10 @@ export async function runResourceCleanupWorker(
     max: 1,
   });
   const derivedRepository = dependencies.createDerivedRepository({
+    connectionString: config.connectionString,
+    max: 1,
+  });
+  const deregistrationRepository = dependencies.createDeregistrationRepository({
     connectionString: config.connectionString,
     max: 1,
   });
@@ -148,6 +163,8 @@ export async function runResourceCleanupWorker(
       (dependencies.derivedPurge ?? configuredDerivedStorePurge)(derivedRepository),
       now,
     );
+    const healthKitDeregistrations =
+      await processHealthKitDeregistrations(deregistrationRepository);
     // Reconciliation before housekeeping: an object the ledger does not account for is a
     // leak, and it must be found even when every receipt for it is already closed. The pass
     // is bounded and resumes where the last run stopped.
@@ -165,6 +182,7 @@ export async function runResourceCleanupWorker(
     await derivedRepository.pruneHistory(100);
     await derivedRepository.pruneRetrievalCache(500);
     return {
+      healthKitDeregistrations,
       objects,
       tenantPurges,
       scopePurges,
@@ -173,6 +191,10 @@ export async function runResourceCleanupWorker(
       thumbnailReconciliation,
     };
   } finally {
-    await Promise.all([repository.close(), derivedRepository.close()]);
+    await Promise.all([
+      repository.close(),
+      derivedRepository.close(),
+      deregistrationRepository.close(),
+    ]);
   }
 }

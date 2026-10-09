@@ -1,3 +1,4 @@
+import { requireAppAdmission } from './app-admission.js';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import {
@@ -276,6 +277,7 @@ export function createNutritionRepository(
         await commandLock(tx);
         const prior = await replay(tx, key, request, nutritionPlanVersionSchema);
         if (prior) return prior;
+        await requireAppAdmission(tx);
         let planId: string;
         let version: number;
         let previousVersionId: string | null;
@@ -504,6 +506,7 @@ export function createNutritionRepository(
         await requireCurrentRestoreGeneration(tx, command.restoreGeneration);
         const prior = await replay(tx, key, request, activeIntakeEntrySchema);
         if (prior) return prior;
+        await requireAppAdmission(tx);
         if (await currentIntake(tx, command.intakeId))
           throw new PersistenceConflict('REVISION_CONFLICT');
         const recordedAt = now().toISOString();
@@ -560,6 +563,7 @@ export function createNutritionRepository(
         await commandLock(tx);
         const prior = await replay(tx, key, request, activeIntakeEntrySchema);
         if (prior) return prior;
+        await requireAppAdmission(tx);
         const current = await currentIntake(tx, command.intakeId);
         if (!current) throw new NutritionReferenceError('INTAKE_NOT_FOUND');
         if (current.status !== 'active' || current.revision !== command.expectedRevision)

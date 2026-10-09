@@ -50,11 +50,12 @@ test.afterEach(async ({ page }) => {
 
 const plannerUrl =
   '/planner?lens=calendar&from=2026-09-14&to=2026-09-28&plannedView=agenda&plannedSession=target-session&view=stack';
-async function setup(page: Page) {
+async function setup(page: Page, beforeProtectedWrite: (page: Page) => Promise<void>) {
   page.setDefaultTimeout(5000);
   page.setDefaultNavigationTimeout(5000);
   const headers = await login(page, 'Alice');
   cleanupHeaders.set(page, headers);
+  await beforeProtectedWrite(page);
   const get = async (path: string) => {
     const response = await page.request.get(path, { headers, timeout: 5000 });
     expect(response.status()).toBe(200);
@@ -138,7 +139,7 @@ test('legacy targets become explicit saved ranges, survive reload and history, a
   page,
 }) => {
   await page.setViewportSize({ width: 320, height: 850 });
-  const fixture = await setup(page);
+  const fixture = await setup(page, grantAppProcessingForScenario);
   let writes = 0;
   page.on('request', (request) => {
     if (request.method() === 'PUT' && new URL(request.url()).pathname === '/bff/v1/plans/current')
@@ -203,7 +204,7 @@ test('legacy targets become explicit saved ranges, survive reload and history, a
 test('invalid target ranges cannot save and a locked source requires a separately committed unlock while its duplicate is independent', async ({
   page,
 }) => {
-  const fixture = await setup(page);
+  const fixture = await setup(page, grantAppProcessingForScenario);
   await paceMin(page).fill('400');
   await paceMax(page).fill('300');
   await expect(page.getByRole('button', { name: '변경 미리보기', exact: true })).toBeDisabled();
@@ -253,3 +254,4 @@ test('invalid target ranges cannot save and a locked source requires a separatel
     fixture.actuals,
   );
 });
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';

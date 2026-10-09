@@ -7,6 +7,8 @@ import type { LocalReplayRecordEnvelope } from '../src/restore-suppression-pgout
 import type { SuppressionRecord } from '../src/restore-suppression-records.js';
 import {
   preflightSuppressionReplay,
+  prepareVerifiedSuppressionChain,
+  replayVerifiedSuppressionChainIn,
   replayVerifiedSuppressionChain,
   type TrustedReplayAnchor,
 } from '../src/restore-suppression-replay.js';
@@ -557,4 +559,53 @@ describe('restore suppression local preflight', () => {
       await pool.end();
     }
   });
+});
+
+it('preflights authenticated app v5 without a target and rejects absent or shortened trusted tail', () => {
+  const app: SuppressionRecord = {
+    schemaVersion: 5,
+    eventId: firstId,
+    athleteId: defaultAthleteId,
+    occurredAt,
+    kind: 'app_consent_transition',
+    consentPreviousRevision: null,
+    consentPreviousGranted: null,
+    consentRevision: 1,
+    consentGranted: true,
+  };
+  const { segments, anchor } = singleTransaction([app]);
+  expect(inspect(segments, anchor).eventCount).toBe(1);
+  expect(() => inspect([], anchor)).toThrow('RESTORE_REPLAY_PREFLIGHT_FAILED');
+  expect(() => inspect(segments, { ...anchor, throughLsn: '0/140' })).toThrow(
+    'RESTORE_REPLAY_PREFLIGHT_FAILED',
+  );
+});
+
+it('composes authenticated replay without committing the caller transaction and rejects copied handles', async () => {
+  const input = chain();
+  const prepared = prepareVerifiedSuppressionChain({ ...input, key, keyId });
+  const query = vi.fn().mockResolvedValue({ rows: [], rowCount: 0 });
+  const summary = await replayVerifiedSuppressionChainIn({ query }, prepared);
+  expect(summary.eventCount).toBe(2);
+  const sql = query.mock.calls.map(([statement]) => String(statement));
+  expect(sql.some((statement) => statement.includes('replay_tenant_erasure_exact'))).toBe(true);
+  expect(sql.some((statement) => statement.includes('replay_course_deletion_exact'))).toBe(true);
+  expect(sql.some((statement) => /BEGIN|COMMIT|ROLLBACK|rotate|admit/i.test(statement))).toBe(
+    false,
+  );
+  query.mockClear();
+  await expect(replayVerifiedSuppressionChainIn({ query }, { ...prepared })).rejects.toThrow(
+    'RESTORE_REPLAY_PREFLIGHT_FAILED',
+  );
+  expect(query).not.toHaveBeenCalled();
+});
+
+it('propagates replay failure to the caller without committing or swallowing it', async () => {
+  const prepared = prepareVerifiedSuppressionChain({ ...chain(), key, keyId });
+  const failure = new Error('synthetic owner replay failure');
+  const query = vi.fn().mockRejectedValue(failure);
+  await expect(replayVerifiedSuppressionChainIn({ query }, prepared)).rejects.toBe(failure);
+  expect(query).toHaveBeenCalledTimes(1);
+  expect(Object.isFrozen(prepared)).toBe(true);
+  expect(Object.isFrozen(prepared.summary)).toBe(true);
 });

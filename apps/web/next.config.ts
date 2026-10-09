@@ -45,6 +45,7 @@ const config: NextConfig = {
     '@workout/contracts',
     '@workout/ui-foundation',
     '@workout/modules-identity',
+    '@workout/modules-settings',
     '@workout/modules-planning',
     '@workout/modules-wellbeing',
     '@workout/modules-dashboard',

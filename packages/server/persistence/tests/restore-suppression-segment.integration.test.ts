@@ -78,6 +78,50 @@ function errorMessage(operation: () => unknown): string {
 }
 
 describe('encrypted restore suppression segment', () => {
+  it('round-trips strict v3 deregistration facts without inferring cleanup completion', () => {
+    const pending = {
+      schemaVersion: 3 as const,
+      eventId,
+      athleteId,
+      occurredAt: '2026-09-30 12:34:56+00',
+      kind: 'healthkit_workout_deregistration_pending' as const,
+      targetId,
+      healthKitClaimEpoch: '55555555-5555-4555-8555-555555555555',
+      healthKitOperationId: '66666666-6666-4666-8666-666666666666',
+      healthKitConsentRevision: 1,
+      healthKitRegistryPreviousRevision: 0,
+      healthKitRegistryRevision: 1,
+      healthKitObjectScopes: [{ kind: 'activity' as const, id: targetId }],
+    };
+    for (const record of [
+      pending,
+      { ...pending, kind: 'healthkit_workout_deregistration_released' as const },
+    ]) {
+      const envelope = withRecord(record);
+      const encrypted = encryptReplaySegment({ envelope, key, keyId });
+      expect(decryptReplaySegment({ bytes: encrypted.bytes, key, expectedKeyId: keyId })).toEqual(
+        envelope,
+      );
+    }
+    for (const record of [
+      { ...pending, schemaVersion: 2 as const },
+      { ...pending, healthKitRegistryRevision: 2 },
+      {
+        ...pending,
+        healthKitObjectScopes: [...pending.healthKitObjectScopes, ...pending.healthKitObjectScopes],
+      },
+      {
+        ...pending,
+        healthKitObjectScopes: [
+          { kind: 'activity' as const, id: targetId, cleanupCompleted: true },
+        ],
+      },
+    ])
+      expect(() => encryptReplaySegment({ envelope: withRecord(record), key, keyId })).toThrow(
+        'INVALID_ENCRYPTED_SEGMENT',
+      );
+  });
+
   it('keeps v1 standalone shares and authenticates v2 parent causes', () => {
     const share = {
       eventId,
@@ -292,4 +336,63 @@ describe('encrypted restore suppression segment', () => {
       ).toBe('INVALID_ENCRYPTED_SEGMENT');
     }
   });
+});
+
+describe('authenticated v4 race suppression segments', () => {
+  it.each(['race_event_deleted', 'race_result_deleted', 'training_best_deleted'] as const)(
+    'round trips %s and rejects version/revision substitution',
+    (kind) => {
+      const entry: SuppressionRecord = {
+        schemaVersion: 4,
+        eventId,
+        athleteId,
+        occurredAt: '2026-09-30 12:34:56+00',
+        kind,
+        targetId,
+        racePreviousRevision: 2147483647,
+        raceDeletedRevision: 2147483647,
+      };
+      const envelope = withRecord(entry);
+      const encrypted = encryptReplaySegment({ envelope, key, keyId });
+      expect(decryptReplaySegment({ bytes: encrypted.bytes, key, expectedKeyId: keyId })).toEqual(
+        envelope,
+      );
+      for (const invalid of [
+        { ...entry, schemaVersion: 3 as const },
+        { ...entry, racePreviousRevision: 1, raceDeletedRevision: 1 },
+      ])
+        expect(() => encryptReplaySegment({ envelope: withRecord(invalid), key, keyId })).toThrow();
+    },
+  );
+});
+
+it('round-trips strict v5 app epochs and rejects cross-version and foreign payloads', () => {
+  const app = {
+    schemaVersion: 5 as const,
+    eventId,
+    athleteId,
+    occurredAt: '2026-09-30 12:34:56+00',
+    kind: 'app_consent_transition' as const,
+    consentPreviousRevision: null,
+    consentPreviousGranted: null,
+    consentRevision: 1,
+    consentGranted: true,
+  };
+  const envelope = withRecord(app);
+  const encrypted = encryptReplaySegment({ envelope, key, keyId });
+  expect(decryptReplaySegment({ bytes: encrypted.bytes, key, expectedKeyId: keyId })).toEqual(
+    envelope,
+  );
+  for (const invalid of [
+    { ...app, schemaVersion: 1 as const },
+    { ...app, consentRevision: 2 },
+    { ...app, consentPreviousGranted: false },
+    { ...app, targetId },
+    { ...app, consentGranted: null },
+    { ...app, schemaVersion: 4 as const },
+    { ...app, kind: 'ai_consent_transition' as const },
+  ])
+    expect(() =>
+      encryptReplaySegment({ envelope: withRecord(invalid as SuppressionRecord), key, keyId }),
+    ).toThrow();
 });

@@ -212,6 +212,7 @@ async function trackedActivity(
   athleteId: string,
   options: { finalize: boolean } = { finalize: true },
 ) {
+  await grantAppPurpose(athleteId);
   const imported = await activities.importActivity(athleteId, importInput());
   const reservation = await tracks.reserve(
     athleteId,
@@ -424,6 +425,7 @@ function replayAbsentIn(client: PoolClient, entry: LedgerEntry) {
 
 /** A device re-sync of the ledger entry's source after the restore. */
 async function reimport(entry: LedgerEntry) {
+  await grantAppPurpose(entry.athleteId);
   return activities.importActivity(entry.athleteId, {
     ...importInput(),
     source: {
@@ -597,6 +599,7 @@ describe('deleted activity and reclaimed course object-prefix purge (M2-01y)', (
   it('is armed by a replayed tombstone, and rebuilt and suppressed for an activity the restore does not hold', async () => {
     const tenant = await knownTenant();
     // (a) In the restored cluster, live and trackless; its track came back only as objects.
+    await grantAppPurpose(tenant);
     const restored = await activities.importActivity(tenant, importInput());
     const restoredRowless = await rowlessTrackObjects(tenant, restored.activityId);
     // (b) Not in the restored cluster at all: only the ledger knows it.
@@ -722,6 +725,7 @@ describe('deleted activity and reclaimed course object-prefix purge (M2-01y)', (
     it('a source the restored cluster already knows under another activity', async () => {
       const tenant = await knownTenant();
       const known = importInput();
+      await grantAppPurpose(tenant);
       await activities.importActivity(tenant, known);
       await refused(
         ledgerEntry(tenant, { sourceId: known.source.sourceId }),
@@ -873,6 +877,7 @@ describe('deleted activity and reclaimed course object-prefix purge (M2-01y)', (
 
     it('arms nothing for a tenant or owner id that is not canonical', async () => {
       const legacy = 'legacy-scope-tenant';
+      await grantAppPurpose(legacy);
       const imported = await activities.importActivity(legacy, importInput());
       await deleteActivity(legacy, imported.activityId);
       expect(await scopeRow(legacy, 'activity', imported.activityId)).toBeUndefined();
@@ -1276,3 +1281,26 @@ describe('deleted activity and reclaimed course object-prefix purge (M2-01y)', (
     expect(failures).toEqual([]);
   }, 60_000);
 });
+
+// Explicit permission for this synthetic positive core-storage fixture only.
+// Preserve any existing withdrawal/revision and never recreate an erased tenant.
+async function grantAppPurpose(athleteId: string): Promise<void> {
+  const client = await admin.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock_shared(77210,1)');
+    // Serialize the absence check before the app event trigger, like the consent command.
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [athleteId]);
+    await client.query("SELECT set_config('app.athlete_id',$1,true)", [athleteId]);
+    await client.query(
+      "INSERT INTO consent(athlete_id,kind,granted,revision) SELECT $1,'app',true,1 WHERE NOT EXISTS (SELECT 1 FROM tenant_erasure WHERE athlete_id=$1) ON CONFLICT (athlete_id,kind) DO NOTHING",
+      [athleteId],
+    );
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}

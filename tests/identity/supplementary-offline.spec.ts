@@ -1,3 +1,4 @@
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page, type Route } from '@playwright/test';
 
@@ -136,6 +137,7 @@ test('confirmed sets survive offline reload, sync once, dedupe, and clear on sig
   test.setTimeout(120_000);
   page.setDefaultTimeout(8_000);
   const alice = await login(page, 'Alice');
+  await grantAppProcessingForScenario(page);
   const marker = randomUUID();
   const supplementary = '/bff/v1/supplementary';
 

@@ -1197,3 +1197,289 @@ it('exports a created HealthKit activity in v28 while retaining v27 compatibilit
     }).success,
   ).toBe(false);
 });
+
+it('exports v29 attribution facts without portable command fencing or changing v28', () => {
+  const previousSchema = accountExportSchema.options.find(
+    (option) => option.shape.schemaVersion.value === 28,
+  );
+  if (!previousSchema) throw new Error('Expected v28');
+  const previous = previousSchema.parse({
+    ...legacy,
+    schemaVersion: 28,
+    data: Object.fromEntries(previousSchema.shape.data.keyof().options.map((key) => [key, []])),
+  });
+  const facts = {
+    healthKitWorkoutClaims: [
+      {
+        sample_id: '11111111-1111-4111-8111-111111111111',
+        consent_revision: 1,
+        created_at: legacy.exportedAt,
+      },
+    ],
+    healthKitWorkoutRegistryHeads: [{ revision: 1 }],
+    healthKitWorkoutRegistrations: [{ registry_revision: 1, registered_count: 1 }],
+  };
+  const current = { ...previous, schemaVersion: 29, data: { ...previous.data, ...facts } };
+  expect(accountExportSchema.parse(current)).toEqual(current);
+  expect(accountExportSchema.parse(previous)).toEqual(previous);
+  expect(previous.data).not.toHaveProperty('healthKitWorkoutClaims');
+  expect(accountExportSchema.safeParse({ ...previous, schemaVersion: 29 }).success).toBe(false);
+  expect(accountExportSchema.safeParse({ ...current, schemaVersion: 28 }).success).toBe(false);
+  for (const forbidden of [
+    'claim_epoch',
+    'athlete_id',
+    'request_digest',
+    'result_json',
+    'idempotency_key',
+  ]) {
+    expect(
+      accountExportSchema.safeParse({
+        ...current,
+        data: {
+          ...current.data,
+          healthKitWorkoutClaims: [{ ...facts.healthKitWorkoutClaims[0], [forbidden]: 'private' }],
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      accountExportSchema.safeParse({
+        ...current,
+        data: {
+          ...current.data,
+          healthKitWorkoutRegistrations: [
+            { ...facts.healthKitWorkoutRegistrations[0], [forbidden]: 'private' },
+          ],
+        },
+      }).success,
+    ).toBe(false);
+  }
+  expect(
+    accountExportSchema.safeParse({
+      ...current,
+      data: { ...current.data, healthKitWorkoutRegistryHeads: [{ revision: 1 }, { revision: 2 }] },
+    }).success,
+  ).toBe(false);
+});
+
+it('exports v30 pending and released facts without changing v29 or accepting command internals', () => {
+  const previousSchema = accountExportSchema.options.find(
+    (option) => option.shape.schemaVersion.value === 29,
+  );
+  if (!previousSchema) throw new Error('Expected v29');
+  const claim = {
+    sample_id: '11111111-1111-4111-8111-111111111111',
+    consent_revision: 1,
+    created_at: legacy.exportedAt,
+  };
+  const previous = previousSchema.parse({
+    ...legacy,
+    schemaVersion: 29,
+    data: {
+      ...Object.fromEntries(previousSchema.shape.data.keyof().options.map((key) => [key, []])),
+      healthKitWorkoutClaims: [claim],
+    },
+  });
+  const operation = {
+    operation_id: '22222222-2222-4222-8222-222222222222',
+    sample_id: claim.sample_id,
+    state: 'pending_cleanup',
+    registry_revision: 2,
+    requested_at: legacy.exportedAt,
+    released_at: null,
+  };
+  const current = {
+    ...previous,
+    schemaVersion: 30,
+    data: {
+      ...previous.data,
+      healthKitWorkoutClaims: [{ ...claim, state: 'pending_cleanup' }],
+      healthKitWorkoutDeregistrations: [operation],
+    },
+  };
+  expect(accountExportSchema.parse(current)).toEqual(current);
+  expect(accountExportSchema.parse(previous)).toEqual(previous);
+  expect(accountExportSchema.safeParse({ ...previous, schemaVersion: 30 }).success).toBe(false);
+  expect(accountExportSchema.safeParse({ ...current, schemaVersion: 29 }).success).toBe(false);
+  for (const patch of [
+    { state: 'released', released_at: null },
+    { state: 'pending_cleanup', released_at: legacy.exportedAt },
+    { state: 'unknown' },
+  ]) {
+    expect(
+      accountExportSchema.safeParse({
+        ...current,
+        data: { ...current.data, healthKitWorkoutDeregistrations: [{ ...operation, ...patch }] },
+      }).success,
+    ).toBe(false);
+  }
+  expect(
+    accountExportSchema.safeParse({
+      ...current,
+      data: {
+        ...current.data,
+        healthKitWorkoutDeregistrations: [
+          { ...operation, state: 'released', released_at: legacy.exportedAt },
+        ],
+      },
+    }).success,
+  ).toBe(true);
+  for (const forbidden of [
+    'claim_epoch',
+    'idempotency_key',
+    'request_digest',
+    'object_scopes',
+    'athlete_id',
+    'result_json',
+  ]) {
+    expect(
+      accountExportSchema.safeParse({
+        ...current,
+        data: {
+          ...current.data,
+          healthKitWorkoutDeregistrations: [{ ...operation, [forbidden]: 'private' }],
+        },
+      }).success,
+    ).toBe(false);
+  }
+});
+
+function appBindingArtifact() {
+  const schema = accountExportSchema.options.find(
+    (option) => option.shape.schemaVersion.value === 32,
+  );
+  if (!schema) throw new Error('Expected app attribution export v32');
+  const snapshot = '11111111-1111-4111-8111-111111111111';
+  const run = '22222222-2222-4222-8222-222222222222';
+  const candidate = '33333333-3333-4333-8333-333333333333';
+  return {
+    ...legacy,
+    schemaVersion: 32,
+    data: {
+      ...Object.fromEntries(schema.shape.data.keyof().options.map((key) => [key, []])),
+      evidenceAppBindings: [
+        {
+          evidence_snapshot_id: snapshot,
+          binding_version: 1,
+          app_revision: 1,
+          captured_at: legacy.exportedAt,
+        },
+      ],
+      runAppBindings: [{ run_id: run, evidence_snapshot_id: snapshot, binding_version: 1 }],
+      candidateAppBindings: [{ candidate_id: candidate, run_id: run, binding_version: 1 }],
+      integratedCandidateAppBindings: [
+        { candidate_id: candidate, evidence_snapshot_id: snapshot, binding_version: 1 },
+      ],
+      approvalAppBindings: [
+        {
+          candidate_id: candidate,
+          integrated_candidate_id: null,
+          integrated_approval_id: null,
+          binding_version: 1,
+          created_at: legacy.exportedAt,
+        },
+      ],
+    },
+  };
+}
+
+it('preserves historical exports and reads portable app attribution without creating authority', () => {
+  const artifact = appBindingArtifact();
+  expect(accountExportSchema.parse(artifact)).toEqual(artifact);
+  for (const version of [30, 31]) {
+    const schema = accountExportSchema.options.find(
+      (option) => option.shape.schemaVersion.value === version,
+    );
+    if (!schema) throw new Error('Expected historical export');
+    const old = {
+      ...legacy,
+      schemaVersion: version,
+      data: Object.fromEntries(schema.shape.data.keyof().options.map((key) => [key, []])),
+    };
+    expect(accountExportSchema.parse(old)).toEqual(old);
+    expect(accountExportSchema.parse(old).data).not.toHaveProperty('evidenceAppBindings');
+    expect(accountExportSchema.safeParse({ ...old, schemaVersion: 32 }).success).toBe(false);
+  }
+});
+
+it('rejects app attribution command internals, invalid epochs and ambiguous approvals', () => {
+  const artifact = appBindingArtifact();
+  const collectionNames = [
+    'evidenceAppBindings',
+    'runAppBindings',
+    'candidateAppBindings',
+    'integratedCandidateAppBindings',
+    'approvalAppBindings',
+  ] as const;
+  for (const collection of collectionNames) {
+    for (const field of [
+      'receipt_key',
+      'idempotency_key',
+      'athlete_id',
+      'restore_receipt',
+      'processing_authorized',
+    ]) {
+      expect(
+        accountExportSchema.safeParse({
+          ...artifact,
+          data: {
+            ...artifact.data,
+            [collection]: [{ ...artifact.data[collection][0], [field]: 'forbidden' }],
+          },
+        }).success,
+      ).toBe(false);
+    }
+  }
+  for (const app_revision of [0, -1, 2147483648, 1.5]) {
+    expect(
+      accountExportSchema.safeParse({
+        ...artifact,
+        data: {
+          ...artifact.data,
+          evidenceAppBindings: [{ ...artifact.data.evidenceAppBindings[0], app_revision }],
+        },
+      }).success,
+    ).toBe(false);
+  }
+  const approval = artifact.data.approvalAppBindings[0];
+  for (const patch of [
+    { candidate_id: null, integrated_candidate_id: null },
+    { integrated_candidate_id: artifact.data.candidateAppBindings[0]?.candidate_id },
+    { integrated_approval_id: artifact.data.candidateAppBindings[0]?.candidate_id },
+    { binding_version: 2 },
+  ]) {
+    expect(
+      accountExportSchema.safeParse({
+        ...artifact,
+        data: { ...artifact.data, approvalAppBindings: [{ ...approval, ...patch }] },
+      }).success,
+    ).toBe(false);
+  }
+});
+
+it('requires explicit bounded app collections and rejects a future export version', () => {
+  const artifact = appBindingArtifact();
+  for (const collection of [
+    'evidenceAppBindings',
+    'runAppBindings',
+    'candidateAppBindings',
+    'integratedCandidateAppBindings',
+    'approvalAppBindings',
+  ] as const) {
+    expect(
+      accountExportSchema.safeParse({
+        ...artifact,
+        data: { ...artifact.data, [collection]: undefined },
+      }).success,
+    ).toBe(false);
+    expect(
+      accountExportSchema.safeParse({
+        ...artifact,
+        data: {
+          ...artifact.data,
+          [collection]: Array.from({ length: 1001 }, () => artifact.data[collection][0]),
+        },
+      }).success,
+    ).toBe(false);
+  }
+  expect(accountExportSchema.safeParse({ ...artifact, schemaVersion: 33 }).success).toBe(false);
+});

@@ -1,3 +1,4 @@
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';
 import { identityMobileOrigin } from '../../scripts/fixtures/identity-ports';
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
@@ -56,6 +57,7 @@ test('reviews and applies one server-created training and nutrition candidate on
 }) => {
   test.setTimeout(120_000);
   const headers = await login(page);
+  await grantAppProcessingForScenario(page);
   const get = async (path: string) => {
     const reply = await page.request.get(path, { headers });
     expect(reply.status()).toBe(200);

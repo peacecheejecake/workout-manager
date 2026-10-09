@@ -55,11 +55,16 @@ const summaryPath = (versionId: string, periodId = 'summary-phase') =>
   `/bff/v1/plans/versions/${versionId}/periods/${periodId}/summary`;
 const plannerUrl =
   '/planner?lens=period&period=summary-phase&plannedView=table&plannedSession=key-one';
-async function setupSummary(page: Page, seedActuals: boolean) {
+async function setupSummary(
+  page: Page,
+  beforeProtectedWrite: (page: Page) => Promise<void>,
+  seedActuals: boolean,
+) {
   page.setDefaultTimeout(5000);
   page.setDefaultNavigationTimeout(5000);
   const headers = await login(page);
   cleanupHeaders.set(page, headers);
+  await beforeProtectedWrite(page);
   const readPlan = async () => {
     const response = await page.request.get('/bff/v1/plans/current', { headers });
     expect(response.status()).toBe(200);
@@ -239,7 +244,7 @@ test('saved period summary covers every activity across DST boundaries and keeps
   page,
   browser,
 }) => {
-  const f = await setupSummary(page, true);
+  const f = await setupSummary(page, grantAppProcessingForScenario, true);
   const before = await f.readSummary();
   expect(before.planned).toEqual({
     count: 3,
@@ -396,7 +401,7 @@ test('saved period summary covers every activity across DST boundaries and keeps
 test('period summary recovers a read failure while responsive unsaved drafts stay separate from saved aggregates', async ({
   page,
 }) => {
-  const f = await setupSummary(page, false);
+  const f = await setupSummary(page, grantAppProcessingForScenario, false);
   let fail = true;
   await page.route('**/bff/v1/plans/versions/*/periods/*/summary', async (route) => {
     if (fail) {
@@ -464,3 +469,4 @@ test('period summary recovers a read failure while responsive unsaved drafts sta
   expect((await f.readPlan()).head).toEqual(f.saved);
   expect(f.browserWrites).toEqual([]);
 });
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';

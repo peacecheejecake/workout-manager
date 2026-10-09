@@ -194,6 +194,7 @@ function setup(
     candidate?: IntegratedCandidateV4;
     unsupported?: boolean;
     approval?: 'lost-once';
+    failureCode?: string;
   } = {},
 ) {
   const writes: TransportRequest[] = [];
@@ -213,6 +214,8 @@ function setup(
         input.path === `/bff/v1/integrated-candidates/${candidateId}/approve`
       ) {
         writes.push(input);
+        if (behavior.failureCode)
+          return reply({ error: { code: behavior.failureCode, detail: 'private source' } }, 409);
         approvalCount += 1;
         if (behavior.approval === 'lost-once' && approvalCount === 1)
           throw new Error('LOST_RESPONSE');
@@ -348,4 +351,41 @@ describe('integrated candidate review workspace', () => {
     expect(screen.getByRole('checkbox')).toBeDisabled();
     expect(screen.getByRole('button', { name: '네 도메인 변경 승인' })).toBeDisabled();
   });
+});
+
+it.each([
+  ['APP_CONSENT_REQUIRED', '앱 데이터 처리 동의가 필요합니다.'],
+  ['STALE_APP_ADMISSION', '앱 데이터 처리 동의가 변경되어'],
+  ['APP_BINDING_UNAVAILABLE', '앱 데이터 처리 동의 기준을 확인할 수 없어'],
+] as const)(
+  'retains the four-domain candidate on %s without approval success',
+  async (code, message) => {
+    const { user, writes } = setup({ failureCode: code });
+    const approve = await screen.findByRole('button', { name: '네 도메인 변경 승인' });
+    await user.click(
+      screen.getByRole('checkbox', {
+        name: '이 후보의 훈련·영양·회복·루틴 일정 변경과 근거를 확인했습니다.',
+      }),
+    );
+    await user.click(approve);
+    expect(await screen.findByText(new RegExp(message))).toBeTruthy();
+    expect(writes).toHaveLength(1);
+    expect(screen.getByRole('region', { name: '네 도메인 변경' })).toBeTruthy();
+    expect(screen.queryByText(/서버에서 네 도메인 계획의 원자적 적용을 확인했습니다/)).toBeNull();
+    expect(screen.queryByText(/private source/)).toBeNull();
+    expect(approve).toBeDisabled();
+  },
+);
+it('does not display an arbitrary integrated server error code', async () => {
+  const { user, writes } = setup({ failureCode: 'PRIVATE_TOKEN_secret' });
+  const approve = await screen.findByRole('button', { name: '네 도메인 변경 승인' });
+  await user.click(
+    screen.getByRole('checkbox', {
+      name: '이 후보의 훈련·영양·회복·루틴 일정 변경과 근거를 확인했습니다.',
+    }),
+  );
+  await user.click(approve);
+  expect(await screen.findByText(/후보가 적용되지 않았습니다/)).toBeTruthy();
+  expect(writes).toHaveLength(1);
+  expect(screen.queryByText(/PRIVATE_TOKEN|private source/)).toBeNull();
 });

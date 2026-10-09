@@ -1,3 +1,4 @@
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
@@ -47,6 +48,7 @@ test('batch plan links freeze the saved version, preserve reports and recover pa
   browser,
 }) => {
   const headers = await login(page);
+  await grantAppProcessingForScenario(page);
   const prefix = `batch-link-${randomUUID()}`;
   const read = async (id: string) => {
     const response = await page.request.get(`/bff/v1/activities/${id}`, { headers });
@@ -288,6 +290,7 @@ test('batch plan links freeze the saved version, preserve reports and recover pa
     try {
       const other = await otherContext.newPage();
       const otherHeaders = await login(other, 'Bob');
+      await grantAppProcessingForScenario(other);
       const denied = await other.request.post('/bff/v1/activities', {
         headers: { ...otherHeaders, 'idempotency-key': randomUUID() },
         data: {

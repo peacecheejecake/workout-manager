@@ -6,6 +6,7 @@ import { createDatabase, type Database } from '../src/database.js';
 import { createOperationsRepository, type OperationsRepository } from '../src/operations.js';
 import { createActivityRepository } from '../src/activities.js';
 import { createIdentityRepository } from '../src/identity.js';
+import { createConsentRepository } from '../src/repositories.js';
 import {
   migrate,
   grantIdentityFunctions,
@@ -37,7 +38,17 @@ afterAll(async () => {
   await database?.close();
   await admin.end();
 });
+async function grantSyntheticAppConsent(athlete: string) {
+  // Explicit consent for synthetic processing fixtures; no production automatic grant.
+  await createConsentRepository(database).setConsent(athlete, {
+    kind: 'app',
+    granted: true,
+    expectedRevision: 0,
+    idempotencyKey: randomUUID(),
+  });
+}
 async function seed(athlete: string) {
+  await grantSyntheticAppConsent(athlete);
   const imported = await createActivityRepository(database).importActivity(athlete, {
     idempotencyKey: randomUUID(),
     source: { kind: 'fixture', sourceId: randomUUID(), revision: 1, contentHash: hash() },
@@ -190,7 +201,7 @@ it('exports coaching records only while evidence and AI consent remain available
     connection.release();
   }
   const before = await operations.exportAccount(athlete);
-  if (before.schemaVersion !== 28) throw new Error('Expected coaching export v28');
+  if (before.schemaVersion !== 33) throw new Error('Expected coaching export v33');
   expect(before.data.coachingRuns).toEqual([
     expect.objectContaining({ id: runId, basis: { schemaVersion: 1, marker: 'synthetic-basis' } }),
   ]);
@@ -215,7 +226,7 @@ it('exports coaching records only while evidence and AI consent remain available
     }),
   ]);
   const otherExport = await operations.exportAccount(other);
-  if (otherExport.schemaVersion !== 28) throw new Error('Expected coaching export v28');
+  if (otherExport.schemaVersion !== 33) throw new Error('Expected coaching export v33');
   expect(otherExport.data.coachingAnalysisOutputs).toEqual([]);
   expect(otherExport.data.coachingCandidates).toEqual([]);
   const blocker = await admin.connect();
@@ -241,7 +252,7 @@ it('exports coaching records only while evidence and AI consent remain available
   const withdrawn = await exportAfterWithdrawal;
   if (!withdrawn) throw new Error('Expected concurrent export');
   const withdrawnArtifact = accountExportSchema.parse(withdrawn);
-  if (withdrawnArtifact.schemaVersion !== 28) throw new Error('Expected coaching export v28');
+  if (withdrawnArtifact.schemaVersion !== 33) throw new Error('Expected coaching export v33');
   expect(withdrawnArtifact.data.coachingAnalysisOutputs).toEqual([
     expect.objectContaining({ id: outputId, body: null, purged_reason: 'consent_withdrawn' }),
   ]);
@@ -286,7 +297,7 @@ it('exports coaching records only while evidence and AI consent remain available
     legacy.release();
   }
   const guarded = await operations.exportAccount(athlete);
-  if (guarded.schemaVersion !== 28) throw new Error('Expected coaching export v28');
+  if (guarded.schemaVersion !== 33) throw new Error('Expected coaching export v33');
   expect(guarded.data.coachingAnalysisOutputs).toEqual([
     expect.objectContaining({
       id: outputId,
@@ -354,12 +365,23 @@ describe('M1-06a scoped export, operational status and durable erasure', () => {
     expect(JSON.stringify(artifact)).not.toContain('MUST_NOT_EXPORT');
     expect(Object.keys(artifact.data)).not.toContain('outbox');
     const status = await operations.status(first);
-    expect(status.outbox.pending).toBe(1);
+    expect(status.outbox.pending).toBe(2);
+    expect(
+      (
+        await database.tenant(first, (tx) =>
+          tx.query('SELECT topic,payload FROM outbox WHERE athlete_id=$1 ORDER BY topic', [first]),
+        )
+      ).rows,
+    ).toEqual([
+      expect.objectContaining({ topic: 'activity.changed' }),
+      { topic: 'consent.changed', payload: { kind: 'app', granted: true, revision: 1 } },
+    ]);
     expect(status.audit[0]?.action).toBe('export_requested');
     expect((await operations.status(second)).audit).toEqual([]);
   });
   it('exports manual reports and immutable correction history in v2, distinguishing local hiding from account erasure', async () => {
     const athlete = randomUUID();
+    await grantSyntheticAppConsent(athlete);
     const activities = createActivityRepository(database);
     const created = await activities.createManualActivity(athlete, {
       confirmed: true,
@@ -376,7 +398,7 @@ describe('M1-06a scoped export, operational status and durable erasure', () => {
       report: { sessionRpe: 0, note: 'Synthetic original report', planLink: null },
     });
     const before = await operations.exportAccount(athlete);
-    expect(before.schemaVersion).toBe(28);
+    expect(before.schemaVersion).toBe(33);
     expect(before.data.activitySources).toEqual([
       expect.objectContaining({ kind: 'manual', activity_id: created.activityId }),
     ]);
@@ -630,6 +652,16 @@ it('honors FORCE RLS tombstones when the authentication definer is not a superus
 it('reports lease and retry backlog facts without claiming first-attempt processing failed', async () => {
   const athlete = randomUUID();
   await seed(athlete);
+  expect(
+    (
+      await database.tenant(athlete, (tx) =>
+        tx.query('SELECT topic,payload FROM outbox WHERE athlete_id=$1 ORDER BY topic', [athlete]),
+      )
+    ).rows,
+  ).toEqual([
+    expect.objectContaining({ topic: 'activity.changed' }),
+    { topic: 'consent.changed', payload: { kind: 'app', granted: true, revision: 1 } },
+  ]);
   await database.tenant(athlete, (tx) =>
     tx.query(
       "UPDATE outbox SET attempts=1,lease_token=$2,lease_until=clock_timestamp()+interval '1 minute' WHERE athlete_id=$1",
@@ -638,7 +670,7 @@ it('reports lease and retry backlog facts without claiming first-attempt process
   );
   expect((await operations.status(athlete)).outbox).toEqual({
     pending: 0,
-    leased: 1,
+    leased: 2,
     retrying: 0,
     completed: 0,
   });
@@ -646,9 +678,9 @@ it('reports lease and retry backlog facts without claiming first-attempt process
     tx.query('UPDATE outbox SET lease_token=NULL,lease_until=NULL WHERE athlete_id=$1', [athlete]),
   );
   expect((await operations.status(athlete)).outbox).toEqual({
-    pending: 1,
+    pending: 2,
     leased: 0,
-    retrying: 1,
+    retrying: 2,
     completed: 0,
   });
   await database.tenant(athlete, (tx) =>
@@ -664,6 +696,7 @@ describe('activity source detail data lifecycle', () => {
   it('exports source detail observations and erases all revisions without exposing another tenant', async () => {
     const athlete = randomUUID(),
       other = randomUUID();
+    await grantSyntheticAppConsent(athlete);
     const activity = createActivityRepository(database);
     const details = {
       schemaVersion: 1 as const,
@@ -780,7 +813,7 @@ it('exports pending create URL ingestion history before a resource row exists', 
   );
 
   const exported = await operations.exportAccount(athlete);
-  if (exported.schemaVersion !== 28) throw new Error('Expected the current account export schema.');
+  if (exported.schemaVersion !== 33) throw new Error('Expected the current account export schema.');
   expect(exported.data.resourceUrlIngestions.map((item) => item.state).sort()).toEqual([
     'cancelled',
     'failed',
@@ -888,7 +921,7 @@ it('removes every URL-derived collection from export after the resource is soft 
   }
 
   const before = await operations.exportAccount(athlete);
-  if (before.schemaVersion !== 28) throw new Error('Expected the current account export schema.');
+  if (before.schemaVersion !== 33) throw new Error('Expected the current account export schema.');
   expect(before.data.resourceUrlIngestions).toHaveLength(1);
   expect(before.data.resourceUrlAttempts).toHaveLength(1);
   expect(before.data.resourceUrlFetchHops).toHaveLength(1);
@@ -905,7 +938,7 @@ it('removes every URL-derived collection from export after the resource is soft 
     [athlete, resourceId],
   );
   const deleted = await operations.exportAccount(athlete);
-  if (deleted.schemaVersion !== 28) throw new Error('Expected the current account export schema.');
+  if (deleted.schemaVersion !== 33) throw new Error('Expected the current account export schema.');
   expect(deleted.data.resources).toEqual([]);
   expect(deleted.data.resourceVersions).toEqual([]);
   expect(deleted.data.resourceUrlIngestions).toEqual([]);

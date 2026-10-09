@@ -16,6 +16,8 @@ final class WorkoutNativeBridge: CAPInstancePlugin, CAPBridgedPlugin {
     private let protocolVersion = 3
     @MainActor private var activeTasks: [String: Task<Void, Never>] = [:]
     @MainActor private var pendingCancels = Set<String>()
+    @MainActor private var selectionExchange = HealthKitWorkoutSelectionExchangeLifetime()
+    @MainActor private var managementExchange = HealthKitWorkoutSelectionExchangeLifetime()
 
     @objc func cancel(_ call: CAPPluginCall) {
         guard Set(call.options.keys) == Set(["id"]),
@@ -27,6 +29,10 @@ final class WorkoutNativeBridge: CAPInstancePlugin, CAPBridgedPlugin {
             if let task = self.activeTasks[id] {
                 task.cancel()
                 await task.value
+            } else if let selectionId = self.selectionExchange.cancelRequest(id) {
+                HealthKitWorkoutSelectionCoordinator.shared.cancel(selectionId: selectionId)
+            } else if let handle = self.managementExchange.cancelRequest(id) {
+                HealthKitWorkoutManagementCoordinator.shared.cancel(managementId: handle)
             } else {
                 // The sideband call can reach the main actor before exchange registers.
                 // Keep only a bounded number of short-lived request IDs.
@@ -71,6 +77,8 @@ final class WorkoutNativeBridge: CAPInstancePlugin, CAPBridgedPlugin {
                     "app.openSettings": true,
                     "healthkit.read": false,
                     "healthkit.workouts": HKHealthStore.isHealthDataAvailable(),
+                    "healthkit.workouts.selection": HKHealthStore.isHealthDataAvailable() && NativeAuth.isConfigured,
+                    "healthkit.workouts.management": HKHealthStore.isHealthDataAvailable() && NativeAuth.isConfigured,
                     "auth.transport": NativeAuth.isConfigured
                 ]
             ]])
@@ -80,7 +88,10 @@ final class WorkoutNativeBridge: CAPInstancePlugin, CAPBridgedPlugin {
                   ["app.openSettings", "auth.signIn", "auth.session", "auth.signOut", "api.read",
                    "api.activity.read", "api.healthkitDecision.write",
                    "api.healthkitConsent.write", "healthkit.workouts.requestAccess",
-                   "healthkit.workouts.status"].contains(method) else {
+                   "healthkit.workouts.status", "healthkit.workouts.select",
+                   "healthkit.workouts.selectionStatus", "healthkit.workouts.cancelSelection",
+                   "healthkit.workouts.manage", "healthkit.workouts.managementStatus",
+                   "healthkit.workouts.cancelManagement"].contains(method) else {
                 resolveError(call, id: id, code: "UNSUPPORTED_METHOD")
                 return
             }
@@ -122,6 +133,18 @@ final class WorkoutNativeBridge: CAPInstancePlugin, CAPBridgedPlugin {
                     resolveError(call, id: id, code: "INVALID_REQUEST")
                     return
                 }
+            } else if method == "healthkit.workouts.selectionStatus" || method == "healthkit.workouts.cancelSelection" {
+                guard Set(payload.keys) == ["selectionId"],
+                      let text = payload["selectionId"] as? String, UUID(uuidString: text) != nil else {
+                    resolveError(call, id: id, code: "INVALID_REQUEST")
+                    return
+                }
+            } else if method == "healthkit.workouts.managementStatus" || method == "healthkit.workouts.cancelManagement" {
+                guard Set(payload.keys) == ["managementId"],
+                      let text = payload["managementId"] as? String, UUID(uuidString: text) != nil else {
+                    resolveError(call, id: id, code: "INVALID_REQUEST")
+                    return
+                }
             } else if !payload.isEmpty {
                 resolveError(call, id: id, code: "INVALID_REQUEST")
                 return
@@ -141,6 +164,8 @@ final class WorkoutNativeBridge: CAPInstancePlugin, CAPBridgedPlugin {
                         do {
                             let reply: [String: Any]
                             var completedSignInSessionID: String?
+                            var completedSelectionId: UUID?
+                            var completedManagementId: UUID?
                             switch method {
                             case "auth.signIn":
                                 let result = try await NativeAuth.shared.signIn()
@@ -182,6 +207,8 @@ final class WorkoutNativeBridge: CAPInstancePlugin, CAPBridgedPlugin {
                                     granted: granted, expectedRevision: revision, idempotencyKey: key)
                                 switch outcome {
                                 case .updated(let value, let revision):
+                                    HealthKitWorkoutSelectionCoordinator.shared.consentDidChange(granted: value, revision: revision)
+                                    HealthKitWorkoutManagementCoordinator.shared.consentDidChange(granted: value, revision: revision)
                                     if !value {
                                         do { try HealthKitWorkoutCollector.shared.resetAfterCommittedWithdrawal() }
                                         catch {
@@ -200,6 +227,43 @@ final class WorkoutNativeBridge: CAPInstancePlugin, CAPBridgedPlugin {
                             case "healthkit.workouts.requestAccess":
                                 try await HealthKitWorkoutCollector.shared.requestReadAuthorizationFromProductAction()
                                 reply = ["status": "requested"]
+                            case "healthkit.workouts.select":
+                                let handle = try await HealthKitWorkoutSelectionCoordinator.shared.open()
+                                completedSelectionId = handle
+                                self.selectionExchange.record(requestId: id, selectionId: handle)
+                                reply = ["status": "opened", "selectionId": handle.uuidString.lowercased()]
+                            case "healthkit.workouts.selectionStatus":
+                                guard let text = payload["selectionId"] as? String, let handle = UUID(uuidString: text) else {
+                                    self.resolveError(call, id: id, code: "INVALID_REQUEST")
+                                    return
+                                }
+                                reply = ["status": try await HealthKitWorkoutSelectionCoordinator.shared.status(
+                                    selectionId: handle)]
+                            case "healthkit.workouts.cancelSelection":
+                                guard let text = payload["selectionId"] as? String, let handle = UUID(uuidString: text) else {
+                                    self.resolveError(call, id: id, code: "INVALID_REQUEST")
+                                    return
+                                }
+                                HealthKitWorkoutSelectionCoordinator.shared.cancel(selectionId: handle)
+                                self.selectionExchange.forget(handle)
+                                reply = ["status": "cancelled"]
+                            case "healthkit.workouts.manage":
+                                let handle = try await HealthKitWorkoutManagementCoordinator.shared.open()
+                                completedManagementId = handle
+                                self.managementExchange.record(requestId: id, selectionId: handle)
+                                reply = ["status": "opened", "managementId": handle.uuidString.lowercased()]
+                            case "healthkit.workouts.managementStatus":
+                                guard let text = payload["managementId"] as? String, let handle = UUID(uuidString: text) else {
+                                    self.resolveError(call, id: id, code: "INVALID_REQUEST"); return
+                                }
+                                reply = ["status": try await HealthKitWorkoutManagementCoordinator.shared.status(managementId: handle)]
+                            case "healthkit.workouts.cancelManagement":
+                                guard let text = payload["managementId"] as? String, let handle = UUID(uuidString: text) else {
+                                    self.resolveError(call, id: id, code: "INVALID_REQUEST"); return
+                                }
+                                HealthKitWorkoutManagementCoordinator.shared.cancel(managementId: handle)
+                                self.managementExchange.forget(handle)
+                                reply = ["status": "cancelled"]
                             case "healthkit.workouts.status":
                                 reply = ["status": try await HealthKitWorkoutCollector.shared.statusForCurrentAccount()]
                             default:
@@ -209,6 +273,14 @@ final class WorkoutNativeBridge: CAPInstancePlugin, CAPBridgedPlugin {
                             do {
                                 try Task.checkCancellation()
                             } catch {
+                                if let completedSelectionId {
+                                    HealthKitWorkoutSelectionCoordinator.shared.cancel(selectionId: completedSelectionId)
+                                    self.selectionExchange.forget(completedSelectionId)
+                                }
+                                if let completedManagementId {
+                                    HealthKitWorkoutManagementCoordinator.shared.cancel(managementId: completedManagementId)
+                                    self.managementExchange.forget(completedManagementId)
+                                }
                                 if let completedSignInSessionID {
                                     await NativeAuth.shared.cancelCompletedSignIn(sessionID: completedSignInSessionID)
                                 }

@@ -1,8 +1,11 @@
+import { createConsentRepository } from '../src/repositories.js';
 import { randomUUID } from 'node:crypto';
 import { Pool, type PoolClient } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createDatabase, type Database } from '../src/database.js';
-import { createHealthKitIngestionRepository } from '../src/healthkit-ingestion.js';
+import type { HealthKitIngestionBatch } from '@workout/contracts/healthkit-ingestion';
+import { createHealthKitIngestionRepository as createRawHealthKitIngestionRepository } from '../src/healthkit-ingestion.js';
+import { createHealthKitRegistrationRepository } from '../src/healthkit-registration.js';
 import { createHealthKitProjectionRepository } from '../src/healthkit-projection.js';
 import { grantHealthKitIngestion, grantOperations, migrate } from '../src/migrate.js';
 
@@ -63,7 +66,7 @@ async function ingest(
   const sampleId = options.sampleId ?? randomUUID();
   const observedFrom = options.at ?? '2026-09-20T00:00:00Z';
   const observedTo = new Date(Date.parse(observedFrom) + 60 * 60 * 1000).toISOString();
-  await createHealthKitIngestionRepository(database).ingestBatch(
+  await createRegisteredFixtureIngestionRepository(database).ingestBatch(
     athleteId,
     {
       schemaVersion: 1,
@@ -89,10 +92,70 @@ async function ingest(
   return sampleId;
 }
 
+const syntheticDeclaredEpochs = new Map<string, string>();
+
+async function registeredBatch(
+  db: Database,
+  athleteId: string,
+  batch: HealthKitIngestionBatch,
+  consentRevision: number,
+) {
+  const registration = createHealthKitRegistrationRepository(db);
+  const current = await registration.listWorkouts(athleteId, {});
+  const epochs = new Map(current.claims.map((claim) => [claim.sampleId, claim.claimEpoch]));
+  const missing = [...new Set(batch.events.map((event) => event.sampleId))].filter((sampleId) => {
+    if (epochs.has(sampleId)) return false;
+    const previousEpoch = syntheticDeclaredEpochs.get(`${athleteId}:${sampleId}`);
+    if (previousEpoch) {
+      epochs.set(sampleId, previousEpoch);
+      return false;
+    }
+    return true;
+  });
+  if (missing.length) {
+    const result = await registration.registerWorkouts(athleteId, {
+      schemaVersion: 1,
+      sampleIds: missing,
+      accountAttributionDeclared: true,
+      expectedConsentRevision: consentRevision,
+      expectedRegistryRevision: current.registryRevision,
+      idempotencyKey: randomUUID(),
+    });
+    for (const claim of result.claims) {
+      epochs.set(claim.sampleId, claim.claimEpoch);
+      syntheticDeclaredEpochs.set(`${athleteId}:${claim.sampleId}`, claim.claimEpoch);
+    }
+  }
+  return {
+    ...batch,
+    schemaVersion: 2 as const,
+    events: batch.events.map((event) => {
+      const claimEpoch = epochs.get(event.sampleId);
+      if (!claimEpoch) throw new Error('Missing synthetic claim epoch');
+      return { ...event, claimEpoch };
+    }),
+  };
+}
+
+function createRegisteredFixtureIngestionRepository(db: Database) {
+  const raw = createRawHealthKitIngestionRepository(db);
+  return {
+    async ingestBatch(athleteId: string, batch: HealthKitIngestionBatch, consentRevision: number) {
+      return raw.ingestBatch(
+        athleteId,
+        await registeredBatch(db, athleteId, batch, consentRevision),
+        consentRevision,
+      );
+    },
+  };
+}
+
 describe('M3-02g owner-scoped HealthKit review queue', () => {
   it('returns bounded, deterministic, minimal pending facts and isolates tenants', async () => {
     const athleteId = randomUUID();
     const other = randomUUID();
+    await declareSyntheticAppConsent(athleteId);
+    await declareSyntheticAppConsent(other);
     await consent(athleteId, true);
     await consent(other, true);
     const earlier = await ingest(athleteId, {
@@ -136,6 +199,7 @@ describe('M3-02g owner-scoped HealthKit review queue', () => {
 
   it('omits every non-pending lineage state and deleted raw sample', async () => {
     const athleteId = randomUUID();
+    await declareSyntheticAppConsent(athleteId);
     await consent(athleteId, true);
     const pending = await ingest(athleteId);
     const linked = await ingest(athleteId);
@@ -154,7 +218,7 @@ describe('M3-02g owner-scoped HealthKit review queue', () => {
         ),
       );
     }
-    await createHealthKitIngestionRepository(database).ingestBatch(
+    await createRegisteredFixtureIngestionRepository(database).ingestBatch(
       athleteId,
       {
         schemaVersion: 1,
@@ -177,6 +241,7 @@ describe('M3-02g owner-scoped HealthKit review queue', () => {
       code: 'CONSENT_REQUIRED',
     });
     await consent(athleteId, true);
+    await declareSyntheticAppConsent(athleteId);
     await ingest(athleteId);
     expect((await repo.listPendingWorkouts(athleteId, 50)).items).toHaveLength(1);
     await consent(athleteId, false);
@@ -189,3 +254,15 @@ describe('M3-02g owner-scoped HealthKit review queue', () => {
     expect(raw.rows[0]?.['count']).toBe(0);
   });
 });
+
+// Explicit synthetic user permission for named positive collection scenarios only.
+async function declareSyntheticAppConsent(athleteId: string): Promise<void> {
+  expect(
+    await createConsentRepository(database).setConsent(athleteId, {
+      kind: 'app',
+      granted: true,
+      expectedRevision: 0,
+      idempotencyKey: randomUUID(),
+    }),
+  ).toEqual({ kind: 'app', granted: true, revision: 1 });
+}

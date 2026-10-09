@@ -1,3 +1,4 @@
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
@@ -36,6 +37,7 @@ test('selected local deletion requires renewed confirmation after a real revisio
   browser,
 }) => {
   const headers = await login(page, 'Alice');
+  await grantAppProcessingForScenario(page);
   const marker = `Synthetic deletion ${randomUUID()}`;
   const sourceId = randomUUID();
   const body = {
@@ -111,6 +113,8 @@ test('selected local deletion requires renewed confirmation after a real revisio
     expect(updatedResponse.status()).toBe(200);
     const updated = activitySchema.parse(await updatedResponse.json());
     const confirm = confirmation.getByRole('button', { name: '이 활동 삭제 확인', exact: true });
+    // The real deletion-impact read must finish before this safety-gated button can take focus.
+    await expect(confirm).toBeEnabled();
     await confirm.focus();
     await expect(confirm).toBeFocused();
     const conflictResponse = page.waitForResponse(
@@ -129,7 +133,9 @@ test('selected local deletion requires renewed confirmation after a real revisio
     await beginDelete.focus();
     await beginDelete.press('Enter');
     await expect(confirmation).toContainText(String(updated.revision));
+    await expect(confirm).toBeEnabled();
     await confirm.focus();
+    await expect(confirm).toBeFocused();
     const deletedResponse = page.waitForResponse(
       (response) =>
         response.request().method() === 'DELETE' && new URL(response.url()).pathname === path,

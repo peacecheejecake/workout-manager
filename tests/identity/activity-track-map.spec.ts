@@ -1,3 +1,4 @@
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';
 import { identityMobileOrigin, identityWebOrigin } from '../../scripts/fixtures/identity-ports';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
@@ -178,6 +179,7 @@ test('re-reads a stored track after a full load, draws it and round-trips select
       foreignRequests.push(request.url());
   });
   const headers = await login(page);
+  await grantAppProcessingForScenario(page);
   const activityId = await storeTrack(page, headers);
 
   // Only what the screen itself requests counts here; the login redirect legitimately
@@ -247,6 +249,7 @@ test('hovers, zooms and moves the cursor without a server request or a summary c
 }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   const headers = await login(page);
+  await grantAppProcessingForScenario(page);
   const activityId = await storeTrack(page, headers);
   await page.goto(routeAddress(activityId));
   const panel = page.getByRole('region', { name: '저장된 경로', exact: true });
@@ -322,6 +325,7 @@ test('draws the stored path over the self-hosted basemap with its attribution', 
   page,
 }, testInfo) => {
   const headers = await login(page);
+  await grantAppProcessingForScenario(page);
   const activityId = await storeTrack(page, headers);
   const styleResponse = await page.request.get('/map/basemap/current.json');
   test.skip(
@@ -361,6 +365,7 @@ test('lays out S09 at every breakpoint boundary and in a 420px pane', async ({ p
   const pageErrors: string[] = [];
   page.on('pageerror', (error) => pageErrors.push(error.message));
   const headers = await login(page);
+  await grantAppProcessingForScenario(page);
   const activityId = await storeTrack(page, headers);
   await page.goto(routeAddress(activityId));
   const panel = page.getByRole('region', { name: '저장된 경로', exact: true });
@@ -421,6 +426,7 @@ test('lays out S09 at every breakpoint boundary and in a 420px pane', async ({ p
 
 test('another account never sees the stored track', async ({ page }) => {
   const headers = await login(page);
+  await grantAppProcessingForScenario(page);
   const activityId = await storeTrack(page, headers);
   await page.goto(routeAddress(activityId));
   await expect(page.getByText('전체 6개 · 위치 있음 5개 · 구간 3개')).toBeVisible();
@@ -449,6 +455,7 @@ test('another account never sees the stored track', async ({ page }) => {
 
 test('shows the stored track in the Vite shell too', async ({ page }) => {
   const headers = await login(page);
+  await grantAppProcessingForScenario(page);
   const activityId = await storeTrack(page, headers);
   await page.goto(`${identityMobileOrigin}${routeAddress(activityId)}`);
   const panel = page.getByRole('region', { name: '저장된 경로', exact: true });
@@ -460,6 +467,7 @@ test('shows the stored track in the Vite shell too', async ({ page }) => {
 
 test('says so when an activity has no stored track', async ({ page }) => {
   const headers = await login(page);
+  await grantAppProcessingForScenario(page);
   const command = importActivitySchema.parse({
     idempotencyKey: randomUUID(),
     source: { kind: 'fixture', sourceId: randomUUID(), revision: 1, contentHash: 'f'.repeat(64) },

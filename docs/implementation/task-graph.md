@@ -472,6 +472,8 @@ flowchart TD
     mapi["M2-01i 목표 거리 후보"]
     mapj["M2-01j S13/S14 잔여 기능"]
     mapk["M2-01k 지도·코스 통합 수용"]
+    s22ConsentProtection["M2-01k-u S22 고지·보호 회귀"]
+    s22ConsentProtection --> mapk
     mapa --> mapb
     mapb --> mapc
     mapc --> mape
@@ -563,6 +565,13 @@ flowchart TD
     task35g["M3-02g 제품 HealthKit UI"]
     task35h["M3-02h 서명된 iPhone 검증"]
     task35i["M3-02i 독립 Activity 생성·삭제"]
+    task35j["M3-02j 계정별 등록 정책·계약"]
+    task35k["M3-02k UUID 원장·수신 차단"]
+    task35l["M3-02l 운동 등록 API"]
+    task35m["M3-02m native 등록 UUID 수집"]
+    task35n["M3-02n 선택 UI·bridge"]
+    task35o["M3-02o 통합·안전 배포 준비"]
+    task35p["M3-02p phase E2E fixture·포커스 경합"]
     task35["M3-02 HealthKit collector"]
     task36["M3-03 최종 Native 통합"]
     task37{{"G3 Native-inclusive 출시 gate"}}
@@ -592,6 +601,25 @@ flowchart TD
     task35i --> task35g
     task35i --> task35h
     task35i --> task35
+    task35i --> task35j
+    task35j --> task35k
+    task35k --> task35l
+    task35l --> task35m
+    task35j --> task35n
+    task35m --> task35n
+    task35k --> task35o
+    task35l --> task35o
+    task35m --> task35o
+    task35n --> task35o
+    task35n --> task35p
+    task35o --> task35h
+    task35j --> task35
+    task35k --> task35
+    task35l --> task35
+    task35m --> task35
+    task35n --> task35
+    task35o --> task35
+    task35p --> task35
     task35b --> task35f
     task35d --> task35f
     task35f --> task35h
@@ -729,12 +757,13 @@ Native shell·collector는 M1c 통합과 native feasibility 이후 M2 Web 확장
 | M2-01h 경유지 편집 | M2-01f, M2-01g | 미착수; S14 waypoint·잠금·undo/redo·non-drag·stale 격리·명시 저장 |
 | M2-01i 목표 거리 후보 | M2-01h | 미착수; loop/왕복 bounded 탐색·seed·후보 평가·거리 오차·사용자 선택 |
 | M2-01j S13/S14 잔여 기능 | M2-01f, M2-01h | 미착수; GPX import·즐겨찾기·썸네일·노면 확인/접근성 메모·자체 장소 검색·고도 출처·privacy trim·버전 참조 |
-| M2-01k 지도·코스 통합 수용 | M2-01i, M2-01j, M2-01k-t 및 기존 완료 하위 노드 | 진행 중; S09/S13/S14 요구 대조·E2E·삭제/복원·성능·graph 교체 rollback |
+| M2-01k 지도·코스 통합 수용 | M2-01i, M2-01j, M2-01k-u 및 기존 완료 하위 노드 | 진행 중; S09/S13/S14 요구 대조·E2E·삭제/복원·성능·graph 교체 rollback |
 | M2-01k-p 제스처·UI 종합 검증 | M2-01k-c1, M2-01k-d, M2-01k-o | 완료; 두 shell 지도 스크롤·포커스 탈출과 P8 UI 7항목 현재 트리 종합 검증. 물리 touch·OS IME와 구별 |
 | M2-01k-q 로그아웃 지도·코스 정리 | M2-01k-d, M2-01k-p | 완료; 명시 로그아웃에서 비공개 cache·초안·지도 자원·늦은 응답 제거를 직접 검증. 제품 전체 행은 별도 판정 |
 | M2-01k-r 제품 비공개 상태 수명 | M2-01k-q | 완료; 갤러리·수출·영양·루틴의 로그아웃/계정 전환 수명 검증, 공통 탭 로그아웃 수정. P5 전체는 partial 유지 |
 | M2-01k-s 나머지 제품 상태 수명 | M2-01k-r | 완료; 활동 편집·계획·코칭·웰빙·대시보드·회복·자료의 채워진 상태와 늦은 응답을 로그아웃·계정 전환에서 직접 검증. P5 전체는 partial 유지 |
 | M2-01k-t 두 shell의 비공개 화면·계정 전환 수명 | M2-01k-s | 완료; Vite의 dashboard·wellbeing·활동 편집 경로와 양쪽 shell의 비공개 상태·계정 전환을 검증. OS focus·실제 OIDC·실기기는 별도 gate |
+| M2-01k-u S22 동의 고지·사용자 보호 | M2-01k-t, M3-02n | [완료](progress/M2-01k-u.md); 확정된 고지의 명시 액션 전 가시성·실패·계정 수명 회귀. app/provider 새 처리 정책은 답변 대기 |
 | M2-02a 대회·결과 런타임 계약 경계 | M2-01f, M1-04x, M1c-04 | 완료; RaceEvent 계획과 RaceResult/TrainingBest 실제 기록의 strict 계약·고정 Course revision·출처 분리. DB/API/UI는 부모 단계 |
 | M2-02 대회·기록 | M2-01, M2-02a | competitions; 코스 참조·결과. M2-01의 외부 gate는 그대로 선행 조건 |
 | M2-03 갤러리·media | M1c-04 | gallery/media; 객체 권한·upload·video·삭제 |
@@ -761,9 +790,16 @@ Native shell·collector는 M1c 통합과 native feasibility 이후 M2 Web 확장
 | M3-02e HealthKit 검토 대기 운동의 기존 Activity 연결 | M3-02d | 로컬 수용 완료; 사용자 선택·tenant/revision/동의·삭제 억제·멱등 거래로 기존 Activity에 보조 lineage만 연결, 기존 출처와 단일 집계 보존. 제품 선택 UI·실기기는 후속 |
 | M3-02f HealthKit 재설치·anchor 재조정과 권한 미확인 상태 | M3-02b, M3-02d | 로컬 수용 완료; 미전송 배치 ACK 뒤 명시적 재확인에서 nil-anchor 재조회·기존 UUID 대조. 빈 조회로 삭제나 권한 허용을 추정하지 않음. 실기기 재설치·wake는 후속 |
 | M3-02g 제품 HealthKit 동의·동기화 UI와 공통 Activity 화면 | M3-02c, M3-02e, M3-02i | 로컬 수용 완료; native 동의·운동 읽기 요청과 제한된 상태, Web/mobile 공통 Activity 검토·명시적 생성/연결. 실기기 전체 경로는 M3-02h |
-| M3-02h 서명된 iPhone HealthKit 전체 경로 검증 | M3-02b, M3-02c, M3-02e, M3-02f, M3-02g, M3-02i | [서명·설치·기본 실행 사전 확인](progress/M3-02h.md); HTTPS 서버·안전한 표본 범위 확인 대기. 실제 수집·삭제·wake·재설치·계정 전환은 미실행 |
+| M3-02h 서명된 iPhone HealthKit 전체 경로 검증 | M3-02b, M3-02c, M3-02e, M3-02f, M3-02g, M3-02i, M3-02o | [서명·설치·기본 실행 사전 확인](progress/M3-02h.md); 계정별 등록과 HTTPS·격리된 표본 범위 확인 대기. 실제 수집·삭제·wake·재설치·계정 전환은 미실행 |
 | M3-02i 명시적 HealthKit 독립 Activity 생성·삭제 수명주기 | M3-02e | 로컬 수용 완료; 검토된 원본만 새 canonical로 만들고 삭제·철회·복원 재생에서 억제. 서명된 실기기는 M3-02h |
-| M3-02 HealthKit collector | M3-01, M3-02a–M3-02i | native collector; anchor/tombstone/outbox/ack·실기기 |
+| M3-02j HealthKit 계정별 운동 등록 정책·계약 | M3-02i | [계정별 선택·등록 ADR](research/healthkit-account-registration-adr.md), 등록·조회 runtime 계약·consumer typecheck 로컬 수용 완료; 서버 차단은 M3-02k |
+| M3-02k HealthKit 전역 UUID 귀속 원장·수신 차단 | M3-02j | 전역 단일 활성 owner, 등록 epoch, 구형·미등록 배치 원자적 거절, 실제 DB 동시성·말소·rollback 검증 |
+| M3-02l HealthKit 운동 등록 API 경계 | M3-02k | 인증 계정·동의 revision 기반 등록/조회, 멱등·비공개 충돌·입력 제한; 개별 해제는 실제 객체 정리 뒤 귀속 해제·owner exact replay·export v30 |
+| M3-02m HealthKit 등록 UUID 범위의 native 수집 | M3-02l | ACK된 UUID만 query/outbox, 계정 전환·재설치·삭제·anchor를 합성 Swift harness로 검증 |
+| M3-02n HealthKit 운동 선택 UI·native bridge | M3-02j, M3-02m | [로컬 구현 수용 완료](progress/M3-02n.md): native 합성·SDK 및 웹 브라우저 검증. UIKit/VoiceOver·제품 HTTPS·실기기는 별도 미실행 |
+| M3-02o HealthKit 계정별 등록 통합·안전 배포 준비 | M3-02k–M3-02n | [진행 중](progress/M3-02o.md): 비식별 감사 실제 합성 PG 통과, 개별 해제 제품 연결·[안전 배포 준비](research/healthkit-registration-rollout-readiness.md). 운영 감사·배포/rollback·실기기는 미실행 |
+| M3-02p Phase 수용 E2E의 비동기 fixture·포커스 경합 검증 | M3-02n | [로컬 완료](progress/M3-02p.md): export 버전·삭제 준비 대기·합성 MFA 응답 경합 수정. 고정 bd625ee8의 전체 identity 두 회차 각각309통과·12skip·exit0; 외부 gate 유지 |
+| M3-02 HealthKit collector | M3-01, M3-02a–M3-02p | native collector; anchor/tombstone/outbox/ack·실기기 |
 | M3-03 최종 Native 통합 | M3-02, G2 | M2 전체 모듈 재조합·실기기 lifecycle/IME/back/offline 회귀·출시 요건 |
 | G3 Native-inclusive 출시 gate | M3-03, G2-PUBLIC | Web 공개 출시 조건 + 실제 HealthKit·native 검증 |
 
@@ -799,3 +835,14 @@ M1-06b 공식 수집이 Web 출시의 필수 조건이었다. 2026-09-27 결정�
 선행 조건은 [활성 그래프](task-graph.json)를 따른다.
 
 최소 병렬화는 M0-02 뒤 frontend/backend 분리다. 더 빠르게 진행하려고 승인 transaction·공유 schema·migration을 독립 구현 두 벌로 만드는 방식은 사용하지 않는다.
+
+## S22 확정 후속 처리 gate · 2026-10-06
+
+M2-01k-v-a~f는 app 처리 의미 확정 뒤 새 admission·직접 저장·basis 호환·영양/회복/루틴·provider worker·UI/native 경계를 각각 검증한다. v-a 공통 helper가 completed, v-b 직접 처리 연결은 in_progress, 나머지는 not_started이며 부모 M2-01k의 의존에 포함한다. generic provider는 호환 원장만 유지한다.
+
+
+## AI 설정의 실제 실행 연결 · 2026-10-07
+
+현재 제품의 전체 인증 복원은 [EXT-RESTORE](progress/EXT-RESTORE.md)로 별도 추적한다. `EXT-RESTOREa`는 M2-02i/j/k와 M2-01k-v-c 뒤의 최종 schema에 대해 typed full-family/완전 tail/postconditions/admission을 구현·실DB 검증한다. `EXT-RESTOREb`는 독립 최신 witness·운영 전체 백업/격리 복원을 실제 검증한다. M2-01k·EXT-HOSTING·G2-PUBLIC은 전체 gate를, M2-05b/c는 로컬 capability를 기다린다. 기존 historical100→102→upgrade105 지원과 ordinary107/fault2를 현재 schema의 complete restore로 확대하지 않는다. 기존 미완료 요구와 상태를 보존하며 DDL 번호는 phase 통합 후 Root가 직렬 배정한다.
+
+설정 선택의 로컬 수용과 실제 코칭 실행을 구분한다. M2-01k-w-a의 같은 거래 준비만 검증 완료다. 기존 미시작 w-b~e는 요구를 보존해 M2-05a~d로 일대일 이관했다: M2-02 통합 → immutable job → complete freshness → 글로벌 월 예산 dispatch → 실제 OpenAI 수용. 내부 M2-06은 M2-05c, 공개 G2-PUBLIC은 실제 외부 M2-05d도 요구한다. [준비 기록](progress/M2-01k-w.md)과 [실행 기록](progress/M2-05-execution.md)을 따른다. 별도 대회 phase의 현황은 [고정 branch 기록](progress/M2-02-branch-state.md)이며, 이 그래프에 상태를 기록한 것이 해당 코드를 C나 main에 병합했다는 뜻은 아니다.

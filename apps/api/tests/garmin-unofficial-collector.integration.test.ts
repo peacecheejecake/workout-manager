@@ -39,6 +39,30 @@ const adminUrl = process.env['TEST_DATABASE_ADMIN_URL'],
   runtimeUrl = process.env['TEST_DATABASE_URL'];
 if (!adminUrl || !runtimeUrl) throw new Error('Run isolated PostgreSQL integration harness');
 const admin = new Pool({ connectionString: adminUrl });
+const ownerUrl = process.env['TEST_DATABASE_OWNER_URL'];
+if (!ownerUrl)
+  throw new Error('Positive synthetic import fixture requires the plain migration owner');
+const ownerPool = new Pool({ connectionString: ownerUrl });
+async function grantSyntheticProcessingAppConsent(athleteId: string) {
+  const client = await ownerPool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock_shared(77210,1)');
+    await client.query("SELECT set_config('app.athlete_id',$1,true)", [athleteId]);
+    // Explicit app consent for positive synthetic dispatch/import only. Individual Garmin
+    // permission still comes from connect; normal SQL100 immutable events remain active.
+    await client.query(
+      "INSERT INTO consent(athlete_id,kind,granted,revision) VALUES($1,'app',true,1) ON CONFLICT(athlete_id,kind) DO NOTHING",
+      [athleteId],
+    );
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
 const keys = { k1: Buffer.alloc(32, 5).toString('base64') };
 const cipher = unofficialSessionCipher({ activeKeyId: 'k1', keys });
 const pinKey = Buffer.alloc(32, 21);
@@ -80,6 +104,7 @@ beforeAll(async () => {
 });
 afterAll(async () => {
   await raw?.close();
+  await ownerPool.end();
   await admin.end();
 });
 
@@ -234,6 +259,7 @@ describe('session storage and pinning', () => {
       athlete,
       (await connectionRow(athlete))?.['encrypted_session'] as never,
     );
+    await grantSyntheticProcessingAppConsent(athlete);
     await store.requestRun(athlete, new Date());
     await run(athlete, collector(['9001'], { '9001': [fitCommand(`${athlete}-pw`)] }).value);
     const row = await connectionRow(athlete);
@@ -285,7 +311,9 @@ describe('session storage and pinning', () => {
 describe('collection runs', () => {
   it('imports through the import path, records provenance, stores the refreshed session by CAS, and never calls the provider inside a transaction', async () => {
     const athlete = randomUUID();
+    await grantSyntheticProcessingAppConsent(athlete);
     await connect(athlete);
+    await grantSyntheticProcessingAppConsent(athlete);
     await store.requestRun(athlete, new Date());
     const first = collector(['9001', '9002'], {
       '9001': [fitCommand(`${athlete}-9001`)],
@@ -313,6 +341,7 @@ describe('collection runs', () => {
     });
 
     // A second run lists the same activities and downloads none of them.
+    await grantSyntheticProcessingAppConsent(athlete);
     await store.requestRun(athlete, new Date());
     const second = collector(['9001', '9002'], {});
     expect(await run(athlete, second.value)).toBe('succeeded');
@@ -321,13 +350,16 @@ describe('collection runs', () => {
 
   it('never re-imports a deleted activity: not after the collector brought it, not after a manual import', async () => {
     const athlete = randomUUID();
+    await grantSyntheticProcessingAppConsent(athlete);
     await connect(athlete);
     // Collected, then deleted by the user: the next run does not download it again.
+    await grantSyntheticProcessingAppConsent(athlete);
     await store.requestRun(athlete, new Date());
     const command = fitCommand(`${athlete}-collected`);
     await run(athlete, collector(['9001'], { '9001': [command] }).value);
     const collected = (await activities.listActivities(athlete)).items[0];
     await activities.deleteActivity(athlete, collected?.id ?? '', { expectedRevision: 1 });
+    await grantSyntheticProcessingAppConsent(athlete);
     await store.requestRun(athlete, new Date());
     const again = collector(['9001'], { '9001': [command] });
     await run(athlete, again.value);
@@ -337,6 +369,7 @@ describe('collection runs', () => {
     const manual = fitCommand(`${athlete}-manual`);
     const imported = await activities.importActivity(athlete, manual);
     await activities.deleteActivity(athlete, imported.activityId, { expectedRevision: 1 });
+    await grantSyntheticProcessingAppConsent(athlete);
     await store.requestRun(athlete, new Date());
     const suppressed = collector(['9003'], { '9003': [manual] });
     expect(await run(athlete, suppressed.value)).toBe('succeeded');
@@ -354,14 +387,17 @@ describe('collection runs', () => {
   it('skips activities an official adapter already collected (provider-neutral ledger)', async () => {
     const athlete = randomUUID();
     await connect(athlete);
+    await grantSyntheticProcessingAppConsent(athlete);
     await store.recordCollected({
       athleteId: athlete,
       garminActivityId: '7777',
       provider: 'garmin-official',
+      appRevision: 1,
       outcome: 'imported',
       sources: [],
       now: new Date(),
     });
+    await grantSyntheticProcessingAppConsent(athlete);
     await store.requestRun(athlete, new Date());
     const value = collector(['7777', '7778'], { '7778': [fitCommand(`${athlete}-7778`)] });
     await run(athlete, value.value);
@@ -371,6 +407,7 @@ describe('collection runs', () => {
   it('refuses a stored session that opens a different Garmin profile than the pinned one', async () => {
     const athlete = randomUUID();
     await connect(athlete, '1001');
+    await grantSyntheticProcessingAppConsent(athlete);
     await store.requestRun(athlete, new Date());
     const downloaded: string[] = [];
     const impostor: GarminActivityCollector = {
@@ -396,6 +433,7 @@ describe('collection runs', () => {
   it('runs one collection per connection at a time', async () => {
     const athlete = randomUUID();
     await connect(athlete);
+    await grantSyntheticProcessingAppConsent(athlete);
     await store.requestRun(athlete, new Date());
     let release!: () => void;
     const gate = new Promise<void>((resolve) => {
@@ -408,6 +446,7 @@ describe('collection runs', () => {
     const firstRun = run(athlete, slow.value);
     await expect.poll(async () => (await connectionRow(athlete))?.['lease_id']).not.toBeNull();
     expect(await store.requestRun(athlete, new Date())).toBe('running');
+    await grantSyntheticProcessingAppConsent(athlete);
     await store.setSchedule(athlete, true, new Date());
     expect(await run(athlete, collector([], {}).value)).toBeNull();
     release();
@@ -417,6 +456,7 @@ describe('collection runs', () => {
   it('honours Retry-After on 429, pauses the schedule and refuses a manual run until then', async () => {
     const athlete = randomUUID();
     await connect(athlete);
+    await grantSyntheticProcessingAppConsent(athlete);
     await store.setSchedule(athlete, true, new Date());
     const limited = collector([], {}, () => ({
       kind: 'failed',
@@ -435,6 +475,7 @@ describe('collection runs', () => {
   it('moves to reconnect-required on an auth failure, drops the session and does not retry', async () => {
     const athlete = randomUUID();
     await connect(athlete);
+    await grantSyntheticProcessingAppConsent(athlete);
     await store.setSchedule(athlete, true, new Date());
     const rejected = collector([], {}, () => ({
       kind: 'failed',
@@ -453,6 +494,7 @@ describe('collection runs', () => {
   it('backs off after a transient failure and pauses the schedule after a permanent one', async () => {
     const athlete = randomUUID();
     await connect(athlete);
+    await grantSyntheticProcessingAppConsent(athlete);
     await store.setSchedule(athlete, true, new Date());
     const transient = collector([], {}, () => ({
       kind: 'failed',
@@ -479,6 +521,7 @@ describe('collection runs', () => {
   it('a disconnect during a run cancels it and the refreshed session is not stored', async () => {
     const athlete = randomUUID();
     await connect(athlete);
+    await grantSyntheticProcessingAppConsent(athlete);
     await store.requestRun(athlete, new Date());
     const racing = collector(['9001'], { '9001': [fitCommand(`${athlete}-race`)] }, async () => {
       await store.disconnect(athlete);
@@ -511,6 +554,7 @@ describe('hardening (review r1)', () => {
   });
 
   async function leased(athlete: string) {
+    await grantSyntheticProcessingAppConsent(athlete);
     await store.requestRun(athlete, new Date());
     const leaseId = randomUUID();
     const lease = await store.acquireRun({
@@ -586,6 +630,7 @@ describe('hardening (review r1)', () => {
   it('an unreadable session (lost or unknown key) ends in reconnect-required, not endless retries', async () => {
     const athlete = randomUUID();
     await connect(athlete);
+    await grantSyntheticProcessingAppConsent(athlete);
     await store.setSchedule(athlete, true, new Date());
     await admin.query(
       "UPDATE garmin_unofficial_connection SET encrypted_session=jsonb_set(encrypted_session,'{keyId}','\"lost-key\"') WHERE athlete_id=$1",
@@ -622,6 +667,7 @@ describe('erasure and export', () => {
   it('erasure removes the session, pin, runs and ledger and queues nothing', async () => {
     const athlete = randomUUID();
     await connect(athlete);
+    await grantSyntheticProcessingAppConsent(athlete);
     await store.requestRun(athlete, new Date());
     await run(athlete, collector(['9001'], { '9001': [fitCommand(`${athlete}-erase`)] }).value);
     const before = await revocations();
@@ -641,7 +687,9 @@ describe('erasure and export', () => {
 
   it('export contains neither the session nor its envelope', async () => {
     const athlete = randomUUID();
+    await grantSyntheticProcessingAppConsent(athlete);
     await connect(athlete);
+    await grantSyntheticProcessingAppConsent(athlete);
     await store.requestRun(athlete, new Date());
     await run(athlete, collector(['9001'], { '9001': [fitCommand(`${athlete}-export`)] }).value);
     const envelope = (await connectionRow(athlete))?.['encrypted_session'] as {

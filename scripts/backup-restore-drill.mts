@@ -1,5 +1,6 @@
 import {
   captureConstraintRestoreLedger,
+  captureOwnedConstraintRestoreLedger,
   parseConstraintRestoreLedger,
   restoreConstraintLedger,
 } from './coaching-constraint-restore.mjs';
@@ -15,11 +16,11 @@ import { createPlanScenarioRepository } from '../packages/server/persistence/src
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { createCipheriv, createHash, randomBytes, randomUUID } from 'node:crypto';
-import { existsSync, rmSync } from 'node:fs';
+import { existsSync, rmSync, writeFileSync } from 'node:fs';
 import { cp, lstat, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { Pool } from 'pg';
+import { Pool, type PoolClient } from 'pg';
 import {
   createDatabase,
   TenantErasedError,
@@ -27,6 +28,7 @@ import {
 } from '../packages/server/persistence/src/database.js';
 import {
   migrate,
+  grantCorePlanning,
   grantOperations,
   grantGarmin,
   grantGarminUnofficial,
@@ -76,6 +78,7 @@ import {
 import { createActivityTrackRepository } from '../packages/server/persistence/src/activity-tracks.js';
 import {
   CourseNotFoundError,
+  type PreparedCourseContent,
   courseGeometrySha256,
   createCourseRepository,
 } from '../packages/server/persistence/src/courses.ts';
@@ -123,6 +126,96 @@ import {
 import { planDraftSchema } from '../packages/contracts/src/planning.js';
 import { accountExportSchema } from '../packages/contracts/src/operations.js';
 import type { SessionCompletionCommand } from '../packages/contracts/src/session-completion.js';
+
+// Current portable data is parsed in its complete versioned shape; it never grants admission.
+async function exportCurrentDrillAccount(database: Database, athleteId: string) {
+  const value = accountExportSchema.parse(
+    await createOperationsRepository(database).exportAccount(athleteId),
+  );
+  if (value.schemaVersion !== 33) throw new Error('EXPECTED_CURRENT_ACCOUNT_EXPORT_V33');
+  // This drill seeds neither preferences nor races. Missing collections are not empty data.
+  assert.deepEqual(value.data.aiSettingsHeads, []);
+  assert.deepEqual(value.data.aiSettingsRevisions, []);
+  for (const rows of [
+    value.data.raceEvents,
+    value.data.raceEventRevisions,
+    value.data.raceResults,
+    value.data.raceResultRevisions,
+    value.data.trainingBests,
+    value.data.trainingBestRevisions,
+    value.data.raceCollectionHeads,
+  ])
+    assert.deepEqual(rows, []);
+  return value;
+}
+
+const MAX_DRILL_AI_EVENT_BYTES = 4096;
+function parseDrillAiTransitionArtifact(value: unknown) {
+  const record = (input: unknown, keys: readonly string[]): Record<string, unknown> => {
+    assert.ok(input !== null && typeof input === 'object' && !Array.isArray(input));
+    assert.deepEqual(Object.keys(input).sort(), [...keys].sort());
+    return Object.fromEntries(Object.entries(input));
+  };
+  assert.ok(Buffer.byteLength(JSON.stringify(value), 'utf8') <= MAX_DRILL_AI_EVENT_BYTES);
+  const artifact = record(value, ['schemaVersion', 'purpose', 'events']);
+  assert.equal(artifact.schemaVersion, 1);
+  assert.equal(artifact.purpose, 'synthetic_archive_ai_transition_replay');
+  const values: unknown = artifact.events;
+  assert.ok(Array.isArray(values) && values.length === 1);
+  const events = values.map((value: unknown) => {
+    const row = record(value, [
+      'athlete_id',
+      'event_id',
+      'occurred_at',
+      'previous_revision',
+      'previous_granted',
+      'revision',
+      'granted',
+    ]);
+    const athleteId: unknown = row.athlete_id;
+    const eventId: unknown = row.event_id;
+    const occurredAt: unknown = row.occurred_at;
+    const previousRevision: unknown = row.previous_revision;
+    const revision: unknown = row.revision;
+    const uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
+    assert.ok(typeof athleteId === 'string' && uuid.test(athleteId));
+    assert.ok(typeof eventId === 'string' && uuid.test(eventId));
+    assert.ok(
+      typeof occurredAt === 'string' &&
+        /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d{1,6})?\+00$/.test(occurredAt),
+    );
+    const instant = Date.parse(occurredAt.replace(' ', 'T').replace('+00', 'Z'));
+    assert.ok(Number.isFinite(instant));
+    assert.equal(
+      new Date(instant).toISOString().slice(0, 19).replace('T', ' '),
+      occurredAt.slice(0, 19),
+    );
+    assert.ok(
+      typeof previousRevision === 'number' &&
+        Number.isSafeInteger(previousRevision) &&
+        previousRevision >= 1 &&
+        previousRevision <= 2147483646,
+    );
+    assert.ok(typeof revision === 'number' && revision === previousRevision + 1);
+    assert.equal(row.previous_granted, true);
+    assert.equal(row.granted, false);
+    // Preserve PostgreSQL's original UTC text, including microseconds; no timestamp re-encoding.
+    return {
+      athlete_id: athleteId,
+      event_id: eventId,
+      occurred_at: occurredAt,
+      previous_revision: previousRevision,
+      previous_granted: true as const,
+      revision,
+      granted: false as const,
+    };
+  });
+  return {
+    schemaVersion: 1 as const,
+    purpose: 'synthetic_archive_ai_transition_replay' as const,
+    events,
+  };
+}
 
 // Separate current revocation facts, never a copy of private snapshot bodies or messages.
 // Keep this script independent of a root Zod dependency; validate unknown JSON strictly here.
@@ -347,6 +440,791 @@ async function seedEvidenceWithAiConsent(database: Database, athleteId: string) 
   return { consent, command, snapshot };
 }
 
+// Explicit synthetic owner fixture port; never used as the runtime Database or an inspector.
+async function withSourceFixtureOwnerTenant<T>(
+  owner: Pool,
+  athleteId: string,
+  operation: (client: Pick<PoolClient, 'query'>) => Promise<T>,
+): Promise<T> {
+  assert.match(athleteId, /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/);
+  const client = await owner.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query("SELECT set_config('statement_timeout','5000',true)");
+    await client.query("SELECT set_config('lock_timeout','3000',true)");
+    await client.query('SELECT public.lock_restore_processing_shared()');
+    const identity = await client.query(
+      `SELECT current_user AS role,session_user AS session_role,rolsuper,rolbypassrls
+       FROM pg_roles WHERE rolname=current_user`,
+    );
+    assert.deepEqual(identity.rows, [
+      { role: 'drill_owner', session_role: 'drill_owner', rolsuper: false, rolbypassrls: false },
+    ]);
+    await client.query("SELECT set_config('app.athlete_id',$1,true)", [athleteId]);
+    await client.query('SELECT pg_advisory_xact_lock_shared(hashtextextended($1,77206))', [
+      athleteId,
+    ]);
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [athleteId]);
+    const result = await operation(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+type DrillCatalogEntry = {
+  schema: string;
+  name: string;
+  kind: 'schema' | 'r' | 'p' | 'S' | 'i' | 'I' | 'function';
+  identity: string;
+  owner: 'drill_owner' | 'drill_admin';
+  facts: string;
+  acl: string;
+};
+type DrillCatalog = { entries: DrillCatalogEntry[]; extensions: string; migrations: string };
+// Normal schema105 retains migration097's exact fourteen owner-only policies.
+const drillDefinerPolicyTables = [
+  'activity_track_reconcile_state',
+  'course_deletion',
+  'course_share',
+  'course_share_rate',
+  'course_thumbnail_reconcile_state',
+  'healthkit_deregistration_work',
+  'object_scope_purge',
+  'resource_derived_cleanup',
+  'resource_object_cleanup',
+  'restore_share_erasure_context',
+  'restore_suppression_event',
+  'routing_admission',
+  'tenant_object_purge',
+  'tenant_work_index',
+] as const;
+function assertDrillDefinerPolicyRoster(catalog: DrillCatalog): void {
+  assert.ok(catalog.entries.length <= 4096);
+  const actual: { table: string; policy: string; roles: string[] }[] = [];
+  for (const table of drillDefinerPolicyTables) {
+    const relations = catalog.entries.filter(
+      (entry) => entry.schema === 'public' && entry.kind === 'r' && entry.name === table,
+    );
+    assert.equal(relations.length, 1);
+    assert.equal(relations[0]?.owner, 'drill_owner');
+  }
+  for (const relation of catalog.entries.filter(
+    (entry) => entry.schema === 'public' && (entry.kind === 'r' || entry.kind === 'p'),
+  )) {
+    const facts: unknown = JSON.parse(relation.facts);
+    assert.ok(facts !== null && typeof facts === 'object' && !Array.isArray(facts));
+    const policies: unknown = Object.fromEntries(Object.entries(facts)).policies;
+    assert.ok(Array.isArray(policies) && policies.length <= 64);
+    for (const policy of policies) {
+      assert.ok(policy !== null && typeof policy === 'object' && !Array.isArray(policy));
+      const row = Object.fromEntries(Object.entries(policy));
+      assert.ok(typeof row.name === 'string' && row.name.length <= 63);
+      if (!row.name.endsWith('_definer')) continue;
+      assert.ok(Array.isArray(row.roles) && row.roles.length <= 64);
+      const roles: string[] = [];
+      for (const role of row.roles) {
+        assert.ok(typeof role === 'string' && role.length <= 63);
+        roles.push(role);
+      }
+      actual.push({ table: relation.name, policy: row.name, roles: roles.sort() });
+    }
+  }
+  assert.deepEqual(
+    actual.sort((a, b) => a.table.localeCompare(b.table) || a.policy.localeCompare(b.policy)),
+    drillDefinerPolicyTables.map((table) => ({
+      table,
+      policy: `${table}_definer`,
+      roles: ['drill_owner'],
+    })),
+  );
+}
+
+const drillUserSchemas = ['garmin_private', 'identity_private', 'public', 'wm_app_load'];
+function parseDrillCatalogEntry(value: unknown): DrillCatalogEntry {
+  assert.ok(value !== null && typeof value === 'object' && !Array.isArray(value));
+  const row = Object.fromEntries(Object.entries(value));
+  assert.deepEqual(Object.keys(row).sort(), [
+    'acl',
+    'facts',
+    'identity',
+    'kind',
+    'name',
+    'owner',
+    'schema',
+  ]);
+  for (const field of ['schema', 'name', 'identity', 'facts', 'acl'] as const)
+    assert.ok(typeof row[field] === 'string' && row[field].length <= 1_048_576);
+  assert.ok(typeof row.schema === 'string' && drillUserSchemas.includes(row.schema));
+  assert.ok(typeof row.name === 'string' && row.name.length > 0 && row.name.length <= 63);
+  assert.ok(typeof row.identity === 'string');
+  assert.ok(typeof row.facts === 'string' && typeof row.acl === 'string');
+  assert.ok(row.owner === 'drill_owner' || row.owner === 'drill_admin');
+  assert.ok(
+    row.kind === 'schema' ||
+      row.kind === 'r' ||
+      row.kind === 'p' ||
+      row.kind === 'S' ||
+      row.kind === 'i' ||
+      row.kind === 'I' ||
+      row.kind === 'function',
+  );
+  return {
+    schema: row.schema,
+    name: row.name,
+    kind: row.kind,
+    identity: row.identity,
+    owner: row.owner,
+    facts: row.facts,
+    acl: row.acl,
+  };
+}
+function drillCatalogKey(row: DrillCatalogEntry): string {
+  return JSON.stringify([row.schema, row.kind, row.name, row.identity]);
+}
+async function captureDrillCatalog(client: Pick<PoolClient, 'query'>): Promise<DrillCatalog> {
+  const unexpected = await client.query(
+    `SELECT 1 FROM pg_namespace WHERE nspname NOT LIKE 'pg_%' AND nspname<>'information_schema'
+       AND NOT(nspname=ANY($1::text[]))
+     UNION ALL SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+       WHERE n.nspname=ANY($1::text[]) AND c.relkind NOT IN ('r','p','S','i','I')
+       AND NOT EXISTS(SELECT 1 FROM pg_depend d WHERE d.classid='pg_class'::regclass AND d.objid=c.oid AND d.deptype='e')
+     UNION ALL SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+       WHERE n.nspname=ANY($1::text[]) AND p.prokind<>'f'
+       AND NOT EXISTS(SELECT 1 FROM pg_depend d WHERE d.classid='pg_proc'::regclass AND d.objid=p.oid AND d.deptype='e')
+     UNION ALL SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid=t.typnamespace
+       WHERE n.nspname=ANY($1::text[]) AND (t.typtype IN ('d','e','r','m') OR (t.typtype='c' AND t.typrelid=0))
+       AND NOT EXISTS(SELECT 1 FROM pg_depend d WHERE d.classid='pg_type'::regclass AND d.objid=t.oid AND d.deptype='e')`,
+    [drillUserSchemas],
+  );
+  assert.equal(unexpected.rowCount, 0, 'UNSUPPORTED_DRILL_CATALOG_OBJECT');
+  // Stable identities omit OIDs. Ownership/grantor normalization is confined to ACL metadata.
+  const result = await client.query(
+    `WITH objects AS (
+       SELECT n.nspname AS schema,n.nspname AS name,'schema'::text AS kind,''::text AS identity,
+        n.nspowner AS owner_oid,n.nspacl AS acl,'n'::"char" AS aclkind,'{}'::jsonb AS facts
+       FROM pg_namespace n WHERE n.nspname=ANY($1::text[])
+       UNION ALL
+       SELECT n.nspname,c.relname,c.relkind::text,'',c.relowner,c.relacl,
+        CASE WHEN c.relkind='S' THEN 's' ELSE 'r' END::"char",
+        jsonb_build_object(
+         'columns',COALESCE((SELECT jsonb_agg(jsonb_build_object('name',a.attname,'type',format_type(a.atttypid,a.atttypmod),'notNull',a.attnotnull,
+           'identity',a.attidentity,'generated',a.attgenerated,'default',pg_get_expr(d.adbin,d.adrelid)) ORDER BY a.attnum)
+           FROM pg_attribute a LEFT JOIN pg_attrdef d ON d.adrelid=a.attrelid AND d.adnum=a.attnum WHERE a.attrelid=c.oid AND a.attnum>0 AND NOT a.attisdropped),'[]'::jsonb),
+         'rls',c.relrowsecurity,'force',c.relforcerowsecurity,
+         'constraints',COALESCE((SELECT jsonb_agg(jsonb_build_object('name',x.conname,'kind',x.contype,'definition',pg_get_constraintdef(x.oid,true),'validated',x.convalidated) ORDER BY x.conname) FROM pg_constraint x WHERE x.conrelid=c.oid),'[]'::jsonb),
+         'triggers',COALESCE((SELECT jsonb_agg(jsonb_build_object('name',t.tgname,'definition',pg_get_triggerdef(t.oid),'enabled',t.tgenabled) ORDER BY t.tgname) FROM pg_trigger t WHERE t.tgrelid=c.oid AND NOT t.tgisinternal),'[]'::jsonb),
+         'policies',COALESCE((SELECT jsonb_agg(jsonb_build_object('name',p.polname,'command',p.polcmd,'permissive',p.polpermissive,'roles',(SELECT jsonb_agg(CASE WHEN x=0 THEN 'PUBLIC' ELSE pg_get_userbyid(x) END ORDER BY x) FROM unnest(p.polroles) x),'qual',pg_get_expr(p.polqual,p.polrelid),'check',pg_get_expr(p.polwithcheck,p.polrelid)) ORDER BY p.polname) FROM pg_policy p WHERE p.polrelid=c.oid),'[]'::jsonb),
+         'index',CASE WHEN c.relkind IN ('i','I') THEN pg_get_indexdef(c.oid) ELSE NULL END,
+         'sequence',CASE WHEN c.relkind='S' THEN (SELECT jsonb_build_object('type',format_type(s.seqtypid,NULL),'start',s.seqstart,'increment',s.seqincrement,'max',s.seqmax,'min',s.seqmin,'cache',s.seqcache,'cycle',s.seqcycle) FROM pg_sequence s WHERE s.seqrelid=c.oid) ELSE NULL END,
+         'sequenceLinks',COALESCE((SELECT jsonb_agg(jsonb_build_object('schema',pn.nspname,'table',pc.relname,'column',a.attname,'kind',d.deptype) ORDER BY pn.nspname,pc.relname,a.attname) FROM pg_depend d JOIN pg_class pc ON pc.oid=d.refobjid JOIN pg_namespace pn ON pn.oid=pc.relnamespace JOIN pg_attribute a ON a.attrelid=pc.oid AND a.attnum=d.refobjsubid WHERE d.classid='pg_class'::regclass AND d.objid=c.oid AND d.refclassid='pg_class'::regclass AND d.deptype IN ('a','i')),'[]'::jsonb))
+       FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=ANY($1::text[])
+        AND NOT EXISTS(SELECT 1 FROM pg_depend d WHERE d.classid='pg_class'::regclass AND d.objid=c.oid AND d.deptype='e')
+       UNION ALL
+       SELECT n.nspname,p.proname,'function',pg_get_function_identity_arguments(p.oid),p.proowner,p.proacl,'f'::"char",
+        jsonb_build_object('definition',pg_get_functiondef(p.oid),'config',p.proconfig,'securityDefiner',p.prosecdef,'language',l.lanname)
+       FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace JOIN pg_language l ON l.oid=p.prolang
+       WHERE n.nspname=ANY($1::text[]) AND NOT EXISTS(SELECT 1 FROM pg_depend d WHERE d.classid='pg_proc'::regclass AND d.objid=p.oid AND d.deptype='e')
+     ) SELECT schema,name,kind,identity,pg_get_userbyid(owner_oid) AS owner,facts::text AS facts,
+      COALESCE((SELECT jsonb_agg(jsonb_build_object('grantee',CASE WHEN a.grantee=0 THEN 'PUBLIC' WHEN a.grantee=owner_oid THEN 'drill_owner' ELSE pg_get_userbyid(a.grantee) END,
+       'grantor',CASE WHEN a.grantor=owner_oid THEN 'drill_owner' ELSE pg_get_userbyid(a.grantor) END,
+       'privilege',a.privilege_type,'grantable',a.is_grantable) ORDER BY CASE WHEN a.grantee=0 THEN 'PUBLIC' WHEN a.grantee=owner_oid THEN 'drill_owner' ELSE pg_get_userbyid(a.grantee) END,CASE WHEN a.grantor=owner_oid THEN 'drill_owner' ELSE pg_get_userbyid(a.grantor) END,a.privilege_type,a.is_grantable)
+       FROM aclexplode(COALESCE(acl,acldefault(aclkind,owner_oid))) a),'[]'::jsonb)::text AS acl
+      FROM objects ORDER BY schema,kind,name,identity`,
+    [drillUserSchemas],
+  );
+  assert.ok(result.rows.length <= 4096);
+  assert.ok(Buffer.byteLength(JSON.stringify(result.rows)) <= 16 * 1024 * 1024);
+  const entries = result.rows.map(parseDrillCatalogEntry);
+  assert.equal(new Set(entries.map(drillCatalogKey)).size, entries.length);
+  assert.deepEqual(
+    entries.filter((x) => x.kind === 'schema').map((x) => x.schema),
+    drillUserSchemas,
+  );
+  const extensions = await client.query(
+    `SELECT COALESCE(jsonb_agg(jsonb_build_object('name',e.extname,'version',e.extversion,'schema',n.nspname,'owner',pg_get_userbyid(e.extowner),
+      'members',COALESCE((SELECT jsonb_agg(jsonb_build_object('identity',pg_describe_object(d.classid,d.objid,d.objsubid),
+       'owner',CASE WHEN d.classid='pg_proc'::regclass THEN (SELECT pg_get_userbyid(p.proowner) FROM pg_proc p WHERE p.oid=d.objid)
+         WHEN d.classid='pg_class'::regclass THEN (SELECT pg_get_userbyid(c.relowner) FROM pg_class c WHERE c.oid=d.objid)
+         WHEN d.classid='pg_type'::regclass THEN (SELECT pg_get_userbyid(t.typowner) FROM pg_type t WHERE t.oid=d.objid) ELSE NULL END,
+       'definition',CASE WHEN d.classid='pg_proc'::regclass THEN (SELECT CASE WHEN p.prokind='f' THEN pg_get_functiondef(p.oid) ELSE pg_get_function_identity_arguments(p.oid) END FROM pg_proc p WHERE p.oid=d.objid)
+         WHEN d.classid='pg_class'::regclass THEN (SELECT jsonb_build_object('kind',c.relkind,'rls',c.relrowsecurity,'force',c.relforcerowsecurity,
+           'index',CASE WHEN c.relkind IN ('i','I') THEN pg_get_indexdef(c.oid) ELSE NULL END,
+           'columns',(SELECT jsonb_agg(jsonb_build_object('name',a.attname,'type',format_type(a.atttypid,a.atttypmod),'notNull',a.attnotnull,'default',pg_get_expr(x.adbin,x.adrelid)) ORDER BY a.attnum)
+             FROM pg_attribute a LEFT JOIN pg_attrdef x ON x.adrelid=a.attrelid AND x.adnum=a.attnum WHERE a.attrelid=c.oid AND a.attnum>0 AND NOT a.attisdropped))::text FROM pg_class c WHERE c.oid=d.objid)
+         ELSE pg_describe_object(d.classid,d.objid,d.objsubid) END) ORDER BY pg_describe_object(d.classid,d.objid,d.objsubid))
+       FROM pg_depend d WHERE d.refclassid='pg_extension'::regclass AND d.refobjid=e.oid AND d.deptype='e'),'[]'::jsonb)) ORDER BY e.extname),'[]'::jsonb)::text AS facts FROM pg_extension e JOIN pg_namespace n ON n.oid=e.extnamespace`,
+  );
+  const extensionFacts: unknown = extensions.rows[0]?.facts;
+  assert.ok(
+    typeof extensionFacts === 'string' && Buffer.byteLength(extensionFacts) <= 4 * 1024 * 1024,
+  );
+  const registry = await client.query(
+    `SELECT COALESCE(jsonb_agg(jsonb_build_object('version',version,'checksum',checksum) ORDER BY version),'[]'::jsonb)::text AS facts FROM public.schema_migrations`,
+  );
+  const migrationFacts: unknown = registry.rows[0]?.facts;
+  assert.ok(typeof migrationFacts === 'string' && Buffer.byteLength(migrationFacts) <= 65536);
+  const versions: unknown = JSON.parse(migrationFacts);
+  assert.ok(Array.isArray(versions) && versions.length <= 105);
+  for (const [index, value] of versions.entries()) {
+    assert.ok(value && typeof value === 'object' && !Array.isArray(value));
+    const row = Object.fromEntries(Object.entries(value));
+    assert.deepEqual(Object.keys(row).sort(), ['checksum', 'version']);
+    assert.ok(
+      typeof row.version === 'number' &&
+        Number.isInteger(row.version) &&
+        row.version >= 1 &&
+        row.version <= 105,
+    );
+    assert.equal(row.version, index + 1);
+    assert.ok(typeof row.checksum === 'string' && /^[a-f0-9]{64}$/.test(row.checksum));
+  }
+  return { entries, extensions: extensionFacts, migrations: migrationFacts };
+}
+// Import may recreate a source-owner extension as admin-owned. It remains excluded:
+// normalize only this predicted import owner delta, never body/config/grantee text.
+function extensionImportFacts(value: string): string {
+  const parsed: unknown = JSON.parse(value);
+  assert.ok(Array.isArray(parsed));
+  const normalized = parsed.map((entry: unknown) => {
+    assert.ok(entry && typeof entry === 'object' && !Array.isArray(entry));
+    const row = Object.fromEntries(Object.entries(entry));
+    assert.deepEqual(Object.keys(row).sort(), ['members', 'name', 'owner', 'schema', 'version']);
+    assert.ok(Array.isArray(row.members));
+    const members = row.members.map((member: unknown) => {
+      assert.ok(member && typeof member === 'object' && !Array.isArray(member));
+      const item = Object.fromEntries(Object.entries(member));
+      assert.deepEqual(Object.keys(item).sort(), ['definition', 'identity', 'owner']);
+      return { ...item, owner: item.owner === 'drill_owner' ? 'drill_admin' : item.owner };
+    });
+    return { ...row, owner: row.owner === 'drill_owner' ? 'drill_admin' : row.owner, members };
+  });
+  return JSON.stringify(normalized);
+}
+type DrillAclPrivilege =
+  | 'CREATE'
+  | 'DELETE'
+  | 'EXECUTE'
+  | 'INSERT'
+  | 'REFERENCES'
+  | 'SELECT'
+  | 'TRIGGER'
+  | 'TRUNCATE'
+  | 'UPDATE'
+  | 'USAGE';
+type DrillAclTuple = Readonly<{
+  grantor: string;
+  grantee: string;
+  privilege: DrillAclPrivilege;
+  grantable: boolean;
+}>;
+type DrillRawAcl = Readonly<{
+  schema: string;
+  name: string;
+  kind: 'schema' | 'r' | 'p' | 'S' | 'function';
+  identity: string;
+  owner: 'drill_owner' | 'drill_admin';
+  aclIsNull: boolean;
+  rawAcl: string | null;
+  rawTuples: readonly DrillAclTuple[];
+  defaultTuples: readonly DrillAclTuple[];
+}>;
+function aclBoundedText(value: unknown, maxBytes: number): string {
+  assert.ok(
+    typeof value === 'string' &&
+      Buffer.byteLength(value, 'utf8') <= maxBytes &&
+      ![...value].some(
+        (character) => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127,
+      ),
+    'INVALID_ACL_TEXT',
+  );
+  return value;
+}
+function parseDrillAclTuples(value: unknown): readonly DrillAclTuple[] {
+  assert.ok(Array.isArray(value) && value.length <= 256, 'INVALID_ACL_TUPLES');
+  const tuples = value.map((item: unknown): DrillAclTuple => {
+    assert.ok(item && typeof item === 'object' && !Array.isArray(item));
+    const row: Record<string, unknown> = Object.fromEntries(Object.entries(item));
+    assert.deepEqual(Object.keys(row).sort(), ['grantable', 'grantee', 'grantor', 'privilege']);
+    const grantor = aclBoundedText(row.grantor, 63),
+      grantee = aclBoundedText(row.grantee, 63);
+    assert.ok(grantor.length > 0 && grantor !== 'PUBLIC' && grantee.length > 0);
+    const privileges = [
+      'CREATE',
+      'DELETE',
+      'EXECUTE',
+      'INSERT',
+      'REFERENCES',
+      'SELECT',
+      'TRIGGER',
+      'TRUNCATE',
+      'UPDATE',
+      'USAGE',
+    ] as const;
+    const privilege = privileges.find((candidate) => candidate === row.privilege);
+    assert.ok(privilege && typeof row.grantable === 'boolean', 'UNKNOWN_ACL_PRIVILEGE');
+    return { grantor, grantee, privilege, grantable: row.grantable };
+  });
+  const keys = tuples.map((tuple) =>
+    JSON.stringify([tuple.grantor, tuple.grantee, tuple.privilege]),
+  );
+  assert.equal(new Set(keys).size, keys.length, 'DUPLICATE_ACL_TUPLE');
+  return tuples;
+}
+function drillRawAclKey(row: DrillRawAcl): string {
+  return JSON.stringify([row.schema, row.kind, row.name, row.identity]);
+}
+function parseDrillRawAcl(value: unknown): readonly DrillRawAcl[] {
+  assert.ok(Array.isArray(value) && value.length <= 4096);
+  assert.ok(Buffer.byteLength(JSON.stringify(value), 'utf8') <= 4 * 1024 * 1024);
+  const rows = value.map((item: unknown): DrillRawAcl => {
+    assert.ok(item && typeof item === 'object' && !Array.isArray(item));
+    const row: Record<string, unknown> = Object.fromEntries(Object.entries(item));
+    assert.deepEqual(Object.keys(row).sort(), [
+      'aclIsNull',
+      'defaultTuples',
+      'identity',
+      'kind',
+      'name',
+      'owner',
+      'rawAcl',
+      'rawTuples',
+      'schema',
+    ]);
+    const schema = aclBoundedText(row.schema, 63),
+      name = aclBoundedText(row.name, 63),
+      identity = aclBoundedText(row.identity, 4096);
+    assert.ok(drillUserSchemas.includes(schema) && name.length > 0);
+    assert.ok(
+      row.kind === 'schema' ||
+        row.kind === 'r' ||
+        row.kind === 'p' ||
+        row.kind === 'S' ||
+        row.kind === 'function',
+    );
+    assert.ok(row.owner === 'drill_owner' || row.owner === 'drill_admin');
+    assert.ok(typeof row.aclIsNull === 'boolean');
+    const rawAcl = row.rawAcl === null ? null : aclBoundedText(row.rawAcl, 131072);
+    assert.equal(row.aclIsNull, rawAcl === null, 'INVALID_ACL_NULL_PAIR');
+    const rawTuples = parseDrillAclTuples(row.rawTuples),
+      defaultTuples = parseDrillAclTuples(row.defaultTuples);
+    if (row.aclIsNull) assert.equal(rawTuples.length, 0);
+    assert.ok(defaultTuples.length > 0);
+    const allowedPrivileges =
+      row.kind === 'schema'
+        ? ['CREATE', 'USAGE']
+        : row.kind === 'S'
+          ? ['SELECT', 'UPDATE', 'USAGE']
+          : row.kind === 'function'
+            ? ['EXECUTE']
+            : ['DELETE', 'INSERT', 'REFERENCES', 'SELECT', 'TRIGGER', 'TRUNCATE', 'UPDATE'];
+    assert.ok(
+      [...rawTuples, ...defaultTuples].every((tuple) =>
+        allowedPrivileges.includes(tuple.privilege),
+      ),
+      'ACL_PRIVILEGE_KIND_MISMATCH',
+    );
+    return {
+      schema,
+      name,
+      identity,
+      kind: row.kind,
+      owner: row.owner,
+      aclIsNull: row.aclIsNull,
+      rawAcl,
+      rawTuples,
+      defaultTuples,
+    };
+  });
+  assert.equal(new Set(rows.map(drillRawAclKey)).size, rows.length, 'DUPLICATE_ACL_OBJECT');
+  return rows;
+}
+function orderedAclTuples(tuples: readonly DrillAclTuple[]): readonly DrillAclTuple[] {
+  return [...tuples].sort((a, b) => {
+    const x = JSON.stringify([a.grantee, a.grantor, a.privilege, a.grantable]),
+      y = JSON.stringify([b.grantee, b.grantor, b.privilege, b.grantable]);
+    return x < y ? -1 : x > y ? 1 : 0;
+  });
+}
+function assertNativeDrillAclProjection(
+  before: readonly DrillRawAcl[],
+  after: readonly DrillRawAcl[],
+) {
+  const actual = new Map(after.map((row) => [drillRawAclKey(row), row]));
+  assert.deepEqual(
+    [...actual.keys()].sort(),
+    before.map(drillRawAclKey).sort(),
+    'ACL_IDENTITY_CHANGED',
+  );
+  for (const original of before) {
+    const row = actual.get(drillRawAclKey(original));
+    assert.ok(row && row.owner === 'drill_owner');
+    const merged = new Map<string, DrillAclTuple>();
+    for (const item of original.rawTuples) {
+      const next = {
+        ...item,
+        grantor: item.grantor === original.owner ? row.owner : item.grantor,
+        grantee: item.grantee === original.owner ? row.owner : item.grantee,
+      };
+      const key = JSON.stringify([next.grantor, next.grantee, next.privilege]),
+        prior = merged.get(key);
+      merged.set(key, { ...next, grantable: next.grantable || Boolean(prior?.grantable) });
+    }
+    assert.equal(row.aclIsNull, original.aclIsNull, 'NATIVE_ACL_NULL_CHANGED');
+    assert.deepEqual(
+      orderedAclTuples(row.rawTuples),
+      orderedAclTuples([...merged.values()]),
+      'NATIVE_ACL_PROJECTION_MISMATCH',
+    );
+  }
+}
+function assertSourceDrillEffectiveAcl(
+  source: readonly DrillRawAcl[],
+  after: readonly DrillRawAcl[],
+) {
+  const expected = new Map(source.map((row) => [drillRawAclKey(row), row]));
+  assert.deepEqual(
+    after.map(drillRawAclKey).sort(),
+    [...expected.keys()].sort(),
+    'SOURCE_ACL_IDENTITY_CHANGED',
+  );
+  for (const actual of after) {
+    const original = expected.get(drillRawAclKey(actual));
+    assert.ok(original && original.owner === 'drill_owner' && actual.owner === 'drill_owner');
+    assert.deepEqual(
+      orderedAclTuples(actual.aclIsNull ? actual.defaultTuples : actual.rawTuples),
+      orderedAclTuples(original.aclIsNull ? original.defaultTuples : original.rawTuples),
+      'SOURCE_EFFECTIVE_ACL_CHANGED',
+    );
+  }
+}
+async function captureDrillRawAcl(client: Pick<Pool, 'query'>): Promise<readonly DrillRawAcl[]> {
+  const result = await client.query(
+    `WITH objects AS (
+        SELECT n.nspname AS schema,n.nspname AS name,'schema'::text AS kind,''::text AS identity,
+          n.nspowner AS owner_oid,n.nspacl AS acl,'n'::"char" AS aclkind
+        FROM pg_namespace n WHERE n.nspname=ANY($1::text[])
+        UNION ALL
+        SELECT n.nspname,c.relname,c.relkind::text,''::text,c.relowner,c.relacl,
+          CASE WHEN c.relkind='S' THEN 's' ELSE 'r' END::"char"
+        FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+        WHERE n.nspname=ANY($1::text[]) AND c.relkind IN ('r','p','S')
+          AND NOT EXISTS(SELECT 1 FROM pg_depend d WHERE d.classid='pg_class'::regclass AND d.objid=c.oid AND d.deptype='e')
+        UNION ALL
+        SELECT n.nspname,p.proname,'function',pg_get_function_identity_arguments(p.oid),p.proowner,p.proacl,'f'::"char"
+        FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+        WHERE n.nspname=ANY($1::text[]) AND p.prokind='f'
+          AND NOT EXISTS(SELECT 1 FROM pg_depend d WHERE d.classid='pg_proc'::regclass AND d.objid=p.oid AND d.deptype='e')
+      ) SELECT schema,name,kind,identity,pg_get_userbyid(owner_oid) AS owner,
+        acl IS NULL AS "aclIsNull",acl::text AS "rawAcl",
+        COALESCE((SELECT jsonb_agg(jsonb_build_object('grantor',pg_get_userbyid(a.grantor),
+          'grantee',CASE WHEN a.grantee=0 THEN 'PUBLIC' ELSE pg_get_userbyid(a.grantee) END,
+          'privilege',a.privilege_type,'grantable',a.is_grantable)
+          ORDER BY pg_get_userbyid(a.grantor),CASE WHEN a.grantee=0 THEN 'PUBLIC' ELSE pg_get_userbyid(a.grantee) END,a.privilege_type,a.is_grantable)
+          FROM aclexplode(acl) a),'[]'::jsonb) AS "rawTuples",
+        (SELECT jsonb_agg(jsonb_build_object('grantor',pg_get_userbyid(a.grantor),
+          'grantee',CASE WHEN a.grantee=0 THEN 'PUBLIC' ELSE pg_get_userbyid(a.grantee) END,
+          'privilege',a.privilege_type,'grantable',a.is_grantable)
+          ORDER BY pg_get_userbyid(a.grantor),CASE WHEN a.grantee=0 THEN 'PUBLIC' ELSE pg_get_userbyid(a.grantee) END,a.privilege_type,a.is_grantable)
+          FROM aclexplode(acldefault(aclkind,owner_oid)) a) AS "defaultTuples"
+        FROM objects ORDER BY schema,kind,name,identity`,
+    [drillUserSchemas],
+  );
+  return parseDrillRawAcl(result.rows);
+}
+// Private observations are best effort; authority-bearing capture above always fails closed.
+async function recordDrillAclWitness(
+  rows: readonly DrillRawAcl[],
+  phase:
+    | 'source'
+    | 'pre-import-partial'
+    | 'pre-import-full'
+    | 'before-pre-data'
+    | 'after-pre-data'
+    | 'before-full'
+    | 'after-full',
+) {
+  try {
+    const value = JSON.stringify({
+      schemaVersion: 1,
+      phase,
+      scope: 'Private catalog ACL observations only',
+      rows,
+    });
+    if (Buffer.byteLength(value, 'utf8') > 4 * 1024 * 1024) return;
+    await writeFile(join(tmpdir(), `backup-acl-${phase}.json`), value + '\n', {
+      mode: 0o600,
+      flag: 'wx',
+    });
+  } catch {
+    /* Diagnostic I/O must not replace the strict checks. */
+  }
+}
+async function recordDrillAlterCount(
+  mode: 'full' | 'pre-data',
+  phase: 'after-loop' | 'rolled-back' | 'committed',
+  counts: Readonly<Record<'schema' | 'r' | 'p' | 'S' | 'function', number>>,
+) {
+  try {
+    await writeFile(
+      join(tmpdir(), `backup-alter-${mode}-${phase}.json`),
+      JSON.stringify({
+        schemaVersion: 1,
+        mode,
+        phase,
+        counts,
+        total: Object.values(counts).reduce((sum, count) => sum + count, 0),
+      }) + '\n',
+      { mode: 0o600, flag: 'wx' },
+    );
+  } catch {
+    // Diagnostic failures must not replace the original transaction outcome.
+  }
+}
+// Only catalog metadata is recorded. The original assertion remains authoritative even
+// if private diagnostic I/O is unavailable; no function definitions or source bodies enter it.
+function recordDrillCatalogMismatch(
+  entry: DrillCatalogEntry,
+  key: 'constraints' | 'triggers' | 'policies',
+  actualFact: unknown,
+  sourceFacts: unknown[],
+) {
+  const actualJson = JSON.stringify(actualFact);
+  const sourceJson = JSON.stringify(sourceFacts);
+  const digest = (value: string) => createHash('sha256').update(value).digest('hex');
+  const diagnostic = {
+    schemaVersion: 1,
+    stage: 'partial_catalog_fact_comparison',
+    object: {
+      schema: entry.schema,
+      kind: entry.kind,
+      name: entry.name,
+      identity: Buffer.byteLength(entry.identity, 'utf8') <= 256 ? entry.identity : null,
+      identitySha256: digest(entry.identity),
+    },
+    key,
+    actualFactSha256: digest(actualJson),
+    sourceFactsSha256: digest(sourceJson),
+    actualFact: Buffer.byteLength(actualJson, 'utf8') <= 8192 ? actualFact : null,
+    sourceFacts: Buffer.byteLength(sourceJson, 'utf8') <= 16384 ? sourceFacts : null,
+    comparisonUnchanged: true,
+  };
+  try {
+    writeFileSync(
+      join(tmpdir(), 'backup-catalog-mismatch.json'),
+      JSON.stringify(diagnostic) + '\n',
+      {
+        mode: 0o600,
+        flag: 'wx',
+      },
+    );
+  } catch {
+    // Preserve the existing exact-comparison failure, including on diagnostic path collision.
+  }
+}
+function compareDrillCatalog(
+  target: DrillCatalog,
+  source: DrillCatalog,
+  mode: 'full' | 'pre-data',
+) {
+  const sourceExtensions: unknown = JSON.parse(source.extensions);
+  const targetExtensions: unknown = JSON.parse(target.extensions);
+  assert.ok(Array.isArray(sourceExtensions) && Array.isArray(targetExtensions));
+  assert.equal(targetExtensions.length, sourceExtensions.length);
+  const allowedImportOwner = (actual: unknown, original: unknown) =>
+    actual === original || (original === 'drill_owner' && actual === 'drill_admin');
+  for (const [index, value] of targetExtensions.entries()) {
+    const original: unknown = sourceExtensions[index];
+    assert.ok(value && typeof value === 'object' && original && typeof original === 'object');
+    const a = Object.fromEntries(Object.entries(value)),
+      b = Object.fromEntries(Object.entries(original));
+    assert.ok(allowedImportOwner(a.owner, b.owner));
+    assert.ok(Array.isArray(a.members) && Array.isArray(b.members));
+    assert.equal(a.members.length, b.members.length);
+    for (const [memberIndex, member] of a.members.entries()) {
+      const sourceMember: unknown = b.members[memberIndex];
+      assert.ok(
+        member && typeof member === 'object' && sourceMember && typeof sourceMember === 'object',
+      );
+      const x = Object.fromEntries(Object.entries(member)),
+        y = Object.fromEntries(Object.entries(sourceMember));
+      assert.ok(allowedImportOwner(x.owner, y.owner));
+    }
+  }
+  assert.equal(extensionImportFacts(target.extensions), extensionImportFacts(source.extensions));
+  const expected = new Map(source.entries.map((entry) => [drillCatalogKey(entry), entry]));
+  const withoutOwner = ({ owner: _owner, ...entry }: DrillCatalogEntry) => entry;
+  if (mode === 'full') {
+    assert.equal(target.migrations, source.migrations);
+    assert.deepEqual(target.entries.map(withoutOwner), source.entries.map(withoutOwner));
+    return;
+  }
+  // Pre-data omits indexes, FK/PK, policies and triggers. Every actual present object must
+  // match its source identity; all source schemas/tables/sequences/functions are mandatory.
+  assert.equal(target.migrations, '[]');
+  const mandatory = source.entries.filter((entry) => entry.kind !== 'i' && entry.kind !== 'I');
+  assert.deepEqual(target.entries.map(drillCatalogKey), mandatory.map(drillCatalogKey));
+  for (const entry of target.entries) {
+    const original = expected.get(drillCatalogKey(entry));
+    assert.ok(original);
+    if (entry.kind === 'function') assert.equal(entry.facts, original.facts);
+    else if (entry.kind !== 'schema') {
+      const actual: unknown = JSON.parse(entry.facts),
+        baseline: unknown = JSON.parse(original.facts);
+      assert.ok(actual && typeof actual === 'object' && baseline && typeof baseline === 'object');
+      const a = Object.fromEntries(Object.entries(actual)),
+        b = Object.fromEntries(Object.entries(baseline));
+      for (const key of ['columns', 'sequence', 'sequenceLinks', 'index'])
+        assert.deepEqual(a[key], b[key]);
+      for (const key of ['constraints', 'triggers', 'policies'] as const) {
+        assert.ok(Array.isArray(a[key]) && Array.isArray(b[key]));
+        for (const fact of a[key]) {
+          const matches = b[key].some(
+            (expectedFact: unknown) => JSON.stringify(expectedFact) === JSON.stringify(fact),
+          );
+          if (!matches) recordDrillCatalogMismatch(entry, key, fact, b[key]);
+          assert.ok(matches);
+        }
+      }
+      assert.ok(a.rls === false || a.rls === b.rls);
+      assert.ok(a.force === false || a.force === b.force);
+    }
+  }
+}
+async function transferDrillTargetMetadata(
+  admin: Pool,
+  owner: Pool,
+  baseline: DrillCatalog,
+  baselineAcl: readonly DrillRawAcl[],
+  mode: 'full' | 'pre-data',
+) {
+  const client = await admin.connect();
+  const alterCounts = { schema: 0, r: 0, p: 0, S: 0, function: 0 };
+  try {
+    await client.query('BEGIN');
+    await client.query("SELECT set_config('lock_timeout','3000',true)");
+    await client.query('SELECT pg_advisory_xact_lock(77210,1)');
+    const databaseOwner = await client.query(
+      `SELECT datname,pg_get_userbyid(datdba) AS owner FROM pg_database WHERE datname=current_database()`,
+    );
+    assert.ok(
+      databaseOwner.rows[0]?.datname === 'drill_partial' ||
+        databaseOwner.rows[0]?.datname === 'drill_restore',
+    );
+    assert.equal(databaseOwner.rows[0]?.owner, 'drill_owner');
+    const before = await captureDrillCatalog(client);
+    const beforeAcl = await captureDrillRawAcl(client);
+    await recordDrillAclWitness(beforeAcl, mode === 'full' ? 'before-full' : 'before-pre-data');
+    const rowCounts = new Map<string, string>();
+    for (const entry of before.entries.filter((row) => row.kind === 'r' || row.kind === 'p')) {
+      const sql = await client.query(
+        `SELECT format('SELECT count(*)::text AS count FROM %I.%I',$1::text,$2::text) AS command`,
+        [entry.schema, entry.name],
+      );
+      const command: unknown = sql.rows[0]?.command;
+      assert.ok(typeof command === 'string');
+      const count: unknown = (await client.query(command)).rows[0]?.count;
+      assert.ok(typeof count === 'string' && /^[0-9]+$/.test(count));
+      rowCounts.set(drillCatalogKey(entry), count);
+    }
+    compareDrillCatalog(before, baseline, mode);
+    for (const kind of ['schema', 'r', 'p', 'S', 'function'] as const) {
+      for (const entry of before.entries.filter((row) => row.kind === kind)) {
+        const command = await client.query(
+          `SELECT CASE WHEN $1::text='schema' THEN format('ALTER SCHEMA %I OWNER TO drill_owner',$2::text)
+           WHEN $1::text='function' THEN format('ALTER FUNCTION %I.%I(%s) OWNER TO drill_owner',$2::text,$3::text,$4::text)
+           WHEN $1::text='S' THEN format('ALTER SEQUENCE %I.%I OWNER TO drill_owner',$2::text,$3::text)
+           ELSE format('ALTER TABLE %I.%I OWNER TO drill_owner',$2::text,$3::text) END AS command`,
+          [entry.kind, entry.schema, entry.name, entry.identity],
+        );
+        const statement: unknown = command.rows[0]?.command;
+        assert.ok(typeof statement === 'string');
+        await client.query(statement);
+        alterCounts[kind] += 1;
+      }
+    }
+    await recordDrillAlterCount(mode, 'after-loop', alterCounts);
+    const after = await captureDrillCatalog(client);
+    const afterAcl = await captureDrillRawAcl(client);
+    await recordDrillAclWitness(afterAcl, mode === 'full' ? 'after-full' : 'after-pre-data');
+    assertNativeDrillAclProjection(beforeAcl, afterAcl);
+    assertSourceDrillEffectiveAcl(baselineAcl, afterAcl);
+    assert.deepEqual(
+      after.entries.map(({ owner: _owner, ...row }) => row),
+      before.entries.map(({ owner: _owner, ...row }) => row),
+    );
+    assert.equal(after.extensions, before.extensions);
+    assert.equal(after.migrations, before.migrations);
+    assert.ok(after.entries.every((entry) => entry.owner === 'drill_owner'));
+    const dependentTypes = await client.query(
+      `SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid=t.typnamespace
+      WHERE n.nspname=ANY($1::text[]) AND t.typowner<>'drill_owner'::regrole
+      AND NOT EXISTS(SELECT 1 FROM pg_depend d WHERE d.classid='pg_type'::regclass AND d.objid=t.oid AND d.deptype='e')`,
+      [drillUserSchemas],
+    );
+    assert.equal(dependentTypes.rowCount, 0);
+    for (const entry of after.entries.filter((row) => row.kind === 'r' || row.kind === 'p')) {
+      const sql = await client.query(
+        `SELECT format('SELECT count(*)::text AS count FROM %I.%I',$1::text,$2::text) AS command`,
+        [entry.schema, entry.name],
+      );
+      const command: unknown = sql.rows[0]?.command;
+      assert.ok(typeof command === 'string');
+      assert.equal(
+        (await client.query(command)).rows[0]?.count,
+        rowCounts.get(drillCatalogKey(entry)),
+      );
+    }
+    await client.query('COMMIT');
+    await recordDrillAlterCount(mode, 'committed', alterCounts);
+  } catch (error) {
+    await client.query('ROLLBACK');
+    await recordDrillAlterCount(mode, 'rolled-back', alterCounts);
+    throw error;
+  } finally {
+    client.release();
+  }
+  if (mode === 'full') {
+    assertDrillDefinerPolicyRoster(baseline);
+    const ownerClient = await owner.connect();
+    try {
+      await ownerClient.query('BEGIN');
+      await ownerClient.query('SELECT pg_advisory_xact_lock(77210,1)');
+      const identity = await ownerClient.query(
+        `SELECT current_user AS role,session_user AS session_role,rolsuper,rolbypassrls,rolcreatedb,rolcreaterole FROM pg_roles WHERE rolname=current_user`,
+      );
+      assert.deepEqual(identity.rows, [
+        {
+          role: 'drill_owner',
+          session_role: 'drill_owner',
+          rolsuper: false,
+          rolbypassrls: false,
+          rolcreatedb: false,
+          rolcreaterole: false,
+        },
+      ]);
+      const result = await ownerClient.query(
+        'SELECT public.retarget_definer_policies() AS touched',
+      );
+      assert.equal(result.rows[0]?.touched, 14);
+      const retargeted = await captureDrillCatalog(ownerClient);
+      assertDrillDefinerPolicyRoster(retargeted);
+      compareDrillCatalog(retargeted, baseline, 'full');
+      assert.ok(retargeted.entries.every((entry) => entry.owner === 'drill_owner'));
+      await ownerClient.query('COMMIT');
+    } catch (error) {
+      await ownerClient.query('ROLLBACK');
+      throw error;
+    } finally {
+      ownerClient.release();
+    }
+  }
+}
+
 async function seedCoachingRunOutput(
   database: Database,
   owner: Pool,
@@ -366,21 +1244,13 @@ async function seedCoachingRunOutput(
   });
   const outputId = randomUUID();
   const body = { synthetic: 'untrusted output to test purge-safe restore' };
-  const connection = await owner.connect();
-  try {
-    await connection.query('BEGIN');
-    await connection.query("SELECT set_config('app.athlete_id',$1,true)", [athleteId]);
-    await connection.query(
+  await withSourceFixtureOwnerTenant(owner, athleteId, async (connection) => {
+    const inserted = await connection.query(
       'INSERT INTO coaching_analysis_output(athlete_id,id,run_id,body) VALUES($1,$2,$3,$4::jsonb)',
       [athleteId, outputId, run.id, JSON.stringify(body)],
     );
-    await connection.query('COMMIT');
-  } catch (error) {
-    await connection.query('ROLLBACK');
-    throw error;
-  } finally {
-    connection.release();
-  }
+    assert.equal(inserted.rowCount, 1);
+  });
   return { run, outputId, body };
 }
 
@@ -400,19 +1270,18 @@ async function seedCoachingCandidateRecords(owner: Pool, athleteId: string, runI
     body: candidateBody,
     digest: createHash('sha256').update(JSON.stringify(candidateBody)).digest('hex'),
   };
-  const connection = await owner.connect();
-  try {
-    await connection.query('BEGIN');
-    await connection.query("SELECT set_config('app.athlete_id',$1,true)", [athleteId]);
-    await connection.query(
+  await withSourceFixtureOwnerTenant(owner, athleteId, async (connection) => {
+    const insertedDecision = await connection.query(
       'INSERT INTO coaching_decision(athlete_id,id,run_id,body) VALUES($1,$2,$3,$4::jsonb)',
       [athleteId, decision.id, runId, JSON.stringify(decision.body)],
     );
-    await connection.query(
+    assert.equal(insertedDecision.rowCount, 1);
+    const insertedProposal = await connection.query(
       'INSERT INTO coaching_proposal(athlete_id,id,decision_id,body) VALUES($1,$2,$3,$4::jsonb)',
       [athleteId, proposal.id, decision.id, JSON.stringify(proposal.body)],
     );
-    await connection.query(
+    assert.equal(insertedProposal.rowCount, 1);
+    const insertedCandidate = await connection.query(
       'INSERT INTO coaching_candidate(athlete_id,id,decision_id,proposal_id,digest,body) VALUES($1,$2,$3,$4,$5,$6::jsonb)',
       [
         athleteId,
@@ -423,13 +1292,8 @@ async function seedCoachingCandidateRecords(owner: Pool, athleteId: string, runI
         JSON.stringify(candidate.body),
       ],
     );
-    await connection.query('COMMIT');
-  } catch (error) {
-    await connection.query('ROLLBACK');
-    throw error;
-  } finally {
-    connection.release();
-  }
+    assert.equal(insertedCandidate.rowCount, 1);
+  });
   return { decision, proposal, candidate };
 }
 
@@ -482,6 +1346,133 @@ function assertCoachingCandidateRowsPurged(
 // caller commits or rolls back). Every entry must be accounted for; an erased tenant's entry
 // is satisfied by its erasure and counted, anything the database function cannot verify
 // throws, and an entry of any other shape is refused here before it reaches the database.
+type DrillRestoreQueryPort = Pick<PoolClient, 'query'>;
+// Privileged inspector only: hashes complete table rows under UTC without emitting bodies.
+// ONLY parent plus each leaf covers rows once; sequence counters are nontransactional and excluded.
+async function captureDrillRowFingerprints(inspector: Pool, expectedCatalog: DrillCatalog) {
+  const client = await inspector.connect();
+  try {
+    await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+    await client.query("SET LOCAL TimeZone='UTC'");
+    const roster = await client.query<{ schema: string; name: string; kind: string }>(
+      `SELECT n.nspname AS schema,c.relname AS name,c.relkind::text AS kind FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=ANY($1::text[]) AND c.relkind IN ('r','p') AND NOT EXISTS(SELECT 1 FROM pg_depend d WHERE d.classid='pg_class'::regclass AND d.objid=c.oid AND d.deptype='e') ORDER BY n.nspname COLLATE "C",c.relkind::text COLLATE "C",c.relname COLLATE "C"`,
+      [drillUserSchemas],
+    );
+    assert.deepEqual(
+      roster.rows,
+      expectedCatalog.entries
+        .filter((entry) => entry.kind === 'r' || entry.kind === 'p')
+        .map(({ schema, name, kind }) => ({ schema, name, kind }))
+        .sort((left, right) => {
+          for (const key of ['schema', 'kind', 'name'] as const) {
+            if (left[key] < right[key]) return -1;
+            if (left[key] > right[key]) return 1;
+          }
+          return 0;
+        }),
+    );
+    assert.ok(roster.rows.length > 0 && roster.rows.length <= 4096);
+    const facts: { schema: string; name: string; kind: string; count: number; sha256: string }[] =
+      [];
+    let totalBytes = 0;
+    let totalRows = 0;
+    for (const relation of roster.rows) {
+      const quoted = (name: string) => '"' + name.replaceAll('"', '""') + '"';
+      await client.query(
+        `DECLARE drill_rows NO SCROLL CURSOR FOR SELECT to_jsonb(x)::text AS body FROM ONLY ${quoted(relation.schema)}.${quoted(relation.name)} x ORDER BY to_jsonb(x)::text COLLATE "C"`,
+      );
+      const digest = createHash('sha256');
+      let count = 0;
+      for (;;) {
+        const batch = await client.query<{ body: string }>('FETCH FORWARD 128 FROM drill_rows');
+        if (batch.rows.length === 0) break;
+        for (const row of batch.rows) {
+          assert.equal(typeof row.body, 'string');
+          const bytes = Buffer.byteLength(row.body);
+          assert.ok(bytes <= 4 * 1024 * 1024);
+          totalBytes += bytes;
+          totalRows += 1;
+          assert.ok(totalBytes <= 256 * 1024 * 1024 && totalRows <= 100000);
+          digest.update(String(bytes) + ':').update(row.body);
+          count += 1;
+        }
+      }
+      await client.query('CLOSE drill_rows');
+      facts.push({ ...relation, count, sha256: digest.digest('hex') });
+    }
+    await client.query('COMMIT');
+    return facts;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function drillBackendPid(client: DrillRestoreQueryPort): Promise<number> {
+  const result = await client.query<{ pid: number }>('SELECT pg_backend_pid() AS pid');
+  assert.equal(result.rowCount, 1);
+  const pid = result.rows[0]?.pid;
+  assert.ok(typeof pid === 'number' && Number.isSafeInteger(pid) && pid > 0);
+  return pid;
+}
+
+type DrillReplayWitness = { phase: 'start' | 'checkpoint' | 'commit' | 'rollback'; pid: number };
+type DrillEnterRestoreTenant = (athleteId: string) => Promise<void>;
+async function withDrillOwnedReplay<T>(
+  owner: Pool,
+  expectedOwners: readonly string[],
+  operation: (client: DrillRestoreQueryPort, enterTenant: DrillEnterRestoreTenant) => Promise<T>,
+  witness?: (fact: DrillReplayWitness) => void,
+): Promise<T> {
+  assert.ok(expectedOwners.length > 0 && expectedOwners.length <= 1000);
+  assert.equal(new Set(expectedOwners).size, expectedOwners.length);
+  const owners = [...expectedOwners].sort();
+  for (const athleteId of owners)
+    assert.match(
+      athleteId,
+      /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/,
+    );
+  const client = await owner.connect();
+  try {
+    await client.query('BEGIN');
+    witness?.({ phase: 'start', pid: await drillBackendPid(client) });
+    await client.query('SELECT pg_advisory_xact_lock(77210,1)');
+    const identity = await client.query(
+      `SELECT current_user AS role,session_user AS session_role,rolsuper,rolbypassrls,rolcreatedb,rolcreaterole FROM pg_roles WHERE rolname=current_user`,
+    );
+    assert.deepEqual(identity.rows, [
+      {
+        role: 'drill_owner',
+        session_role: 'drill_owner',
+        rolsuper: false,
+        rolbypassrls: false,
+        rolcreatedb: false,
+        rolcreaterole: false,
+      },
+    ]);
+    for (const athleteId of owners)
+      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,77206))', [athleteId]);
+    for (const athleteId of owners)
+      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [athleteId]);
+    const enterTenant: DrillEnterRestoreTenant = async (athleteId) => {
+      assert.ok(owners.includes(athleteId));
+      await client.query("SELECT set_config('app.athlete_id',$1,true)", [athleteId]);
+    };
+    const result = await operation(client, enterTenant);
+    await client.query('COMMIT');
+    witness?.({ phase: 'commit', pid: await drillBackendPid(client) });
+    return result;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    witness?.({ phase: 'rollback', pid: await drillBackendPid(client) });
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 type CourseDeletionReplay = {
   deleted: string[];
   absent: string[];
@@ -489,8 +1480,9 @@ type CourseDeletionReplay = {
   erasure_satisfied: string[];
 };
 async function replayCourseDeletionLedger(
-  restored: Pool,
+  restored: DrillRestoreQueryPort,
   value: unknown,
+  enterTenant: DrillEnterRestoreTenant,
 ): Promise<CourseDeletionReplay> {
   assert.ok(Array.isArray(value) && value.length > 0);
   const outcome: CourseDeletionReplay = {
@@ -512,7 +1504,7 @@ async function replayCourseDeletionLedger(
         typeof deletedAt === 'string' &&
         !Number.isNaN(Date.parse(deletedAt)),
     );
-    await restored.query("SELECT set_config('app.athlete_id',$1,true)", [owner]);
+    await enterTenant(owner);
     const erased = await restored.query('SELECT 1 FROM tenant_erasure WHERE athlete_id=$1', [
       owner,
     ]);
@@ -558,7 +1550,11 @@ type ShareBudgetReplay = {
   already_applied: string[];
   erasure_satisfied: string[];
 };
-async function replayShareBudgetLedger(restored: Pool, value: unknown): Promise<ShareBudgetReplay> {
+async function replayShareBudgetLedger(
+  restored: DrillRestoreQueryPort,
+  value: unknown,
+  enterTenant: DrillEnterRestoreTenant,
+): Promise<ShareBudgetReplay> {
   assert.ok(Array.isArray(value) && value.length > 0);
   const outcome: ShareBudgetReplay = {
     inserted: [],
@@ -587,7 +1583,7 @@ async function replayShareBudgetLedger(restored: Pool, value: unknown): Promise<
         typeof zoneId === 'string' &&
         numbers.every((number) => Number.isInteger(number)),
     );
-    await restored.query("SELECT set_config('app.athlete_id',$1,true)", [owner]);
+    await enterTenant(owner);
     const erased = await restored.query('SELECT 1 FROM tenant_erasure WHERE athlete_id=$1', [
       owner,
     ]);
@@ -798,6 +1794,8 @@ async function execute() {
   const restoredObjectRoot = join(directory, 'restored-objects');
   const ledgerFile = join(directory, 'post-backup-erasure-ledger.json');
   const cleanupLedgerFile = join(directory, 'post-backup-encrypted-cleanup-ledger.json');
+  // Private local SQL-origin artifact; not authenticated complete-tail admission evidence.
+  const aiTransitionFile = join(tmpdir(), 'backup-original-ai-withdrawal-event.json');
   const evidenceWithdrawalLedgerFile = join(
     directory,
     'post-backup-evidence-withdrawal-ledger.json',
@@ -820,10 +1818,15 @@ async function execute() {
   process.once('SIGTERM', interrupt);
   const checks: string[] = [];
   let version = '';
-  const url = (name: string, role = 'drill_admin') =>
+  const url = (name: string, role = 'drill_owner') =>
     `postgresql://${role}@localhost/${name}?host=${encodeURIComponent(directory)}`;
-  const pool = (name: string) => {
-    const value = new Pool({ connectionString: url(name), max: 1, connectionTimeoutMillis: 5000 });
+  // Admin pools are archive inspectors/raw synthetic fixture ports, not protected owner ports.
+  const pool = (name: string, role = 'drill_admin') => {
+    const value = new Pool({
+      connectionString: url(name, role),
+      max: 1,
+      connectionTimeoutMillis: 5000,
+    });
     pools.push(value);
     return value;
   };
@@ -857,6 +1860,9 @@ async function execute() {
     ]);
     const admin = pool('postgres');
     await admin.query(
+      'CREATE ROLE drill_owner LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE',
+    );
+    await admin.query(
       'CREATE ROLE drill_runtime LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE',
     );
     // The thumbnail renderer is its own least-privilege login, as in production: it may
@@ -865,15 +1871,51 @@ async function execute() {
     await admin.query(
       'CREATE ROLE drill_thumbnailer LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE',
     );
-    await admin.query('CREATE DATABASE drill_source');
-    await admin.query('CREATE DATABASE drill_restore');
+    await admin.query('CREATE DATABASE drill_source OWNER drill_owner');
+    await admin.query('CREATE DATABASE drill_restore OWNER drill_owner');
+    const sourceAdminPool = pool('drill_source');
+    const restoreInspector = pool('drill_restore');
+    await sourceAdminPool.query('ALTER SCHEMA public OWNER TO drill_owner');
+    await restoreInspector.query('ALTER SCHEMA public OWNER TO drill_owner');
     await migrate(url('drill_source'));
-    const source = pool('drill_source');
-    await source.query(
-      'GRANT SELECT,INSERT,UPDATE,DELETE ON consent,command_receipt,outbox,activity_canonical,activity_source_head,activity_source_revision,activity_overlay,activity_overlay_revision,activity_suppression,activity_import_receipt TO drill_runtime',
+    const sourceOwner = pool('drill_source', 'drill_owner');
+    const ownerIdentity = await sourceOwner.query(
+      `SELECT current_user AS role,session_user AS session_role,rolsuper,rolbypassrls,
+       rolcreatedb,rolcreaterole FROM pg_roles WHERE rolname=current_user`,
     );
-    await source.query(
-      'GRANT SELECT,INSERT,UPDATE ON plan_snapshot,plan_head,plan_history TO drill_runtime',
+    assert.deepEqual(ownerIdentity.rows, [
+      {
+        role: 'drill_owner',
+        session_role: 'drill_owner',
+        rolsuper: false,
+        rolbypassrls: false,
+        rolcreatedb: false,
+        rolcreaterole: false,
+      },
+    ]);
+    const wrongOwners = await sourceAdminPool.query(
+      `SELECT c.oid FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+       WHERE n.nspname NOT LIKE 'pg_%' AND n.nspname<>'information_schema'
+       AND c.relkind IN ('r','p','S','v','m','f') AND c.relowner<>'drill_owner'::regrole
+       UNION ALL SELECT p.oid FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+       WHERE n.nspname NOT LIKE 'pg_%' AND n.nspname<>'information_schema'
+       AND p.proowner<>'drill_owner'::regrole
+       AND NOT EXISTS(SELECT 1 FROM pg_depend d WHERE d.classid='pg_proc'::regclass
+        AND d.objid=p.oid AND d.deptype='e')`,
+    );
+    assert.equal(wrongOwners.rowCount, 0);
+    const forcedTables = await sourceAdminPool.query(
+      `SELECT count(*)::int AS count FROM pg_class WHERE oid IN
+       ('public.core_evidence_snapshot'::regclass,'public.evidence_app_admission_binding'::regclass,
+        'public.restore_processing_admission'::regclass,'public.openai_budget_month'::regclass)
+       AND relrowsecurity AND relforcerowsecurity`,
+    );
+    assert.equal(forcedTables.rows[0]?.count, 4);
+    checks.push('source_plain_migration_owner_identity_table_function_ownership_and_force_rls');
+    await grantCorePlanning(url('drill_source'), 'drill_runtime');
+    // Activity ingestion has no aggregate grant helper; retain the existing finite fixture grants.
+    await sourceOwner.query(
+      'GRANT SELECT,INSERT,UPDATE,DELETE ON activity_canonical,activity_source_head,activity_source_revision,activity_overlay,activity_overlay_revision,activity_suppression,activity_import_receipt TO drill_runtime',
     );
     await grantOperations(url('drill_source'), 'drill_runtime');
     await grantGarmin(url('drill_source'), 'drill_runtime');
@@ -1107,6 +2149,22 @@ async function execute() {
       },
       randomUUID(),
     );
+    // These named positive restore fixtures explicitly permit new core storage
+    // before their first constraint/plan/activity command. Never auto-grant in seeds.
+    for (const athleteId of [deletedAthlete, retainedAthlete]) {
+      const appConsent = await createConsentRepository(sourceDb).setConsent(athleteId, {
+        kind: 'app',
+        granted: true,
+        expectedRevision: 0,
+        idempotencyKey: randomUUID(),
+      });
+      assert.deepEqual(appConsent, { kind: 'app', granted: true, revision: 1 });
+    }
+    const removedConstraintAppConsent = await createConsentRepository(sourceDb).setConsent(
+      removedConstraintAthlete,
+      { kind: 'app', granted: true, expectedRevision: 0, idempotencyKey: randomUUID() },
+    );
+    assert.deepEqual(removedConstraintAppConsent, { kind: 'app', granted: true, revision: 1 });
     const constraintRepo = createCoachingConstraintRepository(sourceDb);
     const oldConstraintCommand = {
       expectedHeadRevision: null,
@@ -1129,7 +2187,7 @@ async function execute() {
       ...oldConstraintCommand,
       idempotencyKey: randomUUID(),
     });
-    const backupConstraintLedger = await captureConstraintRestoreLedger(source, []);
+    const backupConstraintLedger = await captureConstraintRestoreLedger(sourceAdminPool, []);
     const backupConstraintOwners = backupConstraintLedger.subjects.map((row) => row.athleteId);
     const constraintLedgerFile = join(directory, 'post-backup-constraint-ledger.json');
     const manualIds = new Map<string, string>();
@@ -1185,12 +2243,6 @@ async function execute() {
       note: 'Synthetic self-report for restore verification',
     };
     for (const [index, athleteId] of [deletedAthlete, retainedAthlete].entries()) {
-      await createConsentRepository(sourceDb).setConsent(athleteId, {
-        kind: 'app',
-        granted: true,
-        expectedRevision: 0,
-        idempotencyKey: randomUUID(),
-      });
       const fixtureImport = await createActivityRepository(sourceDb).importActivity(athleteId, {
         idempotencyKey: randomUUID(),
         source: {
@@ -1230,8 +2282,8 @@ async function execute() {
       assert.ok(initialManual);
       assert.equal(initialManual.userReport?.sessionRpe, 0);
       assert.equal(initialManual.userReport?.note, 'Synthetic manual self-report');
-      const before = await createOperationsRepository(sourceDb).exportAccount(athleteId);
-      assert.equal(before.schemaVersion, 28);
+      const before = await exportCurrentDrillAccount(sourceDb, athleteId);
+      assert.equal(before.schemaVersion, 33);
       const originalHistory = before.data.overlayRevisions.filter(
         (row) => row.activity_id === manual.activityId,
       );
@@ -1279,7 +2331,7 @@ async function execute() {
         athleteId,
         await seedCoachingRunOutput(
           sourceDb,
-          source,
+          sourceOwner,
           athleteId,
           thread.appended.thread.id,
           evidenceSnapshot.id,
@@ -1290,10 +2342,38 @@ async function execute() {
       assert.ok(seededRun);
       coachingCandidates.set(
         athleteId,
-        await seedCoachingCandidateRecords(source, athleteId, seededRun.run.id),
+        await seedCoachingCandidateRecords(sourceOwner, athleteId, seededRun.run.id),
       );
-      const coachingExport = await createOperationsRepository(sourceDb).exportAccount(athleteId);
-      if (coachingExport.schemaVersion !== 28) throw new Error('Expected coaching export v28');
+      const coachingExport = await exportCurrentDrillAccount(sourceDb, athleteId);
+      if (coachingExport.schemaVersion !== 33) throw new Error('Expected coaching export v33');
+      assert.deepEqual(
+        coachingExport.data.evidenceAppBindings.map((row) => ({
+          id: row.evidence_snapshot_id,
+          revision: row.app_revision,
+          version: row.binding_version,
+        })),
+        [{ id: evidenceSnapshot.id, revision: 1, version: 1 }],
+      );
+      assert.deepEqual(coachingExport.data.runAppBindings, [
+        {
+          run_id: seededRun.run.id,
+          evidence_snapshot_id: evidenceSnapshot.id,
+          binding_version: 1,
+        },
+      ]);
+      const seededCandidate = coachingCandidates.get(athleteId);
+      assert.ok(seededCandidate);
+      // SQL100 captures the parent run binding even for this raw storage fixture.
+      assert.deepEqual(coachingExport.data.candidateAppBindings, [
+        {
+          candidate_id: seededCandidate.candidate.id,
+          run_id: seededRun.run.id,
+          binding_version: 1,
+        },
+      ]);
+      // This fixture creates no integrated candidate and executes no approval.
+      assert.deepEqual(coachingExport.data.integratedCandidateAppBindings, []);
+      assert.deepEqual(coachingExport.data.approvalAppBindings, []);
       assert.equal(coachingExport.data.coachingThreads.length, 1);
       assert.equal(coachingExport.data.coachingMessages.length, 2);
       assert.equal(coachingExport.data.coachingRuns.length, 1);
@@ -1301,8 +2381,6 @@ async function execute() {
         coachingExport.data.coachingAnalysisOutputs[0]?.body,
         coachingRuns.get(athleteId)?.body,
       );
-      const seededCandidate = coachingCandidates.get(athleteId);
-      assert.ok(seededCandidate);
       assert.deepEqual(
         coachingExport.data.coachingDecisions[0]?.body,
         seededCandidate.decision.body,
@@ -1319,64 +2397,40 @@ async function execute() {
         coachingExport.data.coachingCandidates[0]?.digest,
         seededCandidate.candidate.digest,
       );
-      // A historical v8 download keeps its original shape and remains readable after v28 is added.
-      const {
-        coachingDecisions,
-        coachingProposals,
-        coachingCandidates: candidates,
-        nutritionPlanVersions: _nutritionPlanVersions,
-        nutritionPlanHeads: _nutritionPlanHeads,
-        nutritionPlanHistory: _nutritionPlanHistory,
-        foodDefinitionVersions: _foodDefinitionVersions,
-        foodDefinitionHeads: _foodDefinitionHeads,
-        intakeEntries: _intakeEntries,
-        intakeEntryRevisions: _intakeEntryRevisions,
-        supplementaryExerciseVersions: _supplementaryExerciseVersions,
-        supplementaryExerciseHeads: _supplementaryExerciseHeads,
-        supplementaryRoutineVersions: _supplementaryRoutineVersions,
-        supplementaryRoutineHeads: _supplementaryRoutineHeads,
-        supplementaryRoutineTargetRefs: _supplementaryRoutineTargetRefs,
-        supplementarySessionLinks: _supplementarySessionLinks,
-        supplementarySessionTargetRefs: _supplementarySessionTargetRefs,
-        supplementaryExecutions: _supplementaryExecutions,
-        supplementarySetLogs: _supplementarySetLogs,
-        supplementarySetLogRevisions: _supplementarySetLogRevisions,
-        supplementaryRestTimers: _supplementaryRestTimers,
-        resources: _resources,
-        resourceVersions: _resourceVersions,
-        resourceUrlIngestions: _resourceUrlIngestions,
-        resourceUrlAttempts: _resourceUrlAttempts,
-        resourceUrlFetchHops: _resourceUrlFetchHops,
-        resourceUrlArtifacts: _resourceUrlArtifacts,
-        resourceUrlProvenance: _resourceUrlProvenance,
-        resourceUrlLocators: _resourceUrlLocators,
-        resourceShares: _resourceShares,
-        resourceAccessAudit: _resourceAccessAudit,
-        galleryMediaItems: _galleryMediaItems,
-        galleryMediaDerivatives: _galleryMediaDerivatives,
-        resourcePassages: _resourcePassages,
-        resourceGroundings: _resourceGroundings,
-        resourceGroundingExcerpts: _resourceGroundingExcerpts,
-        resourceCitations: _resourceCitations,
-        activityTracks: _activityTracks,
-        activityTrackRevisions: _activityTrackRevisions,
-        courses: _courses,
-        courseRevisions: _courseRevisions,
-        coursePreferences: _coursePreferences,
-        coursePrivacyZones: _coursePrivacyZones,
-        courseThumbnails: _courseThumbnails,
-        courseAccessibilityNotes: _courseAccessibilityNotes,
-        coursePrivacyZoneShareOffsets: _coursePrivacyZoneShareOffsets,
-        courseShares: _courseShares,
-        courseDeletions: _courseDeletions,
-        courseShareAreaBudgets: _courseShareAreaBudgets,
-        healthKitWorkoutSamples: _healthKitWorkoutSamples,
-        healthKitWorkoutBatchReceipts: _healthKitWorkoutBatchReceipts,
-        healthKitWorkoutLineage: _healthKitWorkoutLineage,
-        healthKitExistingBindings: _healthKitExistingBindings,
-        ...v8Data
-      } = coachingExport.data;
-      assert.equal(coachingDecisions.length + coachingProposals.length + candidates.length, 3);
+      // A historical v8 fixture carries only its exact original collections.
+      // This projection tests reader compatibility; it is not a downgrade of the actual archive.
+      const v8Data = {
+        consents: coachingExport.data.consents,
+        planSnapshots: coachingExport.data.planSnapshots,
+        planHead: coachingExport.data.planHead,
+        planHistory: coachingExport.data.planHistory,
+        activities: coachingExport.data.activities,
+        activitySources: coachingExport.data.activitySources,
+        sourceRevisions: coachingExport.data.sourceRevisions,
+        overlays: coachingExport.data.overlays,
+        overlayRevisions: coachingExport.data.overlayRevisions,
+        suppressions: coachingExport.data.suppressions,
+        checkIns: coachingExport.data.checkIns,
+        checkInRevisions: coachingExport.data.checkInRevisions,
+        sessionCompletions: coachingExport.data.sessionCompletions,
+        sessionCompletionRevisions: coachingExport.data.sessionCompletionRevisions,
+        planScenarios: coachingExport.data.planScenarios,
+        planScenarioRevisions: coachingExport.data.planScenarioRevisions,
+        planScenarioApplications: coachingExport.data.planScenarioApplications,
+        coachingThreads: coachingExport.data.coachingThreads,
+        coachingMessages: coachingExport.data.coachingMessages,
+        evidenceSnapshots: coachingExport.data.evidenceSnapshots,
+        coachingConstraints: coachingExport.data.coachingConstraints,
+        coachingConstraintHeads: coachingExport.data.coachingConstraintHeads,
+        coachingRuns: coachingExport.data.coachingRuns,
+        coachingAnalysisOutputs: coachingExport.data.coachingAnalysisOutputs,
+      };
+      assert.equal(
+        coachingExport.data.coachingDecisions.length +
+          coachingExport.data.coachingProposals.length +
+          coachingExport.data.coachingCandidates.length,
+        3,
+      );
       assert.equal(
         accountExportSchema.parse({ ...coachingExport, schemaVersion: 8, data: v8Data })
           .schemaVersion,
@@ -1386,11 +2440,11 @@ async function execute() {
         threads: coachingExport.data.coachingThreads,
         messages: coachingExport.data.coachingMessages,
       });
-      await source.query(
+      await sourceAdminPool.query(
         'INSERT INTO identity_private.account(athlete_id,issuer,subject) VALUES($1,$2,$3)',
         [athleteId, 'https://synthetic.invalid', `drill-${index}`],
       );
-      const session = await source.query(
+      const session = await sourceAdminPool.query(
         "INSERT INTO identity_private.session(token_hash,athlete_id,csrf_token,expires_at) VALUES($1,$2,$3,clock_timestamp()+interval '1 hour') RETURNING session_id",
         [String(index + 1).repeat(64), athleteId, 'x'.repeat(32)],
       );
@@ -1427,16 +2481,17 @@ async function execute() {
         }),
       );
     }
-    await source.query(
+    await sourceAdminPool.query(
       "INSERT INTO identity_private.login_attempt VALUES($1,$2,$3,$4,clock_timestamp()+interval '5 minutes')",
       ['a'.repeat(64), 'b'.repeat(64), 'n'.repeat(16), 'v'.repeat(43)],
     );
     assert.equal(
-      (await source.query('SELECT count(*)::int AS count FROM activity_canonical')).rows[0].count,
+      (await sourceAdminPool.query('SELECT count(*)::int AS count FROM activity_canonical')).rows[0]
+        .count,
       4,
     );
     checks.push('two_synthetic_tenants_seeded');
-    checks.push('synthetic_candidate_bodies_in_source_export_v13_historical_v8_artifact_readable');
+    checks.push('synthetic_candidate_bodies_in_current_export_v33_historical_v8_artifact_readable');
     // M1-06b-tmp: the retained tenant also holds an unofficial Garmin session (sealed under a
     // throwaway key), a pinned profile and one ledger entry. The export carries none of the
     // session; the restore below must not bring the session back.
@@ -1469,9 +2524,16 @@ async function execute() {
       )
     ).rows[0];
     assert.ok(unofficialSource);
+    const collectionAdmission = await createConsentRepository(sourceDb).getConsent(
+      retainedAthlete,
+      'app',
+    );
+    assert.equal(collectionAdmission.granted, true);
+    assert.ok(collectionAdmission.revision > 0);
     await unofficialStore.recordCollected({
       athleteId: retainedAthlete,
       garminActivityId: '4242',
+      appRevision: collectionAdmission.revision,
       provider: 'garmin-connect-unofficial',
       outcome: 'imported',
       sources: [
@@ -1480,13 +2542,30 @@ async function execute() {
       now: new Date(),
     });
     const unofficialExport = JSON.stringify(
-      await createOperationsRepository(sourceDb).exportAccount(retainedAthlete),
+      await exportCurrentDrillAccount(sourceDb, retainedAthlete),
     );
     assert.ok(!unofficialExport.includes(unofficialEnvelope.ciphertext));
     assert.ok(!unofficialExport.includes('encrypted_session'));
     checks.push('unofficial_garmin_session_seeded_and_absent_from_export');
-    // These extra tenants add no identity, provider connection or activity to the original checks.
+    // These extra tenants add no provider connection or activity; the withdrawn tenant
+    // has a named synthetic identity so exact owner replay can verify its account.
     const withdrawnAthlete = randomUUID();
+    assert.equal(
+      (
+        await sourceAdminPool.query(
+          'INSERT INTO identity_private.account(athlete_id,issuer,subject) VALUES($1,$2,$3)',
+          [withdrawnAthlete, 'https://synthetic.invalid', 'drill-withdrawn'],
+        )
+      ).rowCount,
+      1,
+    );
+    // This tenant later withdraws AI permission only; its positive core setup
+    // still needs a separate explicit app permission before plan/thread storage.
+    const withdrawnAppConsent = await createConsentRepository(sourceDb).setConsent(
+      withdrawnAthlete,
+      { kind: 'app', granted: true, expectedRevision: 0, idempotencyKey: randomUUID() },
+    );
+    assert.deepEqual(withdrawnAppConsent, { kind: 'app', granted: true, revision: 1 });
     const {
       consent: aiConsent,
       command: withdrawnCommand,
@@ -1494,29 +2573,35 @@ async function execute() {
     } = await seedEvidenceWithAiConsent(sourceDb, withdrawnAthlete);
     const withdrawnRun = await seedCoachingRunOutput(
       sourceDb,
-      source,
+      sourceOwner,
       withdrawnAthlete,
       beforeWithdrawal.threadId,
       beforeWithdrawal.id,
       2,
     );
     const withdrawnCandidate = await seedCoachingCandidateRecords(
-      source,
+      sourceOwner,
       withdrawnAthlete,
       withdrawnRun.run.id,
     );
     const absentConsentAthlete = randomUUID();
+    // The later absence assertion deletes kind=ai, never this app permission.
+    const absentAiTenantAppConsent = await createConsentRepository(sourceDb).setConsent(
+      absentConsentAthlete,
+      { kind: 'app', granted: true, expectedRevision: 0, idempotencyKey: randomUUID() },
+    );
+    assert.deepEqual(absentAiTenantAppConsent, { kind: 'app', granted: true, revision: 1 });
     const beforeConsentDeletion = await seedEvidenceWithAiConsent(sourceDb, absentConsentAthlete);
     const absentConsentRun = await seedCoachingRunOutput(
       sourceDb,
-      source,
+      sourceOwner,
       absentConsentAthlete,
       beforeConsentDeletion.snapshot.threadId,
       beforeConsentDeletion.snapshot.id,
       2,
     );
     const absentConsentCandidate = await seedCoachingCandidateRecords(
-      source,
+      sourceOwner,
       absentConsentAthlete,
       absentConsentRun.run.id,
     );
@@ -1524,8 +2609,8 @@ async function execute() {
       [withdrawnAthlete, withdrawnCandidate],
       [absentConsentAthlete, absentConsentCandidate],
     ] as const) {
-      const candidateExport = await createOperationsRepository(sourceDb).exportAccount(athleteId);
-      if (candidateExport.schemaVersion !== 28) throw new Error('Expected candidate export v28');
+      const candidateExport = await exportCurrentDrillAccount(sourceDb, athleteId);
+      if (candidateExport.schemaVersion !== 33) throw new Error('Expected candidate export v33');
       assert.deepEqual(candidateExport.data.coachingDecisions[0]?.body, records.decision.body);
       assert.deepEqual(candidateExport.data.coachingProposals[0]?.body, records.proposal.body);
       assert.deepEqual(candidateExport.data.coachingCandidates[0]?.body, records.candidate.body);
@@ -1559,19 +2644,23 @@ async function execute() {
     assert.equal(constraintSnapshot.body.userConstraints.items[0]?.id, removedConstraint.id);
     const constraintRun = await seedCoachingRunOutput(
       sourceDb,
-      source,
+      sourceOwner,
       removedConstraintAthlete,
       constraintThread.appended.thread.id,
       constraintSnapshot.id,
       constraintThread.appended.thread.revision,
     );
     const constraintCandidate = await seedCoachingCandidateRecords(
-      source,
+      sourceOwner,
       removedConstraintAthlete,
       constraintRun.run.id,
     );
     assertCoachingCandidateRowsAvailable(
-      await readCoachingCandidateRows(source, removedConstraintAthlete, constraintCandidate),
+      await readCoachingCandidateRows(
+        sourceAdminPool,
+        removedConstraintAthlete,
+        constraintCandidate,
+      ),
       constraintCandidate,
     );
 
@@ -1790,10 +2879,8 @@ async function execute() {
       activityId: string,
       trackId: string,
       name: string,
-      edit:
-        | { kind: 'created' }
-        | { kind: 'copied'; copiedFromCourseId: string; copiedFromRevision: number },
-    ) => {
+      edit: PreparedCourseContent['edit'],
+    ): PreparedCourseContent => {
       const start: [number, number] = [127.02, 37.5];
       const finish: [number, number] = [127.0201, 37.5001];
       const line: [number, number][] = [start, finish];
@@ -1801,8 +2888,20 @@ async function execute() {
         name,
         coordinates: line,
         waypoints: [
-          { role: 'start' as const, position: start, name: null, sourceSampleId: '0:0' },
-          { role: 'finish' as const, position: finish, name: null, sourceSampleId: '0:1' },
+          {
+            role: 'start' as const,
+            position: start,
+            name: null,
+            sourceSampleId: '0:0',
+            locked: false,
+          },
+          {
+            role: 'finish' as const,
+            position: finish,
+            name: null,
+            sourceSampleId: '0:1',
+            locked: false,
+          },
         ],
         generation: {
           kind: 'recorded-segment' as const,
@@ -1825,13 +2924,13 @@ async function execute() {
       };
     };
     const retainedTrackId = (
-      await source.query<{ track_id: string }>(
+      await sourceAdminPool.query<{ track_id: string }>(
         'SELECT track_id FROM activity_track WHERE athlete_id=$1 AND activity_id=$2',
         [retainedAthlete, retainedFixture.activityId],
       )
     ).rows[0]?.track_id;
     const doomedTrackId = (
-      await source.query<{ track_id: string }>(
+      await sourceAdminPool.query<{ track_id: string }>(
         'SELECT track_id FROM activity_track WHERE athlete_id=$1 AND activity_id=$2',
         [retainedAthlete, doomedImport.activityId],
       )
@@ -2212,7 +3311,7 @@ async function execute() {
       deletedAthlete,
     );
     const erasedTrackId = (
-      await source.query<{ track_id: string }>(
+      await sourceAdminPool.query<{ track_id: string }>(
         'SELECT track_id FROM activity_track WHERE athlete_id=$1 AND activity_id=$2',
         [deletedAthlete, erasedCourseFixture.activityId],
       )
@@ -2287,7 +3386,7 @@ async function execute() {
         byteSize: number;
         vertexCount: number;
         rendererId: string;
-        rendererVersion: string;
+        rendererVersion: ReturnType<typeof renderCourseThumbnail>['rendererVersion'];
       }
     >();
     // Temporary objects written by a render that then failed retryably. Nothing published
@@ -2296,6 +3395,7 @@ async function execute() {
     let stalledRender:
       | {
           jobId: string;
+          athleteId: string;
           temporaryKey: ReturnType<typeof createCourseThumbnailTemporaryObjectKey>;
           finalKey: ReturnType<typeof createCourseThumbnailFinalObjectKey>;
           drawn: ReturnType<typeof renderCourseThumbnail>;
@@ -2353,7 +3453,13 @@ async function execute() {
                 vertexCount: drawn.vertexCount,
               }),
             );
-            stalledRender = { jobId: lease.jobId, temporaryKey, finalKey, drawn };
+            stalledRender = {
+              jobId: lease.jobId,
+              athleteId: lease.athleteId,
+              temporaryKey,
+              finalKey,
+              drawn,
+            };
             await sourceObjectStorage.delete(temporaryKey);
             return;
           }
@@ -2419,28 +3525,34 @@ async function execute() {
     // prunes the closed row. What is left is an object and one index row naming it.
     assert.ok(stalledRender);
     const orphan = stalledRender;
-    await source.query(
-      `UPDATE course_thumbnail
+    assert.equal(orphan.athleteId, deletedAthlete);
+    await withSourceFixtureOwnerTenant(sourceOwner, orphan.athleteId, async (client) => {
+      const changed = await client.query(
+        `UPDATE course_thumbnail
          SET created_at=clock_timestamp()-interval '4 hours',
              updated_at=clock_timestamp()-interval '4 hours',
              lease_until=clock_timestamp()-interval '3 hours',
              publication_lease_until=clock_timestamp()-interval '3 hours',
              expires_at=clock_timestamp()-interval '3 hours'
-       WHERE job_id=$1`,
-      [orphan.jobId],
-    );
+       WHERE job_id=$1 AND athlete_id=$2`,
+        [orphan.jobId, orphan.athleteId],
+      );
+      assert.equal(changed.rowCount, 1);
+    });
     const sourceCleanup = createResourceObjectCleanupRepository({
       connectionString: url('drill_source'),
       max: 1,
     });
     try {
       assert.ok((await sourceCleanup.reapCourseThumbnailRenders(100)) >= 1);
-      const closedReceipts = await source.query(
-        `UPDATE resource_object_cleanup SET completed_at=clock_timestamp(),attempts=1
-         WHERE storage_ref=ANY($1::text[]) AND completed_at IS NULL`,
-        [[orphan.temporaryKey, orphan.finalKey]],
-      );
-      assert.equal(closedReceipts.rowCount, 2);
+      await withSourceFixtureOwnerTenant(sourceOwner, orphan.athleteId, async (client) => {
+        const closedReceipts = await client.query(
+          `UPDATE resource_object_cleanup SET completed_at=clock_timestamp(),attempts=1
+           WHERE storage_ref=ANY($1::text[]) AND completed_at IS NULL`,
+          [[orphan.temporaryKey, orphan.finalKey]],
+        );
+        assert.equal(closedReceipts.rowCount, 2);
+      });
       await sourceObjectStorage.writeTemporary(
         orphan.temporaryKey,
         (async function* () {
@@ -2451,28 +3563,34 @@ async function execute() {
         sha256: orphan.drawn.sha256,
         sizeBytes: orphan.drawn.byteSize,
       });
-      await source.query(
-        `UPDATE course_thumbnail
+      await withSourceFixtureOwnerTenant(sourceOwner, orphan.athleteId, async (client) => {
+        const changed = await client.query(
+          `UPDATE course_thumbnail
            SET created_at=clock_timestamp()-interval '9 days',
                expires_at=clock_timestamp()-interval '8 days'-interval '1 hour',
                publication_lease_until=clock_timestamp()-interval '8 days'-interval '2 hours',
                lease_until=NULL,lease_owner=NULL,lease_token=NULL,
                updated_at=clock_timestamp()-interval '8 days'
-         WHERE job_id=$1`,
-        [orphan.jobId],
-      );
+         WHERE job_id=$1 AND athlete_id=$2`,
+          [orphan.jobId, orphan.athleteId],
+        );
+        assert.equal(changed.rowCount, 1);
+      });
       assert.equal(await sourceCleanup.pruneCourseThumbnailHistory(100), 1);
     } finally {
       await sourceCleanup.close();
     }
     assert.equal(
-      (await source.query('SELECT 1 FROM course_thumbnail WHERE job_id=$1', [orphan.jobId]))
-        .rowCount,
+      (
+        await sourceAdminPool.query('SELECT 1 FROM course_thumbnail WHERE job_id=$1', [
+          orphan.jobId,
+        ])
+      ).rowCount,
       0,
     );
     assert.equal(
       (
-        await source.query(
+        await sourceAdminPool.query(
           'SELECT 1 FROM course_thumbnail_object_ref WHERE storage_ref=$1 AND athlete_id=$2',
           [orphan.finalKey, deletedAthlete],
         )
@@ -2612,7 +3730,7 @@ async function execute() {
     );
     assert.equal(
       (
-        await source.query(
+        await sourceAdminPool.query(
           'SELECT count(*)::int AS count FROM resource_passage WHERE athlete_id=$1 AND resource_id=$2',
           [retainedAthlete, deletedCoachResource.resourceId],
         )
@@ -2627,7 +3745,7 @@ async function execute() {
     // Include an erased owner in the backup consent manifest to exercise replay's erasure priority.
     // The private drill has no concurrent writers between this owner manifest and pg_dump.
     const backupAiOwners = (
-      await source.query<{ athlete_id: string }>(
+      await sourceAdminPool.query<{ athlete_id: string }>(
         "SELECT athlete_id FROM consent WHERE kind='ai' ORDER BY athlete_id",
       )
     ).rows.map((row) => row.athlete_id);
@@ -2651,7 +3769,7 @@ async function execute() {
     const sharingAthlete = randomUUID();
     // A real account, as every course owner has: the 049 ledger replay refuses a tenant the
     // restored cluster does not know (COURSE_REPLAY_TENANT_UNKNOWN).
-    await source.query(
+    await sourceAdminPool.query(
       'INSERT INTO identity_private.account(athlete_id,issuer,subject) VALUES($1,$2,$3)',
       [sharingAthlete, 'https://synthetic.invalid', 'drill-sharing'],
     );
@@ -2760,7 +3878,7 @@ async function execute() {
       leaseMilliseconds: 12_000,
     });
     assert.equal((await drillAdmission.tryAcquire(deletedAthlete)).granted, true);
-    const erasedTenantBackupCounts = await countErasedTenantRows(source);
+    const erasedTenantBackupCounts = await countErasedTenantRows(sourceAdminPool);
     for (const table of erasedTenantCourseTables)
       assert.ok(
         (erasedTenantBackupCounts[table] ?? 0) > 0,
@@ -2770,7 +3888,7 @@ async function execute() {
     assert.equal(erasedTenantBackupCounts['course'], 4);
     assert.ok((erasedTenantBackupCounts['course_revision'] ?? 0) >= 4);
     const erasedTenantThumbnailStates = (
-      await source.query<{ state: string }>(
+      await sourceAdminPool.query<{ state: string }>(
         'SELECT state FROM course_thumbnail WHERE athlete_id=$1 ORDER BY state',
         [deletedAthlete],
       )
@@ -2778,7 +3896,7 @@ async function execute() {
     // The second `ready`: the M2-01k-o shared course's picture.
     assert.deepEqual(erasedTenantThumbnailStates, ['failed', 'ready', 'ready', 'superseded']);
     const erasedTenantObjectRefs = (
-      await source.query<{ storage_ref: string }>(
+      await sourceAdminPool.query<{ storage_ref: string }>(
         `SELECT refs.storage_ref FROM course_thumbnail t
            CROSS JOIN LATERAL (VALUES(t.temporary_ref),(t.storage_ref)) refs(storage_ref)
            WHERE t.athlete_id=$1 AND refs.storage_ref IS NOT NULL
@@ -2825,6 +3943,12 @@ async function execute() {
         distanceMeters: 0,
       },
     });
+    const sourceCatalog = await captureDrillCatalog(sourceAdminPool);
+    assertDrillDefinerPolicyRoster(sourceCatalog);
+    const sourceAcl = await captureDrillRawAcl(sourceAdminPool);
+    await recordDrillAclWitness(sourceAcl, 'source');
+    const sourceRegistry: unknown = JSON.parse(sourceCatalog.migrations);
+    assert.ok(Array.isArray(sourceRegistry) && sourceRegistry.length === 105);
     run(bin, 'pg_dump', [
       '-h',
       directory,
@@ -2836,6 +3960,18 @@ async function execute() {
       '--file',
       archive,
     ]);
+    await writeFile(
+      join(directory, 'catalog-witness.json'),
+      JSON.stringify({
+        schemaVersion: 105,
+        catalogSha256: createHash('sha256').update(JSON.stringify(sourceCatalog)).digest('hex'),
+        archiveSha256: createHash('sha256')
+          .update(await readFile(archive))
+          .digest('hex'),
+        scope: 'Local synthetic catalog witness only; not full authenticated restore proof',
+      }),
+      { mode: 0o600, flag: 'wx' },
+    );
     // M2-01x: an upload that lands between the database dump and the object-archive copy.
     // The tenant erased right after it records a new activity and uploads its track through
     // the real lifecycle; the rows go into the source cluster after the dump was taken, the
@@ -2977,7 +4113,11 @@ async function execute() {
       idempotencyKey: randomUUID(),
     });
     assertCoachingCandidateRowsPurged(
-      await readCoachingCandidateRows(source, removedConstraintAthlete, constraintCandidate),
+      await readCoachingCandidateRows(
+        sourceAdminPool,
+        removedConstraintAthlete,
+        constraintCandidate,
+      ),
       'source_deleted',
     );
     const revokedConsent = await createConsentRepository(sourceDb).setConsent(withdrawnAthlete, {
@@ -2986,6 +4126,40 @@ async function execute() {
       expectedRevision: aiConsent.revision,
       idempotencyKey: randomUUID(),
     });
+    const aiCaptureClient = await sourceAdminPool.connect();
+    let originalAiArtifact: ReturnType<typeof parseDrillAiTransitionArtifact>;
+    try {
+      await aiCaptureClient.query('BEGIN READ ONLY');
+      await aiCaptureClient.query("SET LOCAL TIME ZONE 'UTC'");
+      const original = await aiCaptureClient.query(
+        `SELECT athlete_id,event_id::text AS event_id,occurred_at::text AS occurred_at,
+          consent_previous_revision AS previous_revision,consent_previous_granted AS previous_granted,
+          consent_revision AS revision,consent_granted AS granted
+        FROM restore_suppression_event e WHERE athlete_id=$1 AND kind='ai_consent_transition'
+          AND record_version=1 AND target_id IS NULL AND consent_previous_revision=$2
+          AND consent_previous_granted=true AND consent_revision=$3 AND consent_granted=false
+          AND NOT EXISTS(SELECT 1 FROM jsonb_each(to_jsonb(e)) x
+            WHERE x.key<>ALL(ARRAY['event_id','record_version','athlete_id','kind','occurred_at','target_id',
+              'consent_previous_revision','consent_previous_granted','consent_revision','consent_granted'])
+              AND x.value<>'null'::jsonb)`,
+        [withdrawnAthlete, aiConsent.revision, revokedConsent.revision],
+      );
+      assert.equal(original.rowCount, 1);
+      originalAiArtifact = parseDrillAiTransitionArtifact({
+        schemaVersion: 1,
+        purpose: 'synthetic_archive_ai_transition_replay',
+        events: original.rows,
+      });
+      await aiCaptureClient.query('COMMIT');
+    } catch (error) {
+      await aiCaptureClient.query('ROLLBACK');
+      throw error;
+    } finally {
+      aiCaptureClient.release();
+    }
+    const originalAiBytes = Buffer.from(JSON.stringify(originalAiArtifact), 'utf8');
+    const originalAiHash = createHash('sha256').update(originalAiBytes).digest('hex');
+    await writeFile(aiTransitionFile, originalAiBytes, { mode: 0o600, flag: 'wx' });
     const withdrawnEvidence = await createCoreEvidenceSnapshotRepository(sourceDb).read(
       withdrawnAthlete,
       beforeWithdrawal.id,
@@ -3010,11 +4184,15 @@ async function execute() {
       { kind: 'ai', granted: false, revision: 0 },
     );
     assertCoachingCandidateRowsPurged(
-      await readCoachingCandidateRows(source, withdrawnAthlete, withdrawnCandidate),
+      await readCoachingCandidateRows(sourceAdminPool, withdrawnAthlete, withdrawnCandidate),
       'consent_withdrawn',
     );
     assertCoachingCandidateRowsPurged(
-      await readCoachingCandidateRows(source, absentConsentAthlete, absentConsentCandidate),
+      await readCoachingCandidateRows(
+        sourceAdminPool,
+        absentConsentAthlete,
+        absentConsentCandidate,
+      ),
       'consent_withdrawn',
     );
     // An activity of the tenant that is erased right after: its deletion is in the activity
@@ -3028,7 +4206,7 @@ async function execute() {
       { expectedRevision: erasedFixture.revision },
     );
     const overlappingDeletion = (
-      await source.query<{
+      await sourceAdminPool.query<{
         athlete_id: string;
         activity_id: string;
         revision: number;
@@ -3053,7 +4231,7 @@ async function execute() {
     // source, so the entry is carried from this capture, as the activity entry above is.
     await courseRepo.remove(deletedAthlete, erasedRetryCourse.course.courseId, 1);
     const overlappingCourseDeletion = (
-      await source.query<{ athlete_id: string; course_id: string; deleted_at: Date }>(
+      await sourceAdminPool.query<{ athlete_id: string; course_id: string; deleted_at: Date }>(
         `SELECT athlete_id,course_id::text AS course_id,deleted_at FROM course_deletion
          WHERE athlete_id=$1`,
         [deletedAthlete],
@@ -3066,7 +4244,7 @@ async function execute() {
     // M2-01as: the same overlap for the lifetime link budget: the erasure removes the erased
     // tenant's budget rows from the source, so this capture carries them.
     const overlappingShareBudget = (
-      await source.query(
+      await sourceAdminPool.query(
         `SELECT ${SHARE_BUDGET_COLUMNS} FROM course_share_area_budget WHERE athlete_id=$1`,
         [deletedAthlete],
       )
@@ -3074,11 +4252,17 @@ async function execute() {
     assert.equal(overlappingShareBudget.length, 1);
     await createOperationsRepository(sourceDb).eraseAccount(deletedAthlete);
     assert.equal(
-      (await source.query('SELECT 1 FROM course_deletion WHERE athlete_id=$1', [deletedAthlete]))
-        .rowCount,
+      (
+        await sourceAdminPool.query('SELECT 1 FROM course_deletion WHERE athlete_id=$1', [
+          deletedAthlete,
+        ])
+      ).rowCount,
       0,
     );
-    const currentConstraints = await captureConstraintRestoreLedger(source, backupConstraintOwners);
+    const currentConstraints = await captureConstraintRestoreLedger(
+      sourceAdminPool,
+      backupConstraintOwners,
+    );
     assert.throws(() =>
       parseConstraintRestoreLedger(
         {
@@ -3104,7 +4288,7 @@ async function execute() {
       flag: 'wx',
     });
     // One SQL statement supplies both sets from the same MVCC snapshot after the withdrawal.
-    const evidenceWithdrawalResult = await source.query<{ ledger: unknown }>(
+    const evidenceWithdrawalResult = await sourceAdminPool.query<{ ledger: unknown }>(
       `
       WITH subjects AS (
         SELECT unnest($1::text[]) AS athlete_id
@@ -3213,13 +4397,13 @@ async function execute() {
     });
     checks.push('post_backup_evidence_withdrawal_and_consent_ledger_captured_atomically');
     const ledger = (
-      await source.query<{ athlete_id: string }>(
+      await sourceAdminPool.query<{ athlete_id: string }>(
         'SELECT athlete_id FROM tenant_erasure ORDER BY athlete_id',
       )
     ).rows;
     await writeFile(ledgerFile, JSON.stringify(ledger), { mode: 0o600, flag: 'wx' });
     const cleanupLedger = (
-      await source.query('SELECT * FROM garmin_private.revocation ORDER BY id')
+      await sourceAdminPool.query('SELECT * FROM garmin_private.revocation ORDER BY id')
     ).rows;
     assert.equal(cleanupLedger.length, 1);
     await writeFile(cleanupLedgerFile, JSON.stringify(cleanupLedger), { mode: 0o600, flag: 'wx' });
@@ -3259,7 +4443,7 @@ async function execute() {
     );
     assert.equal(
       (
-        await source.query<{ count: number }>(
+        await sourceAdminPool.query<{ count: number }>(
           `SELECT count(*)::int AS count FROM course_share
            WHERE share_id=ANY($1::uuid[]) AND state='active'`,
           [
@@ -3278,7 +4462,7 @@ async function execute() {
     // that brings back the backup's lower one. One more link against the first area, and a
     // second area made after the backup, one link cut against it, then the area deleted — so
     // the restored cluster never had it and only its budget row can remember the place.
-    const budgetOf = async (owner: Pool, zoneId: string) =>
+    const budgetOf = async (owner: DrillRestoreQueryPort, zoneId: string) =>
       (
         await owner.query<{ links_cut: number }>(
           'SELECT links_cut FROM course_share_area_budget WHERE athlete_id=$1 AND zone_id=$2',
@@ -3289,7 +4473,7 @@ async function execute() {
     const [firstArea] = await sharingPreferences.listPrivacyZones(sharingAthlete);
     assert.ok(firstArea);
     // Three links at backup time (the revoked one and the deleted course's included).
-    assert.equal(await budgetOf(source, firstArea.zoneId), 3);
+    assert.equal(await budgetOf(sourceAdminPool, firstArea.zoneId), 3);
     await seedDrillLink(
       sourceDb,
       sourceSharing,
@@ -3297,7 +4481,7 @@ async function execute() {
       await seedShareableCourse(sourceDb, sharingAthlete, 'Drill link made after backup'),
       shareEpochAtBackup,
     );
-    assert.equal(await budgetOf(source, firstArea.zoneId), 4);
+    assert.equal(await budgetOf(sourceAdminPool, firstArea.zoneId), 4);
     const secondAreaCenter: [number, number] = [127.3, 37.7];
     const secondArea = (
       await sharingPreferences.createPrivacyZone(sharingAthlete, {
@@ -3319,15 +4503,15 @@ async function execute() {
       ),
       shareEpochAtBackup,
     );
-    assert.equal(await budgetOf(source, secondArea.zoneId), 1);
+    assert.equal(await budgetOf(sourceAdminPool, secondArea.zoneId), 1);
     await sharingPreferences.removePrivacyZone(sharingAthlete, secondArea.zoneId);
-    assert.equal(await budgetOf(source, secondArea.zoneId), 1);
+    assert.equal(await budgetOf(sourceAdminPool, secondArea.zoneId), 1);
     // The ledger is the whole table, captured outside the database like the others, with the
     // erased tenant's rows from the capture taken before its erasure. Area id, cell, rounded
     // radius and count — no centre, no name, no time.
     const shareBudgetLedger = [
       ...(
-        await source.query(
+        await sourceAdminPool.query(
           `SELECT ${SHARE_BUDGET_COLUMNS} FROM course_share_area_budget ORDER BY athlete_id,zone_id`,
         )
       ).rows,
@@ -3346,7 +4530,7 @@ async function execute() {
     // course the owner deleted, before or after the backup. Tenant, course id and when — no
     // name and no coordinate.
     const courseDeletionLedger = (
-      await source.query<{ athlete_id: string; course_id: string; deleted_at: Date }>(
+      await sourceAdminPool.query<{ athlete_id: string; course_id: string; deleted_at: Date }>(
         `SELECT athlete_id,course_id::text AS course_id,deleted_at FROM course_deletion
          ORDER BY athlete_id,course_id`,
       )
@@ -3381,7 +4565,7 @@ async function execute() {
     });
     checks.push('post_backup_course_deletion_ledger_captured_separately');
     const activityDeletionLedger = (
-      await source.query<{
+      await sourceAdminPool.query<{
         athlete_id: string;
         activity_id: string;
         revision: number;
@@ -3420,7 +4604,13 @@ async function execute() {
     // whose schema is restored and whose data is not yet looks exactly like this one: the
     // replay function exists, and no tenant does. Replaying there would record deletions of
     // courses the data section then brings back, so the replay refuses it.
-    await admin.query('CREATE DATABASE drill_partial');
+    // Target archive import still uses the privileged historical archive path. This source-owner
+    // slice does not establish a current-schema active-trigger owner importer or admission proof.
+    await admin.query('CREATE DATABASE drill_partial OWNER drill_owner');
+    await recordDrillAclWitness(
+      await captureDrillRawAcl(pool('drill_partial')),
+      'pre-import-partial',
+    );
     run(bin, 'pg_restore', [
       '-h',
       directory,
@@ -3435,6 +4625,14 @@ async function execute() {
       archive,
     ]);
     const partial = pool('drill_partial');
+    await transferDrillTargetMetadata(
+      partial,
+      pool('drill_partial', 'drill_owner'),
+      sourceCatalog,
+      sourceAcl,
+      'pre-data',
+    );
+    checks.push('partial_archive_target_user_metadata_plain_owner_no_data_replay_authority');
     const partialClient = await partial.connect();
     try {
       await partialClient.query('BEGIN');
@@ -3453,6 +4651,7 @@ async function execute() {
       partialClient.release();
     }
     checks.push('course_deletion_replay_refuses_a_cluster_whose_data_is_not_yet_restored');
+    await recordDrillAclWitness(await captureDrillRawAcl(pool('drill_restore')), 'pre-import-full');
     run(bin, 'pg_restore', [
       '-h',
       directory,
@@ -3467,6 +4666,16 @@ async function execute() {
     ]);
     await cp(objectArchive, restoredObjectRoot, { recursive: true, errorOnExist: true });
     const restored = pool('drill_restore');
+    await transferDrillTargetMetadata(
+      restored,
+      pool('drill_restore', 'drill_owner'),
+      sourceCatalog,
+      sourceAcl,
+      'full',
+    );
+    checks.push('full_archive_target_user_metadata_plain_owner_exact_catalog_retarget');
+    // Archive inspection remains administrator-scoped; protected replay below acquires its own plain-owner lease.
+    // Metadata transfer does not establish leased owner replay or authenticated reopening.
     // M2-01s: the archive predates the erasure, so before any replay the restored cluster
     // holds every course row and every object the erased tenant had. This is what makes
     // the checks after the replay mean something.
@@ -3737,328 +4946,603 @@ async function execute() {
       backupAiOwners,
     );
     assert.deepEqual(replayWithdrawalLedger, evidenceWithdrawalLedger);
-    await restored.query('BEGIN');
-    try {
-      for (const entry of replayLedger) {
-        assert.ok(
-          typeof entry === 'object' &&
-            entry !== null &&
-            'athlete_id' in entry &&
-            typeof entry.athlete_id === 'string',
-        );
-        await restored.query("SELECT set_config('app.athlete_id',$1,true)", [entry.athlete_id]);
-        await restored.query('SELECT public.erase_account($1)', [entry.athlete_id]);
-      }
-      await restoreConstraintLedger(
-        restored,
-        parseConstraintRestoreLedger(
-          JSON.parse(await readFile(constraintLedgerFile, 'utf8')) as unknown,
-          backupConstraintOwners,
+    const aiArtifactStat = await lstat(aiTransitionFile);
+    assert.ok(aiArtifactStat.isFile() && !aiArtifactStat.isSymbolicLink());
+    assert.equal(aiArtifactStat.mode & 0o777, 0o600);
+    assert.ok(aiArtifactStat.size <= MAX_DRILL_AI_EVENT_BYTES);
+    const aiReplayBytes = await readFile(aiTransitionFile);
+    assert.equal(createHash('sha256').update(aiReplayBytes).digest('hex'), originalAiHash);
+    const aiReplayArtifact = parseDrillAiTransitionArtifact(
+      JSON.parse(aiReplayBytes.toString('utf8')) as unknown,
+    );
+    assert.deepEqual(aiReplayArtifact, originalAiArtifact);
+    const restoredOwner = pool('drill_restore', 'drill_owner');
+    const maintenanceOwners: string[] = [
+      deletedAthlete,
+      retainedAthlete,
+      removedConstraintAthlete,
+      withdrawnAthlete,
+      absentConsentAthlete,
+      sharingAthlete,
+    ].sort();
+    assert.equal(new Set(maintenanceOwners).size, 6);
+    const parsedConstraintReplay = parseConstraintRestoreLedger(
+      JSON.parse(await readFile(constraintLedgerFile, 'utf8')) as unknown,
+      backupConstraintOwners,
+    );
+    const inspectedConstraints = await captureConstraintRestoreLedger(
+      restored,
+      backupConstraintOwners,
+    );
+    const constraintReplayOwners = [
+      ...new Set(
+        [...inspectedConstraints.subjects, ...parsedConstraintReplay.subjects].map(
+          (row) => row.athleteId,
         ),
+      ),
+    ].sort();
+    parseConstraintRestoreLedger(parsedConstraintReplay, constraintReplayOwners);
+    for (const athleteId of constraintReplayOwners)
+      assert.ok(maintenanceOwners.includes(athleteId));
+    // Inspector roster check: plain owner RLS must not silently leave another credential tenant untouched.
+    for (const table of [
+      'garmin_attempt',
+      'garmin_connection',
+      'garmin_unofficial_run',
+      'garmin_unofficial_connection',
+    ]) {
+      const tenants = await restored.query<{ athlete_id: string }>(
+        `SELECT DISTINCT athlete_id FROM ${table}`,
       );
-      // Test fail-closed replay against real restored rows. The helper deliberately does not
-      // commit/rollback: maintenance owns the transaction, including earlier owner changes.
-      const safeConstraints = await captureConstraintRestoreLedger(
-        restored,
-        backupConstraintOwners,
-      );
-      const originalConstraintSubject = backupConstraintLedger.subjects.find(
-        (row) => row.athleteId === retainedAthlete,
-      );
-      const safeConstraintHead = safeConstraints.subjects.find(
-        (row) => row.athleteId === removedConstraintAthlete,
-      )?.head;
-      assert.ok(originalConstraintSubject && safeConstraintHead);
-      const invalidConstraintLedgers = [
-        {
-          ...safeConstraints,
-          subjects: safeConstraints.subjects.filter((row) => row.athleteId !== retainedAthlete),
-        },
-        {
-          ...safeConstraints,
-          subjects: safeConstraints.subjects.map((row) =>
-            row.athleteId === retainedAthlete ? { ...row, rows: row.rows.slice(1) } : row,
-          ),
-        },
-        {
-          ...safeConstraints,
-          subjects: safeConstraints.subjects.map((row) =>
-            row.athleteId === retainedAthlete
-              ? {
-                  ...row,
-                  rows: row.rows.map((item) =>
-                    item.deleted
-                      ? item
-                      : { ...item, text: 'Synthetic same-revision contradiction' },
-                  ),
-                }
-              : row,
-          ),
-        },
-        {
-          ...safeConstraints,
-          subjects: safeConstraints.subjects.map((row) =>
-            row.athleteId === retainedAthlete ? originalConstraintSubject : row,
-          ),
-        },
-        {
-          ...safeConstraints,
-          subjects: safeConstraints.subjects.map((row) =>
-            row.athleteId === removedConstraintAthlete
-              ? {
-                  ...row,
-                  head: { ...safeConstraintHead, revision: safeConstraintHead.revision + 1 },
-                  rows: row.rows.map((item) =>
-                    item.deleted
-                      ? {
-                          ...item,
-                          revision: item.revision + 1,
-                          deleted: false,
-                          text: 'Synthetic forbidden resurrection',
-                        }
-                      : item,
-                  ),
-                }
-              : row,
-          ),
-        },
-      ];
-      for (const invalid of invalidConstraintLedgers) {
-        await restored.query('SAVEPOINT invalid_constraint_replay');
-        await restored.query("SELECT set_config('app.athlete_id',$1,true)", [retainedAthlete]);
-        await restored.query(
-          "UPDATE coaching_constraint_head SET updated_at='2000-01-01T00:00:00Z' WHERE athlete_id=$1",
-          [retainedAthlete],
-        );
-        await assert.rejects(() => restoreConstraintLedger(restored, invalid));
-        await restored.query('ROLLBACK TO SAVEPOINT invalid_constraint_replay');
-        await restored.query('RELEASE SAVEPOINT invalid_constraint_replay');
-        assert.deepEqual(
-          (await captureConstraintRestoreLedger(restored, backupConstraintOwners)).subjects,
-          safeConstraints.subjects,
-        );
-      }
-      checks.push(
-        'invalid_constraint_ledger_owner_row_revision_and_tombstone_replay_fails_closed_with_caller_rollback',
-      );
-      // Owner maintenance runs before runtime access; tenant context is required by immutable triggers.
-      for (const entry of replayWithdrawalLedger.snapshots) {
-        await restored.query("SELECT set_config('app.athlete_id',$1,true)", [entry.athlete_id]);
-        await restored.query(
-          'UPDATE core_evidence_snapshot SET body=NULL,purged_reason=$3 WHERE athlete_id=$1 AND id=$2 AND body IS NOT NULL',
-          [entry.athlete_id, entry.id, entry.purged_reason],
-        );
-      }
-      let skippedErasedConsentOwners = 0;
-      for (const consent of replayWithdrawalLedger.consents) {
-        await restored.query("SELECT set_config('app.athlete_id',$1,true)", [consent.athlete_id]);
-        const erased = await restored.query('SELECT 1 FROM tenant_erasure WHERE athlete_id=$1', [
-          consent.athlete_id,
-        ]);
-        if (erased.rowCount !== 0) {
-          assert.equal(
-            (
-              await restored.query('SELECT 1 FROM consent WHERE athlete_id=$1', [
-                consent.athlete_id,
-              ])
-            ).rowCount,
-            0,
-          );
-          skippedErasedConsentOwners++;
-          continue;
-        }
-        if (consent.state.kind === 'absent') {
-          await restored.query("DELETE FROM consent WHERE athlete_id=$1 AND kind='ai'", [
-            consent.athlete_id,
-          ]);
-          assert.equal(
-            (
-              await restored.query("SELECT 1 FROM consent WHERE athlete_id=$1 AND kind='ai'", [
-                consent.athlete_id,
-              ])
-            ).rowCount,
-            0,
-          );
-          continue;
-        }
-        // Fail closed if the purported latest ledger would overwrite a newer or contradictory state.
-        const applied = await restored.query(
-          `INSERT INTO consent(athlete_id,kind,revision,granted) VALUES($1,$2,$3,$4)
-           ON CONFLICT(athlete_id,kind) DO UPDATE SET revision=EXCLUDED.revision,granted=EXCLUDED.granted
-           WHERE consent.revision<EXCLUDED.revision OR (consent.revision=EXCLUDED.revision AND consent.granted=EXCLUDED.granted)
-           RETURNING athlete_id`,
-          [consent.athlete_id, consent.kind, consent.state.revision, consent.state.granted],
-        );
-        assert.equal(applied.rowCount, 1);
-      }
-      assert.equal(skippedErasedConsentOwners, 1);
-      await restored.query('DELETE FROM identity_private.session');
-      await restored.query('DELETE FROM identity_private.login_attempt');
-      // Old backup grants can have been rotated/disconnected since the snapshot.
-      // Retain domain data, but require fresh OAuth and replay only the latest cleanup ledger.
-      await restored.query('DELETE FROM garmin_attempt');
-      await restored.query(
-        "UPDATE garmin_connection SET generation=generation+1,state='reconnect_required',encrypted_tokens=NULL,user_id=NULL,permissions='[]',connected_at=NULL,access_expires_at=NULL,refresh_expires_at=NULL,lease_id=NULL,lease_until=NULL,attempt_expires_at=NULL,attempt_session_id=NULL",
-      );
-      await restored.query('DELETE FROM garmin_private.revocation');
-      await restored.query('DELETE FROM garmin_private.ownership');
-      const cleanupJson = await readFile(cleanupLedgerFile, 'utf8');
-      await restored.query(
-        'INSERT INTO garmin_private.revocation SELECT * FROM jsonb_populate_recordset(NULL::garmin_private.revocation,$1::jsonb)',
-        [cleanupJson],
-      );
-      await restored.query(
-        'UPDATE garmin_private.revocation SET lease_id=NULL,lease_until=NULL,prepared=false',
-      );
-      // M1-06b-tmp: an unofficial Garmin session in the backup may be one the owner has since
-      // disconnected, erased or rotated, and it can never be revoked at Garmin. It is never
-      // revived: every restored session is discarded and the owner logs in again. The pinned
-      // profile and the activity ledger are kept (they are not credentials); an in-flight run
-      // is closed. Nothing is added to the official revocation queue.
-      await restored.query(
-        "UPDATE garmin_unofficial_run SET state='failed_transient',finished_at=greatest(started_at,clock_timestamp()) WHERE state='running'",
-      );
-      await restored.query(
-        "UPDATE garmin_unofficial_connection SET state=CASE WHEN state='connected' THEN 'reconnect_required' ELSE state END,encrypted_session=NULL,session_generation=session_generation+1,lease_id=NULL,lease_until=NULL,run_requested_at=NULL",
-      );
-      // Activity deletions that happened after the backup are suppression, not a cache:
-      // the restored cluster must re-apply them before any runtime read, and must reclaim
-      // the track objects the archive brought back with them.
-      const activityDeletionJson: unknown = JSON.parse(
-        await readFile(activityDeletionLedgerFile, 'utf8'),
-      );
-      assert.ok(Array.isArray(activityDeletionJson) && activityDeletionJson.length > 0);
-      let replayedDeletions = 0;
-      let erasureSatisfiedDeletions = 0;
-      let absentDeletions = 0;
-      for (const entry of activityDeletionJson) {
-        assert.ok(typeof entry === 'object' && entry !== null && !Array.isArray(entry));
-        const row = entry as Record<string, unknown>;
-        const owner = row['athlete_id'];
-        const activityId = row['activity_id'];
-        const kind = row['kind'];
-        const sourceId = row['source_id'];
-        const revision = row['revision'];
-        const sourceRevision = row['source_revision'];
-        const contentHash = row['content_hash'];
-        assert.ok(
-          typeof owner === 'string' &&
-            typeof activityId === 'string' &&
-            typeof kind === 'string' &&
-            typeof sourceId === 'string' &&
-            typeof revision === 'number' &&
-            Number.isInteger(revision) &&
-            revision > 0 &&
-            typeof sourceRevision === 'number' &&
-            Number.isInteger(sourceRevision) &&
-            sourceRevision > 0 &&
-            typeof contentHash === 'string',
-        );
-        await restored.query("SELECT set_config('app.athlete_id',$1,true)", [owner]);
-        const erased = await restored.query('SELECT 1 FROM tenant_erasure WHERE athlete_id=$1', [
-          owner,
-        ]);
-        if (erased.rowCount !== 0) {
-          // Erasure already removed this tenant's activities, which satisfies the entry
-          // more completely than suppression would. Counted, not silently skipped, so a
-          // ledger entry can never be lost without the count showing it.
-          assert.equal(
-            (
-              await restored.query(
-                'SELECT 1 FROM activity_canonical WHERE athlete_id=$1 AND id=$2',
-                [owner, activityId],
-              )
-            ).rowCount,
-            0,
-          );
-          erasureSatisfiedDeletions += 1;
-          continue;
-        }
-        const present = await restored.query(
-          'SELECT 1 FROM activity_canonical WHERE athlete_id=$1 AND id=$2',
-          [owner, activityId],
-        );
-        if (present.rowCount === 0) {
-          // M2-01y: an activity recorded after the dump and deleted before the ledger was
-          // captured. The restored cluster has no row for it — no canonical row, no source
-          // head — so there is nothing to tombstone and no source to suppress. Skipping it
-          // would let a device re-sync import the deleted activity again as a new one. The
-          // replay rebuilds exactly what suppression needs from the ledger (a deleted
-          // canonical row with no activity values, the source head, the suppression row) and
-          // arms the purge of the activity's object directory; the function refuses — and so
-          // rolls the whole replay back — anything it cannot verify.
-          assert.deepEqual(
-            (
-              await restored.query<{ replayed: boolean }>(
-                'SELECT public.replay_absent_activity_deletion($1,$2,$3,$4,$5,$6,$7) AS replayed',
-                [owner, activityId, kind, sourceId, sourceRevision, revision, contentHash],
-              )
-            ).rows,
-            [{ replayed: true }],
-          );
-          absentDeletions += 1;
-          continue;
-        }
-        await restored.query(
-          `INSERT INTO activity_suppression(athlete_id,kind,source_id) VALUES($1,$2,$3)
-           ON CONFLICT DO NOTHING`,
-          [owner, kind, sourceId],
-        );
-        // Fail closed if the restored row is already ahead of the ledger.
-        const applied = await restored.query(
-          `UPDATE activity_canonical SET deleted=true,revision=$3
-           WHERE athlete_id=$1 AND id=$2 AND revision<=$3 RETURNING id`,
-          [owner, activityId, revision],
-        );
-        assert.equal(applied.rowCount, 1);
-        replayedDeletions += 1;
-      }
-      assert.equal(
-        replayedDeletions + erasureSatisfiedDeletions + absentDeletions,
-        activityDeletionJson.length,
-      );
-      assert.equal(erasureSatisfiedDeletions, 1);
-      assert.equal(absentDeletions, 1);
-      // M2-01ao: course deletions after the backup are suppression too. Every entry is
-      // accounted for — applied to a restored course, recorded for a course the dump never
-      // had, found already applied, or satisfied by the tenant's erasure — or the whole
-      // replay rolls back.
-      const courseReplay = await replayCourseDeletionLedger(
-        restored,
-        JSON.parse(await readFile(courseDeletionLedgerFile, 'utf8')) as unknown,
-      );
-      assert.deepEqual(
-        { ...courseReplay, deleted: [...courseReplay.deleted].sort() },
-        {
-          // M2-01k-o: the shared course deleted after the backup is replayed like the owner's.
-          deleted: [
-            ownerDeletedCourse.course.courseId,
-            linkOfCourseDeletedAfterBackup.courseId,
-          ].sort(),
-          absent: [gapBornCourse.course.courseId],
-          already_applied: [preBackupDeletedCourse.course.courseId],
-          erasure_satisfied: [erasedRetryCourse.course.courseId],
-        },
-      );
-      // M2-01as: the restored budget rows are the backup's; the ledger raises the first
-      // area's to the links made since, keeps the deleted second area as a tombstone, and
-      // leaves the erased tenant's to its erasure.
-      assert.equal(await budgetOf(restored, firstArea.zoneId), 3);
-      const budgetReplay = await replayShareBudgetLedger(
-        restored,
-        JSON.parse(await readFile(shareBudgetLedgerFile, 'utf8')) as unknown,
-      );
-      assert.equal(budgetReplay.raised.length, 1);
-      assert.equal(budgetReplay.inserted.length, 1);
-      assert.equal(budgetReplay.already_applied.length, 0);
-      assert.equal(budgetReplay.erasure_satisfied.length, 1);
-      assert.deepEqual(budgetReplay.raised, [firstArea.zoneId]);
-      assert.deepEqual(budgetReplay.inserted, [secondArea.zoneId]);
-      await restored.query('COMMIT');
-    } catch (error) {
-      await restored.query('ROLLBACK');
-      throw error;
+      for (const tenant of tenants.rows) assert.ok(maintenanceOwners.includes(tenant.athlete_id));
     }
+    const replayOwnedArchive = async (
+      checkpoint: (stage: 'after-constraint' | 'after-budget') => Promise<void>,
+      witness: (fact: DrillReplayWitness) => void,
+    ) =>
+      withDrillOwnedReplay(
+        restoredOwner,
+        maintenanceOwners,
+        async (restored, enterTenant) => {
+          for (const entry of replayLedger) {
+            assert.ok(
+              typeof entry === 'object' &&
+                entry !== null &&
+                'athlete_id' in entry &&
+                typeof entry.athlete_id === 'string',
+            );
+            await enterTenant(entry.athlete_id);
+            await restored.query('SELECT public.erase_account($1)', [entry.athlete_id]);
+          }
+          await restoreConstraintLedger(
+            restored,
+            parseConstraintRestoreLedger(
+              JSON.parse(await readFile(constraintLedgerFile, 'utf8')) as unknown,
+              backupConstraintOwners,
+            ),
+            constraintReplayOwners,
+            enterTenant,
+          );
+          witness({ phase: 'checkpoint', pid: await drillBackendPid(restored) });
+          await checkpoint('after-constraint');
+          // Test fail-closed replay against real restored rows. The helper deliberately does not
+          // commit/rollback: maintenance owns the transaction, including earlier owner changes.
+          const safeConstraints = await captureOwnedConstraintRestoreLedger(
+            restored,
+            constraintReplayOwners,
+            enterTenant,
+          );
+          const originalConstraintSubject = backupConstraintLedger.subjects.find(
+            (row) => row.athleteId === retainedAthlete,
+          );
+          const safeConstraintHead = safeConstraints.subjects.find(
+            (row) => row.athleteId === removedConstraintAthlete,
+          )?.head;
+          assert.ok(originalConstraintSubject && safeConstraintHead);
+          const invalidConstraintLedgers = [
+            {
+              ...safeConstraints,
+              subjects: safeConstraints.subjects.filter((row) => row.athleteId !== retainedAthlete),
+            },
+            {
+              ...safeConstraints,
+              subjects: safeConstraints.subjects.map((row) =>
+                row.athleteId === retainedAthlete ? { ...row, rows: row.rows.slice(1) } : row,
+              ),
+            },
+            {
+              ...safeConstraints,
+              subjects: safeConstraints.subjects.map((row) =>
+                row.athleteId === retainedAthlete
+                  ? {
+                      ...row,
+                      rows: row.rows.map((item) =>
+                        item.deleted
+                          ? item
+                          : { ...item, text: 'Synthetic same-revision contradiction' },
+                      ),
+                    }
+                  : row,
+              ),
+            },
+            {
+              ...safeConstraints,
+              subjects: safeConstraints.subjects.map((row) =>
+                row.athleteId === retainedAthlete ? originalConstraintSubject : row,
+              ),
+            },
+            {
+              ...safeConstraints,
+              subjects: safeConstraints.subjects.map((row) =>
+                row.athleteId === removedConstraintAthlete
+                  ? {
+                      ...row,
+                      head: { ...safeConstraintHead, revision: safeConstraintHead.revision + 1 },
+                      rows: row.rows.map((item) =>
+                        item.deleted
+                          ? {
+                              ...item,
+                              revision: item.revision + 1,
+                              deleted: false,
+                              text: 'Synthetic forbidden resurrection',
+                            }
+                          : item,
+                      ),
+                    }
+                  : row,
+              ),
+            },
+          ];
+          for (const invalid of invalidConstraintLedgers) {
+            await restored.query('SAVEPOINT invalid_constraint_replay');
+            await enterTenant(retainedAthlete);
+            await restored.query(
+              "UPDATE coaching_constraint_head SET updated_at='2000-01-01T00:00:00Z' WHERE athlete_id=$1",
+              [retainedAthlete],
+            );
+            await assert.rejects(() =>
+              restoreConstraintLedger(restored, invalid, constraintReplayOwners, enterTenant),
+            );
+            await restored.query('ROLLBACK TO SAVEPOINT invalid_constraint_replay');
+            await restored.query('RELEASE SAVEPOINT invalid_constraint_replay');
+            assert.deepEqual(
+              (
+                await captureOwnedConstraintRestoreLedger(
+                  restored,
+                  constraintReplayOwners,
+                  enterTenant,
+                )
+              ).subjects,
+              safeConstraints.subjects,
+            );
+          }
+          checks.push(
+            'invalid_constraint_ledger_owner_row_revision_and_tombstone_replay_fails_closed_with_caller_rollback',
+          );
+          // Owner maintenance runs before runtime access; tenant context is required by immutable triggers.
+          for (const entry of replayWithdrawalLedger.snapshots) {
+            await enterTenant(entry.athlete_id);
+            await restored.query(
+              'UPDATE core_evidence_snapshot SET body=NULL,purged_reason=$3 WHERE athlete_id=$1 AND id=$2 AND body IS NOT NULL',
+              [entry.athlete_id, entry.id, entry.purged_reason],
+            );
+          }
+          let skippedErasedConsentOwners = 0;
+          for (const consent of replayWithdrawalLedger.consents) {
+            await enterTenant(consent.athlete_id);
+            const erased = await restored.query(
+              'SELECT 1 FROM tenant_erasure WHERE athlete_id=$1',
+              [consent.athlete_id],
+            );
+            if (erased.rowCount !== 0) {
+              assert.equal(
+                (
+                  await restored.query('SELECT 1 FROM consent WHERE athlete_id=$1', [
+                    consent.athlete_id,
+                  ])
+                ).rowCount,
+                0,
+              );
+              skippedErasedConsentOwners++;
+              continue;
+            }
+            if (consent.state.kind === 'absent') {
+              await restored.query("DELETE FROM consent WHERE athlete_id=$1 AND kind='ai'", [
+                consent.athlete_id,
+              ]);
+              assert.equal(
+                (
+                  await restored.query("SELECT 1 FROM consent WHERE athlete_id=$1 AND kind='ai'", [
+                    consent.athlete_id,
+                  ])
+                ).rowCount,
+                0,
+              );
+              continue;
+            }
+            const head = await restored.query(
+              "SELECT revision,granted FROM consent WHERE athlete_id=$1 AND kind='ai' FOR UPDATE",
+              [consent.athlete_id],
+            );
+            const expectedHead = {
+              revision: consent.state.revision,
+              granted: consent.state.granted,
+            };
+            if (
+              head.rows.length === 1 &&
+              head.rows[0]?.revision === expectedHead.revision &&
+              head.rows[0]?.granted === expectedHead.granted
+            ) {
+              assert.deepEqual(head.rows, [expectedHead]);
+              // A normal source event has no restore receipt. Equal state is read-only, never replayed/backfilled.
+              continue;
+            }
+            const event = aiReplayArtifact.events.find(
+              (event) => event.athlete_id === consent.athlete_id,
+            );
+            assert.ok(event);
+            assert.deepEqual(head.rows, [
+              { revision: event.previous_revision, granted: event.previous_granted },
+            ]);
+            assert.deepEqual(expectedHead, { revision: event.revision, granted: event.granted });
+            await restored.query("SET LOCAL TIME ZONE 'UTC'");
+            const args = [
+              event.athlete_id,
+              event.event_id,
+              event.occurred_at,
+              event.previous_revision,
+              event.previous_granted,
+              event.revision,
+              event.granted,
+            ];
+            assert.deepEqual(
+              (
+                await restored.query(
+                  'SELECT public.replay_ai_consent_transition_exact($1,$2,$3,$4,$5,$6,$7) AS outcome',
+                  args,
+                )
+              ).rows,
+              [{ outcome: 'transitioned' }],
+            );
+            assert.deepEqual(
+              (
+                await restored.query(
+                  `SELECT athlete_id,event_id::text AS event_id,occurred_at::text AS occurred_at,
+              consent_previous_revision AS previous_revision,consent_previous_granted AS previous_granted,
+              consent_revision AS revision,consent_granted AS granted
+            FROM restore_suppression_event WHERE event_id=$1 AND kind='ai_consent_transition' AND record_version=1 AND target_id IS NULL`,
+                  [event.event_id],
+                )
+              ).rows,
+              [event],
+            );
+            assert.deepEqual(
+              (
+                await restored.query(
+                  `SELECT athlete_id,event_id::text AS event_id,occurred_at::text AS occurred_at,
+              previous_revision,previous_granted,consent_revision AS revision,consent_granted AS granted
+            FROM restore_ai_consent_replay_receipt WHERE event_id=$1`,
+                  [event.event_id],
+                )
+              ).rows,
+              [event],
+            );
+            const outbox = await restored.query(
+              'SELECT id::text AS id,idempotency_key,topic,payload FROM outbox WHERE athlete_id=$1 AND id=$2',
+              [event.athlete_id, event.event_id],
+            );
+            assert.deepEqual(outbox.rows, [
+              {
+                id: event.event_id,
+                idempotency_key: `restore:ai_consent:${event.event_id}`,
+                topic: 'consent.changed',
+                payload: { kind: 'ai', granted: event.granted, revision: event.revision },
+              },
+            ]);
+            assert.deepEqual(
+              (
+                await restored.query(
+                  'SELECT public.replay_ai_consent_transition_exact($1,$2,$3,$4,$5,$6,$7) AS outcome',
+                  args,
+                )
+              ).rows,
+              [{ outcome: 'already_applied' }],
+            );
+            assert.deepEqual(
+              (
+                await restored.query(
+                  "SELECT revision,granted FROM consent WHERE athlete_id=$1 AND kind='ai'",
+                  [consent.athlete_id],
+                )
+              ).rows,
+              [expectedHead],
+            );
+            assert.deepEqual(
+              (
+                await restored.query(
+                  'SELECT id::text AS id,idempotency_key,topic,payload FROM outbox WHERE athlete_id=$1 AND id=$2',
+                  [event.athlete_id, event.event_id],
+                )
+              ).rows,
+              outbox.rows,
+            );
+          }
+          assert.equal(skippedErasedConsentOwners, 1);
+          await restored.query("SELECT set_config('app.athlete_id','',true)");
+          await restored.query('DELETE FROM identity_private.session');
+          await restored.query('DELETE FROM identity_private.login_attempt');
+          // Old backup grants can have been rotated/disconnected since the snapshot.
+          // Retain domain data, but require fresh OAuth and replay only the latest cleanup ledger.
+          for (const athleteId of maintenanceOwners) {
+            await enterTenant(athleteId);
+            const attempts = await restored.query(
+              'SELECT 1 FROM garmin_attempt WHERE athlete_id=$1',
+              [athleteId],
+            );
+            assert.equal(
+              (await restored.query('DELETE FROM garmin_attempt WHERE athlete_id=$1', [athleteId]))
+                .rowCount,
+              attempts.rowCount,
+            );
+            const connections = await restored.query(
+              'SELECT 1 FROM garmin_connection WHERE athlete_id=$1',
+              [athleteId],
+            );
+            assert.equal(
+              (
+                await restored.query(
+                  "UPDATE garmin_connection SET generation=generation+1,state='reconnect_required',encrypted_tokens=NULL,user_id=NULL,permissions='[]',connected_at=NULL,access_expires_at=NULL,refresh_expires_at=NULL,lease_id=NULL,lease_until=NULL,attempt_expires_at=NULL,attempt_session_id=NULL WHERE athlete_id=$1",
+                  [athleteId],
+                )
+              ).rowCount,
+              connections.rowCount,
+            );
+          }
+          await restored.query("SELECT set_config('app.athlete_id','',true)");
+          await restored.query('DELETE FROM garmin_private.revocation');
+          await restored.query('DELETE FROM garmin_private.ownership');
+          const cleanupJson = await readFile(cleanupLedgerFile, 'utf8');
+          await restored.query(
+            'INSERT INTO garmin_private.revocation SELECT * FROM jsonb_populate_recordset(NULL::garmin_private.revocation,$1::jsonb)',
+            [cleanupJson],
+          );
+          await restored.query(
+            'UPDATE garmin_private.revocation SET lease_id=NULL,lease_until=NULL,prepared=false',
+          );
+          // M1-06b-tmp: an unofficial Garmin session in the backup may be one the owner has since
+          // disconnected, erased or rotated, and it can never be revoked at Garmin. It is never
+          // revived: every restored session is discarded and the owner logs in again. The pinned
+          // profile and the activity ledger are kept (they are not credentials); an in-flight run
+          // is closed. Nothing is added to the official revocation queue.
+          for (const athleteId of maintenanceOwners) {
+            await enterTenant(athleteId);
+            const running = await restored.query(
+              "SELECT 1 FROM garmin_unofficial_run WHERE athlete_id=$1 AND state='running'",
+              [athleteId],
+            );
+            assert.equal(
+              (
+                await restored.query(
+                  "UPDATE garmin_unofficial_run SET state='failed_transient',finished_at=greatest(started_at,clock_timestamp()) WHERE state='running' AND athlete_id=$1",
+                  [athleteId],
+                )
+              ).rowCount,
+              running.rowCount,
+            );
+            const connections = await restored.query(
+              'SELECT 1 FROM garmin_unofficial_connection WHERE athlete_id=$1',
+              [athleteId],
+            );
+            assert.equal(
+              (
+                await restored.query(
+                  "UPDATE garmin_unofficial_connection SET state=CASE WHEN state='connected' THEN 'reconnect_required' ELSE state END,encrypted_session=NULL,session_generation=session_generation+1,lease_id=NULL,lease_until=NULL,run_requested_at=NULL WHERE athlete_id=$1",
+                  [athleteId],
+                )
+              ).rowCount,
+              connections.rowCount,
+            );
+          }
+          // Activity deletions that happened after the backup are suppression, not a cache:
+          // the restored cluster must re-apply them before any runtime read, and must reclaim
+          // the track objects the archive brought back with them.
+          const activityDeletionJson: unknown = JSON.parse(
+            await readFile(activityDeletionLedgerFile, 'utf8'),
+          );
+          assert.ok(Array.isArray(activityDeletionJson) && activityDeletionJson.length > 0);
+          let replayedDeletions = 0;
+          let erasureSatisfiedDeletions = 0;
+          let absentDeletions = 0;
+          for (const entry of activityDeletionJson) {
+            assert.ok(typeof entry === 'object' && entry !== null && !Array.isArray(entry));
+            const row = entry as Record<string, unknown>;
+            const owner = row['athlete_id'];
+            const activityId = row['activity_id'];
+            const kind = row['kind'];
+            const sourceId = row['source_id'];
+            const revision = row['revision'];
+            const sourceRevision = row['source_revision'];
+            const contentHash = row['content_hash'];
+            assert.ok(
+              typeof owner === 'string' &&
+                typeof activityId === 'string' &&
+                typeof kind === 'string' &&
+                typeof sourceId === 'string' &&
+                typeof revision === 'number' &&
+                Number.isInteger(revision) &&
+                revision > 0 &&
+                typeof sourceRevision === 'number' &&
+                Number.isInteger(sourceRevision) &&
+                sourceRevision > 0 &&
+                typeof contentHash === 'string',
+            );
+            await enterTenant(owner);
+            const erased = await restored.query(
+              'SELECT 1 FROM tenant_erasure WHERE athlete_id=$1',
+              [owner],
+            );
+            if (erased.rowCount !== 0) {
+              // Erasure already removed this tenant's activities, which satisfies the entry
+              // more completely than suppression would. Counted, not silently skipped, so a
+              // ledger entry can never be lost without the count showing it.
+              assert.equal(
+                (
+                  await restored.query(
+                    'SELECT 1 FROM activity_canonical WHERE athlete_id=$1 AND id=$2',
+                    [owner, activityId],
+                  )
+                ).rowCount,
+                0,
+              );
+              erasureSatisfiedDeletions += 1;
+              continue;
+            }
+            const present = await restored.query(
+              'SELECT 1 FROM activity_canonical WHERE athlete_id=$1 AND id=$2',
+              [owner, activityId],
+            );
+            if (present.rowCount === 0) {
+              // M2-01y: an activity recorded after the dump and deleted before the ledger was
+              // captured. The restored cluster has no row for it — no canonical row, no source
+              // head — so there is nothing to tombstone and no source to suppress. Skipping it
+              // would let a device re-sync import the deleted activity again as a new one. The
+              // replay rebuilds exactly what suppression needs from the ledger (a deleted
+              // canonical row with no activity values, the source head, the suppression row) and
+              // arms the purge of the activity's object directory; the function refuses — and so
+              // rolls the whole replay back — anything it cannot verify.
+              assert.deepEqual(
+                (
+                  await restored.query<{ replayed: boolean }>(
+                    'SELECT public.replay_absent_activity_deletion($1,$2,$3,$4,$5,$6,$7) AS replayed',
+                    [owner, activityId, kind, sourceId, sourceRevision, revision, contentHash],
+                  )
+                ).rows,
+                [{ replayed: true }],
+              );
+              absentDeletions += 1;
+              continue;
+            }
+            await restored.query(
+              `INSERT INTO activity_suppression(athlete_id,kind,source_id) VALUES($1,$2,$3)
+           ON CONFLICT DO NOTHING`,
+              [owner, kind, sourceId],
+            );
+            // Fail closed if the restored row is already ahead of the ledger.
+            const applied = await restored.query(
+              `UPDATE activity_canonical SET deleted=true,revision=$3
+           WHERE athlete_id=$1 AND id=$2 AND revision<=$3 RETURNING id`,
+              [owner, activityId, revision],
+            );
+            assert.equal(applied.rowCount, 1);
+            replayedDeletions += 1;
+          }
+          assert.equal(
+            replayedDeletions + erasureSatisfiedDeletions + absentDeletions,
+            activityDeletionJson.length,
+          );
+          assert.equal(erasureSatisfiedDeletions, 1);
+          assert.equal(absentDeletions, 1);
+          // M2-01ao: course deletions after the backup are suppression too. Every entry is
+          // accounted for — applied to a restored course, recorded for a course the dump never
+          // had, found already applied, or satisfied by the tenant's erasure — or the whole
+          // replay rolls back.
+          const courseReplay = await replayCourseDeletionLedger(
+            restored,
+            JSON.parse(await readFile(courseDeletionLedgerFile, 'utf8')) as unknown,
+            enterTenant,
+          );
+          assert.deepEqual(
+            { ...courseReplay, deleted: [...courseReplay.deleted].sort() },
+            {
+              // M2-01k-o: the shared course deleted after the backup is replayed like the owner's.
+              deleted: [
+                ownerDeletedCourse.course.courseId,
+                linkOfCourseDeletedAfterBackup.courseId,
+              ].sort(),
+              absent: [gapBornCourse.course.courseId],
+              already_applied: [preBackupDeletedCourse.course.courseId],
+              erasure_satisfied: [erasedRetryCourse.course.courseId],
+            },
+          );
+          // M2-01as: the restored budget rows are the backup's; the ledger raises the first
+          // area's to the links made since, keeps the deleted second area as a tombstone, and
+          // leaves the erased tenant's to its erasure.
+          await enterTenant(sharingAthlete);
+          assert.equal(await budgetOf(restored, firstArea.zoneId), 3);
+          const budgetReplay = await replayShareBudgetLedger(
+            restored,
+            JSON.parse(await readFile(shareBudgetLedgerFile, 'utf8')) as unknown,
+            enterTenant,
+          );
+          assert.equal(budgetReplay.raised.length, 1);
+          assert.equal(budgetReplay.inserted.length, 1);
+          assert.equal(budgetReplay.already_applied.length, 0);
+          assert.equal(budgetReplay.erasure_satisfied.length, 1);
+          assert.deepEqual(budgetReplay.raised, [firstArea.zoneId]);
+          assert.deepEqual(budgetReplay.inserted, [secondArea.zoneId]);
+          witness({ phase: 'checkpoint', pid: await drillBackendPid(restored) });
+          await checkpoint('after-budget');
+        },
+        witness,
+      );
+    const replayFacts: {
+      stage: string;
+      witness: DrillReplayWitness[];
+      relationCount: number;
+      fingerprintSha256: string;
+      before: Awaited<ReturnType<typeof captureDrillRowFingerprints>>;
+      after: Awaited<ReturnType<typeof captureDrillRowFingerprints>>;
+    }[] = [];
+    for (const stage of ['after-constraint', 'after-budget'] as const) {
+      const before = await captureDrillRowFingerprints(restored, sourceCatalog);
+      const checksLength = checks.length;
+      const witness: DrillReplayWitness[] = [];
+      const injected = new Error(`DRILL_FAULT_${stage}`);
+      await assert.rejects(
+        replayOwnedArchive(
+          async (reached) => {
+            if (reached === stage) throw injected;
+          },
+          (fact) => witness.push(fact),
+        ),
+        (error: unknown) => error === injected,
+      );
+      checks.length = checksLength;
+      assert.equal(witness.filter((fact) => fact.phase === 'commit').length, 0);
+      assert.equal(witness.filter((fact) => fact.phase === 'rollback').length, 1);
+      assert.equal(witness[0]?.phase, 'start');
+      assert.ok(witness.some((fact) => fact.phase === 'checkpoint'));
+      assert.equal(new Set(witness.map((fact) => fact.pid)).size, 1);
+      const after = await captureDrillRowFingerprints(restored, sourceCatalog);
+      assert.deepEqual(after, before);
+      replayFacts.push({
+        stage,
+        witness,
+        relationCount: before.length,
+        fingerprintSha256: createHash('sha256').update(JSON.stringify(before)).digest('hex'),
+        before,
+        after,
+      });
+    }
+    const faultEvidence = JSON.stringify({ schemaVersion: 1, faults: replayFacts });
+    assert.ok(Buffer.byteLength(faultEvidence) <= 4 * 1024 * 1024);
+    await writeFile(join(tmpdir(), 'backup-replay-fault-witness.json'), faultEvidence, {
+      mode: 0o600,
+      flag: 'wx',
+    });
+    const successWitness: DrillReplayWitness[] = [];
+    await replayOwnedArchive(
+      async () => {},
+      (fact) => successWitness.push(fact),
+    );
+    assert.equal(successWitness.filter((fact) => fact.phase === 'commit').length, 1);
+    assert.equal(successWitness.filter((fact) => fact.phase === 'rollback').length, 0);
+    assert.equal(new Set(successWitness.map((fact) => fact.pid)).size, 1);
+    await writeFile(
+      join(tmpdir(), 'backup-replay-success-witness.json'),
+      JSON.stringify({ schemaVersion: 1, successWitness }),
+      { mode: 0o600, flag: 'wx' },
+    );
     assert.equal(await budgetOf(restored, firstArea.zoneId), 4);
     assert.equal(await budgetOf(restored, secondArea.zoneId), 1);
     assert.equal(
@@ -4072,11 +5556,11 @@ async function execute() {
     );
     checks.push('latest_share_budget_ledger_replayed_before_runtime_access');
     // Replaying it again raises nothing.
-    await restored.query('BEGIN');
-    try {
+    await withDrillOwnedReplay(restoredOwner, maintenanceOwners, async (restored, enterTenant) => {
       const again = await replayShareBudgetLedger(
         restored,
         JSON.parse(await readFile(shareBudgetLedgerFile, 'utf8')) as unknown,
+        enterTenant,
       );
       assert.deepEqual(
         { ...again, already_applied: [...again.already_applied].sort() },
@@ -4088,11 +5572,7 @@ async function execute() {
         },
       );
       assert.equal(again.erasure_satisfied.length, 1);
-      await restored.query('COMMIT');
-    } catch (error) {
-      await restored.query('ROLLBACK');
-      throw error;
-    }
+    });
     assert.equal(await budgetOf(restored, firstArea.zoneId), 4);
     checks.push('share_budget_ledger_replay_is_idempotent');
     checks.push('latest_erasure_replayed_before_runtime_access');
@@ -4120,9 +5600,8 @@ async function execute() {
     const replayedCourseLedger = JSON.parse(
       await readFile(courseDeletionLedgerFile, 'utf8'),
     ) as unknown;
-    await restored.query('BEGIN');
-    try {
-      const again = await replayCourseDeletionLedger(restored, replayedCourseLedger);
+    await withDrillOwnedReplay(restoredOwner, maintenanceOwners, async (restored, enterTenant) => {
+      const again = await replayCourseDeletionLedger(restored, replayedCourseLedger, enterTenant);
       assert.deepEqual(
         { ...again, already_applied: [...again.already_applied].sort() },
         {
@@ -4137,36 +5616,42 @@ async function execute() {
           erasure_satisfied: [erasedRetryCourse.course.courseId],
         },
       );
-      await restored.query('COMMIT');
-    } catch (error) {
-      await restored.query('ROLLBACK');
-      throw error;
-    }
+    });
     assert.deepEqual(await courseReplayState(), courseStateAfterReplay);
     checks.push('course_deletion_ledger_replay_is_idempotent');
     // An entry the restored cluster cannot verify — here a tenant it has no account for —
     // aborts the replay, and the caller's rollback leaves nothing of the entries before it.
-    await restored.query('BEGIN');
+    const unknownReplayTenant = randomUUID();
     await assert.rejects(
       () =>
-        replayCourseDeletionLedger(restored, [
-          ...(replayedCourseLedger as unknown[]),
-          {
-            athlete_id: randomUUID(),
-            course_id: randomUUID(),
-            deleted_at: new Date().toISOString(),
-          },
-        ]),
+        withDrillOwnedReplay(
+          restoredOwner,
+          [...maintenanceOwners, unknownReplayTenant],
+          (client, enterTenant) =>
+            replayCourseDeletionLedger(
+              client,
+              [
+                ...(replayedCourseLedger as unknown[]),
+                {
+                  athlete_id: unknownReplayTenant,
+                  course_id: randomUUID(),
+                  deleted_at: new Date().toISOString(),
+                },
+              ],
+              enterTenant,
+            ),
+        ),
       /COURSE_REPLAY_TENANT_UNKNOWN/,
     );
-    await restored.query('ROLLBACK');
-    await restored.query('BEGIN');
     await assert.rejects(() =>
-      replayCourseDeletionLedger(restored, [
-        { ...(replayedCourseLedger as Record<string, unknown>[])[0], name: 'no extra fields' },
-      ]),
+      withDrillOwnedReplay(restoredOwner, maintenanceOwners, (client, enterTenant) =>
+        replayCourseDeletionLedger(
+          client,
+          [{ ...(replayedCourseLedger as Record<string, unknown>[])[0], name: 'no extra fields' }],
+          enterTenant,
+        ),
+      ),
     );
-    await restored.query('ROLLBACK');
     assert.deepEqual(await courseReplayState(), courseStateAfterReplay);
     checks.push('invalid_course_deletion_ledger_entry_fails_closed_with_caller_rollback');
     assertCoachingCandidateRowsPurged(
@@ -4499,9 +5984,8 @@ async function execute() {
       ),
       purgedConstraintEvidence,
     );
-    const constraintExport =
-      await createOperationsRepository(restoreDb).exportAccount(removedConstraintAthlete);
-    assert.ok(constraintExport.schemaVersion === 28);
+    const constraintExport = await exportCurrentDrillAccount(restoreDb, removedConstraintAthlete);
+    assert.ok(constraintExport.schemaVersion === 33);
     assert.equal(constraintExport.data.evidenceSnapshots[0]?.body, null);
     assert.equal(constraintExport.data.coachingDecisions[0]?.body, null);
     assert.equal(constraintExport.data.coachingDecisions[0]?.purged_reason, 'source_deleted');
@@ -4534,9 +6018,8 @@ async function execute() {
       await createConsentRepository(restoreDb).getConsent(withdrawnAthlete, 'ai'),
       revokedConsent,
     );
-    const withdrawnExport =
-      await createOperationsRepository(restoreDb).exportAccount(withdrawnAthlete);
-    if (withdrawnExport.schemaVersion !== 28) throw new Error('Expected evidence export v28');
+    const withdrawnExport = await exportCurrentDrillAccount(restoreDb, withdrawnAthlete);
+    if (withdrawnExport.schemaVersion !== 33) throw new Error('Expected evidence export v33');
     assert.equal(withdrawnExport.data.evidenceSnapshots.length, 1);
     assert.equal(withdrawnExport.data.evidenceSnapshots[0]?.id, beforeWithdrawal.id);
     assert.equal(withdrawnExport.data.evidenceSnapshots[0]?.body, null);
@@ -4566,7 +6049,7 @@ async function execute() {
     ]) {
       assert.ok(!JSON.stringify(withdrawnExport).includes(body.synthetic));
     }
-    assert.deepEqual(withdrawnExport.data.consents, [revokedConsent]);
+    assert.deepEqual(withdrawnExport.data.consents, [revokedConsent, withdrawnAppConsent]);
     checks.push(
       'restored_withdrawn_evidence_and_model_output_stay_purged_in_read_export_and_receipt',
     );
@@ -4586,10 +6069,9 @@ async function execute() {
       await createConsentRepository(restoreDb).getConsent(absentConsentAthlete, 'ai'),
       { kind: 'ai', granted: false, revision: 0 },
     );
-    const absentExport =
-      await createOperationsRepository(restoreDb).exportAccount(absentConsentAthlete);
-    if (absentExport.schemaVersion !== 28) throw new Error('Expected evidence export v28');
-    assert.deepEqual(absentExport.data.consents, []);
+    const absentExport = await exportCurrentDrillAccount(restoreDb, absentConsentAthlete);
+    if (absentExport.schemaVersion !== 33) throw new Error('Expected evidence export v33');
+    assert.deepEqual(absentExport.data.consents, [absentAiTenantAppConsent]);
     assert.equal(absentExport.data.evidenceSnapshots.length, 1);
     assert.equal(absentExport.data.evidenceSnapshots[0]?.id, beforeConsentDeletion.snapshot.id);
     assert.equal(absentExport.data.evidenceSnapshots[0]?.body, null);
@@ -4646,6 +6128,9 @@ async function execute() {
     );
     assert.equal(restoredHistorical.status, 'available');
     if (restoredHistorical.status !== 'available') throw new Error('RESOURCE_RESTORE_FAILED');
+    assert.equal(restoredHistorical.reader.sourceKind, 'text');
+    if (restoredHistorical.reader.sourceKind !== 'text')
+      throw new Error('RESOURCE_RESTORE_KIND_MISMATCH');
     assert.equal(restoredHistorical.reader.originalText, 'Version one restore body.');
     await assert.rejects(
       () => restoredResourceRepo.read(deletedAthlete, deletedResource.resource.id),
@@ -5280,9 +6765,8 @@ async function execute() {
     assert.equal(retainedManual.userReport?.sessionRpe, null);
     assert.equal(retainedManual.userReport?.rpeReportedAt, null);
     assert.equal(retainedManual.userReport?.note, null);
-    const retainedExport =
-      await createOperationsRepository(restoreDb).exportAccount(retainedAthlete);
-    if (retainedExport.schemaVersion !== 28) throw new Error('Expected resource export v28');
+    const retainedExport = await exportCurrentDrillAccount(restoreDb, retainedAthlete);
+    if (retainedExport.schemaVersion !== 33) throw new Error('Expected resource export v33');
     // Text, file, URL and the reviewed coach source; the source deleted before
     // the backup stays out of the export exactly as it did before restoration.
     assert.equal(retainedExport.data.resources.length, 4);
@@ -5634,7 +7118,7 @@ async function execute() {
       [],
     );
     await assert.rejects(
-      () => createOperationsRepository(restoreDb).exportAccount(deletedAthlete),
+      () => exportCurrentDrillAccount(restoreDb, deletedAthlete),
       TenantErasedError,
     );
     checks.push(
@@ -5703,7 +7187,7 @@ async function execute() {
       (await createPlanningRepository(restoreDb).read(retainedAthlete)).head,
       completion.plan,
     );
-    if (retainedExport.schemaVersion !== 28) throw new Error('Expected coaching export v28');
+    if (retainedExport.schemaVersion !== 33) throw new Error('Expected coaching export v33');
     assert.equal(retainedExport.data.planScenarios.length, 1);
     assert.equal(retainedExport.data.planScenarioRevisions.length, 2);
     assert.equal(retainedExport.data.planScenarioApplications.length, 1);
@@ -5833,9 +7317,8 @@ async function execute() {
       ).rows[0].count,
       2,
     );
-    const coachingAfterReplay =
-      await createOperationsRepository(restoreDb).exportAccount(retainedAthlete);
-    if (coachingAfterReplay.schemaVersion !== 28) throw new Error('Expected coaching export v28');
+    const coachingAfterReplay = await exportCurrentDrillAccount(restoreDb, retainedAthlete);
+    if (coachingAfterReplay.schemaVersion !== 33) throw new Error('Expected coaching export v33');
     assert.deepEqual(coachingAfterReplay.data.coachingThreads, originalCoachingExport.threads);
     assert.deepEqual(coachingAfterReplay.data.coachingMessages, originalCoachingExport.messages);
     checks.push(
@@ -6009,9 +7492,8 @@ async function execute() {
       ),
       purgedEvidence,
     );
-    const scrubbedExport =
-      await createOperationsRepository(restoreDb).exportAccount(retainedAthlete);
-    if (scrubbedExport.schemaVersion !== 28) throw new Error('Expected evidence export v28');
+    const scrubbedExport = await exportCurrentDrillAccount(restoreDb, retainedAthlete);
+    if (scrubbedExport.schemaVersion !== 33) throw new Error('Expected evidence export v33');
     assert.equal(scrubbedExport.data.evidenceSnapshots[0]?.body, null);
     assert.deepEqual(scrubbedExport.data.coachingRuns[0]?.status, {
       kind: 'cancelled',

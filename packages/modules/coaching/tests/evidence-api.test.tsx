@@ -145,3 +145,12 @@ describe('evidence API boundaries', () => {
     expect(f.request).toHaveBeenCalledTimes(2);
   });
 });
+
+it.each(['APP_CONSENT_REQUIRED', 'STALE_APP_ADMISSION', 'APP_BINDING_UNAVAILABLE'] as const)(
+  'preserves the finite admission error %s',
+  async (code) => {
+    await expect(
+      fixture({ error: { code, detail: 'private source' } }, 409).api.capture(id, command),
+    ).rejects.toMatchObject({ status: 409, code });
+  },
+);

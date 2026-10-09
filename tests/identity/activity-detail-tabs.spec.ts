@@ -1,3 +1,4 @@
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
@@ -44,8 +45,7 @@ test.afterEach(async ({ page }) => {
   });
   expect(response.status()).toBe(204);
 });
-async function setup(page: Page) {
-  const headers = await login(page);
+async function setup(page: Page, headers: Awaited<ReturnType<typeof login>>) {
   const start = Date.parse('2023-06-15T12:00:00Z');
   const command = importActivitySchema.parse({
     idempotencyKey: randomUUID(),
@@ -112,7 +112,9 @@ async function setup(page: Page) {
 test('detail tabs preserve URL context and observation interactions while unmounting inactive charts', async ({
   page,
 }) => {
-  const { imported } = await setup(page);
+  const scenarioHeaders = await login(page);
+  await grantAppProcessingForScenario(page);
+  const { imported } = await setup(page, scenarioHeaders);
   const query = new URLSearchParams({
     selected: imported.activityId,
     view: 'table',
@@ -184,7 +186,9 @@ test('detail tabs preserve URL context and observation interactions while unmoun
 test('unsupported or invalid detail addresses explain availability and new source revision resets observation selection', async ({
   page,
 }) => {
-  const { headers, imported, command } = await setup(page);
+  const scenarioHeaders = await login(page);
+  await grantAppProcessingForScenario(page);
+  const { headers, imported, command } = await setup(page, scenarioHeaders);
   const address = (tab: string) => `/activities?selected=${imported.activityId}&detailTab=${tab}`;
   const tabs = page.getByRole('tablist', { name: '활동 상세 보기', exact: true });
   await page.goto(address('overview'));

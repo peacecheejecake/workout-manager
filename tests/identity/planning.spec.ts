@@ -7,6 +7,7 @@ test('manual plan draft previews before commit and survives responsive lens chan
   await page.getByRole('link', { name: 'OIDC로 로그인' }).click();
   await page.getByRole('link', { name: 'Sign in as Alice' }).click();
   await page.getByRole('link', { name: '훈련 계획', exact: true }).click();
+  await grantAppProcessingForScenario(page);
   await page.getByRole('button', { name: '계획 초안 편집' }).click();
   await page.getByLabel('계획 제목', { exact: true }).fill('수동 검증 계획');
   for (const level of ['season', 'wave', 'phase', 'block'])
@@ -37,3 +38,4 @@ test('manual plan draft previews before commit and survives responsive lens chan
   await page.getByRole('button', { name: '확인하고 계획 버전 저장' }).click();
   await expect(page.getByText('계획 버전 2 저장 완료')).toBeVisible();
 });
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';

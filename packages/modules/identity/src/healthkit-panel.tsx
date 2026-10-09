@@ -4,6 +4,10 @@ import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import type { AuthenticatedTransport } from '@workout/contracts/core';
 import {
   nativeBridgeHealthKitConsentSchema,
+  nativeBridgeHealthKitSelectionStatusSchema,
+  nativeBridgeHealthKitManagementStatusSchema,
+  type NativeBridgeHealthKitManagementStatus,
+  type NativeBridgeHealthKitSelectionStatus,
   type NativeBridgeHealthKitStatus,
 } from '@workout/contracts/native-bridge';
 import type { createNativeBridgeClient } from '@workout/platform/native-bridge-client';
@@ -15,6 +19,12 @@ type Bridge = Pick<
   | 'writeHealthKitConsent'
   | 'requestHealthKitWorkoutAccess'
   | 'healthKitWorkoutStatus'
+  | 'selectHealthKitWorkouts'
+  | 'healthKitWorkoutSelectionStatus'
+  | 'cancelHealthKitWorkoutSelection'
+  | 'manageHealthKitWorkouts'
+  | 'healthKitWorkoutManagementStatus'
+  | 'cancelHealthKitWorkoutManagement'
 >;
 type Consent = { granted: boolean; revision: number };
 type WorkoutState =
@@ -67,6 +77,7 @@ function HealthKitBrowserPanel() {
 }
 
 function HealthKitPanelLifetime({
+  account,
   transport,
   bridge,
   onUnauthorized,
@@ -238,6 +249,7 @@ function HealthKitPanelLifetime({
       ) : null}
       {state.kind === 'ready' ? (
         <>
+          <p>현재 계정: {account.athleteId}</p>
           <p>앱 동의: {state.consent.granted ? '허용됨' : '허용되지 않음'}</p>
           <p>앱 동의와 iPhone 운동 읽기 요청은 별개입니다.</p>
           <p>iPhone 운동 읽기 허용 여부: 알 수 없음</p>
@@ -282,12 +294,340 @@ function HealthKitPanelLifetime({
           </button>
         </>
       ) : null}
+      {state.kind !== 'unauthorized' &&
+      bridge.getCapabilities()?.['healthkit.workouts.selection'] ? (
+        <HealthKitSelectionPanel
+          key={
+            state.kind === 'ready' && !state.consent.granted
+              ? 'selection-without-consent'
+              : 'selection-with-consent'
+          }
+          bridge={bridge}
+          consentGranted={state.kind === 'ready' ? state.consent.granted : null}
+          onUnauthorized={unauthorized}
+        />
+      ) : null}
+      {state.kind !== 'unauthorized' &&
+      bridge.getCapabilities()?.['healthkit.workouts.management'] ? (
+        <HealthKitManagementPanel
+          key={
+            state.kind === 'ready' && !state.consent.granted
+              ? 'management-without-consent'
+              : 'management-with-consent'
+          }
+          bridge={bridge}
+          consentGranted={state.kind === 'ready' ? state.consent.granted : null}
+          onUnauthorized={unauthorized}
+        />
+      ) : null}
       {notice ? <p role="alert">{notice}</p> : null}
       {state.kind !== 'unauthorized' ? (
         <button type="button" disabled={pending !== null} onClick={() => void refresh()}>
           상태 다시 확인
         </button>
       ) : null}
+    </section>
+  );
+}
+
+const selectionMessages: Record<NativeBridgeHealthKitSelectionStatus['state'], string> = {
+  idle: '등록할 운동을 iPhone 화면에서 선택하세요.',
+  loading: 'iPhone에서 운동 후보를 확인하고 있습니다.',
+  choosing: 'iPhone 화면에서 운동을 선택하고 있습니다.',
+  confirming: '현재 계정 귀속과 서버 업로드 범위를 iPhone에서 확인하세요.',
+  registering: '선택한 운동의 서버 등록 결과를 기다리고 있습니다.',
+  registered: '선택한 운동의 서버 등록을 확인했습니다.',
+  refresh_pending: '서버 등록 후 현재 목록을 확인하지 못해 수집 재개를 기다리고 있습니다.',
+  cancelled: '운동 선택을 취소했습니다. 등록 결과는 상태에서 다시 확인하세요.',
+  offline: '연결을 확인하지 못했습니다. 온라인에서 다시 확인하세요.',
+  conflict: '운동 등록 상태가 변경되었거나 등록이 충돌했습니다. 다시 확인하세요.',
+  consent_required: 'HealthKit 동의를 확인한 뒤 운동을 선택하세요.',
+  unauthorized: '로그인 상태가 바뀌었습니다. 다시 로그인해 주세요.',
+  unavailable: '현재 iPhone에서 운동 선택 기능을 사용할 수 없습니다.',
+};
+const managementMessages: Record<NativeBridgeHealthKitManagementStatus['state'], string> = {
+  idle: '등록된 운동의 개별 해제는 iPhone에서 확인합니다.',
+  loading: '현재 계정의 등록 운동을 iPhone에서 확인하고 있습니다.',
+  choosing: 'iPhone에서 등록 해제할 운동 하나를 선택하세요.',
+  confirming: '관련 제품 기록 삭제와 등록 해제를 iPhone에서 명시적으로 확인하세요.',
+  deregistering: '등록 해제 요청의 서버 결과를 기다리고 있습니다.',
+  pending_cleanup: '관련 기록을 정리하고 있습니다. 등록 귀속은 아직 해제되지 않았습니다.',
+  released: '관련 기록 정리와 등록 귀속 해제를 확인했습니다.',
+  cancelled: '운동 관리 화면을 닫았습니다. 이미 보낸 해제 요청은 처리됐을 수 있습니다.',
+  offline: '연결을 확인하지 못했습니다. 이미 보낸 해제 요청의 결과는 온라인에서 다시 확인하세요.',
+  conflict: '등록 해제 상태가 변경되었거나 충돌했습니다. 다시 확인하세요.',
+  consent_required: 'HealthKit 동의를 확인한 뒤 등록 운동을 관리하세요.',
+  unauthorized: '로그인 상태가 바뀌었습니다. 다시 로그인해 주세요.',
+  unavailable: '현재 iPhone에서 등록 운동 관리 기능을 사용할 수 없습니다.',
+  legacy_blocked:
+    '과거 전송 자료의 운동 범위를 확인하지 못해 등록 해제를 진행할 수 없습니다. 기존 자료의 안전한 정리가 필요합니다.',
+};
+type OperationStatus = NativeBridgeHealthKitSelectionStatus | NativeBridgeHealthKitManagementStatus;
+const messagesByOperation = {
+  selection: { ...managementMessages, ...selectionMessages },
+  management: { ...selectionMessages, ...managementMessages },
+};
+const activeOperationStates = new Set<OperationStatus['state']>([
+  'loading',
+  'choosing',
+  'confirming',
+  'registering',
+  'deregistering',
+  'pending_cleanup',
+]);
+const selectionPollLimit = 30;
+const selectionPollDelayMs = 2000;
+type SelectionView = { kind: 'error' } | { kind: 'ready'; status: OperationStatus };
+interface OperationPanelProps {
+  bridge: Bridge;
+  consentGranted: boolean | null;
+  onUnauthorized(): void;
+}
+function HealthKitSelectionPanel(props: OperationPanelProps) {
+  return <HealthKitOperationPanel {...props} operation="selection" />;
+}
+function HealthKitManagementPanel(props: OperationPanelProps) {
+  return <HealthKitOperationPanel {...props} operation="management" />;
+}
+
+/** Candidate data stays in the native sheet; this component receives only bounded facts. */
+function HealthKitOperationPanel({
+  operation,
+  bridge,
+  consentGranted,
+  onUnauthorized,
+}: OperationPanelProps & { operation: 'selection' | 'management' }) {
+  const headingId = useId();
+  const isManagement = operation === 'management';
+  const [view, setView] = useState<SelectionView>({
+    kind: 'ready',
+    status: { state: 'idle', registeredCount: null, selectedCount: 0, resultCount: null },
+  });
+  const [selectionId, setSelectionId] = useState<string | null>(null);
+  const selectionHandle = useRef<string | null>(null);
+  const [pending, setPending] = useState<'open' | 'refresh' | 'cancel' | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [pollCount, setPollCount] = useState(0);
+  const active = useRef(false);
+
+  const request = useRef<AbortController | null>(null);
+
+  const begin = useCallback(() => {
+    request.current?.abort();
+    const controller = new AbortController();
+    request.current = controller;
+    return controller;
+  }, []);
+  const isCurrent = useCallback(
+    (controller: AbortController) =>
+      active.current && request.current === controller && !controller.signal.aborted,
+    [],
+  );
+
+  const refreshSelection = useCallback(async () => {
+    const handle = selectionHandle.current;
+    if (!handle) return;
+    const controller = begin();
+    setPending('refresh');
+    try {
+      const result =
+        operation === 'selection'
+          ? await bridge.healthKitWorkoutSelectionStatus(handle, controller.signal)
+          : await bridge.healthKitWorkoutManagementStatus(handle, controller.signal);
+      if (!isCurrent(controller)) return;
+      const status = result.ok
+        ? (operation === 'selection'
+            ? nativeBridgeHealthKitSelectionStatusSchema
+            : nativeBridgeHealthKitManagementStatusSchema
+          ).safeParse(result.value)
+        : null;
+      if (!status?.success) {
+        setView({ kind: 'error' });
+        return;
+      }
+      if (status.data.state === 'unauthorized') {
+        onUnauthorized();
+        return;
+      }
+      setView({ kind: 'ready', status: status.data });
+    } catch {
+      if (isCurrent(controller)) setView({ kind: 'error' });
+    } finally {
+      if (isCurrent(controller)) setPending(null);
+    }
+  }, [begin, bridge, isCurrent, onUnauthorized, operation]);
+
+  useEffect(() => {
+    active.current = true;
+    return () => {
+      active.current = false;
+      request.current?.abort();
+      request.current = null;
+      const handle = selectionHandle.current;
+      if (handle) {
+        // Best effort only. Never apply old-scope results to this or a replacement panel.
+        void (
+          operation === 'selection'
+            ? bridge.cancelHealthKitWorkoutSelection(handle)
+            : bridge.cancelHealthKitWorkoutManagement(handle)
+        ).catch(() => undefined);
+      }
+    };
+  }, [bridge, operation]);
+
+  const selecting = view.kind === 'ready' && activeOperationStates.has(view.status.state);
+  useEffect(() => {
+    if (!selecting || pending !== null || pollCount >= selectionPollLimit) return;
+    const timer = setTimeout(() => {
+      setPollCount((count) => count + 1);
+      void refreshSelection();
+    }, selectionPollDelayMs);
+    return () => clearTimeout(timer);
+  }, [selecting, pending, pollCount, refreshSelection]);
+
+  async function openSelection() {
+    if (consentGranted !== true || pending !== null || selecting) return;
+    const controller = begin();
+    setPending('open');
+    setNotice(null);
+    setPollCount(0);
+    try {
+      const result =
+        operation === 'selection'
+          ? await bridge.selectHealthKitWorkouts(controller.signal)
+          : await bridge.manageHealthKitWorkouts(controller.signal);
+      if (!isCurrent(controller)) return;
+      if (!result.ok || result.value.status !== 'opened') {
+        setNotice(
+          isManagement
+            ? '운동 관리 화면의 결과를 확인하지 못했습니다. 이미 보낸 해제 요청이 있다면 iPhone에서 다시 확인하세요.'
+            : '운동 선택 화면의 결과를 확인하지 못했습니다. 상태를 다시 확인하세요.',
+        );
+        return;
+      }
+      const handle =
+        'selectionId' in result.value ? result.value.selectionId : result.value.managementId;
+      selectionHandle.current = handle;
+      setSelectionId(handle);
+      await refreshSelection();
+    } catch {
+      if (isCurrent(controller))
+        setNotice(
+          isManagement
+            ? '운동 관리 화면을 열지 못했습니다. 다시 확인하세요.'
+            : '운동 선택 화면을 열지 못했습니다. 다시 확인하세요.',
+        );
+    } finally {
+      if (isCurrent(controller)) setPending(null);
+    }
+  }
+
+  async function cancelSelection() {
+    const handle = selectionHandle.current;
+    if (!handle) return;
+    const controller = begin();
+    setPending('cancel');
+    setNotice(null);
+    try {
+      const result =
+        operation === 'selection'
+          ? await bridge.cancelHealthKitWorkoutSelection(handle, controller.signal)
+          : await bridge.cancelHealthKitWorkoutManagement(handle, controller.signal);
+      if (!isCurrent(controller)) return;
+      if (!result.ok || result.value !== 'cancelled') {
+        setNotice(
+          isManagement
+            ? '관리 화면 닫기 결과를 확인하지 못했습니다. 해제 요청의 결과는 다시 확인하세요.'
+            : '선택 취소 결과를 확인하지 못했습니다. iPhone 화면과 상태를 다시 확인하세요.',
+        );
+        return;
+      }
+      await refreshSelection();
+    } catch {
+      if (isCurrent(controller))
+        setNotice(
+          isManagement
+            ? '관리 화면 닫기 결과를 확인하지 못했습니다. 다시 확인하세요.'
+            : '선택 취소 결과를 확인하지 못했습니다. 다시 확인하세요.',
+        );
+    } finally {
+      if (isCurrent(controller)) setPending(null);
+    }
+  }
+
+  return (
+    <section className={styles.selection} aria-labelledby={headingId} aria-busy={pending !== null}>
+      <h3 id={headingId}>{isManagement ? '등록 운동 관리·해제' : '계정별 운동 등록'}</h3>
+      <p>
+        {isManagement
+          ? '등록 운동 목록과 해제 대상은 iPhone 안에서만 표시됩니다. 관련 제품 기록 삭제를 명시 확인한 뒤 해제를 요청합니다. HealthKit 원본은 삭제하지 않습니다.'
+          : '운동 목록은 iPhone 안에서만 표시됩니다. 선택 후 해당 계정 귀속과 서버 업로드를 별도로 확인합니다.'}
+      </p>
+      {isManagement ? (
+        <p>
+          화면을 닫아도 이미 보낸 해제 요청은 취소되지 않습니다. 정리 완료 후에만 다른 계정의 새
+          명시 등록이 가능합니다.
+        </p>
+      ) : null}
+      {view.kind === 'error' ? (
+        <p role="alert">
+          {isManagement
+            ? '운동 해제 상태를 확인하지 못했습니다.'
+            : '운동 등록 상태를 확인하지 못했습니다.'}
+        </p>
+      ) : null}
+      {view.kind === 'ready' ? (
+        <>
+          <p role="status">{messagesByOperation[operation][view.status.state]}</p>
+          <p>
+            현재 계정 등록 운동:{' '}
+            {view.status.registeredCount === null
+              ? '확인되지 않음'
+              : `${view.status.registeredCount}개`}
+          </p>
+          <p>
+            {isManagement ? '해제 선택 운동' : '선택 운동'}: {view.status.selectedCount}개
+          </p>
+          <p>
+            {isManagement ? '최근 해제 완료 결과' : '최근 등록 결과'}:{' '}
+            {view.status.resultCount === null ? '확인되지 않음' : `${view.status.resultCount}개`}
+          </p>
+          {view.status.registeredCount === 0 ? (
+            <p>등록 0개는 iPhone에 운동이 없다는 뜻이 아닙니다.</p>
+          ) : null}
+        </>
+      ) : null}
+      <button
+        type="button"
+        disabled={consentGranted !== true || pending !== null || selecting}
+        onClick={() => void openSelection()}
+      >
+        {isManagement ? 'iPhone 등록 운동 관리·해제' : 'iPhone 운동 선택·등록'}
+      </button>
+      {selectionId && (isManagement || selecting || view.kind === 'error') ? (
+        <button type="button" disabled={pending !== null} onClick={() => void cancelSelection()}>
+          {isManagement ? '운동 관리 화면 닫기' : '운동 선택 취소'}
+        </button>
+      ) : null}
+      <button
+        type="button"
+        disabled={pending !== null || selectionId === null}
+        onClick={() => {
+          setNotice(null);
+          setPollCount(0);
+          void refreshSelection();
+        }}
+      >
+        {isManagement ? '운동 해제 상태 다시 확인' : '운동 등록 상태 다시 확인'}
+      </button>
+      {selecting && pollCount >= selectionPollLimit ? (
+        <p>
+          {isManagement
+            ? '자동 확인을 멈췄습니다. 정리 완료를 뜻하지 않습니다. iPhone에서 해제 상태를 다시 확인하세요.'
+            : '자동 확인을 멈췄습니다. iPhone에서 확인 후 등록 상태를 다시 확인하세요.'}
+        </p>
+      ) : null}
+      {notice ? <p role="alert">{notice}</p> : null}
     </section>
   );
 }

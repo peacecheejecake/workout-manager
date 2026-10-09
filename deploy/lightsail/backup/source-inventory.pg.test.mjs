@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import pg from 'pg';
-import { migrate } from '../../../packages/server/persistence/src/migrate.ts';
+import { migrate, migrationFileNames } from '../../../packages/server/persistence/src/migrate.ts';
 import { buildSourceInventory } from './source-inventory.mjs';
 
 const bin = process.env.PG_BIN ?? '/opt/homebrew/opt/postgresql@14/bin';
@@ -142,6 +142,21 @@ test(
         /BACKUP_SOURCE_INVENTORY_UNVERIFIED/,
       );
       await runtime.query('ROLLBACK');
+      // Independently verify that the old pin still refuses the actual current100 schema.
+      await migrate(url('source_owner'));
+      assert.equal(
+        (await owner.query('SELECT max(version) AS version FROM schema_migrations')).rows[0]
+          .version,
+        migrationFileNames.length,
+      );
+      await owner.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+      const currentId = (await owner.query('SELECT txid_current_snapshot()::text AS id')).rows[0]
+        .id;
+      await assert.rejects(
+        buildSourceInventory({ client: owner, expectedSnapshotId: currentId }),
+        /BACKUP_SOURCE_INVENTORY_UNVERIFIED/,
+      );
+      await owner.query('ROLLBACK');
     } finally {
       await Promise.allSettled(clients.map((client) => client.end()));
       if (started) run(join(bin, 'pg_ctl'), ['-D', data, '-m', 'immediate', '-w', 'stop']);

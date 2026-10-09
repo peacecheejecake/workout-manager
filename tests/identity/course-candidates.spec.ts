@@ -1,3 +1,4 @@
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
@@ -125,6 +126,7 @@ test('generates target-distance candidates, saves nothing, and only then picks o
   page,
 }) => {
   const headers = await login(page);
+  await grantAppProcessingForScenario(page);
   const activity = await storeTrack(page, headers);
 
   await page.goto(routeAddress(activity.activityId));
@@ -231,6 +233,7 @@ test('generates target-distance candidates, saves nothing, and only then picks o
 
 test('answers a target the search cannot meet without saving anything', async ({ page }) => {
   const headers = await login(page);
+  await grantAppProcessingForScenario(page);
   const activity = await storeTrack(page, headers);
 
   await page.goto(routeAddress(activity.activityId));

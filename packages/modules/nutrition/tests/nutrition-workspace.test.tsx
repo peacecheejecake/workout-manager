@@ -1,3 +1,6 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { FoodEditor } from '../src/food-editor';
+import { createNutritionApi } from '../src/nutrition-api';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -943,3 +946,114 @@ describe('nutrition manual workspace', () => {
     expect(parseNutritionSegments(['logs', 'x', 'delete'])).toBeNull();
   });
 });
+
+const admissionFailures = [
+  ['APP_CONSENT_REQUIRED', '앱 데이터 처리 동의가 필요합니다.'],
+  ['STALE_APP_ADMISSION', '앱 데이터 처리 동의가 변경되어'],
+  ['APP_BINDING_UNAVAILABLE', '앱 데이터 처리 동의 기준을 확인할 수 없어'],
+] as const;
+
+it.each(admissionFailures)(
+  'preserves the food draft on %s without reporting a version conflict',
+  async (code, message) => {
+    const writes: TransportRequest[] = [];
+    const transport: AuthenticatedTransport = {
+      async request(input) {
+        if (input.method !== 'GET') {
+          writes.push(input);
+          return { status: 409, body: { error: { code } }, traceId: null };
+        }
+        return { status: 200, body: { foods: [], nextCursor: null }, traceId: null };
+      },
+    };
+    render(
+      <QueryClientProvider
+        client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+      >
+        <FoodEditor
+          api={createNutritionApi(transport)}
+          scope={['users', 'a', 'sessions', 's', 'nutrition']}
+        />
+      </QueryClientProvider>,
+    );
+    await userEvent.click(await screen.findByRole('button', { name: '식품 추가' }));
+    const name = screen.getByRole('textbox', { name: '식품·제품 이름' });
+    await userEvent.type(name, '남겨 둔 식품');
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: '영양 기준' }), 'per_100g');
+    await userEvent.click(screen.getByRole('button', { name: '확인하고 식품 정의 저장' }));
+    expect(await screen.findByText(new RegExp(message))).toBeTruthy();
+    expect((name as HTMLInputElement).value).toBe('남겨 둔 식품');
+    expect(screen.queryByText(/식품 정의가 변경되었습니다/)).toBeNull();
+    expect(screen.queryByText(/버전을 저장했습니다/)).toBeNull();
+    expect(writes).toHaveLength(1);
+  },
+);
+it.each(admissionFailures)(
+  'preserves new intake fields on %s and does not navigate',
+  async (code, message) => {
+    const navigate = vi.fn();
+    const writes: TransportRequest[] = [];
+    const transport: AuthenticatedTransport = {
+      async request(input) {
+        if (input.method !== 'GET') {
+          writes.push(input);
+          return { status: 409, body: { error: { code } }, traceId: null };
+        }
+        if (input.path === '/bff/v1/restore-generation')
+          return { status: 200, body: { generationId: restoreGeneration }, traceId: null };
+        if (input.path.startsWith('/bff/v1/activities'))
+          return { status: 200, body: { items: [], total: 0 }, traceId: null };
+        return { status: 200, body: { foods: [], nextCursor: null }, traceId: null };
+      },
+    };
+    render(
+      <NutritionWorkspace
+        athleteId="a"
+        sessionId="s"
+        transport={transport}
+        route={{ kind: 'log-new' }}
+        navigate={navigate}
+      />,
+    );
+    const food = await screen.findByRole('textbox', { name: '먹은 음식·음료' });
+    await userEvent.type(food, '유지할 물');
+    await userEvent.click(screen.getByRole('checkbox', { name: /실제로 섭취한 시각/ }));
+    await userEvent.click(screen.getByRole('button', { name: '섭취 저장' }));
+    expect(await screen.findByText(new RegExp(message))).toBeTruthy();
+    expect((food as HTMLInputElement).value).toBe('유지할 물');
+    expect(navigate).not.toHaveBeenCalled();
+    expect(writes).toHaveLength(1);
+    expect(screen.queryByText(/기록이 변경되었습니다/)).toBeNull();
+  },
+);
+it.each(admissionFailures)(
+  'preserves plan review draft on %s and does not navigate',
+  async (code, message) => {
+    const navigate = vi.fn();
+    const writes: TransportRequest[] = [];
+    const transport: AuthenticatedTransport = {
+      async request(input) {
+        writes.push(input);
+        return { status: 409, body: { error: { code } }, traceId: null };
+      },
+    };
+    render(
+      <NutritionWorkspace
+        athleteId="a"
+        sessionId="s"
+        transport={transport}
+        route={{ kind: 'plans-new' }}
+        navigate={navigate}
+      />,
+    );
+    const purpose = await screen.findByRole('textbox', { name: '계획 목적' });
+    await userEvent.type(purpose, '유지할 계획');
+    await userEvent.click(screen.getByRole('checkbox', { name: /계획 내용을 직접 확인했고/ }));
+    await userEvent.click(screen.getByRole('button', { name: '확인한 계획 저장' }));
+    expect(await screen.findByText(new RegExp(message))).toBeTruthy();
+    expect((purpose as HTMLInputElement).value).toBe('유지할 계획');
+    expect(navigate).not.toHaveBeenCalled();
+    expect(writes).toHaveLength(1);
+    expect(screen.queryByText(/기준 버전이 바뀌었습니다/)).toBeNull();
+  },
+);

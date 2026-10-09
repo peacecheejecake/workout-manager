@@ -23,6 +23,10 @@ import Fastify, { LogController, type FastifyInstance, type FastifyRequest } fro
 import { z } from 'zod';
 import { PersistenceConflict } from '@workout/server-persistence/repositories';
 import { TenantErasedError } from '@workout/server-persistence/database';
+import {
+  AppConsentRequiredError,
+  AppAdmissionBindingError,
+} from '@workout/server-persistence/app-admission';
 import { StaleRestoreGenerationError } from '@workout/server-persistence/restore-generation';
 import type { SharedCourseReader } from '@workout/server-persistence/course-sharing';
 import type {
@@ -179,6 +183,8 @@ function classifyError(error: unknown): { statusCode: number; code: string } {
       code: error.code,
     };
   if (error instanceof BoundaryError || error instanceof ProductRequestError) return error;
+  if (error instanceof AppConsentRequiredError || error instanceof AppAdmissionBindingError)
+    return { statusCode: 409, code: error.code };
   if (error instanceof StaleRestoreGenerationError) return { statusCode: 409, code: error.code };
   if (error instanceof PersistenceConflict) return { statusCode: 409, code: 'CONSENT_CONFLICT' };
   if (error instanceof Error && 'code' in error) {

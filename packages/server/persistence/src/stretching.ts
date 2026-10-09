@@ -1,3 +1,4 @@
+import { requireAppAdmission } from './app-admission.js';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 
@@ -483,6 +484,7 @@ export function createStretchingRepository(
           if (state.status === 'deleted') throw new PersistenceConflict('REVISION_CONFLICT');
           return prior;
         }
+        await requireAppAdmission(tx);
         if (await current(tx, command.logId)) throw new PersistenceConflict('REVISION_CONFLICT');
         await validateValues(tx, command.values, true);
         const savedRevision = stretchLogRevisionSchema.parse({
@@ -524,6 +526,7 @@ export function createStretchingRepository(
           if (state.status === 'deleted') throw new PersistenceConflict('REVISION_CONFLICT');
           return prior;
         }
+        await requireAppAdmission(tx);
         const existing = await current(tx, command.logId, true);
         if (!existing) throw new StretchingReferenceError('STRETCH_LOG_NOT_FOUND');
         if (

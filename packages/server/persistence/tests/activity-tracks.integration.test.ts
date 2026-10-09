@@ -1,3 +1,4 @@
+import { createConsentRepository } from '../src/repositories.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -25,11 +26,13 @@ import {
 } from '../src/activity-tracks.js';
 import { createDatabase, type Database } from '../src/database.js';
 import { createHealthKitActivityRepository } from '../src/healthkit-activity.js';
-import { createHealthKitIngestionRepository } from '../src/healthkit-ingestion.js';
+import { createHealthKitIngestionRepository as createRawHealthKitIngestionRepository } from '../src/healthkit-ingestion.js';
+import { createHealthKitRegistrationRepository } from '../src/healthkit-registration.js';
 import {
   grantActivityTracks,
   grantHealthKitIngestion,
   grantOperations,
+  grantCorePlanning,
   grantResourceObjectCleanupWorker,
   migrate,
 } from '../src/migrate.js';
@@ -45,6 +48,9 @@ const adminUrl = process.env['TEST_DATABASE_ADMIN_URL'];
 const runtimeUrl = process.env['TEST_DATABASE_URL'];
 if (!adminUrl || !runtimeUrl) throw new Error('Run pnpm test:integration with isolated PostgreSQL');
 const admin = new Pool({ connectionString: adminUrl });
+const migrationOwnerUrl = process.env['TEST_DATABASE_OWNER_URL'];
+if (!migrationOwnerUrl) throw new Error('Explicit plain migration owner required for maintenance');
+const migrationOwner = new Pool({ connectionString: migrationOwnerUrl, max: 4 });
 let database: Database;
 let tracks: ActivityTrackRepository;
 let activities: ActivityRepository;
@@ -58,6 +64,7 @@ beforeAll(async () => {
   await migrate(adminUrl);
   await admin.query('GRANT USAGE ON SCHEMA public TO workout_runtime');
   await grantOperations(adminUrl, 'workout_runtime');
+  await grantCorePlanning(adminUrl, 'workout_runtime');
   await grantActivityTracks(adminUrl, 'workout_runtime');
   await grantHealthKitIngestion(adminUrl, 'workout_runtime');
   await admin.query(`CREATE ROLE "${workerRole}" LOGIN NOSUPERUSER NOBYPASSRLS`);
@@ -79,6 +86,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await database?.close();
+  await migrationOwner.end();
   await admin.end();
   if (objectRoot) await rm(objectRoot, { recursive: true, force: true });
 });
@@ -248,10 +256,69 @@ async function publishObject(storage: ObjectStorage, finalKey: string, content: 
   });
 }
 
+const syntheticDeclaredEpochs = new Map<string, string>();
+
+async function registeredBatch(
+  db: Database,
+  athleteId: string,
+  batch: HealthKitIngestionBatch,
+  consentRevision: number,
+) {
+  const registration = createHealthKitRegistrationRepository(db);
+  const current = await registration.listWorkouts(athleteId, {});
+  const epochs = new Map(current.claims.map((claim) => [claim.sampleId, claim.claimEpoch]));
+  const missing = [...new Set(batch.events.map((event) => event.sampleId))].filter((sampleId) => {
+    if (epochs.has(sampleId)) return false;
+    const previousEpoch = syntheticDeclaredEpochs.get(`${athleteId}:${sampleId}`);
+    if (previousEpoch) {
+      epochs.set(sampleId, previousEpoch);
+      return false;
+    }
+    return true;
+  });
+  if (missing.length) {
+    const result = await registration.registerWorkouts(athleteId, {
+      schemaVersion: 1,
+      sampleIds: missing,
+      accountAttributionDeclared: true,
+      expectedConsentRevision: consentRevision,
+      expectedRegistryRevision: current.registryRevision,
+      idempotencyKey: randomUUID(),
+    });
+    for (const claim of result.claims) {
+      epochs.set(claim.sampleId, claim.claimEpoch);
+      syntheticDeclaredEpochs.set(`${athleteId}:${claim.sampleId}`, claim.claimEpoch);
+    }
+  }
+  return {
+    ...batch,
+    schemaVersion: 2 as const,
+    events: batch.events.map((event) => {
+      const claimEpoch = epochs.get(event.sampleId);
+      if (!claimEpoch) throw new Error('Missing synthetic claim epoch');
+      return { ...event, claimEpoch };
+    }),
+  };
+}
+
+function createRegisteredFixtureIngestionRepository(db: Database) {
+  const raw = createRawHealthKitIngestionRepository(db);
+  return {
+    async ingestBatch(athleteId: string, batch: HealthKitIngestionBatch, consentRevision: number) {
+      return raw.ingestBatch(
+        athleteId,
+        await registeredBatch(db, athleteId, batch, consentRevision),
+        consentRevision,
+      );
+    },
+  };
+}
+
 describe('M2-01c private track storage', () => {
   it('stores an explicit GPX recording for a HealthKit-owned Activity without changing its owner', async () => {
     const athlete = randomUUID();
     const sampleId = randomUUID();
+    await declareSyntheticAppConsent(athlete);
     const consentClient = await admin.connect();
     try {
       await consentClient.query('BEGIN');
@@ -286,7 +353,7 @@ describe('M2-01c private track storage', () => {
         },
       ],
     };
-    await createHealthKitIngestionRepository(database).ingestBatch(athlete, batch, 1);
+    await createRegisteredFixtureIngestionRepository(database).ingestBatch(athlete, batch, 1);
     const sample = await database.tenant(athlete, (tx) =>
       tx.query('SELECT payload_digest FROM healthkit_workout_sample WHERE sample_id=$1', [
         sampleId,
@@ -346,6 +413,7 @@ describe('M2-01c private track storage', () => {
 
   it('stores one track per activity and exposes only server-derived facts', async () => {
     const athlete = randomUUID();
+    await grantAppPurpose(athlete);
     const imported = await activities.importActivity(athlete, importInput());
     const stored = await storeTrack(athlete, imported.activityId, imported.revision);
     expect(stored.result?.status).toBe('available');
@@ -369,6 +437,7 @@ describe('M2-01c private track storage', () => {
   it('keeps one tenant out of another tenant track, through RLS and through the repository', async () => {
     const owner = randomUUID();
     const other = randomUUID();
+    await grantAppPurpose(owner);
     const imported = await activities.importActivity(owner, importInput());
     await storeTrack(owner, imported.activityId, imported.revision);
     expect(await tracks.read(other, imported.activityId)).toEqual({
@@ -384,6 +453,7 @@ describe('M2-01c private track storage', () => {
 
   it('appends a revision when a re-parse changes sample correspondence and never rewrites the first', async () => {
     const athlete = randomUUID();
+    await grantAppPurpose(athlete);
     const imported = await activities.importActivity(athlete, importInput());
     const first = await storeTrack(athlete, imported.activityId, imported.revision, {
       correspondence: hashOf('correspondence-one'),
@@ -420,6 +490,7 @@ describe('M2-01c private track storage', () => {
 
   it('refuses to rewrite a stored revision, at the grant and at the trigger', async () => {
     const athlete = randomUUID();
+    await grantAppPurpose(athlete);
     const imported = await activities.importActivity(athlete, importInput());
     await storeTrack(athlete, imported.activityId, imported.revision);
     // The runtime role has no UPDATE at all on a stored revision.
@@ -442,6 +513,7 @@ describe('M2-01c private track storage', () => {
 
   it('treats a repeated upload of the same recording as a duplicate, not as a second revision', async () => {
     const athlete = randomUUID();
+    await grantAppPurpose(athlete);
     const imported = await activities.importActivity(athlete, importInput());
     await storeTrack(athlete, imported.activityId, imported.revision, {
       correspondence: hashOf('same'),
@@ -470,6 +542,7 @@ describe('M2-01c private track storage', () => {
 
   it('counts a duplicate upload objects in the cleanup backlog', async () => {
     const athlete = randomUUID();
+    await grantAppPurpose(athlete);
     const imported = await activities.importActivity(athlete, importInput());
     await storeTrack(athlete, imported.activityId, imported.revision, {
       correspondence: hashOf('same'),
@@ -489,6 +562,7 @@ describe('M2-01c private track storage', () => {
 
   it('stops a duplicate upload loop once its abandoned objects fill the backlog', async () => {
     const athlete = randomUUID();
+    await grantAppPurpose(athlete);
     const imported = await activities.importActivity(athlete, importInput());
     const sizes = { raw: 33_554_432, normalized: 8_388_608, mapPath: 8_388_608 };
     const same = {
@@ -521,6 +595,7 @@ describe('M2-01c private track storage', () => {
 
   it('lets only one of two concurrent uploads claim the next revision', async () => {
     const athlete = randomUUID();
+    await grantAppPurpose(athlete);
     const imported = await activities.importActivity(athlete, importInput());
     const first = await storeTrack(athlete, imported.activityId, imported.revision, {
       finalize: false,
@@ -546,6 +621,7 @@ describe('M2-01c private track storage', () => {
 
   it('replays a reservation for the same key and refuses a different request under it', async () => {
     const athlete = randomUUID();
+    await grantAppPurpose(athlete);
     const imported = await activities.importActivity(athlete, importInput());
     const key = `track-${randomUUID()}`;
     const first = await tracks.reserve(
@@ -573,6 +649,7 @@ describe('M2-01c private track storage', () => {
 
   it('refuses a storage reference that does not name this tenant, upload and digest', async () => {
     const athlete = randomUUID();
+    await grantAppPurpose(athlete);
     const imported = await activities.importActivity(athlete, importInput());
     const reservation = await tracks.reserve(
       athlete,
@@ -648,6 +725,7 @@ describe('M2-01c private track storage', () => {
 
   it('bounds the number of active uploads per tenant', async () => {
     const athlete = randomUUID();
+    await grantAppPurpose(athlete);
     const imported = await activities.importActivity(athlete, importInput());
     for (let index = 0; index < 10; index += 1)
       await tracks.reserve(
@@ -673,6 +751,7 @@ describe('M2-01c private track storage', () => {
     const sizes = { raw: 33_554_432, normalized: 8_388_608, mapPath: 8_388_608 };
     const stored: { activityId: string; revision: number }[] = [];
     for (let index = 0; index < 10; index += 1) {
+      await grantAppPurpose(athlete);
       const imported = await activities.importActivity(athlete, importInput());
       await storeTrack(athlete, imported.activityId, imported.revision, {
         sizes,
@@ -681,6 +760,7 @@ describe('M2-01c private track storage', () => {
       });
       stored.push({ activityId: imported.activityId, revision: imported.revision });
     }
+    await grantAppPurpose(athlete);
     const overflow = await activities.importActivity(athlete, importInput());
     await expect(
       storeTrack(athlete, overflow.activityId, overflow.revision, {
@@ -717,6 +797,7 @@ describe('M2-01c private track storage', () => {
     const athlete = randomUUID();
     const sizes = { raw: 33_554_432, normalized: 8_388_608, mapPath: 8_388_608 };
     for (let index = 0; index < 10; index += 1) {
+      await grantAppPurpose(athlete);
       const imported = await activities.importActivity(athlete, importInput());
       await storeTrack(athlete, imported.activityId, imported.revision, {
         sizes,
@@ -724,6 +805,7 @@ describe('M2-01c private track storage', () => {
         correspondence: hashOf(`rollback-${index}`),
       });
     }
+    await grantAppPurpose(athlete);
     const overflow = await activities.importActivity(athlete, importInput());
     const staged = await storeTrack(athlete, overflow.activityId, overflow.revision, {
       sizes,
@@ -839,6 +921,7 @@ describe('M2-01c private track storage', () => {
     // Each track is deleted immediately, so live bytes never approach their own cap and
     // only the backlog grows: exactly the loop the live quota cannot see.
     for (let index = 0; index < 11; index += 1) {
+      await grantAppPurpose(athlete);
       const imported = await activities.importActivity(athlete, importInput());
       await storeTrack(athlete, imported.activityId, imported.revision, {
         sizes,
@@ -849,6 +932,7 @@ describe('M2-01c private track storage', () => {
         expectedRevision: imported.revision,
       });
     }
+    await grantAppPurpose(athlete);
     const refused = await activities.importActivity(athlete, importInput());
     // The live quota is satisfied — every revision belongs to a deleted activity — but the
     // objects are all still there.
@@ -879,6 +963,7 @@ describe('M2-01c private track storage', () => {
 
   it('expires an abandoned upload by the database clock and queues its references', async () => {
     const athlete = randomUUID();
+    await grantAppPurpose(athlete);
     const imported = await activities.importActivity(athlete, importInput());
     const reservation = await tracks.reserve(
       athlete,
@@ -924,6 +1009,7 @@ describe('M2-01c private track storage', () => {
 
   it('reclaims the raw track, normalized data and map derivative when the activity is deleted', async () => {
     const athlete = randomUUID();
+    await grantAppPurpose(athlete);
     const imported = await activities.importActivity(athlete, importInput());
     const stored = await storeTrack(athlete, imported.activityId, imported.revision);
     await activities.deleteActivity(athlete, imported.activityId, {
@@ -955,6 +1041,7 @@ describe('M2-01c private track storage', () => {
   it('refuses ingestion for a deleted activity and for a suppressed source', async () => {
     const athlete = randomUUID();
     const sourceId = randomUUID();
+    await grantAppPurpose(athlete);
     const imported = await activities.importActivity(athlete, importInput(sourceId));
     await activities.deleteActivity(athlete, imported.activityId, {
       expectedRevision: imported.revision,
@@ -1007,6 +1094,7 @@ describe('M2-01c private track storage', () => {
   it('deletes reclaimed objects through the shared worker and refuses to delete a live one', async () => {
     const athlete = randomUUID();
     const storage = await createLocalFilesystemObjectStorage(objectRoot);
+    await grantAppPurpose(athlete);
     const liveActivity = await activities.importActivity(athlete, importInput());
     const live = await storeTrack(athlete, liveActivity.activityId, liveActivity.revision, {
       rawContent: `live-${athlete}`,
@@ -1056,6 +1144,7 @@ describe('M2-01c private track storage', () => {
   it('keeps reclaiming a final object a dead writer published after its receipt closed', async () => {
     const athlete = randomUUID();
     const storage = await createLocalFilesystemObjectStorage(objectRoot);
+    await grantAppPurpose(athlete);
     const imported = await activities.importActivity(athlete, importInput());
     // A writer that prepared and then died: the DB holds its final refs, and its objects
     // are published later by the part of the request that was still in flight.
@@ -1110,6 +1199,7 @@ describe('M2-01c private track storage', () => {
   it('holds the receipt open past the upload expiry, for as long as a writer could resume', async () => {
     const athlete = randomUUID();
     const storage = await createLocalFilesystemObjectStorage(objectRoot);
+    await grantAppPurpose(athlete);
     const imported = await activities.importActivity(athlete, importInput());
     const prepared = await storeTrack(athlete, imported.activityId, imported.revision, {
       finalize: false,
@@ -1171,6 +1261,7 @@ describe('M2-01c private track storage', () => {
   it('reclaims a late publication even after the upload itself expired and the receipt closed', async () => {
     const athlete = randomUUID();
     const storage = await createLocalFilesystemObjectStorage(objectRoot);
+    await grantAppPurpose(athlete);
     const imported = await activities.importActivity(athlete, importInput());
     const prepared = await storeTrack(athlete, imported.activityId, imported.revision, {
       finalize: false,
@@ -1247,12 +1338,13 @@ describe('M2-01c private track storage', () => {
     }
   });
 
-  it('reads exactly one index row per candidate and touches no ledger table', async () => {
+  it('returns one candidate without exceeding reported transaction counters', async () => {
     // The first shape of this sweep unioned the ledger tables and applied the limit last: a
-    // window of one candidate read 498 rows on a real database. Here the work itself is
-    // measured — rows the statement pulled out of each table inside one transaction — so the
-    // claim is about what the database did, not about what the plan looked like.
+    // window of one candidate read 498 rows on a real database. Transaction counters remain
+    // a regression signal, but nested PL/pgSQL queries can report zero on PostgreSQL14.
+    // Physical scan bounds therefore need the separate nested-execution acceptance test.
     const athlete = randomUUID();
+    await grantAppPurpose(athlete);
     const imported = await activities.importActivity(athlete, importInput());
     await storeTrack(athlete, imported.activityId, imported.revision, {
       rawContent: `plan-${athlete}`,
@@ -1261,9 +1353,10 @@ describe('M2-01c private track storage', () => {
       'SELECT count(*)::int AS count FROM activity_track_object_ref WHERE settled_at IS NULL',
     );
     expect(watched.rows[0]?.['count']).toBeGreaterThan(20);
-    const client = await admin.connect();
+    const client = await migrationOwner.connect();
     try {
       await client.query('BEGIN');
+      await client.query("SELECT set_config('app.athlete_id',$1,true)", [athlete]);
       const counters = async () =>
         (
           await client.query<{ intents: string; objects: string; refs: string }>(
@@ -1286,7 +1379,7 @@ describe('M2-01c private track storage', () => {
       expect(window.rows).toHaveLength(1);
       const read = (key: 'intents' | 'objects' | 'refs') =>
         Number(after?.[key] ?? 0) - Number(before?.[key] ?? 0);
-      // Neither ledger table is touched at all, and the index gives up one row.
+      // Keep the counter guard; a zero counter alone does not prove a physical scan bound.
       expect(read('intents')).toBe(0);
       expect(read('objects')).toBe(0);
       expect(read('refs')).toBeLessThanOrEqual(1);
@@ -1298,6 +1391,7 @@ describe('M2-01c private track storage', () => {
   it('still finds a late publication after the upload row itself was compacted away', async () => {
     const athlete = randomUUID();
     const storage = await createLocalFilesystemObjectStorage(objectRoot);
+    await grantAppPurpose(athlete);
     const imported = await activities.importActivity(athlete, importInput());
     const prepared = await storeTrack(athlete, imported.activityId, imported.revision, {
       finalize: false,
@@ -1370,6 +1464,7 @@ describe('M2-01c private track storage', () => {
     // exactly this state, even when the source had long since reclaimed the object.
     const athlete = randomUUID();
     const storage = await createLocalFilesystemObjectStorage(objectRoot);
+    await grantAppPurpose(athlete);
     const imported = await activities.importActivity(athlete, importInput());
     const prepared = await storeTrack(athlete, imported.activityId, imported.revision, {
       finalize: false,
@@ -1448,6 +1543,7 @@ describe('M2-01c private track storage', () => {
 
   it('exports live tracks without a storage reference and drops the tracks of a deleted activity', async () => {
     const athlete = randomUUID();
+    await grantAppPurpose(athlete);
     const kept = await activities.importActivity(athlete, importInput());
     const removed = await activities.importActivity(athlete, importInput());
     const keptTrack = await storeTrack(athlete, kept.activityId, kept.revision);
@@ -1456,8 +1552,8 @@ describe('M2-01c private track storage', () => {
       expectedRevision: removed.revision,
     });
     const artifact = await createOperationsRepository(database).exportAccount(athlete);
-    expect(artifact.schemaVersion).toBe(28);
-    if (artifact.schemaVersion !== 28) throw new Error('expected v28');
+    expect(artifact.schemaVersion).toBe(33);
+    if (artifact.schemaVersion !== 33) throw new Error('expected v33');
     expect(artifact.data.activityTracks).toHaveLength(1);
     expect(artifact.data.activityTracks[0]?.['activity_id']).toBe(kept.activityId);
     expect(artifact.data.activityTrackRevisions).toHaveLength(1);
@@ -1474,6 +1570,7 @@ describe('M2-01c private track storage', () => {
 
   it('takes the export snapshot against a concurrent deletion rather than a mixed view', async () => {
     const athlete = randomUUID();
+    await grantAppPurpose(athlete);
     const imported = await activities.importActivity(athlete, importInput());
     await storeTrack(athlete, imported.activityId, imported.revision);
     const operations = createOperationsRepository(database);
@@ -1496,7 +1593,7 @@ describe('M2-01c private track storage', () => {
     } finally {
       client.release();
     }
-    if (exported.schemaVersion !== 28) throw new Error('expected v28');
+    if (exported.schemaVersion !== 33) throw new Error('expected v33');
     // The export waited for the deletion and reports the deleted activity's track nowhere.
     expect(exported.data.activityTracks).toHaveLength(0);
     expect(exported.data.activityTrackRevisions).toHaveLength(0);
@@ -1504,6 +1601,7 @@ describe('M2-01c private track storage', () => {
 
   it('erases every track row and keeps the cleanup queue, including failed upload references', async () => {
     const athlete = randomUUID();
+    await grantAppPurpose(athlete);
     const imported = await activities.importActivity(athlete, importInput());
     const stored = await storeTrack(athlete, imported.activityId, imported.revision);
     const abandoned = await tracks.reserve(
@@ -1536,3 +1634,38 @@ describe('M2-01c private track storage', () => {
     expect(live.rows[0]?.['count']).toBe(1);
   });
 });
+
+// Explicit permission for this synthetic positive core-storage fixture only.
+// Preserve any existing withdrawal/revision and never recreate an erased tenant.
+async function grantAppPurpose(athleteId: string): Promise<void> {
+  const client = await admin.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock_shared(77210,1)');
+    // Serialize the absence check before the app event trigger, like the consent command.
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [athleteId]);
+    await client.query("SELECT set_config('app.athlete_id',$1,true)", [athleteId]);
+    await client.query(
+      "INSERT INTO consent(athlete_id,kind,granted,revision) SELECT $1,'app',true,1 WHERE NOT EXISTS (SELECT 1 FROM tenant_erasure WHERE athlete_id=$1) ON CONFLICT (athlete_id,kind) DO NOTHING",
+      [athleteId],
+    );
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+// Explicit synthetic user permission for named positive collection scenarios only.
+async function declareSyntheticAppConsent(athleteId: string): Promise<void> {
+  expect(
+    await createConsentRepository(database).setConsent(athleteId, {
+      kind: 'app',
+      granted: true,
+      expectedRevision: 0,
+      idempotencyKey: randomUUID(),
+    }),
+  ).toEqual({ kind: 'app', granted: true, revision: 1 });
+}

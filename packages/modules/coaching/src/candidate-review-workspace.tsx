@@ -569,7 +569,10 @@ function Review({
       }
     } catch (error) {
       if (signal.aborted) return;
-      if (error instanceof CandidateRequestError && [404, 409, 422].includes(error.status)) {
+      const admissionMessage = appAdmissionMessage(error);
+      if (admissionMessage) {
+        actions.reject(admissionMessage);
+      } else if (error instanceof CandidateRequestError && [404, 409, 422].includes(error.status)) {
         actions.reject('후보 또는 기준 계획이 변경되었습니다. 최신 상태를 다시 확인하세요.', true);
         await Promise.all([
           client.resetQueries({ queryKey: [...scope, 'status'], exact: true }),
@@ -821,4 +824,18 @@ function Review({
       )}
     </section>
   );
+}
+
+function appAdmissionMessage(error: unknown): string | null {
+  if (!(error instanceof CandidateRequestError)) return null;
+  switch (error.code) {
+    case 'APP_CONSENT_REQUIRED':
+      return '앱 데이터 처리 동의가 필요합니다. 초안과 후보는 유지했습니다. 동의 상태를 확인해 주세요.';
+    case 'STALE_APP_ADMISSION':
+      return '앱 데이터 처리 동의가 변경되어 요청을 적용하지 않았습니다. 초안과 후보는 유지했습니다. 동의 상태와 최신 근거를 확인해 주세요.';
+    case 'APP_BINDING_UNAVAILABLE':
+      return '이 요청의 앱 데이터 처리 동의 기준을 확인할 수 없어 적용하지 않았습니다. 초안과 후보는 유지했습니다. 최신 근거를 다시 확인해 주세요.';
+    default:
+      return null;
+  }
 }

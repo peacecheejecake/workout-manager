@@ -1,3 +1,4 @@
+import { grantAppProcessingForScenario } from './app-consent-prerequisite';
 import { identityMobileOrigin, identityWebOrigin } from '../../scripts/fixtures/identity-ports';
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
@@ -69,6 +70,7 @@ test('a confirmed nutrition plan stays separate from one revisable intake across
 }) => {
   test.setTimeout(90_000);
   const headers = await login(page);
+  await grantAppProcessingForScenario(page);
   const occurredAt = new Date(Date.now() - 15 * 60_000).toISOString();
   const { day, timezone } = await page.evaluate((instant) => {
     const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';

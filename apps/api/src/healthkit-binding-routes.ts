@@ -8,7 +8,12 @@ import {
   type HealthKitBindingRepository,
 } from '@workout/server-persistence/healthkit-binding';
 import type { Principal } from './ports.js';
-import { emptyQuery, input, ProductRequestError } from './product-boundary.js';
+import {
+  emptyQuery,
+  input,
+  command as executeCommand,
+  ProductRequestError,
+} from './product-boundary.js';
 
 const statusByCode = {
   CONSENT_REQUIRED: 403,
@@ -31,14 +36,14 @@ export function registerHealthKitBindingRoutes(
     input(emptyQuery, request.query);
     const owner = principal(request);
     const command = input(healthKitBindExistingSchema, request.body);
-    try {
-      return healthKitBindExistingResultSchema.parse(
-        await repository.bindExisting(owner.athleteId, command),
-      );
-    } catch (error) {
-      if (error instanceof HealthKitBindingError)
-        throw new ProductRequestError(statusByCode[error.code], error.code);
-      throw error;
-    }
+    return healthKitBindExistingResultSchema.parse(
+      await executeCommand(
+        () => repository.bindExisting(owner.athleteId, command),
+        (error) =>
+          error instanceof HealthKitBindingError
+            ? new ProductRequestError(statusByCode[error.code], error.code)
+            : undefined,
+      ),
+    );
   });
 }
