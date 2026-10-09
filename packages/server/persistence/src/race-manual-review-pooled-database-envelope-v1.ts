@@ -4,7 +4,9 @@ import { raceManualReviewMultiOwnedRetainedPayloadV3Schema } from './race-manual
 import {
   raceManualReviewPooledRetainedPayloadV1Schema,
   parseRaceManualReviewPooledRetainedPairV1,
+  encodeRaceManualReviewPooledRetainedFromLogicalPairV1,
   type RaceManualReviewPooledRetainedPayloadV1,
+  type RaceManualReviewPooledLogicalPairV1,
 } from './race-manual-review-pooled-retained-payload-v1.js';
 
 const MAX_BYTES = 4 * 1024 * 1024;
@@ -96,6 +98,23 @@ function privateValue(parsed: Envelope) {
  * This structural bijection is neither a storage seal nor source authentication. */
 export function toRaceManualReviewPooledDatabaseEnvelopeV1(raw: unknown): Envelope {
   const { pooled } = parseRaceManualReviewPooledRetainedPairV1(raw);
+  return databaseEnvelopeFromConstructedPooled(pooled);
+}
+/** Unknown LOGICAL ingress; all validation is local to this synchronous call.
+ * Existing unknown-wire API above retains its full decode/reencode checks. */
+export type RaceManualReviewPooledDatabasePairV1 = {
+  logical: RaceManualReviewPooledLogicalPairV1['retained'];
+  wire: Envelope;
+};
+export function encodeRaceManualReviewPooledDatabasePairV1(
+  raw: unknown,
+): RaceManualReviewPooledDatabasePairV1 {
+  const { pooled, retained } = encodeRaceManualReviewPooledRetainedFromLogicalPairV1(raw);
+  return { logical: retained, wire: databaseEnvelopeFromConstructedPooled(pooled) };
+}
+function databaseEnvelopeFromConstructedPooled(
+  pooled: RaceManualReviewPooledRetainedPayloadV1,
+): Envelope {
   const frame = skeletonFrame.parse(pooled.skeleton);
   const { skeleton: discarded, ...metadata } = pooled;
   void discarded;

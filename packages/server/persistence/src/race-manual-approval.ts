@@ -1,8 +1,7 @@
 import { readRaceManualPooledParentDeltaTransportV1In } from './race-manual-pooled-parent-delta-transport-v1.js';
 import { validateRaceSourceResponseBudget } from './race-plan-impact-context.js';
 import { readRaceManualPooledChainTransportV1In } from './race-manual-pooled-chain-transport-v1.js';
-import { encodeRaceManualReviewPooledRetainedPayloadV1 } from './race-manual-review-pooled-retained-payload-v1.js';
-import { toRaceManualReviewPooledDatabaseEnvelopeV1 } from './race-manual-review-pooled-database-envelope-v1.js';
+import { encodeRaceManualReviewPooledDatabasePairV1 } from './race-manual-review-pooled-database-envelope-v1.js';
 type Protocol = 'legacy' | 'pooled' | 'pooled-delta';
 import {
   assertRaceManualSameTxApprovalContinuation,
@@ -435,9 +434,7 @@ async function readParent(
 }
 function encodePrepared(protocol: Protocol, retained: Current['prepared']['retained']) {
   return protocol !== 'legacy'
-    ? toRaceManualReviewPooledDatabaseEnvelopeV1(
-        encodeRaceManualReviewPooledRetainedPayloadV1(retained),
-      )
+    ? encodeRaceManualReviewPooledDatabasePairV1(retained).wire
     : retained;
 }
 async function prepareApproval(

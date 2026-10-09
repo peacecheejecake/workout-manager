@@ -787,3 +787,109 @@ it('reports numeric-only synthetic decoder timing without a timing pass threshol
     }) + '\n',
   );
 });
+
+import { encodeRaceManualReviewPooledDatabasePairV1 as combined } from '../src/race-manual-review-pooled-database-envelope-v1.js';
+function presentOriginal() {
+  const value = original();
+  if (value.state !== 'present') throw Error('PRESENT_SYNTHETIC_FIXTURE_REQUIRED');
+  return value;
+}
+const oldPipeline = (raw: unknown) => toDatabase(encode(raw));
+it('combined unknown logical ingress equals public unknown-wire pipeline byte for byte', () => {
+  const raw = presentOriginal(),
+    before = JSON.stringify(raw),
+    pair = combined(raw),
+    old = oldPipeline(raw);
+  expect(JSON.stringify(pair.wire)).toBe(JSON.stringify(old));
+  expect(pair.logical).toEqual(raw);
+  expect(decodeDatabase(pair.wire)).toEqual(raw);
+  expect(JSON.stringify(raw)).toBe(before);
+  expect(pair.wire.payload.currentAuthority).toEqual(old.payload.currentAuthority);
+});
+it('combined never accepts caller validation flags or malformed logical structure', () => {
+  const raw = presentOriginal();
+  for (const invalid of [
+    null,
+    [],
+    { ...raw, validated: true },
+    { ...raw, authority: 'trusted' },
+    { ...raw, payload: null },
+    { ...raw, minimalAudit: null },
+    {
+      ...raw,
+      payload: {
+        ...raw.payload,
+        inventory: { ...raw.payload.inventory, refs: [] },
+      },
+    },
+  ]) {
+    expect(() => oldPipeline(invalid)).toThrow();
+    expect(() => combined(invalid)).toThrow();
+  }
+});
+it('combined bounds plain unknown ingress without executing accessors', () => {
+  let getters = 0;
+  const accessor = Object.defineProperty({}, 'state', {
+    enumerable: true,
+    get() {
+      getters++;
+      return 'present';
+    },
+  });
+  const symbol = Object.assign({}, original(), { [Symbol('hidden')]: 'bad' });
+  const cycle: Record<string, unknown> = {};
+  cycle['self'] = cycle;
+  const proto = Object.assign(Object.create({ inherited: true }), original());
+  const nonEnumerable = Object.defineProperty({}, 'hidden', { value: 1 });
+  const oversized = { ...original(), extra: '𐀀'.repeat(1048577) };
+  for (const bad of [accessor, symbol, cycle, proto, nonEnumerable, oversized]) {
+    expect(() => oldPipeline(bad)).toThrow();
+    expect(() => combined(bad)).toThrow();
+  }
+  expect(getters).toBe(0);
+});
+it('combined does not accept encoded wire or database frame as logical bypass', () => {
+  const raw = presentOriginal(),
+    pooled = encode(raw),
+    envelope = oldPipeline(raw);
+  expect(() => combined(pooled)).toThrow();
+  expect(() => combined(envelope)).toThrow();
+});
+it('combined is invocation local and rejects a mutated second input without reusing prior validation', () => {
+  const raw = presentOriginal(),
+    first = combined(raw),
+    saved = JSON.stringify(first);
+  const bad = {
+    ...raw,
+    payload: {
+      ...raw.payload,
+      inventory: { ...raw.payload.inventory, refs: [] },
+    },
+  };
+  expect(() => combined(bad)).toThrow();
+  expect(JSON.stringify(first)).toBe(saved);
+  expect(JSON.stringify(combined(original()).wire)).toBe(JSON.stringify(first.wire));
+});
+it('unknown-wire APIs retain strict ordinal slot digest and overlap rejection after combined construction', () => {
+  const wire = encode(original());
+  const source = wire.sourcePool[0],
+    slot = wire.substitutions[0];
+  if (!source || !slot) throw Error('POOLED_SYNTHETIC_FIXTURE_REQUIRED');
+  for (const bad of [
+    {
+      ...wire,
+      sourcePool: wire.sourcePool.map((s, i) =>
+        i === 0 ? { ...s, dtoDigest: 'f'.repeat(64) } : s,
+      ),
+    },
+    { ...wire, substitutions: [...wire.substitutions, slot] },
+    {
+      ...wire,
+      substitutions: wire.substitutions.map((s, i) =>
+        i === 0 ? { ...s, sourceOrdinal: 5000 } : s,
+      ),
+    },
+    { ...wire, logicalDigest: 'f'.repeat(64) },
+  ])
+    expect(() => toDatabase(bad)).toThrow();
+});

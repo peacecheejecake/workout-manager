@@ -3,8 +3,8 @@
   "buildProofVersion": 1,
   "sourceBuildRevision": 1,
   "currentFunctionalExecution": "not_executed",
-  "sourceManifestSha256": "8e19428c731c6c8e71b9bdd9fa0ed9e2ed95082f1be5f2a587125635d852a0f4",
-  "manifestFileSha256": "59ce3cafd4859e6007bef2833b6f28f8519c8c806ca16f20d9f5976628806081",
+  "sourceManifestSha256": "87a706ab31efba006f3d7e2aef4adb1083cda05cca76390d23dc5374e3ad4bad",
+  "manifestFileSha256": "8d85feb7bdd08f313e85de1ce09aefc5f4d7aeb441830215cd3bc0784cc98ec5",
   "manifestPath": "manifest.json",
   "profileVersion": 9,
   "runtimeStep": 25,
@@ -1324,7 +1324,7 @@
     },
     {
       "path": "packages/server/persistence/src/race-manual-approval.ts",
-      "sha256": "dc2436c7027c4c5c06aa40d3ed457617f2b005e36af084617fc492183f7cf5a3",
+      "sha256": "a8f778f5dcba2a83f7fe082036a8c7ba32e9edc36b48f220d2d62516b72d2bf1",
       "role": "source"
     },
     {
@@ -1344,7 +1344,7 @@
     },
     {
       "path": "packages/server/persistence/src/race-manual-pooled-chain-transport-v1.ts",
-      "sha256": "80796c0b15b3333de2099a0f4564c9634dace393b3a4f2d23c432b0f70fe1b53",
+      "sha256": "7e0cdfb5d786e6c14e09c9e1cafb0367dd6b79624dfb0ff08ed36f4a266b318a",
       "role": "source"
     },
     {
@@ -1429,12 +1429,12 @@
     },
     {
       "path": "packages/server/persistence/src/race-manual-review-pooled-database-envelope-v1.ts",
-      "sha256": "776ea0633b1f16950d082d52b2702e79621d9be320c0af9977f9d88d2196ac0c",
+      "sha256": "cedda90dda3b68a21d7e28e31251e533a3f332d29974cfb173905023053ee52a",
       "role": "source"
     },
     {
       "path": "packages/server/persistence/src/race-manual-review-pooled-retained-payload-v1.ts",
-      "sha256": "219866a287b4ef3710d4f078d221aeb0616487e6a6bac724560caa392a888a3c",
+      "sha256": "de3bbbb0be4d82e16c1500e78ee13ce0d1642085110487c53cb2d46113ed22fd",
       "role": "source"
     },
     {

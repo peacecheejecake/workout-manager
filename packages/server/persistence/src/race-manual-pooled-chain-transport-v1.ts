@@ -8,9 +8,8 @@ import {
 import { raceManualSemanticBasisV2Schema } from './race-manual-review-semantic-basis-v2.js';
 import { raceManualReviewLifecycleInventoryV2Schema } from './race-manual-review-lifecycle-inventory-v2.js';
 import { raceManualReviewMultiOwnedRetainedPayloadV3Schema } from './race-manual-review-retained-payload-v2.js';
-import { encodeRaceManualReviewPooledRetainedPayloadV1 } from './race-manual-review-pooled-retained-payload-v1.js';
 import {
-  toRaceManualReviewPooledDatabaseEnvelopeV1,
+  encodeRaceManualReviewPooledDatabasePairV1,
   decodeRaceManualReviewPooledDatabaseEnvelopeV1,
 } from './race-manual-review-pooled-database-envelope-v1.js';
 import { assertRaceManualPlainV2 } from './race-manual-review-consumed-use-v2.js';
@@ -82,15 +81,13 @@ function snapshot(raw: unknown): unknown {
   }
 }
 function encoded(raw: unknown) {
+  // Retain the historical transport's INVALID_CONTEXT boundary classification.
   const logical = parse(raceManualReviewMultiOwnedRetainedPayloadV3Schema, raw);
   if (logical.state !== 'present' || logical.status !== 'structurally_corresponding') invalid();
-  return {
-    logical,
-    wire: toRaceManualReviewPooledDatabaseEnvelopeV1(
-      encodeRaceManualReviewPooledRetainedPayloadV1(logical),
-    ),
-  };
+  const { wire } = encodeRaceManualReviewPooledDatabasePairV1(logical);
+  return { logical, wire };
 }
+
 /** Caller-owned transaction only. Input observations are not credentials; SQL135
  * independently rechecks actual sources/purpose/heads/app before storing. */
 export async function storeRaceManualPooledChainTransportV1In(

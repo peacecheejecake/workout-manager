@@ -213,8 +213,18 @@ function encodeParsed(retained: Retained): Wire {
 /** Pure encoding only: the original strict V3 codec proves logical correspondence,
  * never DB ownership, processing permission, lifecycle or approval authority. */
 export function encodeRaceManualReviewPooledRetainedPayloadV1(raw: unknown): Wire {
+  return encodeRaceManualReviewPooledRetainedFromLogicalPairV1(raw).pooled;
+}
+/** Invocation-local construction pair only, never an authentication/cache token.
+ * Every call validates unknown logical ingress; no caller-supplied parsed marker. */
+export type RaceManualReviewPooledLogicalPairV1 = { pooled: Wire; retained: Retained };
+export function encodeRaceManualReviewPooledRetainedFromLogicalPairV1(
+  raw: unknown,
+): RaceManualReviewPooledLogicalPairV1 {
   bounded(raw);
-  return encodeParsed(raceManualReviewMultiOwnedRetainedPayloadV3Schema.parse(raw));
+  const retained = raceManualReviewMultiOwnedRetainedPayloadV3Schema.parse(raw);
+  const pooled = encodeParsed(retained);
+  return { pooled, retained };
 }
 function decodeWire(encoded: Wire): Retained {
   const decoded = clone(encoded.skeleton);
