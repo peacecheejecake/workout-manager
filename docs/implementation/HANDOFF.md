@@ -1199,3 +1199,13 @@ HANDOFF에는 branch/HEAD·보호 WIP/stash·동결 후보 경로/SHA·실제 �
   Root 검증·통합을 bounded scope로 배정한다. 운영·기기 작업은 승인된 새 순서 이후이며,
   기존 exact one-shot 실행 승인에 기대어 새 script를 실행하지 않는다. main은 `1d557358` clean,
   push는 사용자 작업이다. M0-06b 기존14파일 WIP와 기존 stash는 건드리지 않았다.
+
+## 사용자 결정 기록 · 2026-10-09 주간 잔여량 제한 해제·재개
+
+사용자가 “주간 잔여량 신경쓰지 말고 계속”이라고 명시했다. 앞선20% 종료 조건과 조회 실패에
+따른 새 작업 배정 보류는 해제한다. 이전 중단·조회 실패·동결 기록은 역사로 보존한다.
+목표는 계속267노드의 미완료 구현과 제품 출시 setup 전체이며 완료 판정은 바뀌지 않았다.
+Native agent에 EXT-RESTORE의 physical packet2파일 및 source build-proof5파일 실제 소스 통합을
+비중복 scope로 배정했고, 별도 agent는 새 back-channel/HealthKit 로컬 수용의 실제 증거를 대조한다.
+Root는 공유 exports/graph·후보 재검증·실제 통합시험·phase 검토/main 통합을 담당한다.
+운영/외부/실기기는 추가 승인한 순서대로 후행이며 미실행을 통과로 승격하지 않는다.
