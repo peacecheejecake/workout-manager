@@ -93,6 +93,14 @@ HEAD `6a00c113`의 canonical full identity 실제 두 회차를 완료했다. �
 
 실기기는 사용자 결정에 따라 모든 구현 후 실제 제품 앱에서 마지막으로 검증한다. [변경 계획](../device-validation-plan.md)을 따르며 standalone 시험 앱 결과를 최종 기기 수용으로 승격하지 않는다.
 
+## 2026-10-09 실제 HTTP V9 승인 집중 검증
+
+로컬 PostgreSQL 바이너리는 17.11, 보존된 작업 소유 E2E Docker는 17.6이다. Docker17.6에서 동일 V9 설치·core grant·readiness를 실행한 첫 진단은 ready/verified_catalog_and_source를 확인했지만 race setup에서 실패했다. 진단 helper가 모든 POST에 200을 기대하던 fixture 오류를 확인했다. 실제 race route는 201을 반환하므로 race만 201을 검증하도록 수정했고 영양 및 승인 200 검증은 유지했다. 원 race setup 실패 결과 SHA `418476eadfd6aedcce1f3c88bd39a635d7e10333c91be81963efdaad31865c0e`는 보존한다.
+
+최종 동일 Docker17.6 HTTP 집중 검증은 **1등록/1통과/0실패/0skip/exit0**다. readiness 통과, 승인 HTTP200, writer entered1/returned1/threw0, 요청 stamp correspondence·공개 DTO·실제 저장 head 모두 true, 원 foods와 intake 보존 단언을 포함한다. 원 E2E와 같은 실제 API/CSRF/현재 writer를 사용하지만 인증 port는 합성이며 shell/OIDC 전체 경로를 검증하지 않는다. 기존 canonical x2 둘째 회차의 두 HTTP500 실패는 여전히 미해결이며 이 결과로 passed로 바꾸지 않는다.
+
+최종 test SHA `a35303e736f4577f3ce7d7504042552fac60ec3b24d42a760c69138d73d8b2dd`, runner SHA `a03fdc16dad68b2c00de9cffd85c9c72178ae9579fcb4d0438e1dae4df55ffe9`, 입력4224개 manifest SHA `b8520c84d4ca234b5e9bd5b350b1c5899c721cdf2d732c609e54f57e683393c6`다. 실제 결과 TMP `wm-nutrition-http-v9-diag-docker176-v2-actual-f82e97cb-20261009-result.json` SHA `8c812868346c06cf8da91d0bf7ee5392adc8c14a3760a7284d3ab3ce6ab1047b`를 Root가 확인했다. pre/post PG170006·postgres DB1/role1·slot0·otherClients0, 시험 생성 DB/2roles 및 자체 facts TMP 정리, container/handoff 보존, source/build 불변, DEBUG/preload0이다. 새 API test의 package typecheck·file lint·format·diff도 exit0이다. full phase 검증/독립 review/main 병합은 아직 완료하지 않았다.
+
 ## 2026-10-09 HTTP V9 관측 진단과 로컬 UI 수용
 
 새 API 진단은 실제 V9 설치·동일 admission/readiness·loopback HTTP를 사용하며 인증 port만 합성이다. v1은 readiness 단계의 미확정 오류로 종료했고, v2는 원 snapshot callback 결과/오류를 바꾸지 않는 passive 관측으로 **unsupported / catalog_mismatch**, **CURRENT_RUNTIME_V9_INCOMPATIBLE**를 확인했다. v2는 1등록·0통과·1실패·0skip·exit1이며 HTTP 시작/승인/writer 호출은 0이다. initdb/start/stop exit0, source/build 4224개 불변, 자기 생성 PG cluster 제거, 원 E2E 자원 접근0이다. 이를 기존 Next/Vite approve-v4 HTTP500의 재현이나 해결로 판정하지 않는다.
