@@ -1297,3 +1297,26 @@ source1056 전후 동일을 확인했고 후속은 finite 거절 단계 진단�
 native 병렬 배정은 M0의 새 고정 source/유한 DB 진단 실행 준비, native239 수신 거절 조건 진단,
 M2-01k-local opt-in/독립 재식별 review artifact continuity 감사다. Root는 실제 DB 실행·
 공통 graph·Git 통합을 직렬 소유한다. 보호 WIP와 stash·main은 변경하지 않았고 push0이다.
+
+### 최신 병렬 검증 후속 · 60e4 전체 종료
+
+M0 fixture 두 교정은 actual upgrade1/normal29 집중검증 뒤60e4fa4f에 커밋됐다.
+같은 고정 cleanclone의 전체7단계는 exit0(unit4672pass/2skip), canonicalPG17.11은
+upgrade1pass·normal1486pass/1fail/4skip·exit1이다. 원4실패 위치는 이번 통합에서 통과했고
+남은 실패는 global-openai-budget의 REASSIGN이며 SQLSTATE는 아직 미관측이다.
+`phase/m0-06b`23914266에 별도 결과를 보존했다. 원unit4fail/PG4fail은 삭제하지 않는다.
+
+EXT normalizedV2c는 wire_schema, V2d는 producer의 numeric cast 후 array_element_type에서
+실제 거절됐다. exact소유PG170006 정리/source전후동일·authority none을 확인했다.
+`phase/ext-restore`3a0e9973에 별도 실패를 보존했다. native physical catalog 수용은 미완료다.
+
+Gallery albumadapter23unit과 V3HTTP/UI100unit, API/Web/mobile/Gallery 소비TS,10파일lint,
+Next/Vite 실제build는 exit0이다. 실제albumSQL143/admission/restore·제품host/API composition과
+브라우저 검증은 아직 미완료다. 보호SQL143초안/원시험은 untracked로 보존했다.
+새 actualadapter19case 후보는 원CLOSED 단언을 보존한 TMP 준비이며 actualDB미실행이다.
+Aside는 guide/repl을 읽었으나 daemon authchallenge fetch가 실패했다. Chrome fallback 준비 중이며
+아직 브라우저 수용으로 기록하지 않는다.
+
+Root는 M0 새 전용UnixPG 진단을 실행하고 공통Git/graph/실제DB를 직렬 소유한다.
+Native agents는 Gallery19 실제실행 준비·native239 원소타입엄격수정·M2opt-in 준비를 병렬로
+진행한다. graph완료상태/main/push/운영/기기는 변경하지 않았다.
