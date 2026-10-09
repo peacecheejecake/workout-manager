@@ -18,6 +18,12 @@ const OverlayPanel = lazy(() =>
   import('./overlay-panel').then((module) => ({ default: module.OverlayPanel })),
 );
 
+const TableVirtualizationPanel = lazy(() =>
+  import('./table-virtualization-panel').then((module) => ({
+    default: module.TableVirtualizationPanel,
+  })),
+);
+
 class PanelBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
   override state = { failed: false };
   static getDerivedStateFromError() {
@@ -36,6 +42,7 @@ export function SpikeWorkspace({ workerUrl }: { workerUrl: string }) {
   const [started, setStarted] = useState(false);
   const [showMap, setShowMap] = useState(true);
   const [showOverlay, setShowOverlay] = useState(false);
+  const [showTableVirtualization, setShowTableVirtualization] = useState(false);
   const [showRoutingRecovery, setShowRoutingRecovery] = useState(false);
   return (
     <div className={styles.workspace}>
@@ -53,6 +60,16 @@ export function SpikeWorkspace({ workerUrl }: { workerUrl: string }) {
       <button type="button" onClick={() => setShowOverlay((value) => !value)}>
         {showOverlay ? 'Overlay 조합 검증 닫기' : 'Overlay 조합 검증 열기'}
       </button>
+      <button type="button" onClick={() => setShowTableVirtualization((value) => !value)}>
+        {showTableVirtualization ? '표 가상화 검증 닫기' : '표 가상화 검증 열기'}
+      </button>
+      {showTableVirtualization ? (
+        <PanelBoundary>
+          <Suspense fallback={<p role="status">표 가상화 검증 준비 중</p>}>
+            <TableVirtualizationPanel />
+          </Suspense>
+        </PanelBoundary>
+      ) : null}
       {showOverlay ? (
         <PanelBoundary>
           <Suspense fallback={<p role="status">Overlay 조합 검증 준비 중</p>}>
