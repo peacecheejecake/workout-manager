@@ -1234,3 +1234,27 @@ Management72 합성 단언은 별도 실제 결과다. Root가 source/framework6
 제품 서명빌드·기기·HealthKit 실제 I/O를 입증하지 않는다. 최초 Release 실패/DEBUG미실행 기록은
 유지한다. 세 native agent는 외부 package registration, native239 catalog, M0-06b-local 증거
 대조를 병렬 진행한다. main/push/운영/실기기 변경0.
+
+## 2026-10-09 로컬 수용 두 항목 완료·병렬 후속
+
+Root가 현재 source14개 SHA drift0과 최신 전체 gate, 실제 canonical identity×2,
+unsigned native SDK/합성 harness 및 기존 실제 브라우저 입력 대응을 대조했다.
+`EXT-BACKCHANNEL-local`, `M3-02o-local`만 completed로 기록하며
+[범위·실제 증거](progress/ready-local-acceptance-20261009.md)를 따른다.
+Graph267개 중 completed234, unknown dependency0/cycle0이다. 전체 phase 검토/main 병합,
+Zitadel 실제 전파·운영 감사/배포/rollback·전체239 인증 복원·실제 제품 기기는 별도다.
+
+`phase/ext-restore`의 `7e596fce`는 외부 package 등록 구성요소를 추가했다. Root 실제37/37,
+persistence TS·lint·format·diff exit0이며 authoritynone/admissionfalse다. 새 실제 설치 관측은
+66packages/3085files/162 resolve records이고 optional pg-native 미설치·legacy main/wildcard
+지원이 남아 전체 등록 통과가 아니다. Native agent가 명시적 absent 관측을 포함한 V2를 구현한다.
+
+`phase/m2-03`의 `ff22cb1a`는 guard 실제10/10·원 실패·정확 소유 정리와 제품 연결 미완료를
+[별도 기록](progress/M2-03-authoring-guard-local.md)했다. SQL143 WIP는 보존했다.
+M0 최신 closure는104(외부100), 원103 변경0·workspace conversation-kit 추가1이다.
+Chrome 두 Host slider 실제키보드·focus 관측과 새 Playwright2case를 병렬 검증 중이다.
+원 테스트0등록 실패는 실제 기능 실패/통과로 대체하지 않는다.
+
+Root native239 catalog 관측은 신규 소유 PG17.6의 normal107/V9 설치까지 성공했으나
+catalog observation은 실패해 아직 미수용이다. 각 원 기록·정확 컨테이너 정리·source1056 불변을
+보존하고 raw 오류 없는 단계 진단으로 원인을 좁힌다. 운영·기기·개인자료 사용0.
