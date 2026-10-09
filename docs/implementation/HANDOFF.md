@@ -1060,3 +1060,11 @@ Standalone 실기기 앱 작업은 중단을 유지한다. 실제 제품 앱 수
 Gallery 제품 navigation/명시 album command 구성은 phase/m2-03 `e49ed90f`에 검증 후 커밋했다. 실제 관련 RTL55/55·TS/lint/format·Next/Vite build exit0 및 합성 HTTP Chrome의 명시 필터/앨범 command/409/uncertain/늦은 API 응답 차단·320/768/1280 reflow를 확인했다. 검증 문서 `docs/implementation/progress/M2-03-navigation-workspace.md`는 그 phase에 있다. 실제 persistence/API/영수증/코스 선택·SQL143 full restore closure는 미완료다. SQL143 초안은 untracked로 보존했고 등록·커밋하지 않았다.
 
 Native 병렬은 EXT-RESTOREa의 누락 durable7개 exact physical codec 구현과 Linux production codec의 Env/mount 실제 finite 관측 준비다. parser 준비·합성 브라우저/좁은 DB 결과를 전체 복원/phase 승인/운영 수용으로 확대하지 않는다. main은 실제 `1d557358` clean이며 push0. 실기기는 마지막 실제 제품 앱에 남긴다.
+
+## 2026-10-09 병렬 구현 통합 · 원본 bytes와 codec 경계
+
+EXT-RESTORE의 generic 원본 row-byte 검증을 Root가 읽고15/15·skip0·전체 persistence TS·scoped lint/format을 실제 확인해 `phase/ext-restore`의 `12c61bda`에 커밋했다. 모든239 typed relation/producer/loader/admission 완료는 아니다. Durable7의 소수초 비교는 Root 실제 PG17.6 합성12/12 경계가 일치했으며, template 공개계약의 >6자리 거절 보완을 별도 native agent가 진행 중이다. 기존 historical restore와 외부 not_executed를 유지한다.
+
+Gallery는 `phase/m2-03`의 `b91d8215`에 Root actual PNG frame 및 Engine 유한 경계 관측을 기록했다. PNG 기술 점검 exit0·sourceSame·자기 container 정리, TMP V3 기존 V1 포함130/130은 실제 결과다. cgroup quiescence/processing authority/worker DB/video/전체 phase 수용은 미완료다. 정확4파일 V3 runtime 적용도 자동 승인 검토가 persistent security boundary의 명시 승인 부족으로 거절했다. 저장소 정책 변경0이며 사용자에게 구체 후보 적용 승인을 요청했다. 원본·후보와 실패는 보존하고 우회하지 않는다.
+
+Canonical whole normal v9는 실제 실행 handle49068의 최신 poll도 진행 중이었다. 같은 handle을 계속 관측하고 timeout만으로 재시작하지 않는다. Parent/phase 상태와 main `1d557358`·push0를 유지한다. Native 병렬은 공개 template timestamp 대응, full239 producer/native-order 계약 대조다. 실기기는 모든 구현 후 실제 제품 앱으로 마지막에 진행한다.
