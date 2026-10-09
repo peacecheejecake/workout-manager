@@ -60,3 +60,9 @@ HANDOFF의 이전 dense804 위치 설명도 정정한다:804는 원 시험 호�
 실제 `/private/tmp/wm-restorefamily176-4b115ae1-3eec-4fa0-bbf1-b3686360fb92`, finite reporter SHA `3d5323de895d3c24512d1bbf05a14a42aef62d7dd1c0c6d7f5df35016f5ee718`, 새 source2996/build1330 전체4326 입력 freeze SHA `3262076b404b1d0f4359c1beff4e700f357916a7e0905b9e45f52cc296926e49`다. Root가 전체 입력 SHA를 별도 대조해 mismatch0을 확인했다. 원 fixture SHA `b05d20d86e1c7ab0d29cb5b23af5f20898524abbd6ec7565ea1bf561ad7d08a8`와 원18 제목 allowlist를 유지했다.
 
 이 focused 성공은 전체 실패 원인이나 수정 완료 증거가 아니다. 원 canonical failure와 성공 시만 허용되는 role cleanup 거절 기록은 보존한다. 전체 실행의 유한 SQLSTATE/timeout 관측을 보완한 별도 진단 준비를 계속한다. 전체 gate·독립 phase 검토·운영 복원/출시 및 identity x2는 이 결과로 통과시키지 않는다.
+
+## Whole normal finite diagnostic r2 · 실제 FAILED 보존
+
+실제 `/private/tmp/wm-wholenormal-finite176-6de1a720-a599-4581-b98e-296e64f0d2c3`는 2026-10-09T20:36:57.468Z→21:11:27.679Z, 2070199.924958ms 후 exit1이었다. default 요약은 upgrade1passed, normal301filespassed/3skipped·3072casespassed/14skipped였으나 `finite-normal-reporter.json`이 없었다. 따라서 이 결과는 전체 gate 통과가 아니다. source/build4326 전후 동일, pool 종료·child group 부재·정확 소유 container 제거를 확인했다. 성공 전용 역할 정리는 실행하지 않았고 제거 전 roles17/DB1/slots0/otherclients0 및 SUITE_ROLE_CANONICAL_NOT_SUCCESSFUL/POSTSTATE_NOT_CLEAN을 보존한다.
+
+Root 평가 `/private/tmp/wm-whole-normal-diagnostic-r2-root-actual-assessment-20261010.json` SHA `43ef772e13b24a81a287ebdac321f6ff744a60d7aeb5c59f2e16a2244de54f84`. 원 harness의 args.includes(upgradeFile)는 normal --exclude 값도 upgrade로 오분류한다. 별도 TMP r3 pure17/17은 원 argv의 이 오분류와 unchanged reporter의 REPORTER_UPGRADE_SCOPE_REJECTED를 재현했다. 실제 discard된 오류 본문을 복원했다고 주장하지 않는다. r3는 exact argv selector만 수정하며 원 SQL·assertions·timeout·roster·cleanup을 유지한다. 이 reporter 진단은 literal canonical pnpm test:integration, identity×2, 전체 phase 검토를 대체하지 않는다. 과거 REASSIGN 실패의 정확 원인 unknown과 원 실패 이력도 유지한다.
