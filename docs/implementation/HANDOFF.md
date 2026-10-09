@@ -1277,3 +1277,23 @@ ADR을 기록했다. 새 깨끗한 동일 HEAD 복제본의 full7 R1은 도구 �
 이를 전체 성공으로 바꾸지 않는다. canonical DB 통합은 별도 실제 실행 중이며 종료 수용 전이다.
 전체 실패 기록은 `/private/tmp/wm-m0-clone-static-six-unit-actual-r2-20261009-terminal.json`,
 집중 재현은 `/private/tmp/wm-m0-unit-failure-diagnostic-actual-r1-20261009.json`을 따른다.
+
+### 후속 실제 종료 및 병렬 소유 범위
+
+동일 M0 source/config의 전체 unit R3는 실제4672passed/2skip/0fail·391files·exit0이다.
+R2의4실패는 보존하며 부하가 원인이라는 확정 판정은 하지 않는다. canonical PostgreSQL17.11은
+upgrade1/1pass, normal1483pass/4fail/4skip·exit1로 종료했고 정확 소유 임시 DB가 정리됐다.
+ai-settings DB owner와 worker PG17 ACL fixture 두 파일만 교정했으며 실제 DB 재검증 전이다.
+loader는 원인 미확정으로 raw 오류 없는 same-client 진단 후보를 별도로 준비 중이다.
+M0 phase 전체 수용·identity 두 회차·독립 검토·main 병합은 미완료다.
+
+EXT-RESTORE `b54c5ac9`에 compiler prerequisite 내부 두 파일과 Root 검증 기록을 커밋했다.
+실제42/42·persistence TS·scoped lint/format0, literal pin으로372sources/374imports/748관측 대응을
+확인했다. fullTransitiveClosureComplete false·authority none·admission false는 유지한다.
+Native239 normalized V2의42702 실패를 보존했다. 별칭9곳을 고친 V2b는 실제 SQL을 실행해
+888,075bytes carrier를 받았으나 receiver가 거절해 여전히 실패다. 소유 컨테이너 정리와
+source1056 전후 동일을 확인했고 후속은 finite 거절 단계 진단이다.
+
+native 병렬 배정은 M0의 새 고정 source/유한 DB 진단 실행 준비, native239 수신 거절 조건 진단,
+M2-01k-local opt-in/독립 재식별 review artifact continuity 감사다. Root는 실제 DB 실행·
+공통 graph·Git 통합을 직렬 소유한다. 보호 WIP와 stash·main은 변경하지 않았고 push0이다.
