@@ -116,3 +116,11 @@ v2 actual TMP `wm-nutrition-http-v9-diag-s17-frozen-v2-actual-20261009-result.js
 Runner v2 SHA `41d5662253213ed9dcc6223cd1ea466c82723fa7e194611de8ebd404b94e9df3`, 입력 manifest SHA `d166ae905205f652ebf895b6f4ba7506308251fa02407e15f1e73a629586dd37`, 실제 결과 `wm-canonical-nutrition-focused-v2-actual-d6f065ec-20261009-result.json` SHA `696ea75f9e1fbc53a22c2a20660afee234a8c4f3abcc89f76c28c41e6e826ca7`다. 실제 session99291의 terminal exit0, 소요27142ms다. pre/post PG170006·DB1·role1·slot0·otherClients0, 포트5개 모두 ECONNREFUSED/free, 기존 TMP3 보존·새 TMP0, 보존된 소유 container/image/handoff 핀 일치, DEBUG/preload0과 자원 정리 완료를 확인했다.
 
 이 집중 실행에서는 HTTP500이 재현되지 않았다. 기존 전체 x2의 둘째 회차344통과/2실패/12skip은 역사 결과로 보존하며 해결 또는 통과로 승격하지 않는다. 전체 모음의 선행 상태와 연속 실행까지 포함한 canonical x2 갱신, 독립 phase 검토와 main 병합은 여전히 남아 있다.
+
+## 2026-10-09 새 전체 identity 실행 실패와 구현 선행 유지
+
+HEAD `85b0af5a880ee81cca8ea3934bb4e39a1f3fea21`의 canonical 전체 실행은 실제 session78475에서 exit1로 종료했다. general은 331등록·318통과·1실패·12skip·retry0이었다. 실패는 `course-extras.spec.ts:187`의 왕복 GPX 가져오기 성공 문구 검증이며, 유한 결과만으로 실제 응답 내용이나 원인을 확정하지 않는다. app-consent·AI settings lifecycle·current-manual 및 두 번째 전체 실행은 not_executed다. 기존 영양 HTTP500 실패도 이 결과로 해결 처리하지 않는다.
+
+실제 run1 결과 SHA `b55adb12e99cce9a389e2f6c7182f44e12215dc88e2fc5de668d26e2c2e714d3`. Aggregate `wm-identity-full-x2-actual-85b0af5a-20261009-result.json` SHA `a57f5931d03eacbca4b1a9f22358e99c5a9ed3998a1632fdc3634eb55a047214`. source/build 입력 불변, 전후 5포트 ECONNREFUSED/free, 관측한 pattern DB·known roles·pattern slots 잔존0, 원 owned container·handoff·기존 TMP3 보존·새 TMP0이다. 해당 한정 관측을 전체 DB/역할/otherClients의 검사로 확대하지 않는다. Root가 별도로 같은 소유 클러스터 전체를 읽기 전용 조회해 PG170006·DB1·role1·slot0·otherClients0을 확인했다. 추가 결과 SHA `a32e69ed8fc5388870cca1b4a25d1846a05702104b087c63ecba5791de2f7457`이며 컨테이너는 보존했다. 독립 phase 검토와 main 병합은 미완료다.
+
+갤러리 계약·순수 WebVTT 파서는 별도 `phase/m2-03`의 `7eea8ced`에 검증 커밋했다. S17 파생 이미지 코덱 구현을 시작해 M2-03c를 in_progress로 갱신했으며, 상태 변경을 완성이나 수용 통과로 취급하지 않는다. 실기기는 모든 구현 뒤 실제 제품 앱에서 마지막에 검증한다.

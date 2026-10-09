@@ -2520,7 +2520,7 @@
       "title": "S17 미디어 파생물 처리·상태·삭제",
       "dependsOn": ["M2-03"],
       "kind": "task",
-      "status": "not_started",
+      "status": "in_progress",
       "scope": "S17/V2-F21의 EXIF/orientation·thumbnail/transcoding 미구현을 bounded worker/object storage/계약·UI로 구현한다. 원본 불변과 정확 derivative lineage, 지원불가/실패/변환 상태, 삭제 suppression·계정 삭제/복원·재시도 억제·유한 비용/codec 예산을 실제 합성 codec/실DB로 검증한다. 운영 및 최종 실제 제품 실기기 수용은 외부/final gate에 남긴다.",
       "evidence": "docs/implementation/progress/M2-03-follow-up.md"
     }
