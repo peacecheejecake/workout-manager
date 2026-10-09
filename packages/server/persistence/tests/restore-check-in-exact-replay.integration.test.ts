@@ -66,6 +66,15 @@ async function account(): Promise<string> {
   return id;
 }
 
+async function replayTime(): Promise<string> {
+  const time = await owner.query<{ occurred_at: string }>(
+    'SELECT clock_timestamp()::text AS occurred_at',
+  );
+  const occurredAt = time.rows[0]?.occurred_at;
+  if (!occurredAt) throw new Error('missing replay time');
+  return occurredAt;
+}
+
 async function liveCheckIn(athleteId: string): Promise<Entry> {
   await grantAppPurpose(athleteId);
   const created = await createCheckInRepository(database).createCheckIn(athleteId, {
@@ -79,11 +88,7 @@ async function liveCheckIn(athleteId: string): Promise<Entry> {
       note: 'Private replay fixture',
     },
   });
-  const time = await owner.query<{ occurred_at: string }>(
-    'SELECT clock_timestamp()::text AS occurred_at',
-  );
-  const occurredAt = time.rows[0]?.occurred_at;
-  if (!occurredAt) throw new Error('missing replay time');
+  const occurredAt = await replayTime();
   return {
     athleteId,
     targetId: created.id,
@@ -227,7 +232,7 @@ describe('owner-only exact check-in deletion replay', () => {
       athleteId,
       targetId: randomUUID(),
       eventId: randomUUID(),
-      occurredAt: new Date().toISOString(),
+      occurredAt: await replayTime(),
       revision: 2,
     };
     await expect(replay(owner, absent)).rejects.toThrow('RESTORE_CHECK_IN_ABSENT_UNSUPPORTED');
@@ -289,11 +294,12 @@ describe('owner-only exact check-in deletion replay', () => {
   it('recognizes an earlier exact deletion after exact tenant erasure', async () => {
     const item = await liveCheckIn(await account());
     expect(await replay(owner, item)).toBe('deleted');
+    const erasedAt = await replayTime();
     await tenant(owner, item.athleteId, (client) =>
       client.query('SELECT public.replay_tenant_erasure_exact($1,$2,$3)', [
         item.athleteId,
         randomUUID(),
-        new Date().toISOString(),
+        erasedAt,
       ]),
     );
     expect(await replay(owner, item)).toBe('already_applied_by_erasure');

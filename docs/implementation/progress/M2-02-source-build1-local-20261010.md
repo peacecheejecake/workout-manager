@@ -34,3 +34,13 @@ R7 로컬 static7은 모두 terminal0, unit603파일9719passed/failed0/skip5였�
 같은 원3파일의 후속 좁은 baseline은 실제25cases 중23pass/2fail/skip0였다. manual12와 resource6은 모두 통과했고 check-in7 중 absent233/erasure292가 INVALID_ENTRY로 실패했다. runner의 선언21=실제cases21 가정은 it.each 확장을 누락해 BASELINE_ORIGINAL_21CASES_NOT_OBSERVED를 추가로 발생시켰다. 이 harness 오류와 실제2fail을 분리한다. clock bracket before0..3ms/after-6..0ms만 관측했으며 실패 시각 guard의 원인은 미확정이다. actual `/private/tmp/wm-failedthree176-c013b9f9-8bbc-4877-bfe1-d6c83bc19f10`; Root 평가 SHA `a46697f5575ac53c6ce4efa7ed72933e2e90e4b952446763ebb6c55eebd30c30`. 원본 source 전후동일, 제거 전 roles1/DB1/slot0, poolclose·소유 container 제거를 확인했다. 개인 내보내기 원 broad 실패는 이번에 재현되지 않았다는 의미이며 소급 통과하지 않는다.
 
 HANDOFF의 이전 dense804 위치 설명도 정정한다:804는 원 시험 호출 위치이고 cleanup pending drain은439다. 원 역사 문구는 보존하며 cleanup을804의 원 실패라고 취급하지 않는다. 현재 source에 대한 identity 두 회차·전체 integration 통과·독립 phase review·main 병합은 미완료다. 보호 EXT-HOSTING4줄은 이 작업에 포함하지 않는다. 운영 backup/restore·HTTPS·외부 수용·실제 제품 iPhone·출시 선행조건은 유지한다. 사용자의 주간 잔여량 제한 해제 결정에 따라 로컬 작업을 계속한다.
+
+## 2026-10-10 PostgreSQL 시각 fixture 수정과 좁은 실제 수용
+
+추가 SELECT 진단 actual `/private/tmp/wm-checkin-guard176-db25a450-75c5-4551-ab18-004c603dd003`은 원25 중24pass/1fail(resource erasure)이었다. check-in erasure의 호출 직전 future/guardRejects true를 관측했지만 SELECT 지연 뒤 원 함수는 통과했다. 이 관측은 원 전체 실패의 원인 증명이 아니며 진단이 경합을 가릴 수 있다. Root 평가 SHA `0976522ea79b37b9490f1ffc831caa48547cf3ab172a19dbf58c8497af29bb79`.
+
+두 exact-replay fixture의 생성 시각을 기존 tenant owner의 `clock_timestamp()::text`로 취득하도록 수정했다. JS Date의 밀리초 반올림과 DB 시각 차이를 제거하고 원 microsecond 문자열을 보존한다. 제품 SQL의 future guard·권한·단언·25개 제목·timeout은 변경하지 않았다. manual-source fixture는 그대로다. 후보 source SHA check-in `3a2b7f44f2182d9142c4ddc16d93608d637d58a3c08ffed4963e9177d6683774`, resource `2b1717f0aa8fc2819b3bb992f218cc315ce68f953026c2c515a2e6e6b8cb7b12`.
+
+원 source/build4326을 복사하고 이2파일만 교체한 후보 clone의 실제 PG17.6 원3파일 시험은25passed/failed0/skip0, module/suite error0·unhandled0·exit0이었다. actual `/private/tmp/wm-dbclocktwo176-f1e085d7-655a-403a-bfc5-27769eae5274`, finite SHA `f7653c2361d6f31cd8bde3a6cfc1eb3f9df7d61614960b37f2188d023c382903`, Root 평가 SHA `67570ac2809e714a0312c2d312b3c05553a60857c9ff761be02e68bc27ac043b`. 실행 source/clone 전후동일, post roles1/DB1/slots0, poolclose·정확 소유 container 제거를 확인했다. 독립 신규 install clone은 아니며 고정 원 dependency bytes를 읽기 전용 링크로 사용했다.
+
+이 실제 결과 뒤 정확한 두 fixture를 phase tree에 적용했다. 전체 persistence TS·두 파일 ESLint/Prettier exit0. 적용 후 전체 canonical integration과 identity 두 회차는 아직 미실행이다. 이전 whole4fail/14skip·baseline2fail·진단1fail과 harness의21개 가정 오류를 모두 보존한다. sourceproof의 authority none·admission false, main/운영/실기기 출시 gate는 그대로다.

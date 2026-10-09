@@ -55,6 +55,15 @@ async function tenant<T>(
   }
 }
 
+async function replayTime(): Promise<string> {
+  const time = await owner.query<{ occurred_at: string }>(
+    'SELECT clock_timestamp()::text AS occurred_at',
+  );
+  const occurredAt = time.rows[0]?.occurred_at;
+  if (!occurredAt) throw new Error('missing replay time');
+  return occurredAt;
+}
+
 async function account(): Promise<string> {
   const result = await owner.query<{ athlete_id: string }>(
     `INSERT INTO identity_private.account(issuer,subject)
@@ -82,7 +91,7 @@ async function liveResource(athleteId: string): Promise<Entry> {
     athleteId,
     targetId: created.resource.id,
     eventId: randomUUID(),
-    occurredAt: new Date().toISOString(),
+    occurredAt: await replayTime(),
     accessRevision: created.resource.accessRevision + 1,
   };
 }
@@ -226,7 +235,7 @@ describe('owner-only exact resource deletion replay', () => {
       athleteId,
       targetId: randomUUID(),
       eventId: randomUUID(),
-      occurredAt: new Date().toISOString(),
+      occurredAt: await replayTime(),
       accessRevision: 2,
     };
     await expect(replay(owner, absent)).rejects.toThrow('RESTORE_RESOURCE_ABSENT_UNSUPPORTED');
@@ -279,11 +288,12 @@ describe('owner-only exact resource deletion replay', () => {
   it('recognizes an earlier exact resource event after exact tenant erasure', async () => {
     const item = await liveResource(await account());
     expect(await replay(owner, item)).toBe('deleted');
+    const erasureOccurredAt = await replayTime();
     await tenant(owner, item.athleteId, (client) =>
       client.query('SELECT public.replay_tenant_erasure_exact($1,$2,$3)', [
         item.athleteId,
         randomUUID(),
-        new Date().toISOString(),
+        erasureOccurredAt,
       ]),
     );
     expect(await replay(owner, item)).toBe('already_applied_by_erasure');
