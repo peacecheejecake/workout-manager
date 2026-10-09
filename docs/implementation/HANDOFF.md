@@ -1423,3 +1423,15 @@ GPX actualPG8 완료 후 추가: `/private/tmp/wm-disclosure-rounding-pg-Q0gBIO`
 R6 새 입력의 canonical 로컬7종은 실제 완료됐다: offline frozen install·generated·lint·typecheck·build·format·unit 모두 terminal0/source전후동일/dependency전후동일, 603파일9713passed/failed0/skip5(total9718). `/private/tmp/wm-source-build1-static-seven-r6-actual-20261010-terminal.json` SHA `1b10eb260e4958ecf909a85e23633fb525645f3b899dfa634d74c25bd9a9ee29`, unit finite SHA `8739b9c8d3b655e3ccd75ec728948f3e41c517ba59e61f1e08ef8ebe33784890`. skipped5는 별도 유지했다. 빌드 출력이 변경돼 후속 identity/fullintegration에는 새 build freeze가 필요하다. 이전 R5 identity 두 회차와 broad R3 실패는 역사 증거로 보존하며 이 새 R6의 fullintegration/identity pass로 복사하지 않는다.
 
 현재 중앙 GPX/R6 통합 commit은 `b482b2cb`, Gallery V39/privacy 통합 commit은 `b4a1b5ea`다. Root는 main을 이동하지 않았고 pushing은 사용자 작업이다. 독립 phase 검토는 남은 runnable local 작업과 whole DB/identity 검증 이후 수행한다. 병렬 TMP 작업은 dense codec 성능 후보(원60초/8case/unknown-wire·SQL 재검증 보존), Gallery 로컬 producer18 수용 준비(정식 authenticated tail 아님), EXT domain/sequence companion 범위 설계다. Gallery draft1000 collection limit를 제품 개인정보 삭제의 허용량으로 채택하지 않으며 bounded complete-roster 삭제 설계가 별도로 필요하다.
+
+### 2026-10-10 계속 진행 · R7 실제 결과 후속
+
+주간 잔여량 제한은 사용자가 해제했다. Root는 native 병렬 작업과 로컬 검증을 계속하며 주간 잔여량 기준으로 handoff 전용 전환하지 않는다. 최신 중앙 commit `54b81d39`는 bounded dense decoding 재사용과 R7 등록/역사보존/검증기록이다. 전체 phase 통과나 main 병합은 아니다. 보호 EXT-HOSTING4줄은 미커밋 상태로 보존했다.
+
+R7 static7 exit0(unit9719pass/5skip), 별도 dense8 actual8pass/skip0를 확인했으나 whole canonical integration은 normal3068pass/4fail/14skip+unhandled1로 실패했다. 원3파일 좁은 재현은25cases23pass/2fail/skip0: check-in absent 및 erasure INVALID_ENTRY가 재현됐고 resource6/manual12는 이 실행에서 통과했다. runner의21선언=21실제cases 가정 오류도 별도로 보존했다. clock 원인은 미확정이며 SQL guard/timeout/권한을 완화하지 않는다. 상세와 실제 평가 SHA는 [R7 progress](progress/M2-02-source-build1-local-20261010.md)에 있다. 이전804 위치 설명은 정정한다: 원 시험 호출804와 cleanup pending drain439를 구분하며 역사 기록은 삭제하지 않는다.
+
+Gallery `d065ee37`은 grouped source record strict parser를 검증해 커밋했다. A1 TMP source identity 후보의 실제privacy9+producer13=22case는 모두 통과했고 source전후동일·pool종료·소유container 제거가 확인됐다. A1 formal installer/profile/registry/publication/authenticated tail·복원 수용은 아직 없다. A3 physical parser 후보는 EXT generic2 dependency를 Gallery에서 확보해야 통합 가능하다. 후보 순수시험을 actual WAL/group closure로 대신하지 않는다.
+
+EXT `40262057`은 C4 raw metadata actual 성공을 기록했다:239관계/1887컬럼/1704constraints/domain0/sequence1. 실제관측 성공과 reviewed expected 검증은 구분하며 C4 positive는 미실행이다. source/native 대조의 남은 trigger58 metadata NULL, default/CHECK 의미 및 sequence highwater를 해결한다. raw를 그대로 trusted expected로 채택하지 않는다.
+
+다음 작업은 원3파일 collection roster 정확확인 및 체크인 시각 경계의 fixture 진단, C4 versioned trigger metadata query/codec 후속, Gallery physical parser dependency closure 통합이다. 공통 graph와 manifests는 Root가 직렬 소유한다. local 수용 완료 뒤 full canonical/identity 두회차와 독립 wholephase 검토를 수행한다. 운영 backup·restore/HTTPS/외부 수용/실제 제품앱 iPhone/출시 선행조건은 유지한다. main `e7fb1d0b`와 push는 변경하지 않았다.
