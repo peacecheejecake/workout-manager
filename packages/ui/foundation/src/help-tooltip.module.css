@@ -1,0 +1,30 @@
+.root {
+  display: inline-flex;
+  align-items: start;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.tooltip {
+  position: fixed;
+  inset: auto;
+  left: var(--help-x);
+  top: var(--help-y);
+  margin: 0;
+  box-sizing: border-box;
+  max-inline-size: min(20rem, calc(100vw - 16px));
+  max-block-size: calc(100dvh - 16px);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--surface-strong);
+  color: var(--ink);
+  overflow: auto;
+  overflow-wrap: anywhere;
+  box-shadow: var(--shadow);
+}
+
+.description {
+  color: var(--ink-muted);
+  overflow-wrap: anywhere;
+}
