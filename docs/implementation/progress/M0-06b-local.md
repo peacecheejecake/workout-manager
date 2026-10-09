@@ -114,3 +114,17 @@ Root가 runner 원형과 generated-output 제외 diff를 검토하고 실행을 
 이 최신 결과는 조합·reflow·worker/CSP·라이브러리 interaction의 기존 **로컬 두 shell 브라우저** 공백을 닫는다. 기존 historical Aside 직접 관측은 그대로 보존한다. 이번 도구는 Playwright이며 Aside를 새로 실행했다고 주장하지 않는다. physical GPU/OS IME/native gesture·성능 또는 공개 license endpoint 수용으로 확대하지 않는다. standalone iPhone 합성 앱 실행은 없었다.
 
 새 UI source 결함은 이18개에서 관측되지 않았다. 남은 정확한 판단은 FUT-03의 미채택 후보별 자체 구현 범위/명시 선택·대체 기록, 기존 M2-03의 full viewer·caption/speed/codec 등 실제 제품 기능 공백과 carousel/conversation streaming 요구의 소유 node 연결이다. 현재 owning 기능 수용이 있는 항목을 새 라이브러리 설치 task로 확대하지 않는다. 이 문서는 local 전체 완료를 스스로 선언하지 않으며 Root가 기존 요구와 disposition을 검토한 뒤 상태를 판정한다.
+
+## 추가 구현 수용 연결 · 2026-10-09
+
+위 최초 감사/후보 표는 역사 입력에 대한 기록이다. 후속 `phase/m0-06b` HEAD `f7849f268edd04f1d4c6e9e99112aa7df2e37be3`에서 다음 실제 구현과 검증이 추가됐다. 아직 main에 통합되지 않았고 전체 M0/local 완료 판정도 아니다.
+
+| 수용 범위                    | owning 구현/기록                                                                                                                 | 실제 추가 검증                                          | 남은 범위                                                                     |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| Conversation presentation    | `6021bf48`, conversation-kit와 coaching 소비자; 해당 phase의 `M0-06b-conversation-consumer.md`                                   | kit/consumer 28/28·두 host 2/2                          | 실제 token streaming/tool-result producer 연결·후보 선택 근거·전체 phase/기기 |
+| Dialog/tooltip/dropdown 조합 | `7deae951`, ui-foundation 및 lazy overlay consumer; `M0-06b-overlay-composition.md`                                              | 두 host 14/14; 이전 두 10통과/4실패 결과 보존           | 제품 기기 수용, slider의 기존 owning 기능/시험 연결 및 전체 phase             |
+| Table virtualization         | `eb5b6e2a` public table-kit, `f7849f26` controlled 10k consumer; `M0-06b-table-kit.md`·`M0-06b-table-virtualization-consumer.md` | kit/planning 32/32·두 host 10/10; 이전 8통과/2실패 보존 | 현재 dependency/license closure 재대조·전체 phase·최종 제품 기기              |
+
+10k 시험은 전체 DOM 읽기 대안, 동적 높이·scroll/focus·정렬/검색·null/zero·viewport 경계와 emulated touch를 실제 검증했다. 현 추가 수용을 원 18개 조합/현재 모든 shell 입력의 전체 회귀, 실기기 또는 외부 운영 gate로 확대하지 않는다. 새 table-kit은 이미 고정된 virtual-core 3.17.11을 사용하지만 과거 101-package closure 동일성을 새 importer까지 자동 적용하지 않는다. 정확 closure/고지 재대조가 필요하다.
+
+Gallery viewer·caption/speed/fullscreen·carousel·파생물의 제품 저장/worker/권한/복원 연결은 M2-03a~c에서 계속 구현한다. Historical core completed를 전체 S17 또는 M0의 남은 기능 완료로 세지 않는다. 전체 phase install/generated/lint/typecheck/build/unit/integration/identity×2/format과 context-less 독립 phase 검토는 별도이며 main/push 경계는 유지한다.
