@@ -1,0 +1,42 @@
+# M0-06b 현재 phase 전체 검사 · 2026-10-09
+
+검증 입력은 `97b00da0b86b66d0b9a57730ed757d60ca5c3a1f`의 깨끗한 로컬 복제본이다.
+원 작업 트리의 보호 WIP와 stash를 가져오거나 수정하지 않았다. 전체 tracked 2,332개와
+별도 고정 Python/JAR 의존성을 검사 전후 대조했다. main/push/운영/실기기는 변경하지 않았다.
+
+## 정적 검사와 전체 단위 시험
+
+원 명령 install offline/frozen-lockfile, check:generated, lint, typecheck, build,
+format:check는 실제 exit0이었다. 복제본 초기 build 부재와 첫 도구 중단의 build terminal 미확인을
+보존했다. 동일 source/dependency를 재확인한 R2에서 세 build root가 존재했고 source drift0이었다.
+이 M0 브랜치에는 중앙 V9 source-proof asset/시험이 없으므로 그 runtime readiness를 주장하지 않는다.
+
+R2 전체 unit은 4,668 passed/4 failed/2 skipped·exit1이었다. 실패한 UI 3파일만 원 설정으로
+재현하면68/68·exit0이었다. 이후 DB 통합 종료 뒤 같은 원 `pnpm test` 전체를 다시 실행한 R3는
+**391파일·4,672 passed/2 skipped/0 failed·exit0**이었다. timeout/worker/단언/시험 목록은
+변경하지 않았고 source/dependency 전후 동일이다. 집중 성공으로 전체 실패를 덮어쓰지 않는다.
+부하가 원인이었다고 확정하지 않으며 앞선 실패는 재현 이력으로 남는다.
+
+- R2 전체 기록: `/private/tmp/wm-m0-clone-static-six-unit-actual-r2-20261009-terminal.json`, SHA `028ebc86a6152bde3bcc35ca3cc1f63be8d3a79e34a55226cbbe4283cee21432`.
+- R3 전체 unit: `/private/tmp/wm-m0-whole-unit-actual-r3-20261009.json`, SHA `72647c1899cea0579b117149f5b4437167389f7829f374dc5f2ccee5a45bc390`.
+- 집중 재현: `/private/tmp/wm-m0-unit-failure-diagnostic-actual-r1-20261009.json`.
+
+## 실제 PostgreSQL 통합 실패와 후속
+
+원 `pnpm test:integration`을 PostgreSQL17.11의 새 전용 임시 Unix socket 클러스터에서 실행했다.
+Plain owner와 restricted runtime을 사용했고 기존 클러스터·공유 메모리를 변경하지 않았다.
+Upgrade1/1 통과, normal **1,483 passed/4 failed/4 skipped·exit1**이었다. 입력 전후 동일이며
+종료 후 새 `workout-pg-*` 디렉터리 잔존0이다. 원 harness의 종료·정리 경계를 유지했다.
+
+실패 프레임은 ai-settings-operations/restore-app-family-loader의 REASSIGN과
+worker-tenant-source-upgrade의 trigger catalog/후속 index다. 중앙 브랜치에 이미 검증된
+DB owner fixture 및 PG17 trigger/MAINTAIN ACL 대응 교정 두 곳이 M0에 없음을 읽기 대조했다.
+Loader는 같은 소스이므로 아직 권한·환경 원인이 미확정이다. PostgreSQL minor 버전 자체 결함이나
+제품 기능 실패로 단정하지 않는다. 원 실패를 보존하고 교정·집중 재현·전체 재검증을 이어간다.
+
+- 실제 통합 기록: `/private/tmp/wm-m0-canonical-pg-actual-r1-20261009.json`, SHA `7c8600b4a971cd44dca06222e7723f4a8ba22d49878d8c2bd7a6e10e931e1fc7`.
+- 읽기 진단: `/private/tmp/wm-m0-canonical-pg-four-failures-readonly-diagnosis-20261009.md`.
+
+Identity 두 회차·적용 가능한 drill·독립 context-less phase review/main 병합은 아직 남는다.
+이 기록으로 전체 phase 또는 로컬 노드 수용 완료를 선언하지 않는다. 운영·외부 수용과
+최종 실제 제품 앱의 물리 기기 gate는 별도로 유지한다. 개인 건강/GPS/오류 본문은 저장하지 않았다.
