@@ -25,3 +25,9 @@ logical 첫 v3 실행에서는 시험 1/1이 통과했지만 Node/tsx 캐시 두
 ## 남은 gate
 
 현재 whole normal은 failed이며 whole identity 두 회차, 독립 phase review, main 통합은 미완료다. 운영 백업·복원·HTTPS와 provider 수용도 별도다. 사용자 결정대로 모든 구현 후 실제 제품 앱으로 최종 iPhone 시험을 진행하며 미실행 기기 행은 not_executed로 유지한다.
+
+## 네 원본 파일 실제 후속 진단
+
+고정된 원본 소스/시간 제한으로 새 PostgreSQL 17.6에서 네 실패 파일 전체를 실행했다. **24/24 통과·실패/skip 0**, 네 module 전부 관측, 실제 exit 0, 약 122초였다. 유한 reporter SHA-256 `cb16df8fb90418b08916efb9b8744acd596ec23738e09e4a580c3b71f53e066b`. 소스 입력 전후 불변과 DB 1·역할 1·slot 0, pool 종료·정확 소유 container 제거를 확인했다.
+
+이 실행에는 canonical preinstall/upgrade와 나머지 300파일의 선행 상태가 없다. 전체 모음 실패를 해결하거나 시계/timeout을 원인으로 확정하지 않는다. allowlisted dense 이벤트 1,030개에서 query error는 관측되지 않았으며 일부 workflow 약 41.7초·review 약 41.2초였다. 좁은 성공에 맞춰 guard·timeout·SQL·fixture를 변경하지 않는다. 원 전체 모음 재실행과 유한 관측을 통해 차이를 조사한다.
