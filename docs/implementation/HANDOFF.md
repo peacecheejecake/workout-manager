@@ -1052,3 +1052,11 @@ FUT-03 후보 감사에서 기존 M2-03 기록이 S17 viewer/codec·앨범/날�
 Linux codec v2 build handle9627은 image `sha256:bb02fef0436098b1bf209c5e800a3e13ade8ad4a0a55e554f950d4531db5c67e`로 actual exit0이었다. Nonroot UID/GID20001에서 Node24.12/sharp0.35.4/vips8.18.6와 fixed ffmpeg/ffprobe binary hashes를 관측했다. Production entry probe v2는 표식 비교에서 멈췄고 exact label·ID·name·image·created 상태 확인 후 자기 container를 제거했다. v3는 Env 및 HostConfig.Mounts 검사에서 prestart 거절, 자기 container 정리 완료다. Codec actual frame 성공·cgroup quiescence·production processing authority는 아직 없다.
 
 Standalone 실기기 앱 작업은 중단을 유지한다. 실제 제품 앱 수용은 모든 구현 후 마지막 단계다. main `1d557358`·사용자 push·기존 EXT-HOSTING WIP는 변경하지 않았다.
+
+## 2026-10-09 최신 진행 상태 · 실제 handle 재확인
+
+삭제 재처리 fixture·11개 실DB 및 실패 이력은 phase/m2-02 `ff1faa7e`에 커밋했다. 최신1093입력 freeze SHA `284c0627980f3a3409fbacfd8ed442c4ccc2f6fe0f9fa1b8ef133f6e68df3fb1`의 canonical 전체 normal/upgrade v9를 실행했다. 실제 handle49068은 마지막 poll에서 실행 중이며 artifact `/private/tmp/wm-fullnormal176-v9-a9c357e6-7c9e-4824-bd88-681bf60b012c`는 actualExecuted/PG170006/canonical_full_normal_running이었다. 완료 결과는 아직 없다. timeout만으로 새 회차를 시작하지 말고 같은 handle을 이어 관측한다.
+
+Gallery 제품 navigation/명시 album command 구성은 phase/m2-03 `e49ed90f`에 검증 후 커밋했다. 실제 관련 RTL55/55·TS/lint/format·Next/Vite build exit0 및 합성 HTTP Chrome의 명시 필터/앨범 command/409/uncertain/늦은 API 응답 차단·320/768/1280 reflow를 확인했다. 검증 문서 `docs/implementation/progress/M2-03-navigation-workspace.md`는 그 phase에 있다. 실제 persistence/API/영수증/코스 선택·SQL143 full restore closure는 미완료다. SQL143 초안은 untracked로 보존했고 등록·커밋하지 않았다.
+
+Native 병렬은 EXT-RESTOREa의 누락 durable7개 exact physical codec 구현과 Linux production codec의 Env/mount 실제 finite 관측 준비다. parser 준비·합성 브라우저/좁은 DB 결과를 전체 복원/phase 승인/운영 수용으로 확대하지 않는다. main은 실제 `1d557358` clean이며 push0. 실기기는 마지막 실제 제품 앱에 남긴다.
