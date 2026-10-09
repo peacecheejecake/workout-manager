@@ -14,6 +14,10 @@ const RoutingRecoveryPanel = lazy(() =>
   import('./routing-recovery-panel').then((module) => ({ default: module.RoutingRecoveryPanel })),
 );
 
+const OverlayPanel = lazy(() =>
+  import('./overlay-panel').then((module) => ({ default: module.OverlayPanel })),
+);
+
 class PanelBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
   override state = { failed: false };
   static getDerivedStateFromError() {
@@ -31,6 +35,7 @@ class PanelBoundary extends Component<{ children: ReactNode }, { failed: boolean
 export function SpikeWorkspace({ workerUrl }: { workerUrl: string }) {
   const [started, setStarted] = useState(false);
   const [showMap, setShowMap] = useState(true);
+  const [showOverlay, setShowOverlay] = useState(false);
   const [showRoutingRecovery, setShowRoutingRecovery] = useState(false);
   return (
     <div className={styles.workspace}>
@@ -45,6 +50,16 @@ export function SpikeWorkspace({ workerUrl }: { workerUrl: string }) {
       <button type="button" onClick={() => setShowRoutingRecovery((value) => !value)}>
         {showRoutingRecovery ? '라우팅 오류 검증 닫기' : '라우팅 오류 검증 열기'}
       </button>
+      <button type="button" onClick={() => setShowOverlay((value) => !value)}>
+        {showOverlay ? 'Overlay 조합 검증 닫기' : 'Overlay 조합 검증 열기'}
+      </button>
+      {showOverlay ? (
+        <PanelBoundary>
+          <Suspense fallback={<p role="status">Overlay 조합 검증 준비 중</p>}>
+            <OverlayPanel />
+          </Suspense>
+        </PanelBoundary>
+      ) : null}
       {showRoutingRecovery ? (
         <PanelBoundary>
           <Suspense fallback={<p role="status">라우팅 오류 검증 준비 중</p>}>
