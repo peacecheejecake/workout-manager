@@ -57,3 +57,13 @@ logical 첫 v3 실행에서는 시험 1/1이 통과했지만 Node/tsx 캐시 두
 원 normal registry107·config·시간 제한을 유지한 새 소유 PostgreSQL17.6의 전체 실행은 terminal exit1이었다. 업그레이드1/1 통과, 일반 모음300파일 통과·1파일 실패·3파일 skip, 3,069통과·1실패·14skip/3,084등록이며 elapsed2,088,597.879417ms였다. 실패 위치는 `course-share-revoke-exact-replay.integration.test.ts:49:20` 및 `:337:5`, 허용된 marker는 `RESTORE_REPLAY_INVALID_ENTRY`다. 원인은 아직 확정하지 않는다. 이전 v5/v6 실패와 좁은 진단 결과는 보존한다.
 
 고정 소스1,093개 SHA `ba67c301a4bc9207a48840dc230b87aa3506fba5895c65ea439cf4295a59ad97`는 전후 동일했다. normalregistry107/FORCE RLS 확인, poststate 역할17·DB1·slot0, pool종료·정확 소유container제거를 확인했다. stdout/stderr 모두 drain 완료이며 원 오류 메시지·SQL·payload는 저장하지 않았다. finite-terminal SHA `13cc593e99b6640d651f1d023823bc4cb310ba1e0ffd7042c38362bd7102dc7b`, lifecycle SHA `d0a0e696714c021a07d86fb45157ae70a5a6a71bfcc98e692286f61dc417a27c`다. whole normal·최신 identity 두 회차·phase 독립 검토/main·운영 및 최종 제품 실기기 수용은 미완료다.
+
+## course-share 시계 의존 제거 및 미래 시각 거절
+
+먼저 원 fixture5개를 변경 없이 새 소유 PG17.6에서 실행해5/5·skip0·exit0을 확인했다. source1,093개 전후동일, post역할1/DB1/slot0·pool종료·소유container제거였다. finite reporter SHA `02d784347927faee30a5e7abba78c3c58a732b38abe5d2b3805be0e147b6d0d2`, terminal SHA `714b48c060311a1b74460f44bf5a9477a726b7a560f38390bb2fb5a1e2f7b55f`, lifecycle SHA `2dbc4cb8092a4e24cd20a65a7975ea092b0da92e81c4604cb628f591eb45e80c`다. 원 v7 failure의 정확 OR 분기·호스트/DB 시계차는 여전히 미확정이다.
+
+양성 exact-erasure fixture는 호스트 `new Date()` 대신 동일 DB `clock_timestamp()`를 사용하도록 고쳤다. 이 시험은 호스트 시계 동기화를 검증하는 시험이 아니며 기존 liveShare도 DB 시각을 사용한다. 원5case 단언은 보존했다. 새6번째case는 DB 시각+1시간 입력을 실제 거절하고 account/course/share 보존·erasure/event/receipt 부재·상태 동일성 및 이후 정상 revoke/retry를 확인한다. 제품SQL·권한·시간 제한·오류 guard는 변경하지 않았다.
+
+갱신 fixture SHA `aed03bb672c2779f0a1fee287c640b65b687531cbfec730889cbc3dc46cf349a`와 원1,093개의 새freeze SHA `9fc74fdf6e2ceb197843e3baa2b689b40c566b50811b1e82dac106b5cb15c496`에서 실제 원파일전체6/6·skip0·unhandled0·exit0,1,793.421375ms였다. 이전freeze와 비교해 변경입력은 정확 fixture한파일이며 sourceproof333/asset은 불변이다. 최종 persistence TS·scoped lint/format exit0이다. source전후동일·post역할1/DB1/slot0·pool종료·소유container제거도 확인했다. finite reporter SHA `9e8e805af6ce56c2db2393bc00007ed40280a82c70d4af2b03990853564f31f9`, terminal SHA `4b6cf65754a4532d716020f7e97cb03f402e97b85feb626aece53d53af020f3e`, lifecycle SHA `d33f7da001ce9204ab6e0bfa7078f333b3d0e9782e537d9faf76cf074a711298`다.
+
+이 좁은 검증은 전체 normal v7 실패를 passed로 변경하지 않는다. 갱신입력 whole normal·최신 identity 두 회차·fullphase·독립검토/main·운영/최종실기기 수용은 별도다.

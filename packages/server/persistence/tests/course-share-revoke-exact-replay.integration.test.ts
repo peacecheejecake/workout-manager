@@ -335,10 +335,9 @@ describe('exact v2 course-share revoke replay under a plain owner', () => {
     const item = await liveShare(await account());
     expect(await replay(owner, item)).toBe('revoked');
     await tenant(owner, item.athleteId, (client) =>
-      client.query('SELECT public.replay_tenant_erasure_exact($1,$2,$3)', [
+      client.query('SELECT public.replay_tenant_erasure_exact($1,$2,clock_timestamp())', [
         item.athleteId,
         randomUUID(),
-        new Date().toISOString(),
       ]),
     );
     expect(await replay(owner, item)).toBe('already_applied_by_erasure');
@@ -349,5 +348,53 @@ describe('exact v2 course-share revoke replay under a plain owner', () => {
       auditId: randomUUID(),
     };
     await expect(replay(owner, missing)).rejects.toThrow('RESTORE_COURSE_SHARE_TENANT_ERASED');
+  });
+
+  it('rejects a future tenant erasure without deleting sources or creating a receipt', async () => {
+    const item = await liveShare(await account());
+    const erasureEventId = randomUUID();
+    const before = await state(item);
+    await expect(
+      tenant(owner, item.athleteId, (client) =>
+        client.query(
+          "SELECT public.replay_tenant_erasure_exact($1,$2,clock_timestamp()+interval '1 hour')",
+          [item.athleteId, erasureEventId],
+        ),
+      ),
+    ).rejects.toThrow('RESTORE_REPLAY_INVALID_ENTRY');
+    const retained = await tenant(owner, item.athleteId, (client) =>
+      client.query<{
+        account_present: boolean;
+        course_present: boolean;
+        share_present: boolean;
+        erasure_present: boolean;
+        event_present: boolean;
+        receipt_present: boolean;
+      }>(
+        `SELECT
+           EXISTS(SELECT 1 FROM identity_private.account WHERE athlete_id::text=$1) AS account_present,
+           EXISTS(SELECT 1 FROM course WHERE athlete_id=$1 AND course_id=$2) AS course_present,
+           EXISTS(SELECT 1 FROM course_share WHERE athlete_id=$1 AND share_id=$3) AS share_present,
+           EXISTS(SELECT 1 FROM tenant_erasure WHERE athlete_id=$1) AS erasure_present,
+           EXISTS(SELECT 1 FROM restore_suppression_event
+             WHERE event_id=$4 OR (athlete_id=$1 AND kind='tenant_erased')) AS event_present,
+           EXISTS(SELECT 1 FROM restore_exact_replay_receipt
+             WHERE event_id=$4 OR (athlete_id=$1 AND kind='tenant_erased')) AS receipt_present`,
+        [item.athleteId, item.courseId, item.shareId, erasureEventId],
+      ),
+    );
+    expect(retained.rows).toEqual([
+      {
+        account_present: true,
+        course_present: true,
+        share_present: true,
+        erasure_present: false,
+        event_present: false,
+        receipt_present: false,
+      },
+    ]);
+    expect(await state(item)).toEqual(before);
+    expect(await replay(owner, item)).toBe('revoked');
+    expect(await replay(owner, item)).toBe('already_applied');
   });
 });
