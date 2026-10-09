@@ -43,6 +43,8 @@ export type StreamPresentationAcceptance =
     };
 export interface StreamPresentationStore {
   getSnapshot(): StreamPresentationSnapshot;
+  /** Stable empty factory snapshot for SSR/hydration; never exposes live private state. */
+  getServerSnapshot(): StreamPresentationSnapshot;
   subscribe(listener: () => void): () => void;
   accept(event: StreamPresentationEvent): StreamPresentationAcceptance;
   dispose(): void;
@@ -97,6 +99,7 @@ export function createStreamPresentationStore(
     tools: Object.freeze([]),
     terminal: null,
   });
+  const serverSnapshot = snapshot;
   const listeners = new Set<() => void>();
   function publish(next: StreamPresentationSnapshot) {
     snapshot = Object.freeze(next);
@@ -115,6 +118,7 @@ export function createStreamPresentationStore(
   ): StreamPresentationAcceptance => ({ accepted: false, reason });
   return {
     getSnapshot: () => snapshot,
+    getServerSnapshot: () => serverSnapshot,
     subscribe(listener) {
       if (snapshot.phase === 'disposed') return () => {};
       listeners.add(listener);

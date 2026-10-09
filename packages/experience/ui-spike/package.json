@@ -21,7 +21,8 @@
     "@dnd-kit/react": "0.5.0",
     "@dnd-kit/dom": "0.5.0",
     "react-resizable-panels": "4.12.4",
-    "@workout/table-kit": "workspace:*"
+    "@workout/table-kit": "workspace:*",
+    "@workout/conversation-kit": "workspace:*"
   },
   "exports": {
     "./workspace": "./src/workspace.tsx"

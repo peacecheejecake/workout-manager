@@ -24,6 +24,10 @@ const TableVirtualizationPanel = lazy(() =>
   })),
 );
 
+const StreamPanel = lazy(() =>
+  import('./stream-panel').then((module) => ({ default: module.StreamPanel })),
+);
+
 class PanelBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
   override state = { failed: false };
   static getDerivedStateFromError() {
@@ -43,6 +47,7 @@ export function SpikeWorkspace({ workerUrl }: { workerUrl: string }) {
   const [showMap, setShowMap] = useState(true);
   const [showOverlay, setShowOverlay] = useState(false);
   const [showTableVirtualization, setShowTableVirtualization] = useState(false);
+  const [showStream, setShowStream] = useState(false);
   const [showRoutingRecovery, setShowRoutingRecovery] = useState(false);
   return (
     <div className={styles.workspace}>
@@ -63,6 +68,16 @@ export function SpikeWorkspace({ workerUrl }: { workerUrl: string }) {
       <button type="button" onClick={() => setShowTableVirtualization((value) => !value)}>
         {showTableVirtualization ? '표 가상화 검증 닫기' : '표 가상화 검증 열기'}
       </button>
+      <button type="button" onClick={() => setShowStream((value) => !value)}>
+        {showStream ? 'Streaming 합성 검증 닫기' : 'Streaming 합성 검증 열기'}
+      </button>
+      {showStream ? (
+        <PanelBoundary>
+          <Suspense fallback={<p role="status">Streaming 합성 검증 준비 중</p>}>
+            <StreamPanel />
+          </Suspense>
+        </PanelBoundary>
+      ) : null}
       {showTableVirtualization ? (
         <PanelBoundary>
           <Suspense fallback={<p role="status">표 가상화 검증 준비 중</p>}>
