@@ -82,3 +82,13 @@ Root의 최신 AWS non-root workout-admin STS 조회는 SSO token expired/refres
 ### 2026-10-09 보호 구역 갱신 대기 교정
 
 [HANDOFF의 새 검증 기록](../HANDOFF.md#2026-10-09-보호-구역-갱신-대기-교정과-실제-ui-확인)을 따른다. Component48/48, 전체 정적6개 exit0, 전체 unit9509통과·5skip, 실제 Cua IAB 합성 UI/320·768·1280 reflow를 확인했다. Controlled R2는 시험1건 통과와 actor 유효성 오류를 구분해 보존했다. canonical identity x2·독립 phase review·main 병합은 미완료이며 graph 상태를 올리지 않는다.
+
+### 2026-10-09 전체 identity 두 회차와 영양 V9 직접 승인 진단
+
+HEAD `6a00c113`의 canonical full identity 실제 두 회차를 완료했다. 첫 회차346pass/12skip/exit0, 둘째344pass/2fail/12skip/exit1이다. 네 suite 순서·등록358·skip multiset은 두 회차 모두 기준과 일치했고 source/build 불변·각 full-run 종료 후 DB/roles/slots/ports/새 TMP 잔존0이었다. per-suite resource atomicity는 관측하지 않았다. 원 owned container/handoff와 과거 TMP3은 보존한다. Aggregate SHA `6352513374c54352e26349d07288d7b14c2822e99def5627de2c7e570501a9e8`.
+
+두 실패는 `nutrition-race-reconnect.spec.ts`의 Next/Vite 초기 approve-v4 HTTP500으로, 삭제/재생성/재연결 UI 전이다. 원인을 timing/DOM/보호 구역 수정으로 단정하지 않는다. phase review와 main 병합은 미완료다.
+
+이를 좁히기 위해 현재 V9 installer·configured core grants에서 긴 item ID·0/null 음식·실제 섭취 기록을 포함한 absolute→race-relative 승인 직접 writer 통합 시험을 추가했다. `0fb7a1f1`+새 시험의4,221개 source/build 최종 manifest SHA `b70cc1b73a42eaed78fc5646de11f07435510dd8fda916b1a5c0670b3277df02`, 전용 Unix-socket PostgreSQL17에서 실제1case/1pass/0skip/exit0이었다. initdb/start/test/stop exit0·원 입력 불변·소유 cluster 정리 완료·원 E2E 자원 접근0. 결과 SHA `86b9f8b6f10b7f05b6eedd6d77e1f63ac150c7e8ea7bfc871e76598f6c24f9b2`. 이 진단에서는 실패가 재현되지 않았으며 원 HTTP500은 여전히 failed/원인 미확정이다. API 경계와 직접 writer 입력 차이를 후속 조사한다.
+
+실기기는 사용자 결정에 따라 모든 구현 후 실제 제품 앱에서 마지막으로 검증한다. [변경 계획](../device-validation-plan.md)을 따르며 standalone 시험 앱 결과를 최종 기기 수용으로 승격하지 않는다.
