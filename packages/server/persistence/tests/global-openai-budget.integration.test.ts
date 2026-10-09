@@ -892,7 +892,21 @@ FROM fixture f`,
             /* Preserve command outcome. */
           }
         }
-        return await client.query(`REASSIGN OWNED BY "${roles.owner}" TO "${roles.next}"`);
+        // REASSIGN follows pg_shdepend physical order, which other suites' churn reshuffles. An
+        // object preceding its schema (or, for public, the database) needs next CREATE there, or
+        // the plain owner gets 42501. Grant it first and drop the leftover public grant after.
+        await client.query(
+          `DO $grant$ DECLARE s name; BEGIN
+             FOR s IN SELECT nspname FROM pg_namespace
+               WHERE nspowner='${roles.owner}'::regrole OR nspname='public'
+             LOOP EXECUTE format('GRANT CREATE ON SCHEMA %I TO %I', s, '${roles.next}'); END LOOP;
+           END $grant$`,
+        );
+        const reassigned = await client.query(
+          `REASSIGN OWNED BY "${roles.owner}" TO "${roles.next}"`,
+        );
+        await client.query(`REVOKE CREATE ON SCHEMA public FROM "${roles.next}"`);
+        return reassigned;
       } finally {
         client.release();
       }

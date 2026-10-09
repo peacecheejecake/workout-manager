@@ -72,3 +72,14 @@ Root 평가 `/private/tmp/wm-whole-normal-diagnostic-r2-root-actual-assessment-2
 원 reporter/SQL/assertions/timeouts를 보존하고 normal exclude argv의 upgrade 오판만 새 selector로 수정했다. Root pure17/17 후 current `58601cb7` source/build4326의 actual r3는 upgrade1pass, normal3070pass/2fail/14skip·exit1이었다. selected restore-family 원18은 passed지만 전체 gate가 아니다. global-openai-budget(SQLSTATE42501)과 restore-resource-share-exact-replay(P0001)의 raw cause는 unknown이다. original literal canonical과 identityx2/phase 통과는 아직 없다.
 
 actual `/private/tmp/wm-wholenormal-finite176-e9fc8282-a36e-4f29-a311-429123af5fe8`; normal finite SHA `a4986ec1294debadac815701a748595613d596869524f634c206e5b728c7594c`, lifecycle SHA `a1a212922be7d9e01e61ed4d3e5dc5f07a66a23138de5f91ddbe2dfd2bbe636a`, Root 평가 SHA `dc9ed0bfdd107e7bd9bfd841ad1fa73d1393b4495124bfae49c984e024b9328b`. source 동일·poolclose·childgroupabsent·정확 ownedcontainer 제거를 확인했다. 실패로 성공전용 rolecleanup이 실행되지 않아 post17roles/1DB/0slots/0clients 및 POSTSTATE_NOT_CLEAN을 별도 보존한다. 사용자 현재작업 마무리 지시로 추가진단/후속DB는 실행하지 않고 HANDOFF의 정확 queue에 남겼다.
+
+### 2026-10-10 r3 실패2 원인 재현 · fixture 수정
+
+Handoff 큐1을 재개했다. r3 실패 title SHA 2개는 각각 `REASSIGN and existing retarget preserve live-owner accounting while old owner loses mutation access`와 `owner-only standalone resource share revocation replay > accepts retry after later resource deletion and exact tenant erasure`에 정확히 일치한다.
+
+- global-openai-budget 42501: `REASSIGN OWNED`는 `pg_shdepend`의 물리 순서(ctid)대로 객체를 넘긴다. 다른 suite의 drop/vacuum으로 앞 페이지가 비면 함수 항목이 그 schema·database 항목보다 앞에 놓이고, 아직 해당 schema(`public`은 database 소유 전) CREATE가 없는 next로의 소유 변경이 `permission denied for schema`가 된다. 로컬 PG17.11 scratch 최소재현에서 순차 배치는 성공, churn 배치(함수 ctid (0,1) < database (22,14))는 42501이었다. 원 HEAD 시험 파일을 동시 churn loop 아래 6회 실행해 5회 실패·분류 `schema_privilege_denied`, 1회 통과를 관측했다. focused 단독 통과·whole 간헐 실패 이력과 일치한다.
+- 수정(사용자 결정: plain owner 사전 GRANT): REASSIGN 직전 같은 old owner client가 소유 schema와 `public`에 next CREATE를 부여하고, REASSIGN 뒤 `public`의 잔여 grant를 REVOKE한다. preflight 관측·REASSIGN 주체·retarget·old owner 거부 단언·timeout은 그대로다. 같은 churn 아래 수정본 8/8 실행 모두 17/17 통과.
+- restore-resource-share-exact-replay P0001: erasure 호출이 호스트 `new Date()`를 넘겨 제품 guard `$3>clock_timestamp()`(079)에 container 시계 차이로 걸린다(`RESTORE_REPLAY_INVALID_ENTRY`). 이전 DB-clock fixture 수정에서 빠진 호출이다. 인자를 DB `clock_timestamp()`로 바꿨고 제품 SQL guard는 그대로다. focused 7/7 통과. container-host 시계 차이는 docker exec 25회 표본에서 [-6.4, +49.0]ms로 음수 구간을 배제하지 못했다.
+- 정적: 변경2 prettier/eslint exit0, persistence tsc exit0. scratch cluster·socket 제거.
+
+이 결과는 whole/canonical gate가 아니다. 같은 REASSIGN 순서 의존이 다른 plain-owner REASSIGN 시험(restore-app-family-loader 과거 실패 포함)과 운영 runbook의 비superuser REASSIGN에도 잠재한다는 점은 미검증이다. `restore-gallery-media-exact-replay`의 `occurredAt: new Date()`도 같은 guard 노출 여부를 미확인이다. 다음은 fresh source/build freeze 후 literal canonical `pnpm test:integration`과 identity×2다.

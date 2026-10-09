@@ -383,11 +383,11 @@ describe('owner-only standalone resource share revocation replay', () => {
       },
     );
     expect(await replay(owner, item)).toBe('already_applied');
+    // DB clock, not the host clock: the product guard rejects occurred_at > clock_timestamp().
     await tenant(owner, item.athleteId, (client) =>
-      client.query('SELECT public.replay_tenant_erasure_exact($1,$2,$3)', [
+      client.query('SELECT public.replay_tenant_erasure_exact($1,$2,clock_timestamp())', [
         item.athleteId,
         randomUUID(),
-        new Date().toISOString(),
       ]),
     );
     expect(await replay(owner, item)).toBe('already_applied_by_erasure');
