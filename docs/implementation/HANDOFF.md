@@ -1032,6 +1032,8 @@ FUT-03 후보 감사에서 기존 M2-03 기록이 S17 viewer/codec·앨범/날�
 
 ## 구현 선행 진행 후속 · 2026-10-09
 
+후속 실행: `phase/m2-03`의 `6b92352c`는 Docker non-TTY attach의 bounded stdout/stderr 분리와 기존 codec integrity 연결을 추가했다. 실제 관련20/20·scoped lint/format exit0이며 Docker 연결 인증·exit/cgroup 수용은 별도다. 소유 TMP `/private/tmp/wm-gallery-linux-build-recipe-20261009`에서 exact/SRI sharp6개 패키지 materialize는 실제 exit0(143파일·8,896,717bytes), pinned Linux Docker build는 handle3062에서 **진행 중**이다. 마지막 실제 poll은 FFmpeg 컴파일 중이며 성공 image/native proof로 기록하지 않는다. 전체 DB v8 handle72423도 실제 poll에서 계속 실행 중이다. 각각 같은 handle을 관측하며 timeout으로 재시작하지 않는다. native 병렬 작업은 Gallery 제품 workspace 연결, full restore inventory parser, Docker inspect projection이다. main·운영·기기는 변경하지 않았다.
+
 추가 검증: `phase/m2-03`의 `0e402b7d`는 own 앨범 목록 SQL query port와 runtime query/DTO 검증을 연결했다. scoped query+mapper 실제25/25·TS/lint/format exit0이며 PostgreSQL 연결·SQL143 등록·복원 admission 통합은 아직 미완료다. `428569a4`에는 FFmpeg9.0.2 공식 서명·Node24.12.0 Linux ARM64 공식 SHA·x264 exact commit/archive SHA의 실제 검증을 기록했다. Linux image 빌드/실행파일 SHA/hard cgroup fence는 아직 미검증이다. 별도 source 소유 TMP 최소 이미지 recipe, 전체 복원 inventory parser 준비, 제품 Gallery wiring gap 점검을 native agent로 병렬 배정했다. standalone 기기 작업은 재개하지 않았다.
 
 사용자 결정대로 standalone iPhone 시험 앱은 실행하지 않았다. 실기기 수용은 모든 구현 후 실제 제품 앱에 남긴다. main은 `1d557358` clean이며 이번 unreviewed 작업을 병합하지 않았다.
