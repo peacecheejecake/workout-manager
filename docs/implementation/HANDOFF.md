@@ -1121,3 +1121,25 @@ EXT-RESTORE는 현재334 runtime 입력/393 stage의 원본 closure 후보를 �
 Canonical 전체DB v10의 같은 handle31315는 최신 poll에서 계속 실행 중이다. 입력1093 변경 없이
 terminal을 기다린다. main `1d557358`은 clean/변경0, 운영·기기·push0이며 phase 전체 gate와
 독립 검토를 앞서 통과했다고 쓰지 않는다. 실제기기는 모든 구현 후 실제 제품 앱에서 마지막에 검증한다.
+
+## 2026-10-09 whole DB terminal·Gallery 실제 변환 후속
+
+Canonical v10 handle31315가 실제 terminal exit0으로 완료됐다: upgrade1/1, normal3072통과·14skip,
+301파일통과·3skip, source1093전후동일/pool close/stream drain/자기container제거true다.
+Finite terminal SHA `397d173b659fdbc29e2ebf46c0342a4b6f35b1dbe96190d42fbdc5c26c6d034a`,
+lifecycle SHA `37a101c1b36409de1de853a6ca61b0c038c9708f7edd0dacb90c20a63f7abf12`.
+이 handle은 다시 poll/재시작하지 않는다. 이전 v5~v9 실패는 보존하며 skipped를 passed로 바꾸지 않는다.
+다음 gate는 fresh source/build/geo snapshot·canonical4suite 등록 census 이후 전체 identity×2다.
+Native agent가 서버/DB/browser launch 없이 list-only 준비를 수행하고 Root가 새PG lane/실행을 직렬 소유한다.
+
+Gallery 새 dav1d image의 실제 바이너리 관측은 strict SecurityOpt와 동일한 CLI 표기로 교정해
+성공했다. 제품frame AV1/H264/PNG actualexit0·sourceSame·owncleanup을 확인했다. AV1 결과 SHA
+`637687840a969a73aaf86329227dc309eb3c265ddd195f006649ae06d21acdca`; 이전 AV1 실패는 보존한다.
+별도 image Cmd는 absent로 실제 관측됐고 새 optional-image-field inventory도 통과했다.
+created-container 정책·cgroup 종료 proof를 통과로 바꾸지 않는다. durable build recipe 준비와 실제
+Engine/cgroup·worker·DB/erase/restore는 남는다.
+
+코스 availability V3 계약 `38bcaace`는 V2+V3 31/31, 후속 row mapper `e6ff3ade`는 V2+V3 27/27·skip0와
+각 타입/lint/format을 Root가 실제 재검증했다. 저장 association의 tuple을 unavailable에서도 보존하지만
+authoritative SQL/실제 권한조회·API/UI·삭제/restore 통합은 별도 미완료다. 상세는 Gallery progress 문서에
+기록했다. 기존143album SQL/test draft와 EXT-HOSTING WIP는 보존한다. main/운영/기기/push변경0.

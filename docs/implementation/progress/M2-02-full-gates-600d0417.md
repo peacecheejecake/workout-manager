@@ -89,3 +89,23 @@ REASSIGN 직전 같은 leased client에서 권한 사실23개를 strict scalar�
 Freeze1093개 SHA `94e1e5f049346d07b14031cda2faaa91daf908e9081e7a5f4f0d16ff6b54f879`와 fixture SHA `6045e12ffa74d14ed31a4f14fd43f0125c25fc9663d483ee8ebb0f01fd567dbe`의 원파일 전체 진단은 실제 **17/17·실패/skip0·exit0**이었다. 호출자는 same_session/old이고 SUPER·CREATEDB는 false; old/next USAGE·next SET·database CREATE는 true였다. 소유 namespace3개 중 owner권한 부족0·예상외0, direct INHERIT/SET grant1이다. next public CREATE는 false지만 REASSIGN40ms·REVOKE1ms 모두 성공했다. 따라서 그 권한을 whole 실패 원인으로 단정하거나 넓히지 않는다.
 
 Artifact `/private/tmp/wm-budgetdiagnostic176-a6f61e64-806a-44f1-874f-af1ebdd4bbc8`; finite reporter SHA `0deb54e749cad3dbe9f2bb643ba5c9e62d3bb3fe6be7bd422d2da6c44abe7434`, lifecycle SHA `bb5e0ba92beccade7360e4b1a302e7924810e63a68a23e586d53c2e07e951a05`. PG170006·source pre/post 동일·post 역할1/DB1/slot0·pool close·소유 container 제거 true였다. 이 단독 모음에는 전체 선행 상태가 없으며 v9 whole FAILED와 정확 원인 미확정을 유지한다. 관측을 포함한 canonical 전체 재검증·identity×2·독립 phase 검토/main은 남는다.
+
+## Canonical whole normal v10 · 실제 terminal exit 0
+
+동일 registry107/config/원 시간 제한과 freeze1093 SHA
+`94e1e5f049346d07b14031cda2faaa91daf908e9081e7a5f4f0d16ff6b54f879`에서 원
+`pnpm test:integration`을 실제 실행했다. Upgrade1/1; normal **301파일 통과·3파일 skip,
+3072통과·14skip/3086등록**, 실패0·error marker0·terminal exit0이다. skip14건을 통과로 바꾸지 않는다.
+실행 구간2026-10-09 08:27:48.816Z~09:03:45.503Z, elapsed2156687.244083ms.
+
+Artifact `/private/tmp/wm-fullnormal176-v10-fe17228d-d896-4c35-a3f4-f18fcd93ff68`.
+Finite terminal SHA `397d173b659fdbc29e2ebf46c0342a4b6f35b1dbe96190d42fbdc5c26c6d034a`,
+lifecycle SHA `37a101c1b36409de1de853a6ca61b0c038c9708f7edd0dacb90c20a63f7abf12`.
+PG170006·registry107/FORCE RLS 확인·source pre/post 동일·pool close·stdout/stderr drain 완료·정확
+소유 container 제거true를 확인했다. 제거 전 post 역할17/DB1/slot0를 역할0이라고 기록하지 않는다.
+handle31315는 terminal이므로 다시 poll하거나 timeout 재시작하지 않는다.
+
+최신 whole 결과는 통과지만 이전 v5~v9 실패와 v9 REASSIGN42501의 정확 원인 미확정은 보존한다.
+이번 default stream의 owner preflight/transfer 이벤트가0이므로 좁은17/17의23권한 관측을
+whole 실행에서 얻었다고 쓰지 않는다. 최신 identity×2·전체 phase 검증 정합·독립 review/main,
+별도 현재 whole239 복원/운영/최종 제품 실기기 gate는 아직 미완료다.
