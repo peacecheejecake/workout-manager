@@ -124,3 +124,7 @@ HEAD `85b0af5a880ee81cca8ea3934bb4e39a1f3fea21`의 canonical 전체 실행은 �
 실제 run1 결과 SHA `b55adb12e99cce9a389e2f6c7182f44e12215dc88e2fc5de668d26e2c2e714d3`. Aggregate `wm-identity-full-x2-actual-85b0af5a-20261009-result.json` SHA `a57f5931d03eacbca4b1a9f22358e99c5a9ed3998a1632fdc3634eb55a047214`. source/build 입력 불변, 전후 5포트 ECONNREFUSED/free, 관측한 pattern DB·known roles·pattern slots 잔존0, 원 owned container·handoff·기존 TMP3 보존·새 TMP0이다. 해당 한정 관측을 전체 DB/역할/otherClients의 검사로 확대하지 않는다. Root가 별도로 같은 소유 클러스터 전체를 읽기 전용 조회해 PG170006·DB1·role1·slot0·otherClients0을 확인했다. 추가 결과 SHA `a32e69ed8fc5388870cca1b4a25d1846a05702104b087c63ecba5791de2f7457`이며 컨테이너는 보존했다. 독립 phase 검토와 main 병합은 미완료다.
 
 갤러리 계약·순수 WebVTT 파서는 별도 `phase/m2-03`의 `7eea8ced`에 검증 커밋했다. S17 파생 이미지 코덱 구현을 시작해 M2-03c를 in_progress로 갱신했으며, 상태 변경을 완성이나 수용 통과로 취급하지 않는다. 실기기는 모든 구현 뒤 실제 제품 앱에서 마지막에 검증한다.
+
+## 2026-10-09 HEAD 600d0417의 전체 검증 갱신
+
+[실제 전체 결과](M2-02-full-gates-600d0417.md)를 따른다. 정적 여섯 명령과 전체 단위 9,509통과·5skip는 성공했다. 새 전체 normal은 3,063통과·7실패·14skip로 failed이며, 뒤에 역할17개가 남은 사실과 소유 클러스터 제거를 구분한다. 별도 로컬 logical1/pgoutput24/foundation13 통과는 이 실패를 대체하지 않는다. 실패 진단·전체 재검증·identity x2·독립 phase review·main 통합을 계속한다. 기기 검증은 모든 구현 후 실제 제품 앱에서 마지막에 실행한다.
