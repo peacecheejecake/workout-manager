@@ -1074,3 +1074,13 @@ Canonical whole normal v9는 실제 실행 handle49068의 최신 poll도 진행 
 Handle49068은 실제exit1로 종료되고 소유컨테이너 제거까지 완료됐다. Upgrade1/1, normal3071pass/1fail/14skip이며 실패는 global budget REASSIGN 단계42501이다. [전체 gate 기록](progress/M2-02-full-gates-600d0417.md)에 exact frozen inputs/유한 로그 SHA/권한 원인 미확정을 기록했다. 기존 narrow 통과로 whole 실패를 바꾸지 않고, native agent가 같은session 권한 조건과 closed error enum 진단을 준비한다. 앞서 기록한 live 상태는 당시 관측이며 현재 terminal로 대체된다.
 
 EXT-RESTORE `f288c097`에 durable7·공개 PostgreSQL microsecond 비교를 Root 통합 검증 후 커밋했다(117/117, contracts build·persistence/API/worker TS·lints/format exit0, 실제 합성PG12/12). Generic lossless physical V2는 다음 검증 중이며 whole239 복원 완료는 아니다. Gallery 실제 합성 H264제품frame은 성공했으나 AV1제품frame은 invalid_media로 실패했다. 두 결과를 분리하고 software decoder 원인 진단을 준비한다. 정확보안4파일 사용자승인은 계속대기, 정책적용0/main변경0/실기기마지막결정유지.
+
+## 2026-10-09 전체 v10 시작 · 구현 선행 결정 유지
+
+예산 원17case의 같은-session 권한23개·closed 오류분류를 실제17/17·skip0으로 검증해 `phase/m2-02`의 `06cabb50`에 커밋했다. 기존 wholev9FAILED/42501 정확 원인미확정을 유지한다. 출시 계획이 이미 요구한 back-channel 실제전파 조건을 G2-PUBLIC의 명시 dependency로 연결한 `276940f7`은259node unknownedge0/cycle0/status변경0 검증을 통과했다. EXT-HOSTING에 역방향 의존성을 추가하지 않았다.
+
+원 canonical `pnpm test:integration` whole normal/upgrade v10은 실제 handle31315로 시작했다. 최신 poll에서 여전히 live였고 artifact `/private/tmp/wm-fullnormal176-v10-fe17228d-d896-4c35-a3f4-f18fcd93ff68/lifecycle.json`의 actualExecuted=true/canonical_full_normal_running·PG170006·pre 역할1/DB1/slot0를 확인했다. freeze1093 SHA `94e1e5f049346d07b14031cda2faaa91daf908e9081e7a5f4f0d16ff6b54f879`, runner SHA `d4d93e98dbbc414b644e2eb81c8d2330382a08d689274c107a382ef90abece5d`. terminal 결과는 아직 없다. 같은 handle을 이어 관측하고 timeout만으로 재시작하지 않는다. 실행 중1093 test/source inputs를 수정하지 않는다.
+
+Gallery `29d4957d`에는 실제 AV1 default/software-none decode exit218·frame0과 software decoder backend 부재를 기술 진단 범위로 기록했다. H264 성공과 AV1 production 실패를 구분하고 native agent는 pinned software decoder successor를 준비한다. 보안 V3 정확4파일 적용은 사용자승인 대기/실제변경0이다. EXT-RESTORE `e29fde3a`는 물리V2 native39 runner의 실제 R1/R2 case0 시작실패를 보존했다. R2는 pool_connect 실패·정확소유container제거true/source불변이며 native boundary 통과가 아니다. 해당 generic 소스/시험2파일은 untracked WIP로 보존하고 transport readiness/유한 error관측 successor를 준비한다.
+
+모든 구현·로컬 자동검증을 먼저 완료하며 실제 iPhone 검증은 마지막 실제 제품앱 org.workoutmanager.app에서만 수행한다. Native 병렬 작업은 TMP software decoder recipe, whole239 producer설계/runner readiness다. main `1d557358`과 보호된 EXT-HOSTING WIP를 유지했고 서버/기기/push변경0이다. 최신 identity×2·fullphase·context-less gpt-6-sol high 독립검토/main·전체복원/운영/출시는 미완료다.
