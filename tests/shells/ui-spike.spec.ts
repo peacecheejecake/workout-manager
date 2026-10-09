@@ -282,3 +282,48 @@ for (const resizeSource of ['viewport', 'container'] as const) {
     await expect(draft).toHaveValue('크기 전환으로 저장하지 않기');
   });
 }
+
+test('native chart range keyboard controls preserve the percent window and focus', async ({
+  page,
+}) => {
+  await page.goto('/ui-spike');
+  await page.getByRole('button', { name: '검증 도구 열기' }).click();
+  await page.getByRole('button', { name: '대량 1000행' }).click();
+  const table = page.getByRole('table', { name: '가상 활동 표', exact: true });
+  await expect(table.locator('tbody tr')).toHaveCount(1000);
+  await page.getByRole('button', { name: '차트 확대', exact: true }).click();
+  const slider = page.getByRole('slider', { name: '차트 구간 시작 (%)', exact: true });
+  const chart = page.getByRole('img', { name: '가상 거리 차트', exact: true });
+  await expect(slider).toHaveAttribute('min', '0');
+  await expect(slider).toHaveAttribute('max', '80');
+  await slider.focus();
+  for (const [key, start] of [
+    ['Home', 0],
+    ['ArrowRight', 1],
+    ['ArrowLeft', 0],
+    ['End', 80],
+    ['Home', 0],
+  ] as const) {
+    await page.keyboard.press(key);
+    await expect(slider).toHaveValue(String(start));
+    await expect(slider).toBeFocused();
+    // ECharts renders only category labels in the actual 20%-wide window.
+    // Validate rendered synthetic rows, rather than only the input's own value.
+    const lowerRow = start * 10 + 1;
+    const upperRow = Math.min(1000, (start + 20) * 10 + 1);
+    await expect
+      .poll(async () => {
+        const labels = await chart.locator('svg text').allTextContents();
+        const rows = labels.flatMap((label) => {
+          const match = /^가상 대량 (\d{4})$/.exec(label);
+          return match ? [Number(match[1])] : [];
+        });
+        return rows.length >= 2 && rows.every((row) => row >= lowerRow && row <= upperRow);
+      })
+      .toBe(true);
+  }
+  await page.setViewportSize({ width: 320, height: 900 });
+  await expect(slider).toBeFocused();
+  await expect(slider).toHaveValue('0');
+  await expect(table.locator('tbody tr')).toHaveCount(1000);
+});
