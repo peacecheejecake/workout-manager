@@ -7,7 +7,6 @@ import {
   identityApiOrigin,
   identityApiPort,
   identityMobileOrigin,
-  identityMobilePort,
   identityWebOrigin,
   identityWebPort,
 } from './scripts/fixtures/identity-ports';
@@ -179,11 +178,11 @@ export default defineConfig({
       ...shellLogs,
     },
     {
-      command: `pnpm --filter @workout/mobile-web exec vite preview --host 127.0.0.1 --port ${identityMobilePort} --strictPort`,
+      command: 'exec node --import tsx scripts/fixtures/identity-mobile-preview.mts',
       url: identityMobileOrigin,
       reuseExistingServer: false,
-      // This shell has no server of its own; during preview the background assets come
-      // from the origin that already serves them.
+      // Identity-only bridge uses the fixed Next guarded basemap route;
+      // the internal Vite preview keeps its public basemap deny policy.
       env: {
         API_ORIGIN: identityApiOrigin,
         ...(Object.keys(basemapEnv).length > 0 ? { BASEMAP_ORIGIN: identityWebOrigin } : {}),
