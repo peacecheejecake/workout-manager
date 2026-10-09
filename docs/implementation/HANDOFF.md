@@ -1209,3 +1209,28 @@ Native agent에 EXT-RESTORE의 physical packet2파일 및 source build-proof5파
 비중복 scope로 배정했고, 별도 agent는 새 back-channel/HealthKit 로컬 수용의 실제 증거를 대조한다.
 Root는 공유 exports/graph·후보 재검증·실제 통합시험·phase 검토/main 통합을 담당한다.
 운영/외부/실기기는 추가 승인한 순서대로 후행이며 미실행을 통과로 승격하지 않는다.
+
+## 재개 실행 결과 · 2026-10-09 canonical identity와 병렬 구현
+
+Root의 postbuild canonical identity handle40875는 실제 두 회차 terminal0, 각346통과·12skip,
+exact358 census/source-build-geo 불변/시험잔존0을 확인했다. 정확 소유 wrapper cleanup도 실제
+terminal0이며 자기 컨테이너·private handoff를 정리했다. [현재 전체 검사 기록](progress/M2-02-current-full-gates-20261009.md)의
+실제 aggregate·cleanup SHA를 따른다. 준비 시점의 미실행·이전 실패/skip는 역사로 보존한다.
+
+EXT-RESTORE `ba92979c`는 physical row packet V2와 source-build proof/readiness/API selector
+구성요소를 Root 검증 후 커밋했다(44/44 및55/55·TS/lint/format0). Pin null·whole239/admission
+미완료이며 configured 전체 외부 dependency 등록을 추가 구현 중이다. Gallery `7753187c`는
+저장된 코스 연결 보존/사용 불가 UI를 RTL8/8·production build·Chrome320/768/1280 검증 후
+커밋했다. Backend/owning 화면 연결·전체 phase review는 남는다.
+
+새 Gallery guard10은 실제 fresh ownedPG170006 normal107+namedV9에서10/10·skip0·terminal0,
+source1048 불변·정확 자기 컨테이너 제거를 확인했다. Old333 source proof의 metadata3차이와
+준비 실패·v3 field-name 실패는 보존하며 production readiness not_verified다. Guard SQL/시험은
+TMP 후보이며 정식 등록/자막 저장/삭제/원receipt replay·복원 수용은 아직 없다.
+
+제품 Swift13파일의 unsigned iOS15 compile/link는 실제 Release/DEBUG 성공했다. State92와
+Management72 합성 단언은 별도 실제 결과다. Root가 source/framework62와 installed106 해시를
+현재 파일에 대조했다. 로컬 source-derived Capacitor8.5.2 framework이며 공식 artifact 동일성,
+제품 서명빌드·기기·HealthKit 실제 I/O를 입증하지 않는다. 최초 Release 실패/DEBUG미실행 기록은
+유지한다. 세 native agent는 외부 package registration, native239 catalog, M0-06b-local 증거
+대조를 병렬 진행한다. main/push/운영/실기기 변경0.

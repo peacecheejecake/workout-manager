@@ -2600,7 +2600,7 @@
       "title": "HealthKit 등록 로컬 통합·배포 절차 구현",
       "dependsOn": ["M3-02k", "M3-02l", "M3-02m", "M3-02n"],
       "kind": "task",
-      "status": "not_started",
+      "status": "in_progress",
       "scope": "계약·실DB·native SDK/harness·브라우저 통합과 비식별 감사·구형 앱 차단·rollback 절차의 로컬 검증. 실제 운영 감사/배포/rollback은 M3-02o-ops, 실기기는 M3-02h. 기존 결과를 재대조해 검증하며 계획 변경만으로 완료하지 않는다.",
       "evidence": "docs/implementation/device-validation-plan.md"
     },
@@ -2618,7 +2618,7 @@
       "title": "OIDC back-channel 구현·로컬 수용",
       "dependsOn": ["EXT-OIDC"],
       "kind": "task",
-      "status": "not_started",
+      "status": "in_progress",
       "scope": "표준 토큰 검증·jti replay 원장·원자 세션 철회·tenant 격리·실DB/합성 IdP/HTTP 수용. 실제 Zitadel logout 전파는 EXT-BACKCHANNEL-external에서 검증한다. 기존 로컬 증거를 대조한 뒤만 완료한다.",
       "evidence": "docs/implementation/device-validation-plan.md"
     },
