@@ -36,7 +36,7 @@ import { createRaceManualPublicRepository } from '@workout/server-persistence/ra
 import { createCheckInTemplateRepository } from '@workout/server-persistence/check-in-templates';
 import { createDashboardRepository } from '@workout/server-persistence/dashboard';
 import { createOperationsRepository } from '@workout/server-persistence/operations';
-import { createCurrentRuntimeV9Repositories } from './current-runtime-v9-repositories.js';
+import { createRegisteredCurrentRuntimeRepositoriesV1 } from './current-runtime-repositories-registration-v1.js';
 import { createGalleryMediaRepository } from '@workout/server-persistence/gallery-media';
 import { createActivityTrackRepository } from '@workout/server-persistence/activity-tracks';
 import { createCourseRepository } from '@workout/server-persistence/courses';
@@ -282,7 +282,7 @@ export async function createConfiguredApi(
   try {
     const runtimeRepositories =
       env.WORKOUT_RUNTIME_PROFILE === 'installed-current-profile25'
-        ? await createCurrentRuntimeV9Repositories(database)
+        ? await createRegisteredCurrentRuntimeRepositoriesV1(database)
         : {
             raceManualPublic: createRaceManualPublicRepository(database),
             operations: createOperationsRepository(database),

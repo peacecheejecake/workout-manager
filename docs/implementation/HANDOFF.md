@@ -1390,3 +1390,7 @@ Root가 R4 source-build1 compiler를 정확1회 실행해 exit0을 확인하고 
 Gallery capture19 실제 결과18통과/1실패/skip0·exit1은 보존했다. 부모 함수 본문·portable metadata actual capture SHA `8c8de2678ced41115d07bb3ed1a0b29caa70a923d1a7163e6f8722f1ebb4148a`를 고정한 guard22는 Root 실제 PostgreSQL 검사22/22통과·skip0·exit0이었다. 결과 SHA `6454f874dd92fc1d5ed144056c815f387aab3317cc6538ba5a1132558c161b57`; source/execution 전후동일·poolclose·DB1/role1/slot0·소유container제거. TMP clone만 변경하며 보호raw143/원14case는 유지한다. 제품 formal profile·membership/course producer·erasure/export/restore·API/두 shell 연결은 미완료다.
 
 EXT C1 단일-root 실제 실행은239관계 projection·합성13타입·portable metadata 일치까지 관측했으나 synthetic_order ROOT_ORDER로 exit1이다. 순서0/underreport0을 통과로 세지 않는다. 실제 유한 결과 SHA `cfe75307f404c8e0551744c9b3196196c3fab6731eba2e3795a1b087398aa7a1`; source전후동일·poolclose·소유container제거. productionRegistry false·authority none·capture/restore/admission 미완료를 유지하며 최소 진단 후속을 준비한다.
+
+## 2026-10-10 새 등록 runtime 로컬 검증 완료
+
+[새 검증 기록](progress/M2-02-source-build1-local-20261010.md): Root R5 compile/등록·full static7 exit0, 단위9703통과/5skip, actual configured5와 영양 HTTP1은 각각 skip0/exit0이다. 새 source/build freeze 및 정확 작업 소유 PG 정리를 확인했다. 초기 install/하네스 PATH·alias·정리 관측 실패는 보존했다. Whole integration·canonical identity×2·drill·독립 phase review·운영/외부/실제 제품 실기기는 다음 gate다. 코드와 증거는 phase 브랜치에만 커밋하며 main은 승인된 e7fb1d0b를 유지한다. EXT C1는 실제239/합성13/정렬2/underreport3 통과 범위만 a72a667e에 커밋했고 whole capture를 뜻하지 않는다.

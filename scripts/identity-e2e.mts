@@ -96,7 +96,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Pool } from 'pg';
 import { createApi } from '../apps/api/src/app.ts';
-import { createCurrentRuntimeV9Repositories } from '../apps/api/src/current-runtime-v9-repositories.ts';
+import { createRegisteredCurrentRuntimeRepositoriesV1 } from '../apps/api/src/current-runtime-repositories-registration-v1.ts';
 import { createAiSettingsService } from '../apps/api/src/ai-settings-service.ts';
 import { createAiSettingsRepository } from '../packages/server/persistence/src/ai-settings.ts';
 import { publishInitialAiSettingsCatalog } from './fixtures/ai-settings-catalog.ts';
@@ -1090,7 +1090,7 @@ try {
   closers.push(() => database.close());
   const installedCurrentPorts = installedCurrentRuntime
     ? installedCurrentRuntimeV9
-      ? await createCurrentRuntimeV9Repositories(database)
+      ? await createRegisteredCurrentRuntimeRepositoriesV1(database)
       : installedCurrentRuntimeV7
         ? composeIdentityInstalledCurrentRuntimeV7Ports(database)
         : composeIdentityInstalledCurrentRuntimeV6Ports(database)

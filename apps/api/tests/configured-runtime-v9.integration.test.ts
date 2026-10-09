@@ -12,7 +12,7 @@ import { installCurrentRuntimeV9 } from '@workout/server-persistence/current-run
 import { grantCurrentRuntimeAppBaselineV2 } from '@workout/server-persistence/current-runtime-app-grants-v2';
 import { grantCurrentRuntimeV9Profile } from '@workout/server-persistence/current-runtime-grants-v9';
 import { createConfiguredApi } from '../src/configured.js';
-import { CurrentRuntimeV9RepositoriesError } from '../src/current-runtime-v9-repositories.js';
+import { CurrentRuntimeSourceBuildRepositoriesV1Error } from '../src/current-runtime-source-build-repositories-v1.js';
 
 // Root executes actual PG/HTTP. No mocked readiness, source-proof, repositories,
 // OIDC, runtime SQL or provider interception. A missing compiled proof remains a
@@ -111,13 +111,16 @@ async function owner<T>(environment: Environment, operation: (pool: Pool) => Pro
     await pool.end();
   }
 }
-async function refuse(role: string, expectedCode: CurrentRuntimeV9RepositoriesError['code']) {
+async function refuse(
+  role: string,
+  expectedCode: CurrentRuntimeSourceBuildRepositoriesV1Error['code'],
+) {
   let app: FastifyInstance | undefined;
   try {
     app = await start(named, role, 'installed-current-profile25');
     expect.fail('Named runtime must refuse startup; legacy fallback is forbidden');
   } catch (error) {
-    expect(error).toBeInstanceOf(CurrentRuntimeV9RepositoriesError);
+    expect(error).toBeInstanceOf(CurrentRuntimeSourceBuildRepositoriesV1Error);
     expect(error).toMatchObject({ code: expectedCode });
     expect(String(error)).not.toContain('synthetic-never-log-client-secret');
   } finally {
@@ -230,7 +233,7 @@ fixtureIt(
       ),
     );
     try {
-      await refuse(named.runtime, 'CURRENT_RUNTIME_V9_INCOMPATIBLE');
+      await refuse(named.runtime, 'CURRENT_RUNTIME_SOURCE_BUILD_V1_INCOMPATIBLE');
     } finally {
       await owner(named, (pool) => pool.query(original.definition));
     }
@@ -245,7 +248,7 @@ fixtureIt(
       ),
     );
     try {
-      await refuse(named.runtime, 'CURRENT_RUNTIME_V9_INCOMPATIBLE');
+      await refuse(named.runtime, 'CURRENT_RUNTIME_SOURCE_BUILD_V1_INCOMPATIBLE');
     } finally {
       await owner(named, (pool) =>
         pool.query(
@@ -256,7 +259,7 @@ fixtureIt(
   },
 );
 fixtureIt('actual migration owner credential cannot become configured runtime', async () => {
-  await refuse(named.owner, 'CURRENT_RUNTIME_V9_UNAVAILABLE');
+  await refuse(named.owner, 'CURRENT_RUNTIME_SOURCE_BUILD_V1_UNAVAILABLE');
 });
 fixtureIt(
   'baseline107 default configuration still starts without applying the profile25 cold gate',

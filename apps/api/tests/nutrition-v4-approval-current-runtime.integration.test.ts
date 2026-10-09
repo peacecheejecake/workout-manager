@@ -24,7 +24,7 @@ import {
   currentRuntimeReadinessV9Schema,
   type CurrentRuntimeReadinessV9,
 } from '@workout/server-persistence/current-runtime-readiness-v9';
-import { createCurrentRuntimeV9Repositories } from '../src/current-runtime-v9-repositories.js';
+import { createRegisteredCurrentRuntimeRepositoriesV1 } from '../src/current-runtime-repositories-registration-v1.js';
 import {
   nutritionPlanVersionSchema,
   intakeEntryRecordSchema,
@@ -36,7 +36,8 @@ import { Writable } from 'node:stream';
 import { writeFile } from 'node:fs/promises';
 
 // Current V9 installation and configured core grants, matching the identity harness.
-// Only authentication is synthetic. Actual HTTP routes, CSRF, V9 readiness and repositories run unchanged.
+// Only authentication is synthetic. Actual HTTP routes, CSRF and the Root-registered
+// source-build readiness and named repositories run unchanged.
 // This is not evidence of OIDC or shell-proxy behavior.
 const adminUrl = z.string().min(1).parse(process.env['TEST_DATABASE_ADMIN_URL']);
 const suffix = randomUUID().replaceAll('-', '').slice(0, 12);
@@ -50,6 +51,9 @@ let database: Database | undefined;
 let api: ReturnType<typeof createApi> | undefined;
 
 const diagnosticCodes = new Set([
+  'CURRENT_RUNTIME_SOURCE_BUILD_V1_UNAVAILABLE',
+  'CURRENT_RUNTIME_SOURCE_BUILD_V1_INCOMPATIBLE',
+  'CURRENT_RUNTIME_SOURCE_BUILD_V1_INVALID_READINESS',
   'CURRENT_RUNTIME_V9_UNAVAILABLE',
   'CURRENT_RUNTIME_V9_INCOMPATIBLE',
   'CURRENT_RUNTIME_V9_INVALID_READINESS',
@@ -235,7 +239,7 @@ it('approves the long-ID zero/unknown meal through actual current V9 HTTP and pe
           return result;
         });
     }
-    const ports = await createCurrentRuntimeV9Repositories(observedDatabase);
+    const ports = await createRegisteredCurrentRuntimeRepositoriesV1(observedDatabase);
     const origin = 'http://127.0.0.1:4301';
     const cookie = 'session=synthetic-nutrition-current-v9';
     const csrfToken = 's'.repeat(43);

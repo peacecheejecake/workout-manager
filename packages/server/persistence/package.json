@@ -128,7 +128,10 @@
     "./current-runtime-installation-v9": "./src/current-runtime-installation-v9.ts",
     "./current-runtime-grants-v9": "./src/current-runtime-grants-v9.ts",
     "./current-runtime-catalog-witness-v9": "./src/current-runtime-catalog-witness-v9.ts",
-    "./current-runtime-readiness-v9": "./src/current-runtime-readiness-v9.ts"
+    "./current-runtime-readiness-v9": "./src/current-runtime-readiness-v9.ts",
+    "./current-runtime-source-build-proof-v1": "./src/current-runtime-source-build-proof-v1.ts",
+    "./current-runtime-source-build-proof-v1-compiler": "./src/current-runtime-source-build-proof-v1-compiler.ts",
+    "./current-runtime-source-build-readiness-v1": "./src/current-runtime-source-build-readiness-v1.ts"
   },
   "devDependencies": {
     "@types/pg": "8.23.1",
