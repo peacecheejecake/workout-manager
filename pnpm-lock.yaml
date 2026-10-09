@@ -358,6 +358,12 @@ importers:
         specifier: 4.6.5
         version: 4.6.5
 
+  packages/experience/conversation-kit:
+    dependencies:
+      react:
+        specifier: 19.3.0
+        version: 19.3.0
+
   packages/experience/geo-kit:
     dependencies:
       maplibre-gl:

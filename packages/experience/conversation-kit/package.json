@@ -1,0 +1,16 @@
+{
+  "name": "@workout/conversation-kit",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --project tsconfig.json"
+  },
+  "dependencies": {
+    "react": "19.3.0"
+  },
+  "exports": {
+    "./transcript": "./src/transcript.tsx",
+    "./composer": "./src/composer.tsx"
+  }
+}
