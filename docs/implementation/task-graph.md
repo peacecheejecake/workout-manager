@@ -1,17 +1,20 @@
 # 작업 의존성 및 병렬 진행
 
-## 최신 실행 순서 · 2026-10-09
+## 최신 실행 순서 · 2026-10-09 추가 승인
 
-사용자 결정: 모든 구현을 먼저 완료하고 실기기 검증은 마지막에 실제 제품 앱으로 진행한다. [검증 계획](device-validation-plan.md)에 정확한 범위와 남은 수용을 기록했다.
+사용자 승인: **전체 구현 → 로컬 통합·독립 phase 검토 → 운영 백업·복원 및 HTTPS 전환 → 외부 수용 → 실제 제품 앱 실기기 검증 → 출시**. [검증 계획](device-validation-plan.md)을 따른다. 운영 미실행이 독립적인 로컬 구현을 막지 않도록 수용 노드를 분리했다.
 
-| 노드 | 역할 | 선행 조건 |
+| 로컬 구현·수용 | 전체 또는 운영·외부 수용 | 연결 |
 |---|---|---|
-| M0-06b-local | 비실기기 UI·지도 구현 수용 | 기존 M0-06b의 구현 선행 조건 |
-| M3-03a | 최종 제품 Native 통합 구현·로컬 수용 | M3-02의 h 제외 구현 roster, G2 |
-| M3-02h | 마지막 실제 제품 HealthKit 검증 | 기존 조건, M3-03a, G2-PUBLIC |
-| M3-03b | 마지막 실제 제품 성능·touch·lifecycle 검증 | M3-03a, M3-02h, G2-PUBLIC |
+| M0-06b-local | M0-06b | 공개 ODbL은 EXT-HOSTING, 최종 기기는 M3-03b |
+| M2-01k-local / M2-01-local | M2-01k / M2-01 | M2-02 구현은 로컬 합류 사용; 전체 지도·복원 수용은 공개 gate에 보존 |
+| EXT-BACKCHANNEL-local | EXT-BACKCHANNEL-external / EXT-BACKCHANNEL | 실제 전파는 HTTPS 준비 후 |
+| M3-02o-local | M3-02o-ops / M3-02o | M3-03a는 로컬 등록 통합 사용; 실제 감사·배포·rollback은 운영 선행 |
+| EXT-RESTOREa | EXT-RESTOREb / EXT-RESTORE | 완전한 protocol 로컬 검증 뒤 실제 운영 witness·백업/격리 복원 |
+| G2 / M3-03a / LOCAL-REVIEW | EXT-HOSTING / G2-EXTERNAL | 실제 전체 로컬 검사·phase 승인 후 운영 전환·외부 수용 |
+| M3-02h / M3-03b | G2-PUBLIC / G3 | G2-EXTERNAL 뒤 실제 org.workoutmanager.app에서 최종 검증, 그 뒤 출시 |
 
-M2-01/M2-06은 M0-06b-local을 구현 선행으로 사용한다. 기존 M0-06b/M3-03 부모와 G3는 최종 기기 수용을 계속 요구한다. 기존 노드 상태와 외부 조건은 바꾸지 않았다. 아래 오래된 표의 M0-06b 선행 표기는 이 분리를 우선 적용한다.
+기존 259노드 상태와 실패·미실행 증거는 그대로다. 새 8노드는 모두 not_started이며 계획 변경은 통과 증거가 아니다. 운영 선행을 제거한 것은 로컬 합류 경로뿐이다. 공개 출시는 기존 HTTPS·복원·OpenAI·back-channel 조건과 전체 지도 수용·최종 실기기 수용을 계속 요구한다. 아래 과거 표·Mermaid의 이전 선행 표기는 역사이며 최신 dependency는 JSON과 이 표를 우선한다.
 
 기준: [구현 계획](README.md). 초기 계획 이후 구현을 진행 중이다. 최신 상태와 검증 기록은 [task-graph.json](task-graph.json)의 status/evidence를 따른다.
 

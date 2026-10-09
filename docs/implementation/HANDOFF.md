@@ -152,7 +152,7 @@ APPROVE를 받았다. 당시 기록 갱신의 검토 refresh 후 main에 반영�
 
 ### 최신 우선 순서 · 사용자 결정 2026-10-09
 
-모든 구현을 먼저 완료하고 실기기 검증은 마지막에 실제 제품 앱으로 진행한다. standalone 시험 앱의 추가 작업과 수동 20회 측정 요청은 중단한다. [최종 제품 검증 계획](device-validation-plan.md)의 M0-06b-local → 전체 구현/phase 통합 → M3-03a → M3-02h/M3-03b → 출시 순서를 우선 적용한다. 비실기기 검증·독립 phase 검토·운영/복원/HTTPS gate는 유지한다. 기존 실기기 미검증은 통과로 바꾸지 않는다.
+추가 승인된 순서는 **전체 구현 → 로컬 통합·독립 phase 검토 → 운영 백업·복원 및 HTTPS 전환 → 외부 수용 → 실제 제품 앱 실기기 검증 → 출시**다. [검증 계획](device-validation-plan.md)과 graph의 로컬/운영 분리를 우선 적용한다. M2-01k-local/M2-01-local·EXT-BACKCHANNEL-local·M3-02o-local은 독립 로컬 구현 선행이고 기존 전체 수용은 부모/운영 gate에 보존한다. LOCAL-REVIEW 후 운영 작업, G2-EXTERNAL 후 실제 org.workoutmanager.app의 M3-02h/M3-03b, 그 뒤 G2-PUBLIC/G3를 판정한다. Standalone 시험 앱 추가 작업과 수동 20회 요청은 중단한다. 계획 변경으로 기존 실패·미실행을 통과로 바꾸지 않는다.
 
 앞선 회귀 조사 출발점은 HEAD6a00c113 canonical identity 둘째 회차의 영양 approve-v4 HTTP500 두 건이었다. 첫 회차346pass/12skip, 둘째344pass/2fail/12skip을 별도 보존하며 두 회차 등록/skip 대조는 일치한다. main 병합 전 수정과 실제 재검증이 필요하다. 아래 2026-10-08 순서는 과거 진행 기록이다.
 
@@ -1143,3 +1143,15 @@ Engine/cgroup·worker·DB/erase/restore는 남는다.
 각 타입/lint/format을 Root가 실제 재검증했다. 저장 association의 tuple을 unavailable에서도 보존하지만
 authoritative SQL/실제 권한조회·API/UI·삭제/restore 통합은 별도 미완료다. 상세는 Gallery progress 문서에
 기록했다. 기존143album SQL/test draft와 EXT-HOSTING WIP는 보존한다. main/운영/기기/push변경0.
+
+## 사용자 결정 기록 · 2026-10-09 로컬·운영 수용 분리 승인
+
+사용자가 전체 구현 → 로컬 통합·독립 phase 검토 → 운영 백업·복원/HTTPS → 외부 수용 → 실제 제품 앱 실기기 → 출시를 명시 승인했다. graph에 로컬 지도 합류2·back-channel 로컬/외부2·HealthKit 등록 로컬/운영2·LOCAL-REVIEW·G2-EXTERNAL 총8노드를 추가했다. 기존259노드 상태는 그대로이고 신규8노드는 not_started다. M2-02와 M3-03a의 독립 구현은 로컬 합류를 사용하며, 기존 전체 지도·복원·운영 감사·실제 공급자 수용과 최종 기기는 출시 선행에 보존한다. 로컬 기술 의존인 complete freshness/CLOSED·전체 복원 protocol은 제거하지 않았다. G2-PUBLIC의 공개 출시 판정은 최종 제품 기기 수용 뒤로 두며, 기기 검증은 G2-EXTERNAL의 HTTPS·운영·외부 증거를 사용해 순환을 피한다.
+
+현재 최신 전체 static6+unit R3는 실제 exit0: unit588파일/9509passed/5skip, 소스·lock·proof333 전후 불변이다. 최초 두 offline 설치 실패와 기본 shell의 Node engine 진단 실패는 별도로 보존한다. 같은 고정 lock 설치 후 sandbox에서 저장소가 보이지 않는 실패를 확인했고, 정확한 로컬 검사 escalation R3에서 install/generated/lint/typecheck/build/format/unit 모두 실행됐다. 결과 `/private/tmp/wm-current-static-six-unit-actual-r3-20261009-terminal.json`을 따른다. 최신 identity 두 회차와 독립 phase 검토는 아직 미실행이며 문서 변경 후 새 입력 freeze를 만들 예정이다. 기존 운영·외부·실기기 not_executed, EXT-HOSTING WIP와 stash·main/push 경계는 유지한다.
+
+Root의 실제 JSON/의존성 검사는267노드·기존status변경0·신규not_started8·unknownedge0·cycle0,
+로컬 경로의 미완료 external ancestor0을 확인했다. 운영 LOCAL-REVIEW 선행·실기기 G2-EXTERNAL 선행·
+공개 출시 최종기기/전체지도 선행과 M2-05b/c의 로컬 EXT-RESTOREa 기술 의존도 확인했다.
+Native agent의 별도 읽기 전용 dependency audit도 차단할 finding이 없었다. 이 감사는 phase review가 아니다.
+문서 포맷·diff 검사 exit0이며 기존 EXT-HOSTING 4줄 WIP는 이번 커밋에서 제외한다.

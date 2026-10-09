@@ -86,7 +86,7 @@
     {
       "id": "EXT-HOSTING",
       "title": "실제 호스팅(HTTPS 도메인·TLS·secret manager)",
-      "dependsOn": ["EXT-OIDC", "EXT-RESTORE"],
+      "dependsOn": ["EXT-OIDC", "EXT-RESTORE", "LOCAL-REVIEW"],
       "kind": "external",
       "status": "in_progress",
       "scope": "외부 조건(EXT-OIDC에서 분리; 사용자 결정 2026-09-29: AWS 서울 리전에서 호스팅 진행, 2026-10-04: 월 10만 원 상한은 AWS 계정 전체에 적용, HTTPS 호스트는 workout.red-10-proto.xyz): 공개 HTTPS 도메인과 TLS ingress, Zitadel에 https redirect(/bff/v1/auth/callback)·post-logout(/account) 등록, NODE_ENV=production과 __Host-/Secure cookie, OIDC 값의 secret manager 전달, 배포 환경에서 로그인·계정 전환·로그아웃·만료 확인(EXT-OIDC 체크리스트 4·7의 앱 cancelled 경로·10 UI·11 포함). Zitadel Back은 access_denied를 보내지 않았으므로 취소 경로는 실제 공급자에서 접근 가능한 별도 취소 수단 또는 명시적인 공급자 오류 응답으로 확인하고, 불가능하면 미검증으로 남긴다. 배포 전 ODbL 고지가 있는 타일·장소/고도 배포와 전국 graph로 재빌드(M0-06b-odbl, 사용자 결정: 호스팅 때 재빌드). 공개 페이지의 스크립트 링크마다 활성 manifest SHA-256과 실제 응답 바이트를 확인하고, Vite 호스트가 /map/basemap/**를 직접 서빙하면 Next 동적 route와 동등한 활성 배포·해시 제한 또는 보호된 proxy를 적용한다.",
@@ -95,10 +95,10 @@
     {
       "id": "EXT-BACKCHANNEL",
       "title": "OIDC back-channel logout 앱 구현",
-      "dependsOn": ["EXT-OIDC"],
+      "dependsOn": ["EXT-BACKCHANNEL-local", "EXT-BACKCHANNEL-external"],
       "kind": "task",
       "status": "in_progress",
-      "scope": "사용자 결정(2026-09-26): Zitadel back-channel logout 광고 확인에 따라 별도 후속 구현. 표준 Logout Token의 issuer·audience·서명·시각·events·nonce 부재와 subject/session 식별을 검증하고, jti 재생 방지 원장(migration)과 원자적인 해당 앱 세션 철회·tenant 격리·중복/지연/잘못된 토큰 거부를 구현한다. 공급자 호출은 DB 트랜잭션 밖에 둔다. 실제 Zitadel 공급자의 back-channel 전파 시험도 수용 기준이다. HTTPS callback과 계정 정지/로그아웃 전파의 배포 증거는 EXT-HOSTING 외부 조건이 충족될 때까지 not_executed로 남기며, 그 전까지 공급자 쪽 계정 정지가 앱에 닿는 상한 8시간은 유지한다.",
+      "scope": "사용자 결정(2026-09-26): Zitadel back-channel logout 광고 확인에 따라 별도 후속 구현. 표준 Logout Token의 issuer·audience·서명·시각·events·nonce 부재와 subject/session 식별을 검증하고, jti 재생 방지 원장(migration)과 원자적인 해당 앱 세션 철회·tenant 격리·중복/지연/잘못된 토큰 거부를 구현한다. 공급자 호출은 DB 트랜잭션 밖에 둔다. 실제 Zitadel 공급자의 back-channel 전파 시험도 수용 기준이다. HTTPS callback과 계정 정지/로그아웃 전파의 배포 증거는 EXT-HOSTING 외부 조건이 충족될 때까지 not_executed로 남기며, 그 전까지 공급자 쪽 계정 정지가 앱에 닿는 상한 8시간은 유지한다. 로컬/실제 공급자 수용을 별도 노드로 합류하며 이 부모의 전체 수용은 유지한다.",
       "evidence": "docs/implementation/progress/EXT-BACKCHANNEL.md"
     },
     {
@@ -1120,7 +1120,7 @@
     {
       "id": "M2-01",
       "title": "코스·도로 routing",
-      "dependsOn": ["M1c-04", "M0-06b-local", "M2-01k"],
+      "dependsOn": ["M1c-04", "M0-06b-local", "M2-01k", "M2-01-local"],
       "kind": "task",
       "status": "not_started",
       "scope": "courses/geo-kit; 기록 viewer·자체 운영 routing·coverage·M2-01a~k 통합"
@@ -1807,7 +1807,8 @@
         "M2-01k-v-e",
         "M2-01k-v-f",
         "M2-01k-w-a",
-        "EXT-RESTORE"
+        "EXT-RESTORE",
+        "M2-01k-local"
       ],
       "kind": "task",
       "status": "in_progress",
@@ -1863,7 +1864,7 @@
       "id": "M2-02",
       "title": "대회·기록",
       "dependsOn": [
-        "M2-01",
+        "M2-01-local",
         "M2-02a",
         "M2-02b",
         "M2-02c",
@@ -1880,7 +1881,7 @@
       ],
       "kind": "task",
       "status": "in_progress",
-      "scope": "competitions; 코스 참조·결과"
+      "scope": "competitions; 코스 참조·결과; 2026-10-09 승인: 로컬 코스 통합을 구현 선행으로 사용하고 운영 수용은 G2-EXTERNAL/공개 gate에 보존한다."
     },
     {
       "id": "M2-03",
@@ -1959,7 +1960,7 @@
       ],
       "kind": "task",
       "status": "not_started",
-      "scope": "S01–S35·보안·운영·내부 수용 기준 대조; FUT-09 원문 미확정 해소 또는 명시적 범위 결정. 완료된 M1-06b-tmp의 소유자 한정·기본 꺼짐 비공식 수집 interface와 fixture 회귀를 포함하되, 실제 Garmin 계정 실행은 별도 not_executed이며 공식 연동·일반 사용자 자동 동기화 증거로 쓰지 않는다. 공식 후속 범위: docs/implementation/research/garmin-official-deferred.md"
+      "scope": "S01–S35·보안·운영·내부 수용 기준 대조; FUT-09 원문 미확정 해소 또는 명시적 범위 결정. 완료된 M1-06b-tmp의 소유자 한정·기본 꺼짐 비공식 수집 interface와 fixture 회귀를 포함하되, 실제 Garmin 계정 실행은 별도 not_executed이며 공식 연동·일반 사용자 자동 동기화 증거로 쓰지 않는다. 공식 후속 범위: docs/implementation/research/garmin-official-deferred.md 2026-10-09 승인: 실제 운영 실행과 외부 제공자/실기기 수용은 별도 gate이며 로컬 구현·통합·운영 절차 검증을 수행한다."
     },
     {
       "id": "G2",
@@ -1967,15 +1968,25 @@
       "dependsOn": ["M2-06"],
       "kind": "gate",
       "status": "not_started",
-      "scope": "사용자 결정(2026-09-27): 공식 Garmin 연동 제외 Web MVP의 내부 출시 준비 판정. M2-06의 Web 전체 업무·보안·운영 수용을 요구한다. 비공식 Garmin 연결은 소유자 한정·기본 꺼짐 선택 기능이며 그 fixture 결과를 실계정/공식 연동 증거로 승격하지 않는다. G2 통과는 공개 배포 승인이나 EXT-HOSTING의 HTTPS·TLS·secret manager·배포 환경 OIDC 검증 완료를 뜻하지 않는다. 미실행 외부 증거를 통과로 표시하지 않는다."
+      "scope": "사용자 결정(2026-09-27): 공식 Garmin 연동 제외 Web MVP의 내부 출시 준비 판정. M2-06의 Web 전체 업무·보안·운영 수용을 요구한다. 비공식 Garmin 연결은 소유자 한정·기본 꺼짐 선택 기능이며 그 fixture 결과를 실계정/공식 연동 증거로 승격하지 않는다. G2 통과는 공개 배포 승인이나 EXT-HOSTING의 HTTPS·TLS·secret manager·배포 환경 OIDC 검증 완료를 뜻하지 않는다. 미실행 외부 증거를 통과로 표시하지 않는다. 2026-10-09 승인: 운영 절차의 로컬 구현·로컬 통합 수용만 포함하고 실제 운영 실행은 G2-EXTERNAL에서 별도 검증한다."
     },
     {
       "id": "G2-PUBLIC",
       "title": "Web MVP 공개 출시 gate",
-      "dependsOn": ["G2", "EXT-HOSTING", "M2-05d", "EXT-RESTORE", "EXT-BACKCHANNEL"],
+      "dependsOn": [
+        "G2",
+        "EXT-HOSTING",
+        "M2-05d",
+        "EXT-RESTORE",
+        "EXT-BACKCHANNEL",
+        "G2-EXTERNAL",
+        "M3-03b",
+        "M2-01",
+        "M0-06b"
+      ],
       "kind": "gate",
       "status": "not_started",
-      "scope": "사용자 결정(2026-09-27): 호스팅을 내부 준비 판정 뒤로 미룬다. 공개 Web 출시는 G2의 제품 수용과 EXT-HOSTING의 공개 HTTPS/TLS, Zitadel 배포 redirect·logout·취소·만료 검증, NODE_ENV=production·__Host-/Secure cookie, secret manager, ODbL 고지 지도 산출물 재빌드 증거를 모두 요구한다. 미실행·partial 항목은 통과로 표시하지 않으며 공식 Garmin 연동은 별도 후속 범위다. EXT-BACKCHANNEL의 실제 공급자 logout 전파 수용도 공개 출시 선행 조건이며 localhost·합성 토큰 검증으로 대체하지 않는다."
+      "scope": "사용자 결정(2026-09-27): 호스팅을 내부 준비 판정 뒤로 미룬다. 공개 Web 출시는 G2의 제품 수용과 EXT-HOSTING의 공개 HTTPS/TLS, Zitadel 배포 redirect·logout·취소·만료 검증, NODE_ENV=production·__Host-/Secure cookie, secret manager, ODbL 고지 지도 산출물 재빌드 증거를 모두 요구한다. 미실행·partial 항목은 통과로 표시하지 않으며 공식 Garmin 연동은 별도 후속 범위다. EXT-BACKCHANNEL의 실제 공급자 logout 전파 수용도 공개 출시 선행 조건이며 localhost·합성 토큰 검증으로 대체하지 않는다. 2026-10-09 승인: 운영/외부 수용은 G2-EXTERNAL에서 합류하고 실제 제품 앱 최종 실기기 M3-03b까지 확인한 뒤 공개 출시한다."
     },
     {
       "id": "M3-01a",
@@ -2115,11 +2126,11 @@
         "M3-02i",
         "M3-02o",
         "M3-03a",
-        "G2-PUBLIC"
+        "G2-EXTERNAL"
       ],
       "kind": "task",
       "status": "in_progress",
-      "scope": "서명된 제품 앱에서 명시적 동의·실제 HealthKit 운동 수집·삭제·background wake·offline ACK 재시도·재설치·계정 전환·공통 화면을 검증한다. 사용자가 허용한 표식 있는 합성 표본만 사용하고 원본 영수증은 Git 밖에 보관한다. Debug 표본 검증 코드와 실기기 증거를 분리하며, HTTPS 서버·로그인·실기기 실행이 없으면 해당 수용 행은 not_executed를 유지한다. 사용자 결정 2026-10-09: 모든 구현 후 최종 실제 제품 앱에서 마지막에 실행한다. 시험 앱 증거로 대체하지 않는다.",
+      "scope": "서명된 제품 앱에서 명시적 동의·실제 HealthKit 운동 수집·삭제·background wake·offline ACK 재시도·재설치·계정 전환·공통 화면을 검증한다. 사용자가 허용한 표식 있는 합성 표본만 사용하고 원본 영수증은 Git 밖에 보관한다. Debug 표본 검증 코드와 실기기 증거를 분리하며, HTTPS 서버·로그인·실기기 실행이 없으면 해당 수용 행은 not_executed를 유지한다. 사용자 결정 2026-10-09: 모든 구현 후 최종 실제 제품 앱에서 마지막에 실행한다. 시험 앱 증거로 대체하지 않는다. 2026-10-09 승인: G2-EXTERNAL의 실제 운영·HTTPS·외부 수용 뒤 실행하고 공개 출시는 이 최종 수용 뒤 판정한다.",
       "evidence": "docs/implementation/progress/M3-02h.md"
     },
     {
@@ -2179,7 +2190,7 @@
     {
       "id": "M3-02o",
       "title": "HealthKit 계정별 등록 통합·안전 배포 준비",
-      "dependsOn": ["M3-02k", "M3-02l", "M3-02m", "M3-02n"],
+      "dependsOn": ["M3-02k", "M3-02l", "M3-02m", "M3-02n", "M3-02o-local", "M3-02o-ops"],
       "kind": "task",
       "status": "in_progress",
       "scope": "기존 raw·receipt 중복을 비식별 감사하고 서버 선배포·구형 앱 차단·원장 삭제·safe rollback을 검증한다. 계약·실DB·native·브라우저 통합 결과를 확인해 M3-02h 실기기 실행 게이트를 준비한다. 운영·실기기 미실행을 passed로 바꾸지 않는다.",
@@ -2411,7 +2422,7 @@
     {
       "id": "EXT-RESTOREb",
       "title": "운영의 독립 witness·전체 백업/격리 복원·admission 수용",
-      "dependsOn": ["EXT-RESTOREa", "EXT-OIDC"],
+      "dependsOn": ["EXT-RESTOREa", "EXT-OIDC", "LOCAL-REVIEW"],
       "kind": "external",
       "status": "not_started",
       "scope": "실제 AWS source snapshot/slot/LSN·독립적으로 보존된 최신 baseline/tail/index/head/witness/ACK·키/객체 retention, 새로운 target identity와 global ledger·삭제 suppression을 검증한 전체 격리 복원 및 RPO/RTO 증거. 실제 운영 변경은 정확히 검토된 script와 필요한 사용자 승인으로 실행한다. Local signed fixtures/SQL-origin 단일 event/ordinary dump로 외부 completeness나 processing reopen을 증명하지 않는다.",
@@ -2478,23 +2489,23 @@
         "M3-02l",
         "M3-02m",
         "M3-02n",
-        "M3-02o",
+        "M3-02o-local",
         "M3-02p",
         "M3-02q",
         "G2"
       ],
       "kind": "task",
       "status": "not_started",
-      "scope": "사용자 결정 2026-10-09: 모든 제품 구현 뒤 실제 apps/mobile shell에 M2 모듈·로그인·HealthKit·bridge를 통합하고 로컬 SDK/build·브라우저·계약 검증과 최종 서명 가능한 제품 빌드를 준비한다. standalone 시험 앱을 만들거나 실기기 시험을 먼저 실행하지 않는다. M3-02o의 운영 감사·배포/rollback 조건도 유지하며 미충족 dependency에서 준비만으로 완료하지 않는다.",
+      "scope": "2026-10-09 승인: 모든 제품 구현을 실제 apps/mobile에 통합하고 SDK/build·브라우저·계약·native harness 로컬 검증 및 서명 가능한 제품 빌드를 준비한다. 운영 감사/배포/rollback은 M3-02o-ops에 분리해 로컬 구현을 막지 않는다. 실제 기기 실행은 운영·외부 수용 뒤 M3-02h/M3-03b에서만 한다. standalone 시험 앱은 사용하지 않는다.",
       "evidence": "docs/implementation/device-validation-plan.md"
     },
     {
       "id": "M3-03b",
       "title": "최종 실제 제품 앱 실기기 수용",
-      "dependsOn": ["M3-03a", "M3-02h", "G2-PUBLIC"],
+      "dependsOn": ["M3-03a", "M3-02h", "G2-EXTERNAL"],
       "kind": "task",
       "status": "not_started",
-      "scope": "사용자 결정 2026-10-09: 모든 구현과 HTTPS 제품 준비 후 실제 org.workoutmanager.app에서 기존 M0-06b·M3-03의 물리 touch/가로 넘침·지도 성능/RSS/JS heap·IME/back·offline·foreground/background·접근성 수용을 실행한다. HealthKit 전체 경로는 M3-02h 증거를 대조한다. standalone 시험 앱 결과를 최종 제품 증거로 승격하지 않는다. 실제 사용자 관측·자동화 관측·미실행을 구분하며 최종 미검증은 출시를 막는다.",
+      "scope": "사용자 결정 2026-10-09: 모든 구현과 HTTPS 제품 준비 후 실제 org.workoutmanager.app에서 기존 M0-06b·M3-03의 물리 touch/가로 넘침·지도 성능/RSS/JS heap·IME/back·offline·foreground/background·접근성 수용을 실행한다. HealthKit 전체 경로는 M3-02h 증거를 대조한다. standalone 시험 앱 결과를 최종 제품 증거로 승격하지 않는다. 실제 사용자 관측·자동화 관측·미실행을 구분하며 최종 미검증은 출시를 막는다. 2026-10-09 승인: G2-EXTERNAL의 실제 운영·HTTPS·외부 수용 뒤 실행하고 공개 출시는 이 최종 수용 뒤 판정한다.",
       "evidence": "docs/implementation/device-validation-plan.md"
     },
     {
@@ -2523,6 +2534,128 @@
       "status": "in_progress",
       "scope": "S17/V2-F21의 EXIF/orientation·thumbnail/transcoding 미구현을 bounded worker/object storage/계약·UI로 구현한다. 원본 불변과 정확 derivative lineage, 지원불가/실패/변환 상태, 삭제 suppression·계정 삭제/복원·재시도 억제·유한 비용/codec 예산을 실제 합성 codec/실DB로 검증한다. 운영 및 최종 실제 제품 실기기 수용은 외부/final gate에 남긴다.",
       "evidence": "docs/implementation/progress/M2-03-follow-up.md"
+    },
+    {
+      "id": "M2-01k-local",
+      "title": "지도·코스 로컬 통합 수용",
+      "dependsOn": [
+        "M2-01i",
+        "M2-01j",
+        "M2-01l",
+        "M2-01m",
+        "M2-01p",
+        "M2-01q",
+        "M2-01r",
+        "M2-01s",
+        "M2-01t",
+        "M2-01u",
+        "EXT-OIDC",
+        "M2-01x",
+        "M2-01k-a",
+        "M2-01k-b",
+        "M2-01k-c1",
+        "M2-01k-c2",
+        "M2-01k-d",
+        "M2-01k-e",
+        "M2-01k-f",
+        "M2-01k-g",
+        "M2-01k-h",
+        "M2-01k-i",
+        "M2-01k-j",
+        "M2-01k-k",
+        "M2-01k-l",
+        "M2-01k-m",
+        "M2-01k-n",
+        "M2-01k-o",
+        "M2-01k-p",
+        "M2-01k-q",
+        "M2-01k-r",
+        "M2-01k-s",
+        "M2-01k-t",
+        "M2-01k-u",
+        "M2-01k-v-a",
+        "M2-01k-v-b",
+        "M2-01k-v-c",
+        "M2-01k-v-d",
+        "M2-01k-v-e",
+        "M2-01k-v-f",
+        "M2-01k-w-a"
+      ],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "2026-10-09 승인: 기존 지도 통합의 로컬 계약·실DB·브라우저·삭제/복원 구현 검증을 대조한다. 운영 witness/실제 AWS 복원은 EXT-RESTOREb에 남긴다. 전체 현재 schema 복원 protocol의 로컬 수용은 EXT-RESTOREa와 LOCAL-REVIEW에서 별도로 요구한다. 기존 M2-01k의 전체 수용·미실행 기록을 승격하지 않는다.",
+      "evidence": "docs/implementation/device-validation-plan.md"
+    },
+    {
+      "id": "M2-01-local",
+      "title": "코스·routing 로컬 구현 통합",
+      "dependsOn": ["M1c-04", "M0-06b-local", "M2-01k-local"],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "코스 계약·runtime·자체 routing·coverage의 비운영 통합. M2-01 전체 운영 수용과 공개 지도 응답은 보존한다. 독립적인 후속 구현은 이 로컬 합류를 사용한다.",
+      "evidence": "docs/implementation/device-validation-plan.md"
+    },
+    {
+      "id": "M3-02o-local",
+      "title": "HealthKit 등록 로컬 통합·배포 절차 구현",
+      "dependsOn": ["M3-02k", "M3-02l", "M3-02m", "M3-02n"],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "계약·실DB·native SDK/harness·브라우저 통합과 비식별 감사·구형 앱 차단·rollback 절차의 로컬 검증. 실제 운영 감사/배포/rollback은 M3-02o-ops, 실기기는 M3-02h. 기존 결과를 재대조해 검증하며 계획 변경만으로 완료하지 않는다.",
+      "evidence": "docs/implementation/device-validation-plan.md"
+    },
+    {
+      "id": "M3-02o-ops",
+      "title": "HealthKit 등록 운영 감사·안전 배포 수용",
+      "dependsOn": ["M3-02o-local", "EXT-HOSTING"],
+      "kind": "external",
+      "status": "not_started",
+      "scope": "실제 운영 데이터의 비식별 감사·서버 선배포·구형 앱 차단·안전 rollback 증거. 정확한 승인된 운영 작업과 실제 증거가 필요하며 로컬 fixture로 대체하지 않는다. 최종 HealthKit 실기기의 운영 선행 조건이다.",
+      "evidence": "docs/implementation/device-validation-plan.md"
+    },
+    {
+      "id": "EXT-BACKCHANNEL-local",
+      "title": "OIDC back-channel 구현·로컬 수용",
+      "dependsOn": ["EXT-OIDC"],
+      "kind": "task",
+      "status": "not_started",
+      "scope": "표준 토큰 검증·jti replay 원장·원자 세션 철회·tenant 격리·실DB/합성 IdP/HTTP 수용. 실제 Zitadel logout 전파는 EXT-BACKCHANNEL-external에서 검증한다. 기존 로컬 증거를 대조한 뒤만 완료한다.",
+      "evidence": "docs/implementation/device-validation-plan.md"
+    },
+    {
+      "id": "EXT-BACKCHANNEL-external",
+      "title": "실제 Zitadel back-channel 전파 수용",
+      "dependsOn": ["EXT-BACKCHANNEL-local", "EXT-HOSTING"],
+      "kind": "external",
+      "status": "not_started",
+      "scope": "실제 HTTPS 제품 로그인 후 공급자 logout/계정 정지의 해당 앱 세션 전파·중복/지연·tenant 격리 수용. 기존 not_executed와 최대 8시간 전파 제한 기록 보존. 합성 토큰 성공은 외부 통과가 아니다.",
+      "evidence": "docs/implementation/device-validation-plan.md"
+    },
+    {
+      "id": "LOCAL-REVIEW",
+      "title": "전체 로컬 통합·독립 phase 검토 gate",
+      "dependsOn": ["G2", "M3-03a", "EXT-RESTOREa", "EXT-BACKCHANNEL-local"],
+      "kind": "gate",
+      "status": "not_started",
+      "scope": "전체 구현 후 관련 phase마다 full install/generated/lint/typecheck/build/unit/integration/identity x2/format 및 applicable local drills의 실제 결과와 context-less gpt-6-sol high 독립 phase 승인·main 통합을 확인한다. base/head 이후 변경은 재검토한다. 외부 blocked 노드는 운영/외부 gate에 남기며 skip/failed/not_executed를 통과로 바꾸지 않는다. push는 사용자 작업.",
+      "evidence": "docs/implementation/device-validation-plan.md"
+    },
+    {
+      "id": "G2-EXTERNAL",
+      "title": "운영·HTTPS·외부 제공자 수용 gate",
+      "dependsOn": [
+        "LOCAL-REVIEW",
+        "G2",
+        "EXT-HOSTING",
+        "EXT-RESTORE",
+        "M2-05d",
+        "EXT-BACKCHANNEL",
+        "M3-02o-ops"
+      ],
+      "kind": "gate",
+      "status": "not_started",
+      "scope": "전체 로컬 통합/검토 후 운영 독립 witness·전체 백업/격리 복원/admission·HTTPS/OIDC·공개 ODbL·실제 OpenAI/청구·back-channel·HealthKit 안전 배포의 실제 증거를 대조한다. 최종 실제 제품 앱 실기기의 운영 선행이며 공개 출시 승인은 아니다.",
+      "evidence": "docs/implementation/device-validation-plan.md"
     }
   ]
 }

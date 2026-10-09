@@ -4,15 +4,21 @@
 
 모든 구현을 먼저 완료하고 실기기 테스트는 마지막에 실제 제품 앱 `org.workoutmanager.app`으로 진행한다. standalone 합성 시험 앱의 추가 구현·빌드·설치·실행·측정을 중단한다. 로컬 단위·브라우저·실DB·통합 E2E·독립 phase 검토는 구현 중 계속 진행한다. 운영 호스팅·복원·제공자 조건과 기존 출시 수용 기준은 유지한다.
 
-## 실행 순서
+## 실행 순서 · 추가 승인 2026-10-09
 
-1. 기존 구현과 회귀 실패를 수정·검증한다. `M0-06b-local`에서 비실기기 UI/지도 수용을 실제 증거로 대조하여 구현 선행 조건을 분리한다.
-2. phase 전체 검증과 context-less `gpt-6-sol` high 독립 검토를 통과한 뒤 main에 통합한다. push는 사용자 작업이다.
-3. 나머지 ready 구현·최신 전체 인증 복원·운영 안전 배포·HTTPS 및 제공자 수용을 완료한다. `M3-03a`에서 실제 제품 앱의 모든 화면·로그인·bridge·collector 통합과 로컬 검증·최종 빌드를 완료한다. 미완료 선행 조건에서는 준비만 진행하며 verified로 표시하지 않는다.
-4. `M3-02h`에서 실제 제품 HealthKit 전체 경로를, `M3-03b`에서 제품 touch/가로 넘침·지도 성능·메모리·IME/back/offline/lifecycle/접근성을 마지막으로 검증한다. 자동화와 사용자 조작감 확인을 구분한다.
-5. 최종 실기기 증거까지 확보한 뒤 기존 `M0-06b`, `M3-02`, `M3-03`, `G3` 전체 완료를 판정한다.
+1. **전체 구현**: task graph의 로컬 선행만 충족한 ready 작업을 비중복 scope로 병렬 구현한다. M2-01k-local/M2-01-local, EXT-BACKCHANNEL-local, M3-02o-local은 기존 전체 수용과 구분한다. M3-03a의 실제 제품 shell 통합도 운영 전환 전에 구현·로컬 검증한다.
+2. **로컬 통합·독립 phase 검토**: 각 phase의 runnable 구현을 검증·커밋하고 전체 install/generated/lint/typecheck/build/unit/integration/identity 두 회차/format 및 applicable local drills를 수행한다. context-less gpt-6-sol high 읽기 전용 검토에 base/head·실제 변경·검증 결과·외부 미실행을 제공한다. 승인 후 main 통합을 LOCAL-REVIEW에서 확인한다. Push는 사용자 작업이다.
+3. **운영 백업·복원 및 HTTPS 전환**: LOCAL-REVIEW 뒤 EXT-RESTOREb의 독립 witness·최신 전체 백업/격리 복원·target-bound admission을 검증하고 EXT-HOSTING의 HTTPS 전환을 수행한다. 실제 운영 변경은 검토된 정확한 script와 필요한 승인 범위로만 실행한다. 기존 503·실패 기록을 완료로 바꾸지 않는다.
+4. **외부 수용**: 실제 OIDC·logout/back-channel·공개 ODbL 응답·OpenAI API/청구·HealthKit 등록 운영 감사/안전 배포/rollback 증거를 G2-EXTERNAL에서 대조한다. 로컬 fixture·타입 검사·문서 검토로 외부 성공을 만들지 않는다.
+5. **실제 제품 앱 실기기 검증**: G2-EXTERNAL 뒤 M3-02h에서 제품 HealthKit 전체 경로를, M3-03b에서 touch/가로 넘침·지도 성능·메모리·IME/back/offline/lifecycle/접근성을 검증한다. org.workoutmanager.app을 사용하고 자동화·사용자 관측을 구분한다. Standalone 시험 앱 작업은 재개하지 않는다.
+6. **출시**: M3-03b 및 기존 전체 지도 수용·M0-06b를 포함해 G2-PUBLIC과 G3를 판정한다. G2-EXTERNAL은 제품 시험용 운영 준비/외부 수용 gate이며 공개 출시 판정이 아니다. 최종 기기 수용과 공개 gate 사이의 순환을 만들지 않는다.
 
-`M3-02o`의 운영 감사·선배포·rollback 수용은 여전히 선행 조건이다. 이번 결정으로 이를 완료하거나 제외하지 않는다. 공개 Web·외부 OpenAI·OIDC/back-channel·ODbL 공개응답·복원 gate도 유지한다.
+## 로컬·운영 수용 분리 원칙
+
+- M2-01k의 EXT-RESTORE 전체 의존성은 부모에 보존하고, 독립 대회·AI 구현은 지도 로컬 합류를 사용한다. EXT-RESTOREa의 authoritative freshness·CLOSED·tail/loader 구현처럼 실제 기술적 선행인 로컬 의존성은 유지한다.
+- M3-02o의 실제 운영 감사·배포/rollback은 M3-02o-ops에서 검증하며 M3-03a의 로컬 통합 선행을 막지 않는다. M3-02h/M3-03b는 G2-EXTERNAL을 계속 요구한다.
+- 기존 노드의 completed/failed/partial/not_executed와 원본 로그·SHA를 변경하지 않는다. 분리한 새 노드는 not_started에서 실제 증거 대조 후 진행한다. 재분류는 과거 시험 앱·mock·문서 검토를 제품 통과로 승격하는 행위가 아니다.
+- 배포 전 관련 phase의 검토 이후 변경이 있으면 해당 diff의 검토를 갱신한다. 로컬 정상 target fixture는 복원 target의 processing admission을 우회하지 않는다.
 
 ## 보존할 관측과 미완료
 
