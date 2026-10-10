@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { coursePositionSchema, type CoursePosition } from '@workout/contracts/courses';
 import { Pool } from 'pg';
 import { z } from 'zod';
+import { type IdlePoolErrorSink, observeIdlePoolErrors } from './pool-observation.js';
 
 /**
  * The render worker's view of a stored course thumbnail (M2-01l).
@@ -74,6 +75,7 @@ export interface CourseThumbnailWorkerRepository {
 export function createCourseThumbnailWorkerRepository(options: {
   connectionString: string;
   workerId?: string;
+  idleErrorSink?: IdlePoolErrorSink;
 }): CourseThumbnailWorkerRepository {
   // Two connections and short timeouts: a render must never be the reason another writer
   // waits, and a stuck statement must give the lease back rather than hold it.
@@ -84,11 +86,8 @@ export function createCourseThumbnailWorkerRepository(options: {
     statement_timeout: 15000,
     lock_timeout: 5000,
   });
-  // pg-pool reports an idle client's backend loss (restart, pg_terminate_backend,
-  // DROP DATABASE ... WITH (FORCE)) on the pool after discarding that client; the
-  // next checkout opens a fresh connection. Without a listener Node treats it as an
-  // unhandled 'error' event and exits the process.
-  pool.on('error', () => undefined);
+  // Keeps the process alive on idle backend loss and records only {poolId, code}.
+  observeIdlePoolErrors(pool, 'course_thumbnail_worker', options.idleErrorSink);
   const workerId = uuid.parse(options.workerId ?? randomUUID());
   return {
     async lease(durationSeconds = 60) {

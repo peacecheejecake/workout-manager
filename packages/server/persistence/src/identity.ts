@@ -1,5 +1,6 @@
 import { Pool } from 'pg';
 import { z } from 'zod';
+import { type IdlePoolErrorSink, observeIdlePoolErrors } from './pool-observation.js';
 
 const hashSchema = z.string().regex(/^[a-f0-9]{64}$/);
 const attemptSchema = z.strictObject({
@@ -96,18 +97,17 @@ export interface IdentityRepository {
 export function createIdentityRepository(options: {
   connectionString: string;
   max?: number;
+  idleErrorSink?: IdlePoolErrorSink;
 }): IdentityRepository {
   const pool = new Pool({
-    ...options,
+    connectionString: options.connectionString,
+    ...(options.max === undefined ? {} : { max: options.max }),
     connectionTimeoutMillis: 5000,
     idleTimeoutMillis: 30000,
     statement_timeout: 5000,
   });
-  // pg-pool reports an idle client's backend loss (restart, pg_terminate_backend,
-  // DROP DATABASE ... WITH (FORCE)) on the pool after discarding that client; the
-  // next checkout opens a fresh connection. Without a listener Node treats it as an
-  // unhandled 'error' event and exits the process.
-  pool.on('error', () => undefined);
+  // Keeps the process alive on idle backend loss and records only {poolId, code}.
+  observeIdlePoolErrors(pool, 'identity', options.idleErrorSink);
   async function query(sql: string, values: unknown[]) {
     const client = await pool.connect();
     try {

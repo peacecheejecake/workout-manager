@@ -1,6 +1,7 @@
 import { Pool } from 'pg';
 import { z } from 'zod';
 import { TenantErasedError, type Database, type Transaction } from './database.js';
+import { type IdlePoolErrorSink, observeIdlePoolErrors } from './pool-observation.js';
 
 const cipherSchema = z.strictObject({
   keyId: z.string().min(1).max(100),
@@ -317,13 +318,17 @@ export function createGarminStore(database: Database) {
   };
 }
 
-export function createGarminRevocationStore(options: { connectionString: string }) {
-  const pool = new Pool({ ...options, max: 2, connectionTimeoutMillis: 5000 });
-  // pg-pool reports an idle client's backend loss (restart, pg_terminate_backend,
-  // DROP DATABASE ... WITH (FORCE)) on the pool after discarding that client; the
-  // next checkout opens a fresh connection. Without a listener Node treats it as an
-  // unhandled 'error' event and exits the process.
-  pool.on('error', () => undefined);
+export function createGarminRevocationStore(options: {
+  connectionString: string;
+  idleErrorSink?: IdlePoolErrorSink;
+}) {
+  const pool = new Pool({
+    connectionString: options.connectionString,
+    max: 2,
+    connectionTimeoutMillis: 5000,
+  });
+  // Keeps the process alive on idle backend loss and records only {poolId, code}.
+  observeIdlePoolErrors(pool, 'garmin_revocation', options.idleErrorSink);
   return {
     async leaseRevocation(input: { now: Date; leaseId: string; leaseUntil: Date }) {
       validateLease(input);

@@ -25,6 +25,7 @@ import {
 
 import type { Database, Transaction } from './database.js';
 import { PersistenceConflict } from './outbox.js';
+import { type IdlePoolErrorSink, observeIdlePoolErrors } from './pool-observation.js';
 
 /**
  * What may leave the account from a course, stored (M2-01k-o, migration 050).
@@ -682,6 +683,7 @@ export function createSharedCourseReader(options: {
   readonly connectionString: string;
   readonly limits?: SharedCourseReadLimits;
   readonly max?: number;
+  readonly idleErrorSink?: IdlePoolErrorSink;
 }): SharedCourseReader {
   const limits = options.limits ?? {
     readsPerClientPerMinute: courseSharingLimits.readsPerClientPerMinute,
@@ -695,11 +697,8 @@ export function createSharedCourseReader(options: {
     idleTimeoutMillis: 30000,
     statement_timeout: 5000,
   });
-  // pg-pool reports an idle client's backend loss (restart, pg_terminate_backend,
-  // DROP DATABASE ... WITH (FORCE)) on the pool after discarding that client; the
-  // next checkout opens a fresh connection. Without a listener Node treats it as an
-  // unhandled 'error' event and exits the process.
-  pool.on('error', () => undefined);
+  // Keeps the process alive on idle backend loss and records only {poolId, code}.
+  observeIdlePoolErrors(pool, 'course_sharing_reader', options.idleErrorSink);
   let checked = false;
   return {
     async read(tokenDigest, epoch, clientKey) {
