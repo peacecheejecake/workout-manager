@@ -103,6 +103,11 @@ export function createIdentityRepository(options: {
     idleTimeoutMillis: 30000,
     statement_timeout: 5000,
   });
+  // pg-pool reports an idle client's backend loss (restart, pg_terminate_backend,
+  // DROP DATABASE ... WITH (FORCE)) on the pool after discarding that client; the
+  // next checkout opens a fresh connection. Without a listener Node treats it as an
+  // unhandled 'error' event and exits the process.
+  pool.on('error', () => undefined);
   async function query(sql: string, values: unknown[]) {
     const client = await pool.connect();
     try {
