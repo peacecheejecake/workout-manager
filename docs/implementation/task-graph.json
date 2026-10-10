@@ -2591,9 +2591,9 @@
       "title": "코스·routing 로컬 구현 통합",
       "dependsOn": ["M1c-04", "M0-06b-local", "M2-01k-local"],
       "kind": "task",
-      "status": "not_started",
+      "status": "completed",
       "scope": "코스 계약·runtime·자체 routing·coverage의 비운영 통합. M2-01 전체 운영 수용과 공개 지도 응답은 보존한다. 독립적인 후속 구현은 이 로컬 합류를 사용한다.",
-      "evidence": "docs/implementation/device-validation-plan.md"
+      "evidence": "docs/implementation/progress/M2-01-local.md"
     },
     {
       "id": "M3-02o-local",
