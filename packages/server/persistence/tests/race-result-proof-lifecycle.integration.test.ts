@@ -124,7 +124,7 @@ beforeAll(async () => {
   // fixture. No event-ledger DML, owner role, definer bypass or proof authority grant.
   await owner.query(`GRANT SELECT,INSERT ON activity_source_head,activity_source_revision,
     activity_overlay,activity_overlay_revision,activity_suppression,command_receipt TO "${runtimeRole}"`);
-  await owner.query(`GRANT INSERT ON activity_canonical TO "${runtimeRole}"`);
+  await owner.query(`GRANT INSERT,UPDATE ON activity_canonical TO "${runtimeRole}"`);
   database = createDatabase({ connectionString: urlFor(runtimeRole), max: 4 });
 });
 afterAll(async () => {

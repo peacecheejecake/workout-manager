@@ -37,6 +37,9 @@ beforeAll(async () => {
   await grantCourses(adminUrl, 'workout_runtime');
   await grantCorePlanning(adminUrl, 'workout_runtime');
   await admin.query('GRANT SELECT,INSERT,UPDATE,DELETE ON outbox TO workout_runtime');
+  // Fixtures tombstone activities directly; that is the activity service's own DML
+  // (grantRaces only grants the reference row lock, not activity writes).
+  await admin.query('GRANT SELECT,INSERT,UPDATE,DELETE ON activity_canonical TO workout_runtime');
   database = createDatabase({ connectionString: runtimeUrl, max: 8 });
   repository = createRaceRepository(database, { now: () => new Date(fixedTime) });
 });

@@ -394,45 +394,101 @@ async function grantResourceRetrievalReads(pool: Pool, role: string) {
   );
 }
 
-/** Tenant-scoped race ledgers; references are checked under the shared command lock. */
+/**
+ * Removes a whole-table UPDATE this role holds directly on `table`, keeping every column
+ * UPDATE it was separately granted. PostgreSQL drops a table's column privileges together
+ * with the table privilege, so they are read first and restored in the same transaction.
+ */
+async function narrowTableUpdateIn(client: PoolClient, table: string, role: string) {
+  const held = await client.query(
+    `SELECT EXISTS(SELECT 1 FROM pg_catalog.pg_class c,LATERAL aclexplode(c.relacl) a
+       WHERE c.oid=$1::regclass AND a.grantee=r.oid AND a.privilege_type='UPDATE') AS whole,
+     coalesce((SELECT jsonb_agg(jsonb_build_object('column',t.attname,'grantable',a.is_grantable)
+         ORDER BY t.attnum)
+       FROM pg_catalog.pg_attribute t,LATERAL aclexplode(t.attacl) a
+       WHERE t.attrelid=$1::regclass AND t.attnum>0 AND NOT t.attisdropped
+         AND a.grantee=r.oid AND a.privilege_type='UPDATE'),'[]'::jsonb) AS columns
+     FROM pg_catalog.pg_roles r WHERE r.rolname=$2`,
+    [`public.${table}`, role],
+  );
+  const row = held.rows[0] as
+    { whole: boolean; columns: { column: string; grantable: boolean }[] } | undefined;
+  if (held.rows.length !== 1 || !row) throw new Error('INVALID_ROLE_NAME');
+  if (!row.whole) return;
+  await client.query(`REVOKE UPDATE ON public.${table} FROM "${role}"`);
+  for (const { column, grantable } of row.columns)
+    await client.query(
+      `GRANT UPDATE(${client.escapeIdentifier(column)}) ON public.${table} TO "${role}"${
+        grantable ? ' WITH GRANT OPTION' : ''
+      }`,
+    );
+}
+
+/**
+ * Tenant-scoped race ledgers; references are checked under the shared command lock.
+ *
+ * Race writers take `FOR SHARE` on referenced course and activity rows, and PostgreSQL
+ * allows a row lock only with UPDATE on at least one column of the locked table. This
+ * grants that on `athlete_id` alone: tenant RLS (USING and WITH CHECK) pins it to the
+ * current tenant on activity_canonical, and course_head_transition refuses changing it
+ * (and any update of a course that does not advance its head). Nothing in a course or
+ * an activity's `original`, revision or deletion state is writable through this grant.
+ *
+ * Earlier versions granted whole-table UPDATE on both tables. Re-running this helper
+ * removes that in one transaction: always on course (its writer holds column grants
+ * only), and on activity_canonical only for a role that is not an activity writer —
+ * the activity repository's own SELECT,INSERT,UPDATE,DELETE grant is left in place.
+ */
 export async function grantRaces(connectionString: string, runtimeRole: string): Promise<void> {
   if (!/^[a-z_][a-z0-9_]{0,62}$/.test(runtimeRole)) throw new Error('INVALID_ROLE_NAME');
   const pool = new Pool({ connectionString, connectionTimeoutMillis: 5000, max: 1 });
   try {
-    await pool.query(
-      `GRANT SELECT,INSERT,UPDATE ON race_event,race_result,training_best,race_collection_head TO "${runtimeRole}"`,
-    );
-    await pool.query(
-      `GRANT SELECT,INSERT ON race_event_revision,race_result_revision,training_best_revision,race_command_receipt TO "${runtimeRole}"`,
-    );
-    await pool.query(`GRANT SELECT,UPDATE ON course,activity_canonical TO "${runtimeRole}"`);
-    await pool.query(`GRANT SELECT ON course_revision,plan_snapshot TO "${runtimeRole}"`);
-    // New race writes read the live app head; consent mutation remains separately granted.
-    await pool.query(`GRANT SELECT ON consent TO "${runtimeRole}"`);
-    await pool.query(`GRANT SELECT,INSERT ON outbox TO "${runtimeRole}"`);
-    // enqueue replays the exact event through ON CONFLICT without granting lease writes.
-    await pool.query(`GRANT UPDATE(idempotency_key) ON outbox TO "${runtimeRole}"`);
-    // SQL109 exposes a boolean for one owned proof source; its private ledger
-    // remains owner-only. Historical schemas have no such capability.
-    const proofSuppression = await pool.query(
-      "SELECT to_regprocedure('public.race_result_proof_source_suppressed(text,text,uuid)') IS NOT NULL AS available",
-    );
-    const capability = proofSuppression.rows[0]?.['available'];
-    if (proofSuppression.rows.length !== 1 || typeof capability !== 'boolean')
-      throw new Error('INVALID_RACE_PROOF_SUPPRESSION_CAPABILITY');
-    if (capability)
-      await pool.query(
-        `GRANT EXECUTE ON FUNCTION public.race_result_proof_source_suppressed(text,text,uuid) TO "${runtimeRole}"`,
-      );
-    // Historical upgrade tests may stop at the race ledger migration.
-    const deletion = await pool.query('SELECT 1 FROM schema_migrations WHERE version=99');
-    if (deletion.rowCount)
-      await pool.query(
-        `GRANT EXECUTE ON FUNCTION public.delete_race_entity(text,uuid,integer) TO "${runtimeRole}"`,
-      );
+    await inOneGrantTransaction(pool, (client) => grantRacesIn(client, runtimeRole));
   } finally {
     await pool.end();
   }
+}
+
+async function grantRacesIn(client: PoolClient, runtimeRole: string): Promise<void> {
+  await client.query(
+    `GRANT SELECT,INSERT,UPDATE ON race_event,race_result,training_best,race_collection_head TO "${runtimeRole}"`,
+  );
+  await client.query(
+    `GRANT SELECT,INSERT ON race_event_revision,race_result_revision,training_best_revision,race_command_receipt TO "${runtimeRole}"`,
+  );
+  await narrowTableUpdateIn(client, 'course', runtimeRole);
+  const activityWriter = await client.query(
+    "SELECT has_table_privilege($1,'public.activity_canonical','INSERT') AS writer",
+    [runtimeRole],
+  );
+  if (activityWriter.rows[0]?.['writer'] !== true)
+    await narrowTableUpdateIn(client, 'activity_canonical', runtimeRole);
+  await client.query(`GRANT SELECT ON course,activity_canonical TO "${runtimeRole}"`);
+  await client.query(`GRANT UPDATE(athlete_id) ON course,activity_canonical TO "${runtimeRole}"`);
+  await client.query(`GRANT SELECT ON course_revision,plan_snapshot TO "${runtimeRole}"`);
+  // New race writes read the live app head; consent mutation remains separately granted.
+  await client.query(`GRANT SELECT ON consent TO "${runtimeRole}"`);
+  await client.query(`GRANT SELECT,INSERT ON outbox TO "${runtimeRole}"`);
+  // enqueue replays the exact event through ON CONFLICT without granting lease writes.
+  await client.query(`GRANT UPDATE(idempotency_key) ON outbox TO "${runtimeRole}"`);
+  // SQL109 exposes a boolean for one owned proof source; its private ledger
+  // remains owner-only. Historical schemas have no such capability.
+  const proofSuppression = await client.query(
+    "SELECT to_regprocedure('public.race_result_proof_source_suppressed(text,text,uuid)') IS NOT NULL AS available",
+  );
+  const capability = proofSuppression.rows[0]?.['available'];
+  if (proofSuppression.rows.length !== 1 || typeof capability !== 'boolean')
+    throw new Error('INVALID_RACE_PROOF_SUPPRESSION_CAPABILITY');
+  if (capability)
+    await client.query(
+      `GRANT EXECUTE ON FUNCTION public.race_result_proof_source_suppressed(text,text,uuid) TO "${runtimeRole}"`,
+    );
+  // Historical upgrade tests may stop at the race ledger migration.
+  const deletion = await client.query('SELECT 1 FROM schema_migrations WHERE version=99');
+  if (deletion.rowCount)
+    await client.query(
+      `GRANT EXECUTE ON FUNCTION public.delete_race_entity(text,uuid,integer) TO "${runtimeRole}"`,
+    );
 }
 
 /** Narrow runtime grants for the lifecycle gate and audited account operations. */
