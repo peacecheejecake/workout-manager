@@ -37,7 +37,6 @@ import { fileURLToPath } from 'node:url';
 import { Pool } from 'pg';
 
 import {
-  extractAcquisition,
   courseImportResultSchema,
   courseReadResultSchema,
   courseRouteCandidateResultSchema,
@@ -58,6 +57,7 @@ import {
 } from '../packages/server/persistence/src/migrate.ts';
 import { createConfiguredApi } from '../apps/api/src/configured.ts';
 import {
+  extractAcquisition,
   importRoutingGraph,
   probeReportPath,
   relocatedDeploymentNote,
@@ -805,6 +805,12 @@ async function main() {
     const iterativeId = secondCourse.course.course.courseId;
     const iterative: string[] = [];
     // Twice the per-course bound and then some (M2-01p): before the fix the sixth was refused.
+    // The sections above spend Alice's tenant admission window; start from an empty one so a
+    // refusal here can only be the per-course proposal bound, not the tenant rate bound.
+    const admissionBeforeEdits = await clearAdmissionHistory(database.admin);
+    console.log(
+      `admission history before iterative editing: ${JSON.stringify(admissionBeforeEdits)}`,
+    );
     const edits = 12;
     for (let edit = 1; edit <= edits; edit += 1) {
       const started = performance.now();

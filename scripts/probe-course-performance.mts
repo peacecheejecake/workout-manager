@@ -25,6 +25,10 @@ import {
   courseRouteProposalResultSchema,
   type CourseWaypoint,
 } from '../packages/contracts/src/courses.ts';
+import {
+  courseDisclosurePreviewSchema,
+  courseDisclosureReceiptSchema,
+} from '../packages/contracts/src/course-sharing.ts';
 import { renderCourseThumbnail } from '../packages/server/courses/src/thumbnail.ts';
 import { createConfiguredApi } from '../apps/api/src/configured.ts';
 import {
@@ -133,6 +137,38 @@ async function main() {
     await app.ready();
     const session = new Session();
     await session.login(app, 'alice');
+    // S22 (M2-01k-v-a/b): a new activity needs the owner's explicit app processing consent.
+    // The synthetic owner grants it here, read → compare-and-set → read back, as the identity
+    // fixtures' named scenarios do; nothing else in the run is granted implicitly.
+    const consentBefore = await app.inject({
+      method: 'GET',
+      url: '/bff/v1/consents/app',
+      headers: session.headers(false),
+    });
+    const current = consentBefore.json() as { granted: boolean; revision: number };
+    if (consentBefore.statusCode !== 200)
+      throw new Error(`APP_CONSENT_READ_${consentBefore.statusCode}`);
+    if (!current.granted) {
+      const granted = await app.inject({
+        method: 'PUT',
+        url: '/bff/v1/consents/app',
+        headers: session.headers(true),
+        payload: { granted: true, expectedRevision: current.revision },
+      });
+      const after = await app.inject({
+        method: 'GET',
+        url: '/bff/v1/consents/app',
+        headers: session.headers(false),
+      });
+      const confirmed = after.json() as { granted: boolean; revision: number };
+      if (
+        granted.statusCode !== 200 ||
+        after.statusCode !== 200 ||
+        !confirmed.granted ||
+        confirmed.revision !== current.revision + 1
+      )
+        throw new Error('APP_CONSENT_GRANT_UNCONFIRMED');
+    }
 
     const length = longTrackLengthMeters();
     const fitBytes = longTrackFitBytes();
@@ -156,7 +192,11 @@ async function main() {
         },
       });
       const body = response.json() as { activityId: string; revision: number };
-      return { value: body, status: response.statusCode, detail: '' };
+      return {
+        value: body,
+        status: response.statusCode,
+        detail: response.statusCode === 200 ? '' : response.body.slice(0, 160),
+      };
     });
     const reservation = await measure('track-reserve', async () => {
       const response = await app.inject({
@@ -281,10 +321,41 @@ async function main() {
         detail: `${drawn.byteSize} bytes ${drawn.mediaType} from ${drawn.vertexCount} vertices`,
       };
     });
+    // M2-01k-o: a GPX is served only behind the owner's privacy confirmation receipt. No
+    // protected area exists yet here, so the server offers the exact line (no-zones-exact).
+    const receiptId = await measure('gpx-export-confirmation', async () => {
+      const previewed = await app.inject({
+        method: 'GET',
+        url: `/bff/v1/courses/${courseId}/disclosure-preview?purpose=export`,
+        headers: session.headers(false),
+      });
+      const preview = courseDisclosurePreviewSchema.parse(previewed.json());
+      const chosen = preview.options.find((option) => option.exposure === preview.defaultExposure);
+      if (!chosen) throw new Error(`EXPORT_NOTHING_TO_CONFIRM: ${preview.outcome}`);
+      const confirmed = await app.inject({
+        method: 'POST',
+        url: `/bff/v1/courses/${courseId}/disclosure-confirmations`,
+        headers: session.headers(true),
+        payload: {
+          purpose: 'export',
+          expectedRevision: preview.courseRevision,
+          acknowledgedZoneSetDigest: preview.zoneSetDigest,
+          exposure: chosen.exposure,
+          includeNames: preview.includeNamesDefault,
+          acknowledgedRisk: chosen.requiresAcknowledgement,
+        },
+      });
+      const receipt = courseDisclosureReceiptSchema.safeParse(confirmed.json());
+      return {
+        value: receipt.success ? receipt.data.receiptId : '',
+        status: previewed.statusCode === 200 ? confirmed.statusCode : previewed.statusCode,
+        detail: `${chosen.exposure}`,
+      };
+    });
     await measure('gpx-export', async () => {
       const response = await app.inject({
         method: 'GET',
-        url: `/bff/v1/courses/${courseId}/export.gpx`,
+        url: `/bff/v1/courses/${courseId}/export.gpx?receipt=${receiptId}`,
         headers: session.headers(false),
       });
       return {
