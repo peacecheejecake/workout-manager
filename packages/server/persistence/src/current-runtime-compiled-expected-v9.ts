@@ -16,8 +16,8 @@ const compiled = {
   profileVersion: 9,
   runtimeStep: 25,
   sourceDdlTip: 142,
-  catalogSha256: '91da4f0ec82152975eeee569a9c7d81ca06d67710264da8ff392980a99f4b4b2',
-  sqlJsonbSha256: 'd0ce5bf5c7c88c76b87e66dfe09ae6e466cb12276f4b07c9f7a72321c186420a',
+  catalogSha256: '127a416fb0435ed46225efc82db503d33597dcb01e006f15fb5a7ac3b4c170ed',
+  sqlJsonbSha256: '25fd4d7ce4fa67aad2ead89e1c87d8390d26a1393a03ed49b19d576e2d4ea1cc',
   sections: [
     {
       section: 'schemas',
@@ -34,8 +34,8 @@ const compiled = {
     {
       section: 'relations',
       rowCount: 704,
-      bytes: 2164718,
-      sha256: '8f2022ef612c4f777e079002c6bf1f66035360579ad36f1cceb95142f5417880',
+      bytes: 2164802,
+      sha256: 'e796d543a1eac8b0655f40f9b368061116d7bf00a8fa1318ed59fcbea7b56c10',
     },
     {
       section: 'defaultPrivileges',
@@ -183,16 +183,16 @@ const compiled = {
     },
     {
       section: 'sharedDependencies',
-      rowCount: 1345,
-      bytes: 139458,
-      sha256: '77c20b58de449795be3f49fd58b710005c0beef5f65bfde4e647bbc90ccc3284',
+      rowCount: 1347,
+      bytes: 139652,
+      sha256: 'fb8d7e40cfc15dcfb9b1f1fb8026f1a06d514b8f38483f2d56da3e4675c12403',
     },
   ],
   provenance: {
-    sourceManifestSha256: 'ba61b2d00aae72bf50a6e78292507d69742101a7d3473c37037c56b0664ef2cb',
+    sourceManifestSha256: '4afeed6b9b808a4d0de5e4d88bdbd804f4342541298cfe19fa259865bed9f143',
     recipeSha256: '64f041e3ed7c8502c178bbdb2605fa1fb93c58d3b52ad8f84e8a5fbc7281631e',
-    captureScriptSha256: 'cab2f2b8b93b3dfc2d821049e0edf3ae3bf689b2cfb31805aef9281e09cbf06f',
-    artifactSha256: '23e2f35487203158f609d3ba7a8bcac74330ba2e6346a12b3db731343e8fd779',
+    captureScriptSha256: 'dcdb9d00e14555fd00901ba1c57c157286b09c58de1397d4cc0c90766b93e085',
+    artifactSha256: '81b99c12c8be02305e9be9cb1a02c5988423f61227d9ad11b679a367f7776b08',
     ownerObservations: 2,
     runtimeObservation: 'not_executed',
     dynamicClosure: 'not_verified',

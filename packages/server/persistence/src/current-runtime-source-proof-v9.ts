@@ -15,7 +15,7 @@ import {
   currentRuntimeV9ExtensionMembers,
 } from './current-runtime-installation-v9.js';
 
-const catalogDigest = '91da4f0ec82152975eeee569a9c7d81ca06d67710264da8ff392980a99f4b4b2';
+const catalogDigest = '127a416fb0435ed46225efc82db503d33597dcb01e006f15fb5a7ac3b4c170ed';
 const expectedDynamic = [
   {
     signature: 'public.observe_manual_review_full_owned_source_bindings_v2(refs jsonb)',

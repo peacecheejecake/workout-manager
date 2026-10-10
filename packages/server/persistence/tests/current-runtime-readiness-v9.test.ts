@@ -15,7 +15,7 @@ vi.mock('../src/current-runtime-cold-catalog-v9.js', () => ({
 vi.mock('../src/current-runtime-source-proof-v9.js', () => ({
   verifyCurrentRuntimeSourceProofV9: vi.fn(),
 }));
-const catalogDigest = '91da4f0ec82152975eeee569a9c7d81ca06d67710264da8ff392980a99f4b4b2';
+const catalogDigest = '127a416fb0435ed46225efc82db503d33597dcb01e006f15fb5a7ac3b4c170ed';
 const cold = vi.mocked(observeCurrentRuntimeColdCatalogV9In);
 const proof = vi.mocked(verifyCurrentRuntimeSourceProofV9);
 function catalog() {
