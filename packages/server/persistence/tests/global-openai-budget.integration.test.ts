@@ -893,13 +893,16 @@ FROM fixture f`,
           }
         }
         // REASSIGN follows pg_shdepend physical order, which other suites' churn reshuffles. An
-        // object preceding its schema (or, for public, the database) needs next CREATE there, or
-        // the plain owner gets 42501. Grant it first and drop the leftover public grant after.
+        // object preceding its schema (or, for public, the database) needs next CREATE there, and
+        // the 078 publication preceding the database needs next CREATE on the database, or the
+        // plain owner gets 42501. Grant them first and drop the leftover public grant after; the
+        // database grant merges into next's owner entry once the database itself moves.
         await client.query(
           `DO $grant$ DECLARE s name; BEGIN
              FOR s IN SELECT nspname FROM pg_namespace
                WHERE nspowner='${roles.owner}'::regrole OR nspname='public'
              LOOP EXECUTE format('GRANT CREATE ON SCHEMA %I TO %I', s, '${roles.next}'); END LOOP;
+             EXECUTE format('GRANT CREATE ON DATABASE %I TO %I', current_database(), '${roles.next}');
            END $grant$`,
         );
         const reassigned = await client.query(

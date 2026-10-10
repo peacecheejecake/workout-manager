@@ -372,7 +372,18 @@ it('REASSIGN+existing retarget new plain liveowner erases with no refund while o
         )
       ).rows,
     ).toEqual([{ owner: roles.next }]);
+    // REASSIGN follows pg_shdepend physical order, which other suites' churn reshuffles; an object
+    // (or the 078 publication) preceding its schema or the database needs next CREATE there.
+    await previous.query(
+      `DO $grant$ DECLARE s name; BEGIN
+         FOR s IN SELECT nspname FROM pg_namespace
+           WHERE nspowner='${roles.owner}'::regrole OR nspname='public'
+         LOOP EXECUTE format('GRANT CREATE ON SCHEMA %I TO %I', s, '${roles.next}'); END LOOP;
+         EXECUTE format('GRANT CREATE ON DATABASE %I TO %I', current_database(), '${roles.next}');
+       END $grant$`,
+    );
     await previous.query(`REASSIGN OWNED BY "${roles.owner}" TO "${roles.next}"`);
+    await previous.query(`REVOKE CREATE ON SCHEMA public FROM "${roles.next}"`);
   } finally {
     await admin.query(`REVOKE "${roles.next}" FROM "${roles.owner}"`);
   }

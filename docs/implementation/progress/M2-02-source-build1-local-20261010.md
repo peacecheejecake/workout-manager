@@ -93,3 +93,9 @@ Handoff 큐1을 재개했다. r3 실패 title SHA 2개는 각각 `REASSIGN and e
 ### 2026-10-10 static7 · 중앙 `1b9a25b2`
 
 중앙 `1b9a25b2`에서 install/generated/lint/typecheck/build/format/unit을 순서대로 실제 실행했다: install·generated·lint(35s)·typecheck(81s)·build(53s)·format(40s) exit0. 최초 unit은 exit1(603파일 중 2 실패: garmin-unofficial-worker가 worktree `.venv` python 부재로 setup 실패, race-manual-review-source-inventory-v2 1건이 병렬 agent 부하 중 5s timeout)이었다. 이전 static gate와 같은 조건(`WORKOUT_PYTHON`=main `.venv` python)으로 재실행한 unit r2는 **603파일 · 9719 passed · 5 skipped · exit0**이다. 최초 실패는 보존하며 skip은 통과가 아니다. 로그 `/private/tmp/wm-static7-1b9a25b2-20261010/`.
+
+### 2026-10-10 canonical r10 · publication 순서 의존
+
+중앙 `d18c97d8` fresh freeze source3001/build1330 SHA `f9b35326bb5d25de187661580715429e32013942a5a0ffd0028e440487acb8ff`(재해시 일치)로 부하 없는 상태에서 literal canonical을 실행했다. 2026-10-10T02:31:48Z→03:07:50Z, upgrade 1/1, normal 300files passed/1failed/3skipped, **3071 passed/1 failed/14 skipped**, exit1. 유일한 실패는 global-openai-budget의 REASSIGN 문장(905:28)이며 runner는 오류 본문을 보존하지 않는다. 출력 `/private/tmp/wm-canonical-r10-fullnormal-176-e634f0ee-28e7-48fa-a6dd-15de25e03c30`.
+
+원인 후보를 source로 좁혔다: normal 경로의 078은 old owner 소유 publication을 만들고, PG17 publication 소유 변경은 새 owner의 database CREATE를 요구한다. scratch PG17.11에서 publication 항목 ctid(0,1)이 database 항목(22,9)보다 앞선 배치는 `permission denied for database`(42501)였고, 같은 배치에 next database CREATE를 부여하면 성공했으며 database 이전 후 ACL은 `nb=CTc/nb`로 합쳐져 별도 잔여 grant가 없었다. 이전 수정의 schema CREATE에 database CREATE 부여를 추가했고 churn 동시 10회 17/17 통과. 같은 plain-owner REASSIGN을 하는 restore-app-family-loader(과거 r7 실패 위치 1124)와 ai-settings-operations에도 같은 사전 GRANT·public REVOKE를 적용해 churn 동시 4회 25/25 통과했다. superuser 연결로 REASSIGN하는 5개 시험은 해당 검사가 없어 변경하지 않았다. 이 r10 실패의 실제 SQLSTATE는 관측되지 않았으므로 원인은 재현 기반 추정이다.

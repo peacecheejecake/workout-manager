@@ -1121,7 +1121,18 @@ it('registered102 REASSIGN plus existing retarget preserves exact signed family/
   const oldPool = targetPool;
   await admin.query(`GRANT "${nextRole}" TO "${roles.owner}"`);
   try {
+    // REASSIGN follows pg_shdepend physical order, which other suites' churn reshuffles; an object
+    // (or the 078 publication) preceding its schema or the database needs next CREATE there.
+    await oldPool.query(
+      `DO $grant$ DECLARE s name; BEGIN
+         FOR s IN SELECT nspname FROM pg_namespace
+           WHERE nspowner='${roles.owner}'::regrole OR nspname='public'
+         LOOP EXECUTE format('GRANT CREATE ON SCHEMA %I TO %I', s, '${nextRole}'); END LOOP;
+         EXECUTE format('GRANT CREATE ON DATABASE %I TO %I', current_database(), '${nextRole}');
+       END $grant$`,
+    );
     await oldPool.query(`REASSIGN OWNED BY "${roles.owner}" TO "${nextRole}"`);
+    await oldPool.query(`REVOKE CREATE ON SCHEMA public FROM "${nextRole}"`);
   } finally {
     await admin.query(`REVOKE "${nextRole}" FROM "${roles.owner}"`);
   }
