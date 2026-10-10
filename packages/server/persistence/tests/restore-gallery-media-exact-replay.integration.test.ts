@@ -95,11 +95,18 @@ async function liveImage(athleteId: string): Promise<Entry> {
   await gallery.markStaged(athleteId, reservation.uploadId);
   const result = await gallery.finalize(athleteId, reservation.uploadId);
   if (result.status !== 'available') throw new Error('missing live image');
+  // DB clock, not the host clock: the product guard rejects occurred_at > clock_timestamp().
+  const clock = await owner.query<{ at: string }>(
+    `SELECT to_char(date_trunc('milliseconds',clock_timestamp()) AT TIME ZONE 'UTC',
+       'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS at`,
+  );
+  const occurredAt = clock.rows[0]?.at;
+  if (!occurredAt) throw new Error('missing database clock');
   return {
     athleteId,
     targetId: result.item.id,
     eventId: randomUUID(),
-    occurredAt: new Date().toISOString(),
+    occurredAt,
     accessRevision: result.item.accessRevision + 1,
     storageRef,
   };
