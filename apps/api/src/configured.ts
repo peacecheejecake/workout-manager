@@ -32,7 +32,6 @@ import { createHealthKitBindingRepository } from '@workout/server-persistence/he
 import { createHealthKitActivityRepository } from '@workout/server-persistence/healthkit-activity';
 import { createHealthKitProjectionRepository } from '@workout/server-persistence/healthkit-projection';
 import { createCheckInRepository } from '@workout/server-persistence/check-ins';
-import { createRaceManualPublicRepository } from '@workout/server-persistence/race-manual-public';
 import { createCheckInTemplateRepository } from '@workout/server-persistence/check-in-templates';
 import { createDashboardRepository } from '@workout/server-persistence/dashboard';
 import { createOperationsRepository } from '@workout/server-persistence/operations';
@@ -280,13 +279,19 @@ export async function createConfiguredApi(
   const activityTrackParser = createBoundedTrackParser();
   const closeParsers = () => Promise.all([courseImportParser.close(), activityTrackParser.close()]);
   try {
+    // M202-P1-02. Ports whose SQL exists only past the normal migration registry (107) are
+    // composed only in the installed profile, after its cold-catalog/source-build readiness
+    // passed. The race date-change review (SQL 122+) and check-in templates (SQL 123) are
+    // absent under baseline107, so their routes are not registered and the date-change
+    // capability answers false instead of advertising requests that cannot succeed. The
+    // V34 account export reads only baseline tables and stays.
     const runtimeRepositories =
       env.WORKOUT_RUNTIME_PROFILE === 'installed-current-profile25'
-        ? await createRegisteredCurrentRuntimeRepositoriesV1(database)
-        : {
-            raceManualPublic: createRaceManualPublicRepository(database),
-            operations: createOperationsRepository(database),
-          };
+        ? {
+            ...(await createRegisteredCurrentRuntimeRepositoriesV1(database)),
+            checkInTemplates: createCheckInTemplateRepository(database),
+          }
+        : { operations: createOperationsRepository(database) };
     const resourceStorage = await createLocalFilesystemObjectStorage(
       env.PRIVATE_RESOURCE_STORAGE_ROOT,
     );
@@ -441,7 +446,6 @@ export async function createConfiguredApi(
       garminCollectionProvenance: garminUnofficialStore,
       activityContext: createActivityContextRepository(database),
       checkIns: createCheckInRepository(database),
-      checkInTemplates: createCheckInTemplateRepository(database),
       ...runtimeRepositories,
       dashboard: createDashboardRepository(database),
       resources: createPrivateTextResourceRepository(database),

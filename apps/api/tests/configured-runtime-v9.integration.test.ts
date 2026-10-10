@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -11,6 +11,10 @@ import { migrate } from '@workout/server-persistence/migrate';
 import { installCurrentRuntimeV9 } from '@workout/server-persistence/current-runtime-installation-v9';
 import { grantCurrentRuntimeAppBaselineV2 } from '@workout/server-persistence/current-runtime-app-grants-v2';
 import { grantCurrentRuntimeV9Profile } from '@workout/server-persistence/current-runtime-grants-v9';
+import { createDatabase } from '@workout/server-persistence/database';
+import { createIdentityRepository } from '@workout/server-persistence/identity';
+import { createConsentRepository } from '@workout/server-persistence/repositories';
+import { createRaceRepository } from '@workout/server-persistence/races';
 import { createConfiguredApi } from '../src/configured.js';
 import { CurrentRuntimeSourceBuildRepositoriesV1Error } from '../src/current-runtime-source-build-repositories-v1.js';
 
@@ -270,5 +274,180 @@ fixtureIt(
     } finally {
       await close(app);
     }
+  },
+);
+
+// M202-P1-02. A real session in the real identity store, then the real configured
+// composition over HTTP inject: no mocked repositories, readiness or SQL.
+const origin = 'http://127.0.0.1:4301';
+async function signedIn(environment: Environment) {
+  const token = randomBytes(32).toString('base64url');
+  const csrfToken = randomBytes(32).toString('base64url');
+  const store = createIdentityRepository({ connectionString: url(environment), max: 1 });
+  try {
+    const now = new Date();
+    const session = await store.createSession({
+      tokenHash: createHash('sha256').update(token).digest('hex'),
+      csrfToken,
+      issuer: 'https://synthetic.test',
+      subject: randomUUID(),
+      expiresAt: new Date(now.getTime() + 3_600_000),
+      now,
+      loginStartedAt: now,
+    });
+    return {
+      athleteId: session.athleteId,
+      headers: {
+        cookie: `workout_session=${token}`,
+        'x-workout-session-id': session.sessionId,
+        'x-csrf-token': csrfToken,
+        origin,
+      },
+    };
+  } finally {
+    await store.close();
+  }
+}
+async function raceWithAppConsent(environment: Environment, athleteId: string) {
+  const database = createDatabase({ connectionString: url(environment) });
+  try {
+    await createConsentRepository(database).setConsent(athleteId, {
+      kind: 'app',
+      granted: true,
+      expectedRevision: 0,
+      idempotencyKey: randomUUID(),
+    });
+    return await createRaceRepository(database).createRaceEvent(athleteId, {
+      idempotencyKey: randomUUID(),
+      values: {
+        title: 'Synthetic race',
+        localDate: '2026-11-08',
+        localStartTime: '09:00',
+        timezone: 'UTC',
+        locationName: null,
+        distance: { kind: 'standard', class: '10k' },
+        priority: null,
+        participation: 'registered',
+        officialUrl: null,
+        course: null,
+        targetSeconds: null,
+        planVersionId: null,
+      },
+    });
+  } finally {
+    await database.close();
+  }
+}
+function reviewBody(event: { id: string; revision: number }) {
+  return {
+    schemaVersion: 1,
+    intent: {
+      expectedEvent: { id: event.id, revision: event.revision },
+      newLocalDate: '2026-11-15',
+      selection: { kind: 'keep_plan' },
+    },
+  };
+}
+fixtureIt('baseline107 advertises no post-107 port and registers none of its routes', async () => {
+  const app = await start(baseline);
+  try {
+    const { athleteId, headers } = await signedIn(baseline);
+    const get = (path: string) => app.inject({ url: `/bff/v1${path}`, headers });
+    const capability = await get('/race-date-change-reviews/capabilities');
+    expect(capability.statusCode).toBe(200);
+    expect(capability.json()).toEqual({ schemaVersion: 1, dateChangeReviews: false });
+    expect((await get('/race-date-change-reviews/capabilities?maxSchemaVersion=2')).json()).toEqual(
+      { schemaVersion: 2, dateChangeReviews: false, dateChangeImpact: false },
+    );
+    expect((await get('/race-results/capabilities')).json()).toEqual({
+      schemaVersion: 1,
+      legacyResults: true,
+      proofResultsV2: false,
+    });
+    expect((await get('/nutrition/plans/capabilities')).json()).toEqual({
+      schemaVersion: 1,
+      readV4: true,
+      previewV4: false,
+      standaloneApprovalV4: false,
+    });
+    // The race itself is baseline (SQL 098); only the date-change review is not.
+    const event = await raceWithAppConsent(baseline, athleteId);
+    const review = await app.inject({
+      method: 'POST',
+      url: `/bff/v1/races/${event.id}/date-change-reviews`,
+      headers: { ...headers, 'idempotency-key': `review-${randomUUID()}` },
+      payload: reviewBody(event),
+    });
+    expect(review.statusCode).toBe(404);
+    const impact = await app.inject({
+      method: 'POST',
+      url: `/bff/v1/races/${event.id}/date-change-impact`,
+      headers,
+      payload: reviewBody(event),
+    });
+    expect(impact.statusCode).toBe(404);
+    expect((await get(`/race-date-change-reviews/${randomUUID()}`)).statusCode).toBe(404);
+    expect((await get('/check-in-templates')).statusCode).toBe(404);
+    // The V34 account export reads baseline tables only and stays available.
+    const exported = await app.inject({
+      method: 'POST',
+      url: '/bff/v1/operations/export',
+      headers,
+    });
+    expect(exported.statusCode).toBe(200);
+  } finally {
+    await close(app);
+  }
+});
+fixtureIt(
+  'installed profile25 advertises the date-change review and a real review request succeeds',
+  async () => {
+    const app = await start(named, named.runtime, 'installed-current-profile25');
+    try {
+      const { athleteId, headers } = await signedIn(named);
+      const get = (path: string) => app.inject({ url: `/bff/v1${path}`, headers });
+      const capability = await get('/race-date-change-reviews/capabilities');
+      expect(capability.statusCode).toBe(200);
+      expect(capability.json()).toEqual({ schemaVersion: 1, dateChangeReviews: true });
+      expect(
+        (await get('/race-date-change-reviews/capabilities?maxSchemaVersion=2')).json(),
+      ).toEqual({ schemaVersion: 2, dateChangeReviews: true, dateChangeImpact: true });
+      expect((await get('/race-results/capabilities')).json()).toEqual({
+        schemaVersion: 1,
+        legacyResults: true,
+        proofResultsV2: true,
+      });
+      expect((await get('/nutrition/plans/capabilities')).json()).toEqual({
+        schemaVersion: 1,
+        readV4: true,
+        previewV4: true,
+        standaloneApprovalV4: true,
+      });
+      const event = await raceWithAppConsent(named, athleteId);
+      const review = await app.inject({
+        method: 'POST',
+        url: `/bff/v1/races/${event.id}/date-change-reviews`,
+        headers: { ...headers, 'idempotency-key': `review-${randomUUID()}` },
+        payload: reviewBody(event),
+      });
+      expect(review.statusCode).toBe(201);
+      const reviewed = z
+        .object({
+          status: z.literal('reviewed'),
+          reference: z.object({ candidateId: z.uuid() }),
+        })
+        .parse(review.json());
+      const preview = await get(`/race-date-change-reviews/${reviewed.reference.candidateId}`);
+      expect(preview.statusCode).toBe(200);
+      expect(preview.json()).toMatchObject({
+        reference: { candidateId: reviewed.reference.candidateId },
+      });
+      const templates = await get('/check-in-templates');
+      expect(templates.statusCode).toBe(200);
+      expect(templates.json()).toEqual({ items: [] });
+    } finally {
+      await close(app);
+    }
+    expect(await drainSessions(named.database, named.runtime)).toBe(true);
   },
 );
