@@ -2582,9 +2582,9 @@
         "M2-01k-w-a"
       ],
       "kind": "task",
-      "status": "not_started",
+      "status": "completed",
       "scope": "2026-10-09 승인: 기존 지도 통합의 로컬 계약·실DB·브라우저·삭제/복원 구현 검증을 대조한다. 운영 witness/실제 AWS 복원은 EXT-RESTOREb에 남긴다. 전체 현재 schema 복원 protocol의 로컬 수용은 EXT-RESTOREa와 LOCAL-REVIEW에서 별도로 요구한다. 기존 M2-01k의 전체 수용·미실행 기록을 승격하지 않는다.",
-      "evidence": "docs/implementation/device-validation-plan.md"
+      "evidence": "docs/implementation/progress/M2-01k.md#m2-01k-local-수용-대조--2026-10-10"
     },
     {
       "id": "M2-01-local",

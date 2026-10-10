@@ -83,3 +83,9 @@ Handoff 큐1을 재개했다. r3 실패 title SHA 2개는 각각 `REASSIGN and e
 - 정적: 변경2 prettier/eslint exit0, persistence tsc exit0. scratch cluster·socket 제거.
 
 이 결과는 whole/canonical gate가 아니다. 같은 REASSIGN 순서 의존이 다른 plain-owner REASSIGN 시험(restore-app-family-loader 과거 실패 포함)과 운영 runbook의 비superuser REASSIGN에도 잠재한다는 점은 미검증이다. `restore-gallery-media-exact-replay`의 `occurredAt: new Date()`도 같은 guard 노출 여부를 미확인이다. 다음은 fresh source/build freeze 후 literal canonical `pnpm test:integration`과 identity×2다.
+
+### 2026-10-10 fresh freeze canonical r9 · 부하 중 실패
+
+중앙 `b6647b9e`의 fresh source2996/build1330 freeze SHA `da63a57f69d1869d170e73cecc51549d29ce27fb23c96f2a40fb521e3b00bd47`(독립 재해시 mismatch0)로 r7 runner의 freeze 경로·SHA·출력 경로 3줄만 바꾼 successor를 만들어 literal `pnpm test:integration`을 실행했다. 실제 2026-10-09T23:32:03Z→2026-10-10T00:21:18Z(약 49분), upgrade 1/1 passed, normal 296files passed/5failed/3skipped, 3061passed/11failed/14skipped, exit1. 직전 수정한 global-openai-budget·restore-resource-share-exact-replay는 실패 목록에 없다. container 제거 확인, 실패로 성공 전용 정리는 미실행(POSTSTATE_NOT_CLEAN). 출력 `/private/tmp/wm-canonical-r9-fullnormal-176-68b64129-f06b-4303-b848-390c63d60fd3`.
+
+이 실행은 병렬 native agent 5개(브라우저 build·GraphHopper·여러 PG)와 겹쳤고 dense 관측에 publicstore 3007ms·ack 2010ms·applicationprepare 5010ms query 오류와 test_timeout 표식이 있다. 실패 5파일(course-sharing, generic-recovery-export, manual-pooled-dense-application, restore-current-source-catalog, restore-gallery-media-exact-replay)은 부하가 없는 상태에서 focused 재실행 시 모두 통과(4파일 26/26, course-sharing harness owner 절차 39/39)했다. 단, restore-gallery-media-exact-replay:220의 `RESTORE_GALLERY_INVALID_ENTRY`는 부하가 아닌 호스트 `new Date()`와 082 guard `$4>clock_timestamp()`의 시계 결함이므로 DB 시계로 수정했다(`4bf0230e`, focused 3회 3/3). 나머지 4파일 실패는 부하 의심이며 원인 확정이 아니다. canonical gate는 미통과이며 조용한 기기에서 fresh freeze로 재실행한다.
