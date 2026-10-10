@@ -167,8 +167,10 @@ export default defineConfig({
       timeout: 60000,
       reuseExistingServer: false,
       env: geoDataEnv,
-      // Let the fixture stop its private PostgreSQL cluster before the runner exits.
-      gracefulShutdown: { signal: 'SIGTERM', timeout: 10000 },
+      // Let the fixture stop its private PostgreSQL cluster before the runner exits. A kill
+      // after DROP DATABASE but before DROP ROLE leaves the fixed roles behind in a disposable
+      // PG and the next suite refuses to start; each cleanup query is already bounded.
+      gracefulShutdown: { signal: 'SIGTERM', timeout: 60000 },
     },
     {
       command: `pnpm --filter @workout/web exec next start --hostname 127.0.0.1 --port ${identityWebPort}`,
