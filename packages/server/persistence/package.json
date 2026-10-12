@@ -127,6 +127,8 @@
     "./race-manual-pooled-bundle-v2": "./src/race-manual-pooled-bundle-v2.ts",
     "./current-runtime-installation-v9": "./src/current-runtime-installation-v9.ts",
     "./current-runtime-grants-v9": "./src/current-runtime-grants-v9.ts",
+    "./current-runtime-installation-v10": "./src/current-runtime-installation-v10.ts",
+    "./current-runtime-grants-v10": "./src/current-runtime-grants-v10.ts",
     "./current-runtime-catalog-witness-v9": "./src/current-runtime-catalog-witness-v9.ts",
     "./current-runtime-readiness-v9": "./src/current-runtime-readiness-v9.ts",
     "./current-runtime-source-build-proof-v1": "./src/current-runtime-source-build-proof-v1.ts",
