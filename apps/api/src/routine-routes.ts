@@ -32,6 +32,8 @@ const routinePath = z.strictObject({ routineId: uuid });
 const versionPath = z.strictObject({ versionId: uuid });
 const schedulePath = z.strictObject({ scheduleId: uuid });
 const runPath = z.strictObject({ runId: uuid });
+// Only resume has a change preview: it re-materializes future occurrences.
+const changePreviewBody = z.strictObject({ action: z.literal('resume') });
 const libraryQuery = z.strictObject({
   search: z.string().max(100).optional(),
   favorite: z
@@ -140,6 +142,16 @@ export function registerRoutineRoutes(
     const result = await repository.readSchedule(principal(request).athleteId, scheduleId);
     if (!result) throw new ProductRequestError(404, 'SCHEDULE_NOT_FOUND');
     return routineScheduleReadSchema.parse(result);
+  });
+  routes.post('/routine-schedules/:scheduleId/change-previews', async (request) => {
+    input(emptyQuery, request.query);
+    const { scheduleId } = input(schedulePath, request.params);
+    input(changePreviewBody, request.body);
+    return routineSchedulePreviewSchema.parse(
+      await execute(() =>
+        repository.previewScheduleResume(principal(request).athleteId, scheduleId),
+      ),
+    );
   });
   routes.post('/routine-schedules/:scheduleId/state', async (request) => {
     input(emptyQuery, request.query);

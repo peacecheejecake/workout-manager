@@ -165,6 +165,16 @@ export function createRoutineApi(transport: AuthenticatedTransport) {
         signal,
       );
     },
+    previewScheduleResume(id: string, signal?: AbortSignal) {
+      return request(
+        `${base}/routine-schedules/${pathId(id)}/change-previews`,
+        'POST',
+        routineSchedulePreviewSchema,
+        { action: 'resume' },
+        null,
+        signal,
+      );
+    },
     changeSchedule(raw: RoutineScheduleStateCommand) {
       const { scheduleId, idempotencyKey, ...body } = routineScheduleStateCommandSchema.parse(raw);
       return command(

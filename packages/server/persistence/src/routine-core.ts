@@ -43,7 +43,9 @@ import {
   routineScheduleVersionSchema,
   type ActualRef,
   type RoutineBlueprintVersion,
+  type RoutineOccurrence,
   type RoutineRun,
+  type RoutineScheduleVersion,
 } from '@workout/contracts/routines';
 import type { Database, Transaction } from './database.js';
 import { enqueue, PersistenceConflict } from './outbox.js';
@@ -105,6 +107,9 @@ export interface RoutineRepository {
   ): Promise<RoutineScheduleRead>;
   readSchedule(athleteId: string, scheduleId: string): Promise<RoutineScheduleRead | null>;
   listSchedules(athleteId: string): Promise<Page<RoutineScheduleRead>>;
+  /** Change preview for resuming a paused schedule; its digest is the resume command's
+   * previewDigest. */
+  previewScheduleResume(athleteId: string, scheduleId: string): Promise<RoutineSchedulePreview>;
   changeSchedule(
     athleteId: string,
     command: RoutineScheduleStateCommand,
@@ -248,6 +253,19 @@ async function preview(tx: Transaction, input: RoutineSchedulePreviewCommand) {
   uuid.parse(schedule.id);
   uuid.parse(schedule.versionId);
   if (schedule.state !== 'draft') throw new RoutineReferenceError('SCHEDULE_MUST_BE_DRAFT');
+  return expandWithConflicts(tx, schedule, input.sourcePlanVersionId, () => true, null);
+}
+/** Shared by first approval and resume: one blueprint/content/plan check, one
+ * recurrence expansion (routine-expansion) and one conflict pass. `keep` narrows the
+ * expanded set before conflicts and the digest are computed; `basis` binds the digest
+ * to the schedule head the preview was computed from. */
+async function expandWithConflicts(
+  tx: Transaction,
+  schedule: RoutineScheduleVersion,
+  sourcePlanVersionId: string | null,
+  keep: (occurrence: RoutineOccurrence) => boolean,
+  basis: string | null,
+) {
   const blueprint = await blueprintVersion(tx, uuid.parse(schedule.blueprint.versionId));
   if (!blueprint || blueprint.routineId !== schedule.blueprint.id)
     throw new RoutineReferenceError('BLUEPRINT_NOT_FOUND');
@@ -255,8 +273,8 @@ async function preview(tx: Transaction, input: RoutineSchedulePreviewCommand) {
   if (!head || head.visibility !== 'active')
     throw new RoutineReferenceError('BLUEPRINT_UNAVAILABLE');
   await validateContentRefs(tx, blueprint);
-  const { plan, head: planHead } = await planForSchedule(tx, input.sourcePlanVersionId);
-  const occurrences = expandRoutineSchedule(schedule, plan);
+  const { plan, head: planHead } = await planForSchedule(tx, sourcePlanVersionId);
+  const occurrences = expandRoutineSchedule(schedule, plan).filter(keep);
   const conflicts: RoutineSchedulePreview['conflicts'] = [];
   for (const occurrence of occurrences) {
     if (occurrence.timingStatus === 'unresolved')
@@ -281,8 +299,12 @@ async function preview(tx: Transaction, input: RoutineSchedulePreviewCommand) {
   }
   const existing = await tx.query(
     `SELECT scheduled_at FROM routine_occurrence
-     WHERE athlete_id=$1 AND scheduled_at=ANY($2::timestamptz[])`,
-    [tx.athleteId, occurrences.flatMap((item) => (item.scheduledAt ? [item.scheduledAt] : []))],
+     WHERE athlete_id=$1 AND scheduled_at=ANY($2::timestamptz[]) AND schedule_id<>$3`,
+    [
+      tx.athleteId,
+      occurrences.flatMap((item) => (item.scheduledAt ? [item.scheduledAt] : [])),
+      schedule.id,
+    ],
   );
   if (existing.rowCount) {
     const occupied = new Set(existing.rows.map((row) => iso(row['scheduled_at'])));
@@ -297,14 +319,15 @@ async function preview(tx: Transaction, input: RoutineSchedulePreviewCommand) {
   }
   const previewDigest = hash({
     schedule,
-    sourcePlanVersionId: input.sourcePlanVersionId,
+    sourcePlanVersionId,
     planHead,
     occurrences,
     conflicts,
+    ...(basis === null ? {} : { basis }),
   });
   return routineSchedulePreviewSchema.parse({
     schedule,
-    sourcePlanVersionId: input.sourcePlanVersionId,
+    sourcePlanVersionId,
     occurrences,
     conflicts,
     previewDigest,
@@ -343,6 +366,87 @@ async function scheduleRead(
       occurrences: rows.map((item) => item['record_json']),
     }),
   });
+}
+/** A paused version is resumed at most once (the head moves on), so the resumed version
+ * id is derived from it: the preview shows exactly the occurrence ids that confirmation
+ * stores. */
+function resumedVersionId(scheduleId: string, priorVersionId: string) {
+  const bytes = createHash('sha256')
+    .update(JSON.stringify(['routine-schedule-resume', scheduleId, priorVersionId]))
+    .digest();
+  bytes[6] = ((bytes[6] ?? 0) & 0x0f) | 0x50;
+  bytes[8] = ((bytes[8] ?? 0) & 0x3f) | 0x80;
+  const h = bytes.subarray(0, 16).toString('hex');
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+}
+/** Resume re-materializes the finite remaining part of the approved rule as occurrences of
+ * the new active version. Past resolved anchors and anchors whose occurrence in an earlier
+ * version already has a run are left out; earlier versions' occurrences and runs stay. */
+async function resumePreview(tx: Transaction, prior: RoutineScheduleRead, now: number) {
+  if (prior.schedule.state !== 'paused')
+    throw new RoutineReferenceError('INVALID_SCHEDULE_TRANSITION');
+  const next = routineScheduleVersionSchema.parse({
+    ...prior.schedule,
+    versionId: resumedVersionId(prior.schedule.id, prior.schedule.versionId),
+    state: 'active',
+  });
+  const started = new Set(
+    (
+      await tx.query(
+        `SELECT o.anchor_key FROM routine_occurrence o JOIN routine_run r
+           ON r.athlete_id=o.athlete_id AND r.occurrence_id=o.id
+         WHERE o.athlete_id=$1 AND o.schedule_id=$2`,
+        [tx.athleteId, prior.schedule.id],
+      )
+    ).rows.map((row) => String(row['anchor_key'])),
+  );
+  const result = await expandWithConflicts(
+    tx,
+    next,
+    prior.sourcePlanVersionId,
+    (occurrence) =>
+      !started.has(occurrence.anchorKey) &&
+      (occurrence.scheduledAt === null || Date.parse(occurrence.scheduledAt) > now),
+    prior.impactDigest,
+  );
+  // Normal107 still keys occurrences by (schedule, anchor) across versions, so an anchor
+  // the approval already materialized cannot be stored again for the resumed version.
+  // Refuse instead of activating a schedule whose remaining occurrences cannot run.
+  if (result.occurrences.length > 0) {
+    const versioned = await tx.query(
+      `SELECT 1 FROM pg_catalog.pg_constraint
+       WHERE conrelid=to_regclass('public.routine_occurrence')
+         AND conname='routine_occurrence_version_anchor_unique' AND contype='u'`,
+    );
+    if (!versioned.rowCount)
+      throw new RoutineReferenceError('RESUME_REQUIRES_VERSIONED_OCCURRENCES');
+  }
+  return result;
+}
+async function insertOccurrences(
+  tx: Transaction,
+  schedule: RoutineScheduleVersion,
+  occurrences: readonly RoutineOccurrence[],
+) {
+  for (const occurrence of occurrences) {
+    await tx.query(
+      `INSERT INTO routine_occurrence
+       (athlete_id,id,schedule_id,schedule_version_id,blueprint_routine_id,
+        blueprint_version_id,anchor_key,scheduled_at,record_json)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)`,
+      [
+        tx.athleteId,
+        occurrence.id,
+        schedule.id,
+        schedule.versionId,
+        schedule.blueprint.id,
+        schedule.blueprint.versionId,
+        occurrence.anchorKey,
+        occurrence.scheduledAt,
+        JSON.stringify(occurrence),
+      ],
+    );
+  }
 }
 async function runRead(tx: Transaction, runId: string): Promise<RoutineRunRead | null> {
   const row = (
@@ -639,25 +743,7 @@ export function createRoutineRepository(db: Database): RoutineRepository {
              VALUES($1,$2,$3)`,
             [athleteId, schedule.id, schedule.versionId],
           );
-          for (const occurrence of current.occurrences) {
-            await tx.query(
-              `INSERT INTO routine_occurrence
-               (athlete_id,id,schedule_id,schedule_version_id,blueprint_routine_id,
-                blueprint_version_id,anchor_key,scheduled_at,record_json)
-               VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)`,
-              [
-                athleteId,
-                occurrence.id,
-                schedule.id,
-                schedule.versionId,
-                schedule.blueprint.id,
-                schedule.blueprint.versionId,
-                occurrence.anchorKey,
-                occurrence.scheduledAt,
-                JSON.stringify(occurrence),
-              ],
-            );
-          }
+          await insertOccurrences(tx, schedule, current.occurrences);
           return required(await scheduleRead(tx, schedule.id), 'SCHEDULE_WRITE_FAILED');
         },
       );
@@ -678,6 +764,14 @@ export function createRoutineRepository(db: Database): RoutineRepository {
           if (record) records.push(record);
         }
         return page(records);
+      }),
+    previewScheduleResume: (athleteId, scheduleId) =>
+      db.tenant(athleteId, async (tx) => {
+        const id = uuid.parse(scheduleId);
+        await requireAppAdmission(tx);
+        const prior = await scheduleRead(tx, id);
+        if (!prior) throw new RoutineReferenceError('SCHEDULE_NOT_FOUND');
+        return resumePreview(tx, prior, Date.now());
       }),
     async changeSchedule(athleteId, raw) {
       const input = routineScheduleStateCommandSchema.parse(raw);
@@ -701,17 +795,23 @@ export function createRoutineRepository(db: Database): RoutineRepository {
               [athleteId, input.scheduleId, input.action === 'mute'],
             );
           } else {
-            if (prior.impactDigest !== input.previewDigest)
-              throw new RoutineConflict('STALE_SCHEDULE_PREVIEW');
             const state =
               input.action === 'pause' ? 'paused' : input.action === 'resume' ? 'active' : 'ended';
             if (prior.schedule.state === 'ended' || prior.schedule.state === state)
               throw new RoutineReferenceError('INVALID_SCHEDULE_TRANSITION');
-            const next = routineScheduleVersionSchema.parse({
-              ...prior.schedule,
-              versionId: randomUUID(),
-              state,
-            });
+            // Resume confirms its own change preview (future occurrences of the new
+            // version); pause/end confirm the current schedule read.
+            const resumed =
+              input.action === 'resume' ? await resumePreview(tx, prior, Date.now()) : null;
+            if ((resumed?.previewDigest ?? prior.impactDigest) !== input.previewDigest)
+              throw new RoutineConflict('STALE_SCHEDULE_PREVIEW');
+            const next =
+              resumed?.schedule ??
+              routineScheduleVersionSchema.parse({
+                ...prior.schedule,
+                versionId: randomUUID(),
+                state,
+              });
             await tx.query(
               `INSERT INTO routine_schedule_version
                (athlete_id,schedule_id,version_id,prior_version_id,blueprint_routine_id,
@@ -733,6 +833,7 @@ export function createRoutineRepository(db: Database): RoutineRepository {
                WHERE athlete_id=$1 AND schedule_id=$2`,
               [athleteId, next.id, next.versionId],
             );
+            if (resumed) await insertOccurrences(tx, next, resumed.occurrences);
           }
           return required(await scheduleRead(tx, input.scheduleId), 'SCHEDULE_WRITE_FAILED');
         },

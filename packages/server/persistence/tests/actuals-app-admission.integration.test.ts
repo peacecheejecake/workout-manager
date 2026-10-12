@@ -551,9 +551,19 @@ async function setup() {
     },
     sourcePlanVersionId: null,
   };
-  const preview = await routines.previewSchedule(athlete, scheduleInput);
-  const approved = await routines.approveSchedule(athlete, {
+  // The paused/resumed schedule lies in the past: resume re-materializes only future
+  // occurrences, and this normal107 fixture lacks SQL121's version-scoped anchor key.
+  const pastScheduleInput = {
     ...scheduleInput,
+    schedule: {
+      ...scheduleInput.schedule,
+      window: { ...scheduleInput.schedule.window, startDate: '2026-01-01' },
+      rule: { ...scheduleInput.schedule.rule, dates: ['2026-01-01'] },
+    },
+  };
+  const preview = await routines.previewSchedule(athlete, pastScheduleInput);
+  const approved = await routines.approveSchedule(athlete, {
+    ...pastScheduleInput,
     previewDigest: preview.previewDigest,
     idempotencyKey: randomUUID(),
     confirmed: true,
@@ -566,6 +576,8 @@ async function setup() {
     idempotencyKey: randomUUID(),
     confirmed: true,
   });
+  // Resume confirms its own change preview, not the paused schedule read.
+  const resumePreview = await routines.previewScheduleResume(athlete, approved.schedule.id);
   const run = await routines.startRun(athlete, {
     runId: randomUUID(),
     blueprintVersionId: first.versionId,
@@ -763,7 +775,7 @@ async function setup() {
         scheduleId: pausedSchedule.schedule.id,
         expectedVersionId: pausedSchedule.schedule.versionId,
         action: 'resume',
-        previewDigest: pausedSchedule.impactDigest,
+        previewDigest: resumePreview.previewDigest,
         idempotencyKey: key,
         confirmed: true,
       }),
