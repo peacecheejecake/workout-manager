@@ -3,7 +3,11 @@ import type { AuthenticatedTransport, TransportRequest } from '@workout/contract
 import { transportReplySchema } from '@workout/contracts/core';
 import { activityListSchema } from '@workout/contracts/activity';
 import { planReadSchema, planSnapshotSchema } from '@workout/contracts/planning';
-import { raceEventListPageSchema } from '@workout/contracts/race-queries';
+import {
+  raceEventListPageSchema,
+  raceListCursorSchema,
+  type RaceListCursor,
+} from '@workout/contracts/race-queries';
 import { raceEventReadSchema } from '@workout/contracts/race-commands';
 import {
   nutritionPlanPublicCapabilitiesV4Schema,
@@ -41,6 +45,7 @@ const foodsResponseSchema = z.strictObject({
   foods: z.array(foodDefinitionVersionSchema).max(100),
   nextCursor: z.string().max(512).nullable(),
 });
+export const RECONNECT_RACE_PAGE_SIZE = 50;
 const errorSchema = z.object({ error: z.object({ code: z.string() }) });
 
 export class NutritionRequestError extends Error {
@@ -126,8 +131,23 @@ export function createNutritionApi(transport: AuthenticatedTransport) {
         signal,
       );
     },
-    listReconnectRaces(signal?: AbortSignal) {
-      return request('/bff/v1/races?limit=50', 'GET', raceEventListPageSchema, null, null, signal);
+    /** One bounded page of the caller's own races. The cursor is an opaque position from the
+     * previous page; the server re-checks kind, collection freshness and tenant membership. */
+    listReconnectRaces(cursor: RaceListCursor | null = null, signal?: AbortSignal) {
+      const search = new URLSearchParams({ limit: String(RECONNECT_RACE_PAGE_SIZE) });
+      if (cursor !== null) search.set('cursor', JSON.stringify(raceListCursorSchema.parse(cursor)));
+      return request(
+        `/bff/v1/races?${search}`,
+        'GET',
+        raceEventListPageSchema,
+        null,
+        null,
+        signal,
+      ).then((page) => {
+        if (cursor !== null && page.items.some((race) => race.id <= cursor.afterId))
+          throw new NutritionRequestError(502, 'INVALID_RACE_PAGE_RESPONSE');
+        return page;
+      });
     },
     readReconnectRace(eventId: string, signal?: AbortSignal) {
       const id = z.uuid().parse(eventId).toLowerCase();

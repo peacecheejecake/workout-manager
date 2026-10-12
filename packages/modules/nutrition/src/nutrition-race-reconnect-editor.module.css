@@ -40,3 +40,9 @@
   outline: 2px solid var(--teal);
   outline-offset: 2px;
 }
+.paging {
+  min-width: 0;
+  display: grid;
+  gap: var(--space-2);
+  justify-items: start;
+}

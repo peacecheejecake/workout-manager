@@ -225,4 +225,60 @@ describe('explicit public nutrition V4 transport boundary', () => {
       'INVALID_RACE_RESPONSE',
     );
   });
+  it('pages own reconnect race candidates with the bounded opaque cursor contract', async () => {
+    const race = (id: string) => ({
+      id,
+      revision: 1,
+      title: 'Race',
+      localDate: '2026-10-06',
+      localStartTime: null,
+      timezone: 'UTC',
+      locationName: null,
+      distance: { kind: 'standard', class: '5k' },
+      priority: null,
+      participation: 'registered',
+      officialUrl: null,
+      course: null,
+      targetSeconds: null,
+      planVersionId: null,
+    });
+    const low = '00000000-0000-4000-8000-000000000001',
+      high = '00000000-0000-4000-8000-000000000099';
+    const collection = { revision: 3, privacyGeneration: '0' };
+    const cursor = { kind: 'race-event' as const, collection, afterId: low };
+    const page = (id: string) => ({
+      schemaVersion: 1,
+      kind: 'race-event',
+      sort: 'id-asc',
+      collection,
+      items: [race(id)],
+      nextCursor: null,
+    });
+    const first = boundary(page(low)),
+      controller = new AbortController();
+    await first.api.listReconnectRaces(null, controller.signal);
+    expect(first.request.mock.calls[0]?.[0]).toMatchObject({
+      path: '/bff/v1/races?limit=50',
+      method: 'GET',
+      body: null,
+      idempotencyKey: null,
+      signal: controller.signal,
+    });
+    const next = boundary(page(high));
+    expect((await next.api.listReconnectRaces(cursor)).items[0]?.id).toBe(high);
+    const url = new URL(next.request.mock.calls[0]?.[0].path ?? '', 'https://synthetic.invalid');
+    expect(url.pathname).toBe('/bff/v1/races');
+    expect(url.searchParams.get('limit')).toBe('50');
+    expect(JSON.parse(url.searchParams.get('cursor') ?? 'null')).toEqual(cursor);
+    // A page that does not advance past the cursor is rejected rather than looping.
+    await expect(boundary(page(low)).api.listReconnectRaces(cursor)).rejects.toThrow(
+      'INVALID_RACE_PAGE_RESPONSE',
+    );
+    // A malformed cursor never reaches the transport.
+    const bad = boundary(page(high));
+    expect(() =>
+      bad.api.listReconnectRaces({ ...cursor, afterId: 'not-a-uuid' } as typeof cursor),
+    ).toThrow();
+    expect(bad.request).not.toHaveBeenCalled();
+  });
 });

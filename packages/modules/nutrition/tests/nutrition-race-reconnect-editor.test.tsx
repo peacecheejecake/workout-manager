@@ -163,6 +163,7 @@ function setup(
     blocked?: boolean;
     preview?: (request: TransportRequest) => Promise<{ status: number; body: unknown }>;
     approve?: (request: TransportRequest) => Promise<{ status: number; body: unknown }>;
+    races?: (request: TransportRequest) => { status: number; body: unknown } | null;
   } = {},
 ) {
   const requests: TransportRequest[] = [],
@@ -170,37 +171,40 @@ function setup(
   const request = vi.fn(async (input: TransportRequest) => {
     requests.push(input);
     if (input.path.endsWith('/capabilities') && options.capabilityFailure) throw Error('NETWORK');
-    const reply = input.path.endsWith('/capabilities')
-      ? {
-          status: 200,
-          body: {
-            schemaVersion: 1,
-            readV4: true,
-            previewV4: options.supported ?? true,
-            standaloneApprovalV4: true,
-          },
-        }
-      : input.path === '/bff/v1/races?limit=50'
+    const raceReply = input.path.startsWith('/bff/v1/races') ? options.races?.(input) : null;
+    const reply = raceReply
+      ? raceReply
+      : input.path.endsWith('/capabilities')
         ? {
             status: 200,
             body: {
               schemaVersion: 1,
-              kind: 'race-event',
-              sort: 'id-asc',
-              collection: { revision: 1, privacyGeneration: '0' },
-              items: [race],
-              nextCursor: null,
+              readV4: true,
+              previewV4: options.supported ?? true,
+              standaloneApprovalV4: true,
             },
           }
-        : input.path.endsWith(`/races/${eventId}`)
-          ? { status: 200, body: race }
-          : input.path.endsWith('/preview-v4')
-            ? options.preview
-              ? await options.preview(input)
-              : { status: 200, body: preview(input.body, options.blocked) }
-            : options.approve
-              ? await options.approve(input)
-              : { status: 409, body: { error: { code: 'PRIOR_HEAD_STALE' } } };
+        : input.path === '/bff/v1/races?limit=50'
+          ? {
+              status: 200,
+              body: {
+                schemaVersion: 1,
+                kind: 'race-event',
+                sort: 'id-asc',
+                collection: { revision: 1, privacyGeneration: '0' },
+                items: [race],
+                nextCursor: null,
+              },
+            }
+          : input.path.endsWith(`/races/${eventId}`)
+            ? { status: 200, body: race }
+            : input.path.endsWith('/preview-v4')
+              ? options.preview
+                ? await options.preview(input)
+                : { status: 200, body: preview(input.body, options.blocked) }
+              : options.approve
+                ? await options.approve(input)
+                : { status: 409, body: { error: { code: 'PRIOR_HEAD_STALE' } } };
     return transportReplySchema.parse({ ...reply, traceId: null });
   });
   const api = createNutritionApi({ request }),
@@ -375,4 +379,212 @@ it('aborts pending preview on private editor unmount rather than updating a new 
   b.view.unmount();
   await waitFor(() => expect(pending?.signal?.aborted).toBe(true));
   expect(b.committed).not.toHaveBeenCalled();
+});
+
+const pagedRaces = Array.from({ length: 120 }, (_, index) => ({
+  ...race,
+  id: `00000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
+  title: `Owned race ${String(index + 1).padStart(3, '0')}`,
+}));
+function pagedServer(options: { failNext?: number; stale?: number; revision?: () => number } = {}) {
+  let failures = options.failNext ?? 0,
+    stale = options.stale ?? 0;
+  return (input: TransportRequest) => {
+    const url = new URL(input.path, 'https://synthetic.invalid');
+    const byId = pagedRaces.find((item) => url.pathname === `/bff/v1/races/${item.id}`);
+    if (byId) return { status: 200, body: byId };
+    if (url.pathname !== '/bff/v1/races') return null;
+    expect(url.searchParams.get('limit')).toBe('50');
+    const raw = url.searchParams.get('cursor');
+    const cursor = raw === null ? null : (JSON.parse(raw) as { afterId: string });
+    if (cursor !== null && failures > 0) {
+      failures--;
+      return { status: 503, body: { error: { code: 'UNAVAILABLE' } } };
+    }
+    if (cursor !== null && stale > 0) {
+      stale--;
+      return { status: 409, body: { error: { code: 'RACE_CURSOR_STALE' } } };
+    }
+    const collection = { revision: options.revision?.() ?? 1, privacyGeneration: '0' };
+    const rest = pagedRaces.filter((item) => cursor === null || item.id > cursor.afterId);
+    const items = rest.slice(0, 50),
+      last = items.at(-1);
+    return {
+      status: 200,
+      body: {
+        schemaVersion: 1,
+        kind: 'race-event',
+        sort: 'id-asc',
+        collection,
+        items,
+        nextCursor:
+          rest.length > items.length && last
+            ? { kind: 'race-event', collection, afterId: last.id }
+            : null,
+      },
+    };
+  };
+}
+const listCalls = (requests: TransportRequest[]) =>
+  requests.filter((r) => new URL(r.path, 'https://synthetic.invalid').pathname === '/bff/v1/races');
+async function openPaged() {
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole('button', { name: '연결 해제 항목 재연결 열기' }));
+  await user.click(screen.getByRole('checkbox', { name: '이 항목을 명시적으로 재연결' }));
+  await screen.findByText('불러온 본인 대회 50개 · 더 있습니다. 전체 목록이 아닙니다.');
+  return user;
+}
+const optionCount = () =>
+  screen.getByLabelText<HTMLSelectElement>('재연결할 본인 대회').options.length - 1;
+it('loads later own-race pages only on explicit keyboard request and reconnects a race beyond the first 50 through preview and explicit approval', async () => {
+  const target = pagedRaces[69];
+  if (!target) throw Error('FIXTURE');
+  const b = setup({
+    races: pagedServer(),
+    approve: async (request) => {
+      const intent = nutritionPlanPublicApproveV4RequestSchema.parse(request.body);
+      const plan = nutritionPlanVersionV4Schema.parse({
+        ...record,
+        schemaVersion: 4,
+        versionId: nextId,
+        version: 2,
+        previousVersionId: versionId,
+        items: intent.intent.command.draft.items.map((item) => ({
+          ...item,
+          planVersionId: nextId,
+        })),
+        raceTimingPins: [
+          {
+            pinVersion: 1,
+            namespace: 'race-event-revision',
+            eventId: target.id,
+            eventRevision: 2,
+            sourceDigestVersion: 'race-event-values-canonical-v1',
+            sourceDigest: 'a'.repeat(64),
+            localDate: '2026-10-06',
+            localStartTime: '07:00',
+            timezone: 'UTC',
+            start: { state: 'known', instant: '2026-10-06T07:00:00Z' },
+            end: { state: 'unknown', reason: 'race_end_not_recorded' },
+          },
+        ],
+        itemRaceTimingBindings: [
+          {
+            itemId: record.items[0]?.id,
+            binding: { state: 'captured', eventId: target.id, eventRevision: 2 },
+          },
+        ],
+      });
+      return { status: 200, body: { schemaVersion: 4, plan, notices: [] } };
+    },
+  });
+  const user = await openPaged();
+  expect(optionCount()).toBe(50);
+  expect(screen.queryByRole('option', { name: /Owned race 070/ })).toBeNull();
+  expect(listCalls(b.requests)).toHaveLength(1);
+  // Choosing on page 1 is kept while paging.
+  await user.selectOptions(screen.getByLabelText('재연결할 본인 대회'), pagedRaces[2]?.id ?? '');
+  const more = screen.getByRole('button', { name: '대회 더 보기 (최대 50개)' });
+  more.focus();
+  await user.keyboard('{Enter}');
+  await screen.findByText('불러온 본인 대회 100개 · 더 있습니다. 전체 목록이 아닙니다.');
+  expect(optionCount()).toBe(100);
+  expect(screen.getByLabelText('재연결할 본인 대회')).toHaveValue(pagedRaces[2]?.id);
+  const second = listCalls(b.requests)[1];
+  const cursor = new URL(second?.path ?? '', 'https://synthetic.invalid').searchParams.get(
+    'cursor',
+  );
+  expect(JSON.parse(cursor ?? 'null')).toEqual({
+    kind: 'race-event',
+    collection: { revision: 1, privacyGeneration: '0' },
+    afterId: pagedRaces[49]?.id,
+  });
+  expect(b.requests.some((r) => r.method === 'POST')).toBe(false);
+  await user.selectOptions(screen.getByLabelText('재연결할 본인 대회'), target.id);
+  await user.click(screen.getByRole('button', { name: '선택 대회 현재 버전 확인' }));
+  await screen.findByText(/확인한 대회 Owned race 070 · revision 2/);
+  await user.click(screen.getByRole('button', { name: '재연결 영향 미저장 검토' }));
+  await screen.findByRole('region', { name: '재연결 미저장 비교' });
+  const sent = nutritionPlanPublicPreviewV4RequestSchema.parse(
+    b.requests.find((r) => r.path.endsWith('/preview-v4'))?.body,
+  );
+  expect(sent.draft.items[0]?.anchor).toMatchObject({ entity: 'race', entityId: target.id });
+  expect(sent.expectedRaceHeads).toEqual([
+    { namespace: 'race-event', eventId: target.id, revision: 2 },
+  ]);
+  const approve = screen.getByRole('button', { name: '재연결 영양 계획 명시 재승인' });
+  expect(approve).toBeDisabled();
+  await user.click(screen.getByRole('checkbox', { name: /미저장 비교와/ }));
+  await user.click(approve);
+  await screen.findByText(/재연결과 재승인이 서버에 반영되었습니다/);
+  expect(b.committed).toHaveBeenCalledTimes(1);
+  expect(b.requests.filter((r) => r.path.endsWith('/approve-v4'))).toHaveLength(1);
+});
+it('shows an honest end state, never auto-selects, and dedupes candidates by race id', async () => {
+  const b = setup({ races: pagedServer() });
+  const user = await openPaged();
+  await user.click(screen.getByRole('button', { name: '대회 더 보기 (최대 50개)' }));
+  await screen.findByText(/불러온 본인 대회 100개/);
+  await user.click(screen.getByRole('button', { name: '대회 더 보기 (최대 50개)' }));
+  await screen.findByText('본인 대회 120개를 모두 불러왔습니다.');
+  expect(screen.queryByRole('button', { name: /대회 더 보기/ })).toBeNull();
+  expect(optionCount()).toBe(120);
+  const ids = [...screen.getByLabelText<HTMLSelectElement>('재연결할 본인 대회').options].map(
+    (o) => o.value,
+  );
+  expect(new Set(ids).size).toBe(ids.length);
+  expect(screen.getByLabelText('재연결할 본인 대회')).toHaveValue('');
+  expect(screen.getByRole('button', { name: '선택 대회 현재 버전 확인' })).toBeDisabled();
+  expect(listCalls(b.requests)).toHaveLength(3);
+  expect(b.requests.some((r) => r.method === 'POST')).toBe(false);
+});
+it('keeps loaded candidates and selection when a later page fails, and retries the same cursor', async () => {
+  const b = setup({ races: pagedServer({ failNext: 1 }) });
+  const user = await openPaged();
+  await user.selectOptions(screen.getByLabelText('재연결할 본인 대회'), pagedRaces[4]?.id ?? '');
+  await user.click(screen.getByRole('button', { name: '대회 더 보기 (최대 50개)' }));
+  await screen.findByText(/다음 대회를 불러오지 못했습니다/);
+  expect(optionCount()).toBe(50);
+  expect(screen.getByLabelText('재연결할 본인 대회')).toHaveValue(pagedRaces[4]?.id);
+  await user.click(screen.getByRole('button', { name: '다음 대회 다시 불러오기' }));
+  await screen.findByText(/불러온 본인 대회 100개/);
+  expect(screen.queryByText(/다음 대회를 불러오지 못했습니다/)).toBeNull();
+  const calls = listCalls(b.requests);
+  expect(calls).toHaveLength(3);
+  expect(calls[1]?.path).toBe(calls[2]?.path);
+  expect(screen.getByLabelText('재연결할 본인 대회')).toHaveValue(pagedRaces[4]?.id);
+});
+it('requires an explicit restart when the race collection changed between pages, keeping the selection', async () => {
+  let revision = 1;
+  const b = setup({ races: pagedServer({ stale: 1, revision: () => revision }) });
+  const user = await openPaged();
+  await user.click(screen.getByRole('button', { name: '대회 더 보기 (최대 50개)' }));
+  await screen.findByText(/대회 목록이 바뀌어 다음 대회를 이어서 불러올 수 없습니다/);
+  // A selection made on the already loaded page survives the restart.
+  await user.selectOptions(screen.getByLabelText('재연결할 본인 대회'), pagedRaces[1]?.id ?? '');
+  revision = 2;
+  await user.click(screen.getByRole('button', { name: '대회 목록 처음부터 다시 불러오기' }));
+  await waitFor(() => expect(screen.queryByText(/대회 목록이 바뀌어/)).toBeNull());
+  expect(screen.getByLabelText('재연결할 본인 대회')).toHaveValue(pagedRaces[1]?.id);
+  const first = listCalls(b.requests).at(-1);
+  expect(new URL(first?.path ?? '', 'https://synthetic.invalid').searchParams.has('cursor')).toBe(
+    false,
+  );
+});
+it('reports a failed first race page with an explicit retry instead of an empty list', async () => {
+  let fail = true;
+  const server = pagedServer();
+  setup({
+    races: (input) =>
+      fail && input.path.startsWith('/bff/v1/races?')
+        ? { status: 503, body: { error: { code: 'UNAVAILABLE' } } }
+        : server(input),
+  });
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole('button', { name: '연결 해제 항목 재연결 열기' }));
+  await screen.findByText(/대회 목록을 불러오지 못했습니다/);
+  expect(screen.queryByText(/모두 불러왔습니다/)).toBeNull();
+  fail = false;
+  await user.click(screen.getByRole('button', { name: '대회 목록 다시 불러오기' }));
+  await screen.findByText(/불러온 본인 대회 50개/);
 });

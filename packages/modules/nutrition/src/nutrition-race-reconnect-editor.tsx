@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import {
   nutritionPlanVersionCompatibleV4Schema,
   type NutritionPlanVersionCompatibleV4,
@@ -18,8 +18,9 @@ import {
 } from '@workout/contracts/nutrition-race-plan-public-v4';
 import { expectedRaceHeadsSchema } from '@workout/contracts/nutrition-race-timing';
 import { raceEventSchema, type RaceEvent } from '@workout/contracts/races';
+import type { RaceListCursor } from '@workout/contracts/race-queries';
 import { Button } from '@workout/ui-foundation/button';
-import { NutritionRequestError } from './nutrition-api';
+import { NutritionRequestError, RECONNECT_RACE_PAGE_SIZE } from './nutrition-api';
 import type { NutritionApi, NutritionScope } from './nutrition-workspace';
 import styles from './nutrition-race-reconnect-editor.module.css';
 
@@ -106,11 +107,24 @@ export function NutritionRaceReconnectEditor({
     queryKey: [...scope, 'public-v4-capabilities'],
     queryFn: ({ signal }) => api.capabilitiesV4(signal),
   });
-  const races = useQuery({
+  const races = useInfiniteQuery({
     queryKey: [...scope, 'reconnect-races', baseline.versionId],
-    queryFn: ({ signal }) => api.listReconnectRaces(signal),
+    initialPageParam: null as RaceListCursor | null,
+    queryFn: ({ pageParam, signal }) => api.listReconnectRaces(pageParam, signal),
+    getNextPageParam: (last) => last.nextCursor ?? undefined,
     enabled: open,
   });
+  // Pages are appended only on an explicit request; IDs are deduplicated so a repeated
+  // position can never duplicate or silently replace a candidate.
+  const raceOptions = [
+    ...new Map(
+      (races.data?.pages ?? []).flatMap((page) => page.items).map((race) => [race.id, race]),
+    ).values(),
+  ];
+  const staleRaceCursor =
+    races.isFetchNextPageError &&
+    races.error instanceof NutritionRequestError &&
+    (races.error.status === 409 || races.error.status === 404);
   const supported =
     capabilities.data?.readV4 === true &&
     capabilities.data.previewV4 &&
@@ -316,10 +330,19 @@ export function NutritionRaceReconnectEditor({
         <div className={styles.form}>
           {races.isPending ? (
             <p role="status">본인 대회 목록 확인 중</p>
-          ) : races.isError ? (
-            <p role="alert">대회 목록을 불러오지 못했습니다.</p>
-          ) : races.data?.nextCursor ? (
-            <p>대회 목록은 첫 50개입니다. 전체 목록이 아닙니다.</p>
+          ) : races.isError && !races.isFetchNextPageError ? (
+            <div>
+              <p role="alert">대회 목록을 불러오지 못했습니다. 선택한 입력은 유지됩니다.</p>
+              <Button
+                variant="secondary"
+                disabled={races.isFetching}
+                onClick={() => {
+                  void races.refetch();
+                }}
+              >
+                대회 목록 다시 불러오기
+              </Button>
+            </div>
           ) : null}
           {disconnected.map((item) => {
             const choice = Object.hasOwn(selected, item.id) ? selected[item.id] : undefined;
@@ -352,7 +375,15 @@ export function NutritionRaceReconnectEditor({
                         }
                       >
                         <option value="">대회 선택</option>
-                        {races.data?.items.map((race) => (
+                        {choice.eventId !== '' &&
+                        !raceOptions.some((race) => race.id === choice.eventId) ? (
+                          <option value={choice.eventId}>
+                            {choice.race
+                              ? `${choice.race.title} · ${choice.race.localDate} · ${choice.race.timezone}`
+                              : '선택한 대회 · 현재 목록에 없음'}
+                          </option>
+                        ) : null}
+                        {raceOptions.map((race) => (
                           <option key={race.id} value={race.id}>
                             {race.title} · {race.localDate} · {race.timezone}
                           </option>
@@ -400,6 +431,47 @@ export function NutritionRaceReconnectEditor({
               </fieldset>
             );
           })}
+          {races.data ? (
+            <div className={styles.paging}>
+              <p role="status" aria-live="polite">
+                {races.isFetchingNextPage
+                  ? `불러온 본인 대회 ${raceOptions.length}개 · 다음 ${RECONNECT_RACE_PAGE_SIZE}개 불러오는 중`
+                  : races.hasNextPage
+                    ? `불러온 본인 대회 ${raceOptions.length}개 · 더 있습니다. 전체 목록이 아닙니다.`
+                    : `본인 대회 ${raceOptions.length}개를 모두 불러왔습니다.`}
+              </p>
+              {races.isFetchNextPageError ? (
+                <p role="alert">
+                  {staleRaceCursor
+                    ? '대회 목록이 바뀌어 다음 대회를 이어서 불러올 수 없습니다. 선택한 입력은 유지됩니다. 목록을 처음부터 다시 불러오세요.'
+                    : '다음 대회를 불러오지 못했습니다. 이미 불러온 대회와 선택한 입력은 유지됩니다.'}
+                </p>
+              ) : null}
+              {races.isFetchNextPageError && staleRaceCursor ? (
+                <Button
+                  variant="secondary"
+                  disabled={races.isFetching}
+                  onClick={() => {
+                    void races.refetch();
+                  }}
+                >
+                  대회 목록 처음부터 다시 불러오기
+                </Button>
+              ) : races.hasNextPage ? (
+                <Button
+                  variant="secondary"
+                  disabled={races.isFetching}
+                  onClick={() => {
+                    void races.fetchNextPage();
+                  }}
+                >
+                  {races.isFetchNextPageError
+                    ? '다음 대회 다시 불러오기'
+                    : `대회 더 보기 (최대 ${RECONNECT_RACE_PAGE_SIZE}개)`}
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
           <Button
             disabled={
               busy ||
