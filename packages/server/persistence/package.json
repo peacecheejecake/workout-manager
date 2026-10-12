@@ -133,6 +133,8 @@
     "./current-runtime-grants-v9": "./src/current-runtime-grants-v9.ts",
     "./current-runtime-installation-v10": "./src/current-runtime-installation-v10.ts",
     "./current-runtime-grants-v10": "./src/current-runtime-grants-v10.ts",
+    "./current-runtime-installation-v11": "./src/current-runtime-installation-v11.ts",
+    "./current-runtime-grants-v11": "./src/current-runtime-grants-v11.ts",
     "./current-runtime-catalog-witness-v10": "./src/current-runtime-catalog-witness-v10.ts",
     "./current-runtime-cold-catalog-v10": "./src/current-runtime-cold-catalog-v10.ts",
     "./current-runtime-compiled-expected-v10": "./src/current-runtime-compiled-expected-v10.ts",

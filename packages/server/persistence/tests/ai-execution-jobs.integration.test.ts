@@ -1,5 +1,4 @@
 import { randomUUID } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
 import { Pool, type PoolClient } from 'pg';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { z } from 'zod';
@@ -7,10 +6,10 @@ import type { PlanDraft } from '@workout/contracts/planning';
 import { createDatabase, type Database, type Transaction } from '../src/database.js';
 import { migrate } from '../src/migrate.js';
 import {
-  installCurrentRuntimeV10,
-  verifyCurrentRuntimeV10InstalledIn,
-} from '../src/current-runtime-installation-v10.js';
-import { grantCurrentRuntimeV10Profile } from '../src/current-runtime-grants-v10.js';
+  installCurrentRuntimeV11,
+  verifyCurrentRuntimeV11InstalledIn,
+} from '../src/current-runtime-installation-v11.js';
+import { grantCurrentRuntimeV11Profile } from '../src/current-runtime-grants-v11.js';
 import { grantCurrentRuntimeAppBaselineV2 } from '../src/current-runtime-app-grants-v2.js';
 import { createPlanningRepository } from '../src/planning.js';
 import { createCoachingThreadRepository } from '../src/coaching-threads.js';
@@ -30,9 +29,9 @@ import {
 } from '../src/ai-execution-jobs.js';
 import { dropIsolatedDatabase } from './drop-isolated-database.js';
 
-// Real PostgreSQL 17: committed profile26 (V10 installer + app core + V10 runtime grants)
-// with raw migration148 applied by the plain owner and test-local grants mirroring the
-// root V11 roster. Synthetic catalog/registry only: not a key, price, model access or
+// Real PostgreSQL 17: committed profile27 (V11 installer incl. 148 + app core + V11 runtime
+// grants). The disposition SELECT/INSERT, which V11 reserves for the M2-05b dispatcher role, is
+// granted to the runtime role here only, test-locally. Synthetic catalog/registry only: not a key, price, model access or
 // provider proof. No provider request, budget hold or dispatch happens anywhere here.
 const adminUrl = z.string().min(1).parse(process.env['TEST_DATABASE_ADMIN_URL']);
 const suffix = randomUUID().replaceAll('-', '').slice(0, 10);
@@ -117,25 +116,16 @@ beforeAll(async () => {
     );
   await admin.query(`CREATE DATABASE "${dbName}" OWNER "${ownerRole}"`);
   await migrate(url(ownerRole), 107);
-  // Committed profile26.
-  await installCurrentRuntimeV10(url(ownerRole));
+  // Committed profile27.
+  await installCurrentRuntimeV11(url(ownerRole));
   await grantCurrentRuntimeAppBaselineV2(url(ownerRole), runtimeRole, 'core');
-  await grantCurrentRuntimeV10Profile(url(ownerRole), runtimeRole);
+  await grantCurrentRuntimeV11Profile(url(ownerRole), runtimeRole);
   owner = new Pool({ connectionString: url(ownerRole), max: 2 });
   inspector = new Pool({ connectionString: inspectorUrl.toString(), max: 2 });
-  // Raw 148 by the plain owner, then the narrow V11-intended grant (root owns V11).
-  const sql = await readFile(
-    new URL('../migrations/148_ai_execution_job_store.sql', import.meta.url),
-    'utf8',
-  );
+  // Test-only: the dispatcher-reserved disposition privileges on the runtime role.
   const client = await owner.connect();
   try {
     await client.query('BEGIN');
-    await client.query(sql);
-    await client.query(`GRANT SELECT,INSERT ON public.ai_execution_job TO "${runtimeRole}"`);
-    await client.query(
-      `GRANT SELECT ON public.ai_synthetic_evidence_attestation TO "${runtimeRole}"`,
-    );
     await client.query(
       `GRANT SELECT,INSERT ON public.ai_execution_job_disposition TO "${runtimeRole}"`,
     );
@@ -392,12 +382,12 @@ async function manualJob(
   return { runId, jobId: row['job_id'] as string, row };
 }
 
-it('profile26 + raw148: V10 verification unchanged, FORCE RLS, no PUBLIC and runtime SELECT/INSERT only', async () => {
+it('profile27 (installation v11): verification holds, FORCE RLS, no PUBLIC and runtime SELECT/INSERT only', async () => {
   const client = await owner.connect();
   try {
     await client.query('BEGIN');
-    const verified = await verifyCurrentRuntimeV10InstalledIn(client as PoolClient);
-    expect(verified).toMatchObject({ profileVersion: 10, runtimeStep: 26, sourceDdlTip: 146 });
+    const verified = await verifyCurrentRuntimeV11InstalledIn(client as PoolClient);
+    expect(verified).toMatchObject({ profileVersion: 11, runtimeStep: 27, sourceDdlTip: 148 });
     await client.query('ROLLBACK');
   } finally {
     client.release();

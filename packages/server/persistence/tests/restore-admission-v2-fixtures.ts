@@ -12,7 +12,7 @@ import { fullRestoreObjectManifestSha256V1 } from '../src/full-restore-admission
 import type { FullRestoreRelationClassificationV2 } from '../src/full-restore-relation-classification-v2.js';
 
 // Synthetic metadata fixture only (no health, account or provider data): the production
-// 217-relation census set from the generated admission roster with caller-supplied row facts.
+// 225-relation census set from the generated admission roster with caller-supplied row facts.
 export const ADMISSION_FIXTURE_KEY = new Uint8Array(32).fill(5);
 export const EMPTY_ROWS_SHA256 = createHash('sha256').update('[]').digest('hex');
 const digest = (value: string) => createHash('sha256').update(value).digest('hex');

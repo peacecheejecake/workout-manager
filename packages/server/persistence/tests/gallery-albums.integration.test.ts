@@ -25,12 +25,12 @@ import { createDatabase, type Database, type Transaction } from '../src/database
 import { dropIsolatedDatabase } from './drop-isolated-database.js';
 import {
   grantGalleryNavigationRuntimeForTest,
-  grantProfile26Runtime,
-  installProfile26WithGalleryMembers,
+  grantProfile27Runtime,
+  installProfile27,
 } from './gallery-profile27-fixture.js';
 
-// SQL143 (with 144/145) applied raw from pinned bytes over a committed profile26 parent and
-// the exact navigation runtime roster (test stand-in for the profile27 installer/grants).
+// SQL143 (with 144/145/147/148) installed by the profile27 installer V11 and the V11 runtime
+// grant (which includes the exact navigation runtime roster).
 // This does not attest a profile27 cold catalog, restore authority or current source-proof
 // readiness. All rows are synthetic.
 const adminUrl = z.string().min(1).parse(process.env['TEST_DATABASE_ADMIN_URL']);
@@ -382,8 +382,8 @@ beforeAll(async () => {
     await admin.query(`CREATE DATABASE "${name}" OWNER "${ownerRole}"`);
     created = true;
     await migrate(connection(ownerRole), 107);
-    await installProfile26WithGalleryMembers(connection(ownerRole));
-    await grantProfile26Runtime(connection(ownerRole), runtimeRole);
+    await installProfile27(connection(ownerRole));
+    await grantProfile27Runtime(connection(ownerRole), runtimeRole);
     await grantGalleryNavigationRuntimeForTest(connection(ownerRole), runtimeRole);
     owner = new Pool({ connectionString: connection(ownerRole), max: 1 });
     runtime = new Pool({ connectionString: connection(runtimeRole), max: 4 });

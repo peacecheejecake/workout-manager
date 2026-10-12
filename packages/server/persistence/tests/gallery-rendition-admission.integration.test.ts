@@ -8,12 +8,12 @@ import { createGalleryRenditionWorkerStore } from '../src/gallery-renditions.js'
 import { dropIsolatedDatabase } from './drop-isolated-database.js';
 import {
   grantGalleryRenditionForTest,
-  grantProfile26Runtime,
-  installProfile26WithGalleryMembers,
+  grantProfile27Runtime,
+  installProfile27,
 } from './gallery-profile27-fixture.js';
 
-// SQL144 restore admission on disposable PostgreSQL 17.6 over a committed profile26 parent with
-// 143/144/145 applied raw from pinned bytes. The CLOSED control is driven only through its own
+// SQL144 restore admission on disposable PostgreSQL 17.6, installed with 143/145/147/148 by the
+// profile27 installer V11. The CLOSED control is driven only through its own
 // owner functions (101/076): a pending restore target and a rotated generation each withdraw
 // admission; closing to no target in the current generation restores it. Synthetic rows only.
 const adminUrl = z.string().min(1).parse(process.env['TEST_DATABASE_ADMIN_URL']);
@@ -206,8 +206,8 @@ beforeAll(async () => {
   await admin.query(`CREATE DATABASE "${name}" OWNER "${ownerRole}"`);
   created = true;
   await migrate(connection(ownerRole), 107);
-  await installProfile26WithGalleryMembers(connection(ownerRole));
-  await grantProfile26Runtime(connection(ownerRole), apiRole);
+  await installProfile27(connection(ownerRole));
+  await grantProfile27Runtime(connection(ownerRole), apiRole);
   await grantGalleryRenditionForTest(connection(ownerRole), 'api', apiRole);
   await grantGalleryRenditionForTest(connection(ownerRole), 'worker', workerRole);
   owner = new Pool({ connectionString: connection(ownerRole), max: 2 });

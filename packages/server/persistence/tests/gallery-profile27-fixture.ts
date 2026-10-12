@@ -2,6 +2,8 @@ import { Pool, type PoolClient } from 'pg';
 import { installCurrentRuntimeV10 } from '../src/current-runtime-installation-v10.js';
 import { grantCurrentRuntimeV10Profile } from '../src/current-runtime-grants-v10.js';
 import { grantCurrentRuntimeAppBaselineV2 } from '../src/current-runtime-app-grants-v2.js';
+import { installCurrentRuntimeV11 } from '../src/current-runtime-installation-v11.js';
+import { grantCurrentRuntimeV11Profile } from '../src/current-runtime-grants-v11.js';
 import {
   galleryProfile27MembersV1,
   readGalleryMemberSourceV1,
@@ -54,6 +56,17 @@ export async function installProfile26WithGalleryMembers(ownerUrl: string) {
   const installed = await installCurrentRuntimeV10(ownerUrl);
   await ownerTransaction(ownerUrl, applyGalleryProfile27MembersIn);
   return installed;
+}
+
+/** Profile27 through the real installer V11 (143, 144, 145, 147, 148 over profile26). */
+export async function installProfile27(ownerUrl: string) {
+  return installCurrentRuntimeV11(ownerUrl);
+}
+
+/** A profile27 runtime role: app core + V11 (V10 roots, gallery navigation/rendition reads). */
+export async function grantProfile27Runtime(ownerUrl: string, role: string) {
+  await grantCurrentRuntimeAppBaselineV2(ownerUrl, role, 'core');
+  await grantCurrentRuntimeV11Profile(ownerUrl, role);
 }
 
 /** The parent runtime grants a profile26 runtime role holds (app core + V10). */

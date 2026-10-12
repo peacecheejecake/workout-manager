@@ -13,13 +13,13 @@ import {
 } from '../src/gallery-renditions.js';
 import {
   grantGalleryRenditionForTest,
-  grantProfile26Runtime,
-  installProfile26WithGalleryMembers,
+  grantProfile27Runtime,
+  installProfile27,
 } from './gallery-profile27-fixture.js';
 import { dropIsolatedDatabase } from './drop-isolated-database.js';
 
-// SQL144 (with 143/145) applied raw from pinned bytes over a committed profile26 parent and the
-// separated API/worker rosters (test stand-in for the profile27 installer/grants). Synthetic
+// SQL144 (with 143/145/147/148) installed by the profile27 installer V11 with the V11 runtime
+// grant and the separated API/worker rosters (worker roster test-local: random role). Synthetic
 // tenants and hashes only; no media bytes are needed at this layer.
 const adminUrl = z.string().min(1).parse(process.env['TEST_DATABASE_ADMIN_URL']);
 const suffix = randomUUID().replaceAll('-', '').slice(0, 12);
@@ -188,10 +188,10 @@ beforeAll(async () => {
   await admin.query(`CREATE DATABASE "${name}" OWNER "${ownerRole}"`);
   created = true;
   await migrate(connection(ownerRole), 107);
-  await installProfile26WithGalleryMembers(connection(ownerRole));
-  await grantProfile26Runtime(connection(ownerRole), runtimeRole);
+  await installProfile27(connection(ownerRole));
+  await grantProfile27Runtime(connection(ownerRole), runtimeRole);
   await grantGalleryMedia(connection(ownerRole), runtimeRole);
-  // Pinned 143/144/145 bytes over profile26 and the two least-privilege rosters (API / worker).
+  // The two least-privilege rosters (API via V11 above, worker test-local).
   await grantGalleryRenditionForTest(connection(ownerRole), 'worker', workerRole);
   await grantGalleryRenditionForTest(connection(ownerRole), 'api', runtimeRole);
   owner = new Pool({ connectionString: connection(ownerRole), max: 4 });

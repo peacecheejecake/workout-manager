@@ -51,6 +51,7 @@ type Kind =
   | 'bool'
   | 'falseOnly'
   | 'node'
+  | 'absentNode'
   | 'nodeList'
   | 'emptyBitmap'
   | 'datum'
@@ -170,6 +171,21 @@ const SPECS: Readonly<Record<string, readonly (readonly [string, Kind])[]>> = Ob
     ['inputcollid', 'collation'],
     ['op', 'minMaxOp'],
     ['args', 'nodeList'],
+    ['location', 'location'],
+  ],
+  // Searched CASE only (`:arg <>`); a simple CASE needs CASETESTEXPR, which stays unsupported.
+  // CASEWHEN is accepted by the decoder but bound only as an element of CASEEXPR.args.
+  CASEEXPR: [
+    ['casetype', 'type'],
+    ['casecollid', 'collation'],
+    ['arg', 'absentNode'],
+    ['args', 'nodeList'],
+    ['defresult', 'node'],
+    ['location', 'location'],
+  ],
+  CASEWHEN: [
+    ['expr', 'node'],
+    ['result', 'node'],
     ['location', 'location'],
   ],
 });
@@ -315,6 +331,9 @@ export function decodePg17NodeTreeV1(input: unknown): DecodedPg17NodeTreeV1 {
         return false;
       case 'node':
         return node(depth + 1);
+      case 'absentNode':
+        need('<>');
+        return null;
       case 'nodeList':
         return list(depth);
       case 'emptyBitmap':
@@ -421,6 +440,10 @@ function checkShape(node: Pg17NodeV1) {
     case 'COALESCEEXPR':
     case 'MINMAXEXPR':
       if (args('args').length < 1) fail('NODE_VALUE_UNSUPPORTED');
+      return;
+    case 'CASEEXPR':
+      if (args('args').length < 1 || args('args').some((when) => when.tag !== 'CASEWHEN'))
+        fail('NODE_VALUE_UNSUPPORTED');
       return;
     default:
       return;
@@ -674,6 +697,19 @@ export function bindPg17NodeTreeV1(
           collation: collation(n('minmaxcollid')),
           inputCollation: collation(n('inputcollid')),
           args: many('args'),
+        };
+      case 'CASEEXPR':
+        return {
+          case: type(n('casetype')),
+          collation: collation(n('casecollid')),
+          when: (f['args'] as readonly Pg17NodeV1[]).map((when) => {
+            if (when.tag !== 'CASEWHEN') return fail('NODE_REFERENCE_INCONSISTENT');
+            return {
+              when: bind(when.fields['expr'] as Pg17NodeV1),
+              then: bind(when.fields['result'] as Pg17NodeV1),
+            };
+          }),
+          else: bind(f['defresult'] as Pg17NodeV1),
         };
       default:
         return fail('NODE_TAG_UNSUPPORTED');

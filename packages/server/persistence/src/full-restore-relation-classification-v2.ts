@@ -21,22 +21,22 @@ import {
  */
 // BEGIN GENERATED PINS (scripts/generate-restore-admission-roster.mts)
 export const RESTORE_ADMISSION_ROSTER_SHA256 =
-  'f974cca88330076540eeaf855e6baeb173d7099b4ea22f0b33fde569fad1e59c';
+  'c20f35af23c894ebfc7e4c89f0ce18897e14cea0d73d658dcedf5b8fa7a62c62';
 export const FULL_RESTORE_ADMISSION_ROSTER_V1_FILE_SHA256 =
-  'bea411256a646a1fc641ac64b62faace1943f60f0393a6ca02f56bb6fe650e1d';
+  '2b1f7e712bf86aa9e43e5af7de6f1a032b809771ec1e0325ddfc38ca7890eda1';
 export const FULL_RESTORE_ADMISSION_SUCCESSOR_RELATIONS_V1_FILE_SHA256 =
-  '7da26b24ffa5992c3782cd56964d6a1b5cf9cb9492bafa23aabbac5bba010563';
+  'b007f4ea4f0ce8441f84bcb299861b66532ef10145bc8202c2b575992e8b3438';
 export const FULL_RESTORE_EXPECTED_STRUCTURE_V2_SHA256 =
-  'e70e57123be959973e55d590ce4cc2902e729ddab47efc515b244d869187d1dd';
+  '389f2874091536495d6e2ad53199cb9e42741cda33e9c0f7af95308aac98e644';
 export const RESTORE_ADMISSION_ROSTER_TALLIES = Object.freeze({
-  relations: 242,
-  retained: 210,
-  retainedForced: 205,
+  relations: 254,
+  retained: 218,
+  retainedForced: 213,
   authenticationReset: 7,
   authenticationResetForced: 3,
-  targetLocal: 25,
-  census: 217,
-  censusForced: 208,
+  targetLocal: 29,
+  census: 225,
+  censusForced: 216,
 });
 // END GENERATED PINS
 export const RESTORE_ADMISSION_ROSTER_DOMAIN = 'wm-restore-admission-roster-v1';

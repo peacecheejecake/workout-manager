@@ -119,6 +119,8 @@ describe('PG17 typed node decoder and catalog binding', () => {
         'ARRAYEXPR',
         'BOOLEANTEST',
         'BOOLEXPR',
+        'CASEEXPR',
+        'CASEWHEN',
         'COALESCEEXPR',
         'COERCEVIAIO',
         'CONST',
@@ -184,6 +186,64 @@ describe('PG17 typed node decoder and catalog binding', () => {
         { bool: 'not', args: [{ var: 'active', row: 'OLD' }] },
       ],
     });
+  });
+
+  it('binds a searched CASE (144 gallery_rendition_job CHECK shape) and rejects other CASE forms', () => {
+    const c = catalog();
+    c.operators.push({
+      oid: 98,
+      schema: 'pg_catalog',
+      name: '=',
+      left: 25,
+      right: 25,
+      result: 16,
+      code: 67,
+    });
+    c.procedures.push({
+      oid: 67,
+      schema: 'pg_catalog',
+      name: 'texteq',
+      args: [25, 25],
+      result: 16,
+      retset: false,
+      variadic: 0,
+    });
+    const when =
+      '{CASEWHEN :expr {OPEXPR :opno 98 :opfuncid 67 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 100 :args ({VAR :varno 1 :varattno 7 :vartype 25 :vartypmod -1 :varcollid 100 :varnullingrels (b) :varlevelsup 0 :varnosyn 1 :varattnosyn 7 :location -1} {CONST :consttype 25 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location -1 :constvalue 5 [ 20 0 0 0 120 ]}) :location -1} :result {CONST :consttype 23 :consttypmod -1 :constcollid 0 :constlen 4 :constbyval true :constisnull false :location -1 :constvalue 4 [ 1 0 0 0 0 0 0 0 ]} :location -1}';
+    const otherwise =
+      '{CONST :consttype 23 :consttypmod -1 :constcollid 0 :constlen 4 :constbyval true :constisnull false :location -1 :constvalue 4 [ 2 0 0 0 0 0 0 0 ]}';
+    const tree = `{CASEEXPR :casetype 23 :casecollid 0 :arg <> :args (${when}) :defresult ${otherwise} :location 3}`;
+    const bound = bindPg17NodeTreeV1(decodePg17NodeTreeV1(tree), c, {
+      scope: 'relation',
+      columns,
+    });
+    expect(bound.normalized).toMatchObject({
+      case: 'pg_catalog.int4',
+      collation: null,
+      when: [{ when: { op: 'pg_catalog.=(pg_catalog.text,pg_catalog.text)' }, then: {} }],
+      else: { const: 'pg_catalog.int4' },
+    });
+    expect(
+      bindPg17NodeTreeV1(decodePg17NodeTreeV1(tree.replace(':location 3', ':location 9')), c, {
+        scope: 'relation',
+        columns,
+      }).normalizedSha256,
+    ).toBe(bound.normalizedSha256);
+    // Simple CASE (test expression), empty WHEN list, a non-WHEN arm and a bare WHEN.
+    expect(decodeCode(tree.replace(':arg <>', `:arg ${otherwise}`))).toBe(
+      'NODE_SYNTAX_UNSUPPORTED',
+    );
+    expect(decodeCode(tree.replace(`:args (${when})`, ':args <>'))).toBe('NODE_VALUE_UNSUPPORTED');
+    expect(decodeCode(tree.replace(`:args (${when})`, `:args (${otherwise})`))).toBe(
+      'NODE_VALUE_UNSUPPORTED',
+    );
+    let code = 'NO_ERROR';
+    try {
+      bindPg17NodeTreeV1(decodePg17NodeTreeV1(when), c, { scope: 'relation', columns });
+    } catch (error) {
+      if (error instanceof Pg17NodeDecodeError) code = error.code;
+    }
+    expect(code).toBe('NODE_TAG_UNSUPPORTED');
   });
 
   it('rejects unknown tags, fields, order, enums, bounds and trailing input', () => {

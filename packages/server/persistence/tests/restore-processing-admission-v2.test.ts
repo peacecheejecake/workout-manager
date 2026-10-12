@@ -67,10 +67,10 @@ function sqlRoster() {
 }
 
 describe('admission roster successor (classification v2)', () => {
-  it('pins 242 rows with the reviewed tallies and the SQL roster digest formula', () => {
-    expect(classification.relations).toHaveLength(242);
-    expect(classification.census).toHaveLength(217);
-    expect(classification.census.filter((r) => r.forceRls)).toHaveLength(208);
+  it('pins 254 rows with the reviewed tallies and the SQL roster digest formula', () => {
+    expect(classification.relations).toHaveLength(254);
+    expect(classification.census).toHaveLength(225);
+    expect(classification.census.filter((r) => r.forceRls)).toHaveLength(216);
     expect(classification.rosterSha256).toBe(RESTORE_ADMISSION_ROSTER_SHA256);
     expect(restoreAdmissionRosterSha256(classification.relations)).toBe(
       RESTORE_ADMISSION_ROSTER_SHA256,
@@ -82,13 +82,25 @@ describe('admission roster successor (classification v2)', () => {
     expect(rows).toEqual(classification.relations.map((r) => ({ ...r })));
     expect(migration.match(/-- BEGIN GENERATED ROSTER/g)).toHaveLength(1);
   });
-  it('is the v1 classification plus exactly the three successor relations', () => {
+  it('is the v1 classification plus exactly the reviewed profile27 successor relations', () => {
     const v1 = classifyFullRestoreRelationsV1(
       read('../src/full-restore-native-catalog-v2/source-owned-roster.json'),
     );
     const v1Names = new Set(v1.relations.map(q));
     const extra = classification.relations.filter((r) => !v1Names.has(q(r))).map(q);
     expect(extra).toEqual([
+      'public.ai_execution_job',
+      'public.ai_execution_job_disposition',
+      'public.ai_synthetic_evidence_attestation',
+      'public.gallery_album',
+      'public.gallery_album_deletion',
+      'public.gallery_media_album_membership',
+      'public.gallery_media_course_association',
+      'public.gallery_navigation_command_receipt',
+      'public.gallery_rendition_due',
+      'public.gallery_rendition_job',
+      'public.gallery_rendition_sweep',
+      'public.restore_gallery_album_replay_receipt',
       'public.restore_processing_admit_receipt',
       'wm_runtime_installation.profile_extension_v10',
       'wm_runtime_installation.profile_extension_v11',
@@ -201,7 +213,7 @@ describe('postconditions v2 (census derivation and command)', () => {
     expect(result.failures).toEqual([]);
     if (!result.ready) throw new Error('not ready');
     const c = result.command;
-    expect(c.census).toHaveLength(217);
+    expect(c.census).toHaveLength(225);
     expect(c.census.find((e) => q(e) === 'public.command_receipt')?.rowCount).toBe(4);
     expect(c.censusSha256).toBe(restoreAdmissionCensusSha256(c.census));
     expect(c.censusSha256).toBe(
@@ -448,7 +460,7 @@ describe('restore-processing-admission decoders and owner ports (no database)', 
     const { port } = fakePort([
       owner,
       () => ({
-        rows: [{ control: { xid: '5', censusRelations: 217, rosterSha256: 'e'.repeat(64) } }],
+        rows: [{ control: { xid: '5', censusRelations: 225, rosterSha256: 'e'.repeat(64) } }],
         rowCount: 1,
       }),
     ]);
@@ -476,7 +488,7 @@ describe('restore-processing-admission decoders and owner ports (no database)', 
             {
               control: {
                 xid: '5',
-                censusRelations: 217,
+                censusRelations: 225,
                 rosterSha256: RESTORE_ADMISSION_ROSTER_SHA256,
               },
             },

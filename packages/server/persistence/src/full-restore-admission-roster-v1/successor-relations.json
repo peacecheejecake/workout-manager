@@ -19,6 +19,78 @@
       "relation": "profile_extension_v11",
       "class": "target_local",
       "introducedBy": "current-runtime-installation-v11 ledger (profile27, installer lane)"
+    },
+    {
+      "schema": "public",
+      "relation": "gallery_album",
+      "class": "retained",
+      "introducedBy": "143_gallery_albums.sql (profile27): owned album, source_retained"
+    },
+    {
+      "schema": "public",
+      "relation": "gallery_media_album_membership",
+      "class": "retained",
+      "introducedBy": "143_gallery_albums.sql (profile27): album membership, source_retained"
+    },
+    {
+      "schema": "public",
+      "relation": "gallery_media_course_association",
+      "class": "retained",
+      "introducedBy": "143_gallery_albums.sql (profile27): saved course link, source_retained"
+    },
+    {
+      "schema": "public",
+      "relation": "gallery_navigation_command_receipt",
+      "class": "retained",
+      "introducedBy": "143_gallery_albums.sql (profile27): navigation command receipt, source_retained"
+    },
+    {
+      "schema": "public",
+      "relation": "gallery_album_deletion",
+      "class": "retained",
+      "introducedBy": "143_gallery_albums.sql (profile27): album tombstone, source_retained"
+    },
+    {
+      "schema": "public",
+      "relation": "gallery_rendition_job",
+      "class": "target_local",
+      "introducedBy": "144_gallery_renditions.sql (profile27): derived, regenerated after admission; not restored, outside census"
+    },
+    {
+      "schema": "public",
+      "relation": "gallery_rendition_due",
+      "class": "target_local",
+      "introducedBy": "144_gallery_renditions.sql (profile27): worker due queue, target_local"
+    },
+    {
+      "schema": "public",
+      "relation": "gallery_rendition_sweep",
+      "class": "target_local",
+      "introducedBy": "144_gallery_renditions.sql (profile27): worker sweep queue, target_local"
+    },
+    {
+      "schema": "public",
+      "relation": "restore_gallery_album_replay_receipt",
+      "class": "retained",
+      "introducedBy": "145_gallery_restore_suppression.sql (profile27): album replay receipt, source_retained"
+    },
+    {
+      "schema": "public",
+      "relation": "ai_synthetic_evidence_attestation",
+      "class": "target_local",
+      "introducedBy": "148_ai_execution_job_store.sql (profile27): owner re-attests on target, target_local_exclude"
+    },
+    {
+      "schema": "public",
+      "relation": "ai_execution_job",
+      "class": "retained",
+      "introducedBy": "148_ai_execution_job_store.sql (profile27): AI execution job, source_retained"
+    },
+    {
+      "schema": "public",
+      "relation": "ai_execution_job_disposition",
+      "class": "retained",
+      "introducedBy": "148_ai_execution_job_store.sql (profile27): restore_cancelled disposition, source_retained"
     }
   ]
 }

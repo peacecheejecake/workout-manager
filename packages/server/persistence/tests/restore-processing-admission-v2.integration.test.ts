@@ -7,6 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { migrate } from '../src/migrate.js';
 import { installCurrentRuntimeV10 } from '../src/current-runtime-installation-v10.js';
 import { grantCurrentRuntimeV10Profile } from '../src/current-runtime-grants-v10.js';
+import { installCurrentRuntimeV11In } from '../src/current-runtime-installation-v11.js';
 import { grantCurrentRuntimeAppBaselineV2 } from '../src/current-runtime-app-grants-v2.js';
 import {
   createRestoreProcessingOwnerPort,
@@ -35,9 +36,10 @@ import {
 } from './restore-admission-v2-fixtures.js';
 
 // Real PostgreSQL (pinned 17.6 by the caller). Synthetic metadata/receipt rows only: no health,
-// personal, provider token or account data. Profile26 (installation v10) + raw 147 is local
-// evidence for the profile27 extension; installer v11 / grants v11 / cold catalog v11 are another
-// lane and are NOT exercised here. Nothing here turns a not_executed item into a pass.
+// personal, provider token or account data. 147 is installed as a member of profile27 by the
+// installation v11 (143, 144, 145, 147, 148 over a committed profile26), because the generated
+// roster names every profile27 table. Cold catalog v11 is another lane and is NOT exercised
+// here. Nothing here turns a not_executed item into a pass.
 const adminUrl = z.string().min(1).parse(process.env['TEST_DATABASE_ADMIN_URL']);
 const evidenceDir = process.env['WM_P27_R_EVIDENCE_DIR'];
 const suffix = randomUUID().replaceAll('-', '').slice(0, 10);
@@ -53,10 +55,6 @@ const q = (v: { schema: string; relation: string }) => `${v.schema}.${v.relation
 const ident = (v: { schema: string; relation: string }) => `"${v.schema}"."${v.relation}"`;
 const sha = (text: string) => createHash('sha256').update(text).digest('hex');
 const H = (c: string) => c.repeat(64);
-const migration147 = readFile(
-  new URL('../migrations/147_restore_processing_admission.sql', import.meta.url),
-  'utf8',
-);
 const evidence: Record<string, unknown> = {};
 function must<T>(value: T | null | undefined): T {
   if (value === null || value === undefined) throw new Error('FIXTURE_VALUE_MISSING');
@@ -116,11 +114,8 @@ async function scenario(label: string, template = base27) {
   return database;
 }
 async function apply147(c: PoolClient) {
-  // Stand-in for the installation v11 ledger (installer lane); the roster requires the relation.
-  await c.query(
-    'CREATE TABLE wm_runtime_installation.profile_extension_v11(extension_step integer PRIMARY KEY); REVOKE ALL ON wm_runtime_installation.profile_extension_v11 FROM PUBLIC',
-  );
-  await c.query(await migration147);
+  // Profile27 over the committed profile26 (installation v11, same transaction).
+  await installCurrentRuntimeV11In(c);
 }
 const ownerPort = (c: PoolClient) => createRestoreProcessingOwnerPort(c);
 async function control(c: PoolClient) {
@@ -338,7 +333,7 @@ afterAll(async () => {
   await admin.end();
 }, 120000);
 
-describe('147 raw on profile26 (V10)', () => {
+describe('147 as a profile27 member over profile26 (installation v11)', () => {
   it('applies, keeps CLOSED/revision, pins roster and grants nothing new to runtime', async () => {
     const server = (
       await admin.query(
@@ -396,7 +391,7 @@ describe('C1 whole-table census across tenants (owner NO FORCE window)', () => {
       await c.query('ROLLBACK');
       const w = await openWindow(c, t);
       expect(w).toMatchObject({
-        censusRelations: 217,
+        censusRelations: 225,
         rosterSha256: RESTORE_ADMISSION_ROSTER_SHA256,
       });
       await c.query("SELECT set_config('app.athlete_id',$1,true)", [a]);
@@ -528,7 +523,7 @@ describe('window protocol', () => {
     expect(out).toMatchObject({
       commitWithoutAdmit: 'RESTORE_PROCESSING_WINDOW_OPEN_AT_COMMIT',
       flagDriftAfterFailedCommit: 0,
-      flagDriftInsideWindow: 208,
+      flagDriftInsideWindow: 216,
       flagDriftAfterRollbackToSavepoint: 0,
       commitAfterSavepointRollback: 'NO_ERROR',
       immediate: 'RESTORE_PROCESSING_WINDOW_OPEN_AT_COMMIT',
@@ -1781,10 +1776,10 @@ describe('upgrade and structure', () => {
       },
       admitRevision: result.resultRevision,
       maxLocksPerTransaction: locks,
-      installationV11: 'not_executed (installer lane)',
+      installationV11: 'installCurrentRuntimeV11In (profile26 -> profile27)',
       coldCatalogV11: 'not_executed (installer lane)',
     });
-    expect(clean).toMatchObject({ matched: true, relationCount: 242 });
-    expect(cycled).toMatchObject({ matched: true, relationCount: 242 });
+    expect(clean).toMatchObject({ matched: true, relationCount: 254 });
+    expect(cycled).toMatchObject({ matched: true, relationCount: 254 });
   }, 180000);
 });

@@ -11,12 +11,12 @@ import {
 import { dropIsolatedDatabase } from './drop-isolated-database.js';
 import {
   grantGalleryNavigationRuntimeForTest,
-  grantProfile26Runtime,
-  installProfile26WithGalleryMembers,
+  grantProfile27Runtime,
+  installProfile27,
 } from './gallery-profile27-fixture.js';
 
-// SQL145 on disposable PostgreSQL 17.6 over a committed profile26 parent with 143/144/145
-// applied raw from pinned bytes: the album deletion suppression event, the exact owner-only
+// SQL145 on disposable PostgreSQL 17.6, installed with 143/144/147/148 by the profile27
+// installer V11 (V11 runtime grant): the album deletion suppression event, the exact owner-only
 // album replay and the media-deletion navigation cleanup trigger. Synthetic rows only.
 const adminUrl = z.string().min(1).parse(process.env['TEST_DATABASE_ADMIN_URL']);
 const suffix = randomUUID().replaceAll('-', '').slice(0, 10);
@@ -212,8 +212,8 @@ beforeAll(async () => {
   await admin.query(`CREATE DATABASE "${name}" OWNER "${ownerRole}"`);
   created = true;
   await migrate(connection(ownerRole), 107);
-  await installProfile26WithGalleryMembers(connection(ownerRole));
-  await grantProfile26Runtime(connection(ownerRole), runtimeRole);
+  await installProfile27(connection(ownerRole));
+  await grantProfile27Runtime(connection(ownerRole), runtimeRole);
   await grantGalleryNavigationRuntimeForTest(connection(ownerRole), runtimeRole);
   owner = new Pool({ connectionString: connection(ownerRole), max: 3 });
   runtime = new Pool({ connectionString: connection(runtimeRole), max: 2 });
