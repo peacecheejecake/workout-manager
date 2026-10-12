@@ -92,6 +92,7 @@
     "./app-admission": "./src/app-admission.ts",
     "./global-openai-budget": "./src/global-openai-budget.ts",
     "./ai-settings": "./src/ai-settings.ts",
+    "./ai-execution-jobs": "./src/ai-execution-jobs.ts",
     "./races": "./src/races.ts",
     "./race-result-v2": "./src/race-result-v2.ts",
     "./race-result-proofs": "./src/race-result-proofs.ts",

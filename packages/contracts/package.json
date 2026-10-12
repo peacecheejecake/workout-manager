@@ -229,6 +229,10 @@
       "types": "./src/ai-settings.ts",
       "default": "./dist/ai-settings.js"
     },
+    "./ai-execution-jobs": {
+      "types": "./src/ai-execution-jobs.ts",
+      "default": "./dist/ai-execution-jobs.js"
+    },
     "./race-commands": {
       "types": "./src/race-commands.ts",
       "default": "./dist/race-commands.js"
