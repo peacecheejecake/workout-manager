@@ -155,8 +155,6 @@
     "./current-runtime-source-build-proof-v1-compiler": "./src/current-runtime-source-build-proof-v1-compiler.ts",
     "./current-runtime-source-build-readiness-v1": "./src/current-runtime-source-build-readiness-v1.ts",
     "./gallery-album-queries": "./src/gallery-album-queries.ts",
-    "./full-restore-physical-codec-v2": "./src/full-restore-physical-codec-v2.ts",
-    "./full-restore-physical-row-packet-v2": "./src/full-restore-physical-row-packet-v2.ts",
     "./restore-gallery-link-records-v1": "./src/restore-gallery-link-records-v1.ts",
     "./restore-gallery-link-physical-row-v1": "./src/restore-gallery-link-physical-row-v1.ts",
     "./gallery-album-commands": "./src/gallery-album-commands.ts",
