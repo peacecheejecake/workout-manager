@@ -668,11 +668,12 @@ describe('profile26 successor specifics', () => {
     ]);
     expect(profile.catalogDigest).toBe(currentRuntimeSourceBuildProofV2CatalogDigest);
   });
-  it('reports a pinned but absent compiled asset as compiled_asset_unavailable', () => {
+  // Root registered the compiled asset, so a foreign pin now meets real asset bytes.
+  it('reports a pin that does not match the registered asset as source_drift', () => {
     pin.sha256 = 'a'.repeat(64);
     expect(verifyCurrentRuntimeSourceBuildProofV2()).toMatchObject({
       state: 'unavailable',
-      reason: 'compiled_asset_unavailable',
+      reason: 'source_drift',
       sourceManifestSha256: null,
       profileVersion: 10,
       runtimeStep: 26,
