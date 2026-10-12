@@ -35,7 +35,11 @@ import { createCheckInRepository } from '@workout/server-persistence/check-ins';
 import { createCheckInTemplateRepository } from '@workout/server-persistence/check-in-templates';
 import { createDashboardRepository } from '@workout/server-persistence/dashboard';
 import { createOperationsRepository } from '@workout/server-persistence/operations';
-import { createRegisteredCurrentRuntimeRepositoriesV2 } from './current-runtime-repositories-registration-v2.js';
+import { createRegisteredCurrentRuntimeRepositoriesV3 } from './current-runtime-repositories-registration-v3.js';
+import { createVerifiedGalleryNavigationServices } from './gallery-navigation-services.js';
+import { createVerifiedGalleryRenditionServices } from './gallery-rendition-services.js';
+import { createAiExecutionJobService } from './ai-execution-job-routes.js';
+import { createAiExecutionJobRepository } from '@workout/server-persistence/ai-execution-jobs';
 import { createGalleryMediaRepository } from '@workout/server-persistence/gallery-media';
 import { createActivityTrackRepository } from '@workout/server-persistence/activity-tracks';
 import { createCourseRepository } from '@workout/server-persistence/courses';
@@ -98,7 +102,7 @@ const environmentSchema = z.object({
     .url()
     .refine((value) => ['postgres:', 'postgresql:'].includes(new URL(value).protocol)),
   WORKOUT_RUNTIME_PROFILE: z
-    .enum(['baseline107', 'installed-current-profile26'])
+    .enum(['baseline107', 'installed-current-profile27'])
     .default('baseline107'),
   PUBLIC_ORIGIN: z.string().url(),
   OIDC_ISSUER: z.string().url(),
@@ -285,16 +289,39 @@ export async function createConfiguredApi(
     // absent under baseline107, so their routes are not registered and the date-change
     // capability answers false instead of advertising requests that cannot succeed. The
     // V34 account export reads only baseline tables and stays.
-    const runtimeRepositories =
-      env.WORKOUT_RUNTIME_PROFILE === 'installed-current-profile26'
-        ? {
-            ...(await createRegisteredCurrentRuntimeRepositoriesV2(database)),
-            checkInTemplates: createCheckInTemplateRepository(database),
-          }
-        : { operations: createOperationsRepository(database) };
+    //
+    // Profile27 (V11, SQL tip 148) adds gallery albums/navigation (143), renditions (144)
+    // and the AI execution job store (148). Gallery navigation and renditions are always on
+    // in profile27 (no deployment flag); each is verified against the runtime role's exact
+    // grants at startup and refuses to start rather than register over a missing or
+    // over-granted installation. The V39 pooled export/erase covers the gallery members.
+    const profile27 = env.WORKOUT_RUNTIME_PROFILE === 'installed-current-profile27';
+    const runtimeRepositories = profile27
+      ? {
+          ...(await createRegisteredCurrentRuntimeRepositoriesV3(database)),
+          checkInTemplates: createCheckInTemplateRepository(database),
+          galleryNavigation: await createVerifiedGalleryNavigationServices(database),
+          // M2-05a. Stores an immutable execution selection only; no provider adapter is
+          // registered in this composition, so no job can be frozen until one is.
+          aiExecutionJobs: createAiExecutionJobService(
+            createAiExecutionJobRepository(database, {
+              policy: { id: 'running-core-v2-training', version: '1' },
+              registry: [],
+            }),
+          ),
+        }
+      : { operations: createOperationsRepository(database) };
     const resourceStorage = await createLocalFilesystemObjectStorage(
       env.PRIVATE_RESOURCE_STORAGE_ROOT,
     );
+    const galleryRenditions = profile27
+      ? {
+          galleryRenditions: await createVerifiedGalleryRenditionServices(
+            database,
+            resourceStorage,
+          ),
+        }
+      : {};
     const jointApproval = createJointApprovalRepository(database, {
       policy: { id: 'running-core-v3-joint', version: '1' },
     });
@@ -447,6 +474,7 @@ export async function createConfiguredApi(
       activityContext: createActivityContextRepository(database),
       checkIns: createCheckInRepository(database),
       ...runtimeRepositories,
+      ...galleryRenditions,
       dashboard: createDashboardRepository(database),
       resources: createPrivateTextResourceRepository(database),
       resourceFiles: {

@@ -7,7 +7,7 @@ import {
   setupIdentityInstalledCurrentRuntimeV7,
   composeIdentityInstalledCurrentRuntimeV7Ports,
 } from './identity-installed-current-runtime-v7.mjs';
-import { setupIdentityInstalledCurrentRuntimeV10 } from './identity-installed-current-runtime-v10.mjs';
+import { setupIdentityInstalledCurrentRuntimeV11 } from './identity-installed-current-runtime-v11.mjs';
 import {
   installCurrentRuntime,
   verifyCurrentRuntimeInstalledIn,
@@ -96,7 +96,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Pool } from 'pg';
 import { createApi } from '../apps/api/src/app.ts';
-import { createRegisteredCurrentRuntimeRepositoriesV2 } from '../apps/api/src/current-runtime-repositories-registration-v2.ts';
+import { createRegisteredCurrentRuntimeRepositoriesV3 } from '../apps/api/src/current-runtime-repositories-registration-v3.ts';
+import { createVerifiedGalleryNavigationServices } from '../apps/api/src/gallery-navigation-services.ts';
+import { createVerifiedGalleryRenditionServices } from '../apps/api/src/gallery-rendition-services.ts';
 import { createAiSettingsService } from '../apps/api/src/ai-settings-service.ts';
 import { createAiSettingsRepository } from '../packages/server/persistence/src/ai-settings.ts';
 import { publishInitialAiSettingsCatalog } from './fixtures/ai-settings-catalog.ts';
@@ -220,7 +222,7 @@ const {
   installedRuntime,
   installedCurrentRuntime,
   installedCurrentRuntimeV7,
-  installedCurrentRuntimeV10,
+  installedCurrentRuntimeV11,
   enableRaceResultsV2,
   enableRaceManualPublic,
   enableCheckInTemplates,
@@ -605,17 +607,17 @@ try {
   });
   try {
     await createFixtureRole(admin, 'workout_runtime');
-    // Profile26 preserves PostgreSQL's database-owner schema anchor, matching
+    // Profile27 preserves PostgreSQL's database-owner schema anchor, matching
     // the normal configured catalog recipe instead of the legacy fixture owner.
-    if (!installedCurrentRuntimeV10)
+    if (!installedCurrentRuntimeV11)
       await admin.query('ALTER SCHEMA public OWNER TO workout_owner');
     if (installedRuntime) {
       await migrate(ownerUrl, 107);
       await installCurrentRuntime(ownerUrl);
     } else if (installedCurrentRuntime) {
       await migrate(ownerUrl, 107);
-      const setup = installedCurrentRuntimeV10
-        ? setupIdentityInstalledCurrentRuntimeV10
+      const setup = installedCurrentRuntimeV11
+        ? setupIdentityInstalledCurrentRuntimeV11
         : installedCurrentRuntimeV7
           ? setupIdentityInstalledCurrentRuntimeV7
           : setupIdentityInstalledCurrentRuntimeV6;
@@ -976,16 +978,16 @@ try {
     }
     // identity-analysis-output-v3-fixture: an isolated untrusted synthetic producer
     // supplement, outside both the named core recipe and production authority.
-    if (!installedCurrentRuntimeV10) {
+    if (!installedCurrentRuntimeV11) {
       await admin.query('GRANT INSERT ON coaching_analysis_output TO workout_runtime');
     }
-    if (installedCurrentRuntime && !installedCurrentRuntimeV10)
+    if (installedCurrentRuntime && !installedCurrentRuntimeV11)
       console.log('Identity disposable supplement', {
         fixture: 'identity-analysis-output-v3-fixture',
         privilege: 'INSERT',
         productionAuthority: 'none',
       });
-    if (!installedCurrentRuntimeV10) {
+    if (!installedCurrentRuntimeV11) {
       await createFixtureRole(admin, 'workout_coaching_worker');
       await grantCoachingRunWorker(adminUrl, 'workout_coaching_worker');
     }
@@ -993,13 +995,13 @@ try {
       await grantGarmin(adminUrl, 'workout_runtime');
       await grantGarminUnofficial(adminUrl, 'workout_runtime');
     }
-    if (!installedCurrentRuntimeV10) {
+    if (!installedCurrentRuntimeV11) {
       await createFixtureRole(admin, 'workout_garmin_worker');
       await grantGarminWorker(adminUrl, 'workout_garmin_worker');
     }
     // The course thumbnail renderer (M2-01l) runs as its own role with EXECUTE on eight
     // bounded functions and no table privileges, exactly as it would in production.
-    if (!installedCurrentRuntimeV10) {
+    if (!installedCurrentRuntimeV11) {
       await createFixtureRole(admin, 'workout_course_thumbnail_worker');
       await grantCourseThumbnailWorker(adminUrl, 'workout_course_thumbnail_worker');
       await admin.query('GRANT USAGE ON SCHEMA public TO workout_course_thumbnail_worker');
@@ -1087,11 +1089,11 @@ try {
   const store = createIdentityRepository({ connectionString: runtimeUrl });
   closers.push(() => store.close());
   const database = createDatabase({ connectionString: runtimeUrl });
-  // Register cleanup before the profile26 cold gate can reject startup.
+  // Register cleanup before the profile27 cold gate can reject startup.
   closers.push(() => database.close());
   const installedCurrentPorts = installedCurrentRuntime
-    ? installedCurrentRuntimeV10
-      ? await createRegisteredCurrentRuntimeRepositoriesV2(database)
+    ? installedCurrentRuntimeV11
+      ? await createRegisteredCurrentRuntimeRepositoriesV3(database)
       : installedCurrentRuntimeV7
         ? composeIdentityInstalledCurrentRuntimeV7Ports(database)
         : composeIdentityInstalledCurrentRuntimeV6Ports(database)
@@ -1328,6 +1330,17 @@ try {
       media: createGalleryMediaRepository(database),
       storage: resourceStorage,
     },
+    // Profile27 (U3): gallery navigation and renditions are always on, verified against the
+    // runtime role's exact V11 grants exactly as the configured composition does.
+    ...(installedCurrentRuntimeV11
+      ? {
+          galleryNavigation: await createVerifiedGalleryNavigationServices(database),
+          galleryRenditions: await createVerifiedGalleryRenditionServices(
+            database,
+            resourceStorage,
+          ),
+        }
+      : {}),
     // Private recorded-track storage, so the stored-track route screen has a real track to
     // read. The server re-parses the bytes it stored in a heap-bounded worker.
     activityTracks: {

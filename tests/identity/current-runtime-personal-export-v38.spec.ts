@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
-import { parseAccountExportV38 } from '../../packages/contracts/src/operations';
+import {
+  parseAccountExportV38,
+  parseAccountExportV39,
+} from '../../packages/contracts/src/operations';
 import { planReadSchema, planSnapshotSchema } from '../../packages/contracts/src/planning';
 import { raceCommandResultSchema } from '../../packages/contracts/src/race-commands';
 import { raceEventSchema } from '../../packages/contracts/src/races';
@@ -24,13 +27,17 @@ import { grantAppProcessingForScenario } from './app-consent-prerequisite';
 
 // Test selection only, never a production support/admission claim. Baseline34,
 // Old installed17 and unknown modes do not count as this named V38 HTTP acceptance.
+// Profile27 injects the pooled V39 repository: the same retained V38 facts plus the
+// gallery members (renditions are derived and never exported, U1).
+const selectedProfile = process.env['IDENTITY_E2E_RACE_MANUAL_PUBLIC'] ?? '';
+const exportsV39 = selectedProfile === 'installed-current-profile27';
 test.skip(
   ![
     'installed-current-profile22',
     'installed-current-profile23',
-    'installed-current-profile26',
-  ].includes(process.env['IDENTITY_E2E_RACE_MANUAL_PUBLIC'] ?? ''),
-  'Requires an explicit installed profile22, profile23 or profile26 harness with its actual V38 repository; older/default modes are not this acceptance.',
+    'installed-current-profile27',
+  ].includes(selectedProfile),
+  'Requires an explicit installed profile22, profile23 or profile27 harness with its actual V38/V39 repository; older/default modes are not this acceptance.',
 );
 async function login(page: Page, origin: string) {
   await page.goto(`${origin}/account`);
@@ -89,13 +96,13 @@ for (const [host, origin] of [
       return responseBody;
     };
     const exportAccount = async () => {
-      // No body and no max-version caller flag: actual injected repository owns V38.
+      // No body and no max-version caller flag: actual injected repository owns V38/V39.
       const reply = await page.request.post(`${origin}/bff/v1/operations/export`, { headers });
       expect(reply.status()).toBe(200);
       expect(reply.headers()['content-disposition']).toContain('workout-account.json');
       const raw: unknown = await reply.json();
-      const result = parseAccountExportV38(raw);
-      expect(result.schemaVersion).toBe(38);
+      const result = exportsV39 ? parseAccountExportV39(raw) : parseAccountExportV38(raw);
+      expect(result.schemaVersion).toBe(exportsV39 ? 39 : 38);
       expect(result.athleteId).toBe(athleteId);
       expect(result.data.sourceProvenanceCoverage).toBe('saved_safe_dependency_facts');
       expect(result.data.sourceAuthentication).toBe('not_authenticated');
@@ -105,6 +112,7 @@ for (const [host, origin] of [
       expect(encoded).not.toContain(headers['x-workout-session-id']);
       expect(encoded).not.toContain('token_hash');
       expect(encoded).not.toContain('storage_ref');
+      expect(encoded).not.toMatch(/rendition/i);
       return result;
     };
     try {

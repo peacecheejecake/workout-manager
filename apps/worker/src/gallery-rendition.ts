@@ -25,7 +25,8 @@ async function main(): Promise<void> {
     shutdownSignal: shutdown.signal,
     logger: (value) => process.stdout.write(`${JSON.stringify(value)}\n`),
   });
-  if (event.result !== 'completed') process.exitCode = 1;
+  // A closed restore window is a scheduled skip, not a failure: the next invocation resumes.
+  if (event.result !== 'completed' && event.result !== 'restore_closed') process.exitCode = 1;
 }
 
 try {
