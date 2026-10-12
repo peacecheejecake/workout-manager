@@ -1,8 +1,14 @@
 /** Identity-only frontend host. Vite preview keeps its public basemap deny policy. */
+import { access, mkdtemp, rm } from 'node:fs/promises';
 import { createServer, request, type IncomingHttpHeaders, Server } from 'node:http';
-import { resolve } from 'node:path';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { identityMobilePort, identityWebOrigin, identityWebPort } from './identity-ports.js';
+import {
+  parseIdentityMobileBuildProfile,
+  type IdentityShellRuntimeProfile,
+} from './identity-shell-runtime-profile.js';
 
 export interface OwnedIdentityPreview {
   port: number;
@@ -291,36 +297,88 @@ async function nextReady(): Promise<void> {
   if (![200, 404].includes(response.status))
     throw new Error('IDENTITY_NEXT_GUARDED_ROUTE_NOT_READY');
 }
+/**
+ * VITE_WORKOUT_RUNTIME_PROFILE is baked at build time, so a shared dist cannot be trusted to
+ * match this suite's API. Build a run-owned dist with exactly the harness-selected profile
+ * (profile27 or absent) and remove it on close. Generated public assets (map worker, notices)
+ * are the same prerequisite the shared `pnpm build` already provides.
+ */
+export async function buildIdentityMobileDist(
+  directory: string,
+  profile: IdentityShellRuntimeProfile,
+  build: (options: Record<string, unknown>) => Promise<unknown>,
+): Promise<string> {
+  for (const asset of [
+    'public/dist/maplibre/maplibre-gl-worker.mjs',
+    'public/dist/notices/THIRD_PARTY_NOTICES.txt',
+  ])
+    await access(join(directory, asset)).catch(() => {
+      throw new Error('IDENTITY_MOBILE_BUILD_PREREQUISITE_MISSING');
+    });
+  const outDir = await mkdtemp(join(tmpdir(), 'wm-identity-mobile-'));
+  const previous = process.env['VITE_WORKOUT_RUNTIME_PROFILE'];
+  try {
+    if (profile === undefined) delete process.env['VITE_WORKOUT_RUNTIME_PROFILE'];
+    else process.env['VITE_WORKOUT_RUNTIME_PROFILE'] = profile;
+    await build({
+      root: directory,
+      configFile: resolve(directory, 'vite.config.ts'),
+      configLoader: 'native',
+      mode: 'production',
+      logLevel: 'error',
+      build: { outDir, emptyOutDir: true },
+    });
+    return outDir;
+  } catch (error) {
+    await rm(outDir, { recursive: true, force: true });
+    throw error;
+  } finally {
+    if (previous === undefined) delete process.env['VITE_WORKOUT_RUNTIME_PROFILE'];
+    else process.env['VITE_WORKOUT_RUNTIME_PROFILE'] = previous;
+  }
+}
 export async function runIdentityMobilePreview(): Promise<void> {
   if (
     process.env['BASEMAP_ORIGIN'] !== undefined &&
     process.env['BASEMAP_ORIGIN'] !== identityWebOrigin
   )
     throw new Error('IDENTITY_MOBILE_RAW_ORIGIN_FORBIDDEN');
+  const profile = parseIdentityMobileBuildProfile(process.env['VITE_WORKOUT_RUNTIME_PROFILE']);
   await nextReady();
-  const { preview } = await import('vite');
+  const { build, preview } = await import('vite');
   const directory = resolve(import.meta.dirname, '../../apps/mobile-web');
   const host = await createIdentityMobilePreviewHost({
     mobilePort: identityMobilePort,
     webPort: identityWebPort,
     startPreview: async () => {
-      const owned = await preview({
-        root: directory,
-        configFile: resolve(directory, 'vite.config.ts'),
-        configLoader: 'native',
-        preview: { host: '127.0.0.1', port: 0, strictPort: false },
-      });
-      if (!(owned.httpServer instanceof Server)) {
-        owned.httpServer.close();
-        throw new Error('IDENTITY_MOBILE_HTTP_PREVIEW_REQUIRED');
+      const outDir = await buildIdentityMobileDist(directory, profile, build);
+      const removeDist = () => rm(outDir, { recursive: true, force: true });
+      try {
+        const owned = await preview({
+          root: directory,
+          configFile: resolve(directory, 'vite.config.ts'),
+          configLoader: 'native',
+          build: { outDir },
+          preview: { host: '127.0.0.1', port: 0, strictPort: false },
+        });
+        if (!(owned.httpServer instanceof Server)) {
+          owned.httpServer.close();
+          throw new Error('IDENTITY_MOBILE_HTTP_PREVIEW_REQUIRED');
+        }
+        const ownedServer = owned.httpServer;
+        const address = ownedServer.address();
+        if (!address || typeof address === 'string') {
+          await closeServer(ownedServer);
+          throw new Error('IDENTITY_MOBILE_PREVIEW_LISTEN_INVALID');
+        }
+        return {
+          port: address.port,
+          close: () => closeServer(ownedServer).finally(removeDist),
+        };
+      } catch (error) {
+        await removeDist();
+        throw error;
       }
-      const ownedServer = owned.httpServer;
-      const address = ownedServer.address();
-      if (!address || typeof address === 'string') {
-        await closeServer(ownedServer);
-        throw new Error('IDENTITY_MOBILE_PREVIEW_LISTEN_INVALID');
-      }
-      return { port: address.port, close: () => closeServer(ownedServer) };
     },
   });
   const stop = () => {
@@ -340,6 +398,7 @@ export async function runIdentityMobilePreview(): Promise<void> {
       state: 'identity_mobile_preview_ready',
       port: host.port,
       basemapSource: 'identity_next_guarded_route',
+      runtimeProfile: profile ?? 'unset',
     }),
   );
 }

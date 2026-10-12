@@ -1,5 +1,6 @@
 import { createBoundedPlainJsonSchema } from './bounded-plain-json.js';
 import { galleryAlbumV1Schema, galleryCourseLinkV2Schema } from './gallery-navigation-v2.js';
+import { aiExecutionJobExportV1Schema } from './ai-execution-jobs.js';
 import { z } from 'zod';
 import { garminConnectionStateSchema } from './garmin.js';
 import {
@@ -1412,44 +1413,49 @@ export const accountExportV39Schema = z
         code: 'custom',
         message: 'Bounded whole-account V39 artifact required',
       });
-    const d = value.data;
-    function reject() {
-      ctx.addIssue({
-        code: 'custom',
-        message: 'Gallery export requires exact same-snapshot correspondence',
-      });
-    }
-    const albums = new Set(d.galleryAlbums.map((a) => a.id)),
-      deleted = new Set(d.galleryAlbumDeletions.map((a) => a.albumId)),
-      media = new Set(d.galleryMediaItems.map((a) => a['id']));
-    if (
-      albums.size !== d.galleryAlbums.length ||
-      deleted.size !== d.galleryAlbumDeletions.length ||
-      [...albums].some((a) => deleted.has(a)) ||
-      new Set(d.galleryAlbumMemberships.map((a) => a.mediaItemId)).size !==
-        d.galleryAlbumMemberships.length ||
-      new Set(d.galleryCourseAssociations.map((a) => a.mediaItemId)).size !==
-        d.galleryCourseAssociations.length
-    )
-      reject();
-    for (const a of d.galleryAlbumMemberships)
-      if (!albums.has(a.albumId) || !media.has(a.mediaItemId)) reject();
-    for (const a of d.galleryCourseAssociations) {
-      if (!media.has(a.mediaItemId)) reject();
-      const tuple = a.courseLink;
-      const exists =
-        d.courses.some(
-          (row) => row['course_id'] === tuple.courseId && row['status'] === 'available',
-        ) &&
-        d.courseRevisions.some(
-          (row) =>
-            row['course_id'] === tuple.courseId &&
-            row['course_revision'] === tuple.courseRevision &&
-            row['revision_id'] === tuple.revisionId,
-        );
-      if ((a.courseAvailability.state === 'available') !== exists) reject();
-    }
+    validateGalleryCorrespondenceV39(value.data, ctx);
   });
+type GalleryCorrespondenceDataV39 = z.infer<typeof accountExportV38Schema.shape.data> &
+  z.infer<typeof galleryAccountExportDataV39Schema>;
+/** V39 gallery same-snapshot correspondence. Shared unchanged by every successor. */
+function validateGalleryCorrespondenceV39(d: GalleryCorrespondenceDataV39, ctx: z.RefinementCtx) {
+  function reject() {
+    ctx.addIssue({
+      code: 'custom',
+      message: 'Gallery export requires exact same-snapshot correspondence',
+    });
+  }
+  const albums = new Set(d.galleryAlbums.map((a) => a.id)),
+    deleted = new Set(d.galleryAlbumDeletions.map((a) => a.albumId)),
+    media = new Set(d.galleryMediaItems.map((a) => a['id']));
+  if (
+    albums.size !== d.galleryAlbums.length ||
+    deleted.size !== d.galleryAlbumDeletions.length ||
+    [...albums].some((a) => deleted.has(a)) ||
+    new Set(d.galleryAlbumMemberships.map((a) => a.mediaItemId)).size !==
+      d.galleryAlbumMemberships.length ||
+    new Set(d.galleryCourseAssociations.map((a) => a.mediaItemId)).size !==
+      d.galleryCourseAssociations.length
+  )
+    reject();
+  for (const a of d.galleryAlbumMemberships)
+    if (!albums.has(a.albumId) || !media.has(a.mediaItemId)) reject();
+  for (const a of d.galleryCourseAssociations) {
+    if (!media.has(a.mediaItemId)) reject();
+    const tuple = a.courseLink;
+    const exists =
+      d.courses.some(
+        (row) => row['course_id'] === tuple.courseId && row['status'] === 'available',
+      ) &&
+      d.courseRevisions.some(
+        (row) =>
+          row['course_id'] === tuple.courseId &&
+          row['course_revision'] === tuple.courseRevision &&
+          row['revision_id'] === tuple.revisionId,
+      );
+    if ((a.courseAvailability.state === 'available') !== exists) reject();
+  }
+}
 export type AccountExportV39 = z.infer<typeof accountExportV39Schema>;
 export function parseAccountExportV39(raw: unknown): AccountExportV39 {
   wholePlain.parse(raw);
@@ -1466,6 +1472,65 @@ export function parseAccountExportIncludingV39(raw: unknown) {
   if (version && 'value' in version && version.value === 39)
     return accountExportV39Schema.parse(bounded);
   return accountExportSchema.parse(bounded);
+}
+
+/** V40 = V39 + the user's AI execution jobs (ai-execution-jobs export v1, frozen
+ * selection facts and append-only disposition only). Explicit new version via
+ * safeExtend: every inherited V38 data refinement and the V39 gallery
+ * correspondence apply unchanged. No field default and no automatic upgrade. */
+export const aiExecutionJobAccountExportFieldsV40 = {
+  aiExecutionJobs: aiExecutionJobExportV1Schema,
+};
+const wholePlainV40 = createBoundedPlainJsonSchema(
+  8388608,
+  'Bounded whole-account V40 artifact required',
+);
+export const accountExportV40Schema = z
+  .strictObject({
+    ...accountExportV39Schema.shape,
+    schemaVersion: z.literal(40),
+    data: accountExportV39Schema.shape.data.safeExtend(aiExecutionJobAccountExportFieldsV40),
+  })
+  .superRefine((value, ctx) => {
+    if (!wholePlainV40.safeParse(value).success)
+      ctx.addIssue({ code: 'custom', message: 'Bounded whole-account V40 artifact required' });
+    const d = value.data;
+    validateGalleryCorrespondenceV39(d, ctx);
+    // Same-snapshot correspondence: a job row cascades with its run and settings
+    // revision, so every exported job names an exported run (same thread and
+    // evidence) and an exported immutable settings revision.
+    const runs = new Map(d.coachingRuns.map((row) => [row['id'], row]));
+    const revisions = new Set(d.aiSettingsRevisions.map((row) => row['revision']));
+    for (const job of d.aiExecutionJobs.items) {
+      const run = runs.get(job.runId);
+      if (
+        !run ||
+        run['thread_id'] !== job.threadId ||
+        run['evidence_snapshot_id'] !== job.evidenceSnapshotId ||
+        !revisions.has(job.settingsRevision)
+      )
+        ctx.addIssue({
+          code: 'custom',
+          message: 'AI execution job export requires exact same-snapshot correspondence',
+        });
+    }
+  });
+export type AccountExportV40 = z.infer<typeof accountExportV40Schema>;
+export function parseAccountExportV40(raw: unknown): AccountExportV40 {
+  wholePlainV40.parse(raw);
+  return accountExportV40Schema.parse(raw);
+}
+/** Unknown ingress: whole structural guard BEFORE version read; historical
+ * artifacts (including V39) keep their original version and collections. */
+export function parseAccountExportIncludingV40(raw: unknown) {
+  const bounded = wholePlainV40.parse(raw);
+  const version =
+    typeof bounded === 'object' && bounded !== null
+      ? Object.getOwnPropertyDescriptor(bounded, 'schemaVersion')
+      : undefined;
+  if (version && 'value' in version && version.value === 40)
+    return accountExportV40Schema.parse(bounded);
+  return parseAccountExportIncludingV39(bounded);
 }
 
 // Read historical artifacts unchanged; never manufacture absent collections.

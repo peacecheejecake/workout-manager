@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import {
-  parseAccountExportIncludingV39,
+  parseAccountExportIncludingV40,
   operationsStatusSchema,
   eraseAccountSchema,
   eraseAccountResultSchema,
@@ -29,7 +29,7 @@ export function registerOperationsRoutes(
     input(emptyQuery, request.query);
     if (request.body !== undefined) throw new ProductRequestError(400, 'INVALID_REQUEST');
     const athleteId = principal(request).athleteId;
-    const result = parseAccountExportIncludingV39(
+    const result = parseAccountExportIncludingV40(
       await execute(() => repository.exportAccount(athleteId)),
     );
     if (result.athleteId !== athleteId) throw new ProductRequestError(409, 'EXPORT_SCOPE_MISMATCH');

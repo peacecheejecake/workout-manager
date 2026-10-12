@@ -10,6 +10,7 @@ import {
   identityWebOrigin,
   identityWebPort,
 } from './scripts/fixtures/identity-ports';
+import { identityShellRuntimeProfileEnv } from './scripts/fixtures/identity-shell-runtime-profile';
 import { captureWorkerProtocol } from './tests/identity/diagnostics/protocol-capture';
 
 const repositoryDirectory = dirname(fileURLToPath(import.meta.url));
@@ -113,6 +114,11 @@ process.env.IDENTITY_E2E_RUN_ID ??= randomUUID();
  */
 const diagnostics = process.env.IDENTITY_E2E_DIAGNOSTICS === '1';
 /**
+ * The shells mirror the fixture API's runtime profile (scripts/test-identity.mjs selects it per
+ * suite): profile27 enables the gallery UI in both shells; otherwise both variables are unset.
+ */
+const shellProfile = identityShellRuntimeProfileEnv(process.env['IDENTITY_E2E_RACE_MANUAL_PUBLIC']);
+/**
  * Opt-in shell log capture (M2-01k-o T11): with `IDENTITY_E2E_SHELL_LOGS=pipe`, the two
  * shells' own stdout and stderr are printed into the run's output (prefixed `[WebServer]`),
  * so a run can be audited for what the shells wrote while a link was read through them —
@@ -176,7 +182,7 @@ export default defineConfig({
       command: `pnpm --filter @workout/web exec next start --hostname 127.0.0.1 --port ${identityWebPort}`,
       url: identityWebOrigin,
       reuseExistingServer: false,
-      env: { ...basemapEnv, API_ORIGIN: identityApiOrigin },
+      env: { ...basemapEnv, ...shellProfile.web, API_ORIGIN: identityApiOrigin },
       ...shellLogs,
     },
     {
@@ -185,7 +191,10 @@ export default defineConfig({
       reuseExistingServer: false,
       // Identity-only bridge uses the fixed Next guarded basemap route;
       // the internal Vite preview keeps its public basemap deny policy.
+      // The preview builds its own run-owned dist so the baked profile always matches.
+      timeout: 120000,
       env: {
+        ...shellProfile.mobile,
         API_ORIGIN: identityApiOrigin,
         ...(Object.keys(basemapEnv).length > 0 ? { BASEMAP_ORIGIN: identityWebOrigin } : {}),
       },
