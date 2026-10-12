@@ -144,3 +144,11 @@ source-build proof를 R9(`1986332e`)·R10(`e9f73e27`, asset `d99a853b…`)으로
 - 실행 조건 문제: r19는 시험 종료(terminal 0) 뒤 source 전후 비교에서 `ENOENT`, r20은 시작 시 GEO seed `ENOENT`로 중단됐다. 원인은 macOS의 `/private/tmp` 정기 정리가 2026-10-09 pinned 입력 5개를 지운 것이었다. finite reporter·budget projector·lifecycle wrapper는 보존 사본에서 pin SHA 일치로 복원했고 geo snapshot `.py`는 보존 사본으로 복원했다(SHA pin 없음). GEO seed는 사본이 없어 r18 identity list의 현재 `.geo-build` snapshot을 새 SHA로 pin한 runner successor를 썼다.
 
 `1cb7bd8d` 실제 gate: static7 모두 exit0, unit 617파일 9977 passed/5 skipped. canonical r21(freeze `bde7821a…`) upgrade 1/1, normal 310 passed/3 skipped, **3164 passed/14 skipped/0 failed**, exit0, post 정리 정상. identity×2(seed `e5c9fce5…`) 두 회차 accepted: general 320/11 skip, app-consent 4, ai-settings-lifecycle 1, current-manual 22, unexpected/flaky 0, owned container 제거. 다음은 5건 수정의 집중 재검토다.
+
+### 2026-10-12 집중 재검토 · M202-P1-06 수정 · gate
+
+`0ca4dcb9..74afecc8` 27파일 집중 재검토는 9건 모두 FIXED, 새 **M202-P1-06**(재개 preview가 날짜와 무관하게 시각 미정 occurrence를 모두 유지해 지난 미수행 루틴이 새 version에 다시 저장·실행 가능)으로 REQUEST_CHANGES였다(`/private/tmp/wm-m2-02-phase-review-r6-focused-20261012/review-output.md`). 수정 `b6fa848b`: 규칙과 고정 source plan으로 각 anchor의 현지 날짜를 구해, 시각 미정 occurrence는 일정 timezone의 오늘 이상일 때만 유지한다(시각을 만들어 비교하지 않음). 과거·미래·오늘 경계(UTC+14, UTC−11) 실DB 시험을 추가했고 옛 동작으로 되돌리면 새 시험 3건이 실패한다. `period_days`·`session_links`의 시각 미정 경로는 통합 시험이 없다.
+
+`b6fa848b` gate: static7 exit0, unit 617파일 9977 passed/5 skipped. canonical r22는 `object-scope-purge.integration.test.ts:1281` 동시성 stress 1건 실패(3166 passed), 같은 파일 단독 4회 24/24, 원 오류 본문은 runner가 보존하지 않아 원인 미확정의 간헐 실패로 기록한다. canonical r23(같은 freeze `79b6ca59…`) **3167 passed/14 skipped/0 failed**, exit0. identity×2 두 회차 accepted(current-manual 22).
+
+병렬 설계 산출(읽기 전용, 구현 전): gallery profile27 계획 `/private/tmp/wm-gallery-profile27-plan-20261013/plan.md`(사용자 결정 2026-10-12: U1 rendition 개인 내보내기 제외, U2 앨범·코스 연결·receipt 복원 보장, U3 항상 켜짐·`WORKOUT_GALLERY_*` 제거, U4 복원 후 재생성, U5 145는 gallery 복원·삭제 억제이고 자막은 147+ profile28, U6 profile26 은퇴). EXT-RESTOREa admission 제안 v2 `/private/tmp/wm-ext-restorea-ddl-v2-20261013/`(profile27 extension 배치, 번호 미배정, 사용자 결정 D1~D7 대기).
