@@ -47,6 +47,7 @@ import {
   type LongTrackPosition as Position,
 } from './fixtures/long-track.ts';
 import { fixtureOidc, startFixtureOidc } from './fixtures/oidc-provider.ts';
+import { coursePerformanceVerdict } from './probe-verdict.ts';
 import {
   PUBLIC_ORIGIN,
   Session,
@@ -527,6 +528,8 @@ async function main() {
     await rm(directory, { recursive: true, force: true });
   }
 
+  // M202-P2-04: an HTTP failure in any step fails the run, after the report is written.
+  const verdict = coursePerformanceVerdict(steps);
   const report = {
     schemaVersion: 1,
     node: 'M2-01k',
@@ -555,14 +558,13 @@ async function main() {
      */
     peakRssMiB: Math.round(process.resourceUsage().maxRSS / 1024),
     steps,
-    failures: steps
-      .filter((entry) => entry.status !== null && entry.status >= 400)
-      .map((entry) => entry.step),
+    failures: verdict.failures,
   };
   await mkdir(dirname(reportPath), { recursive: true });
   await writeFile(`${reportPath}.tmp`, `${JSON.stringify(report, null, 2)}\n`);
   await rename(`${reportPath}.tmp`, reportPath);
   console.log(JSON.stringify({ failures: report.failures }));
+  process.exitCode = verdict.exitCode;
 }
 
 await main();

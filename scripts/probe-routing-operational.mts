@@ -73,6 +73,15 @@ import {
 } from './build-routing-graph.mjs';
 import { fixtureOidc, startFixtureOidc } from './fixtures/oidc-provider.ts';
 import { verifyAllowedSourceFile } from './geo/sources.mjs';
+import {
+  formatIterativeEdit,
+  iterativeEditChecks,
+  iterativeEditSucceeded,
+  routingOperationalVerdict,
+  runIterativeEdits,
+  type ProbeCheck,
+  type ProbeFinding,
+} from './probe-verdict.ts';
 
 const repositoryRoot = fileURLToPath(new URL('..', import.meta.url));
 const workRoot = join(repositoryRoot, '.geo-build');
@@ -100,12 +109,13 @@ const KRC01: { waypoints: [Position, Position]; distance: [number, number] } = {
 };
 const VIA: Position = [126.9786, 37.5712];
 
-const checks: { id: string; passed: boolean; detail: string }[] = [];
+const checks: ProbeCheck[] = [];
 /**
- * Product behaviour observed against a requirement it does not meet. Recorded, not
- * asserted: the probe checks operations, and a finding is reported as a finding.
+ * Product behaviour observed against a requirement it does not meet, reported as a finding
+ * beside the checks. A finding still fails the run (M202-P1-05): `result` is not
+ * `all_checks_passed` and the exit code is nonzero while any finding is recorded.
  */
-const findings: { id: string; requirement: string; expected: string; observed: string }[] = [];
+const findings: ProbeFinding[] = [];
 function check(id: string, passed: boolean, detail: string) {
   checks.push({ id, passed, detail });
   console.log(`${passed ? 'PASS' : 'FAIL'} ${id}: ${detail}`);
@@ -803,7 +813,6 @@ async function main() {
     if (secondCourse.outcome !== 'imported' || secondCourse.course.status !== 'available')
       throw new Error('SECOND_IMPORT_FAILED');
     const iterativeId = secondCourse.course.course.courseId;
-    const iterative: string[] = [];
     // Twice the per-course bound and then some (M2-01p): before the fix the sixth was refused.
     // The sections above spend Alice's tenant admission window; start from an empty one so a
     // refusal here can only be the per-course proposal bound, not the tenant rate bound.
@@ -812,8 +821,7 @@ async function main() {
       `admission history before iterative editing: ${JSON.stringify(admissionBeforeEdits)}`,
     );
     const edits = 12;
-    for (let edit = 1; edit <= edits; edit += 1) {
-      const started = performance.now();
+    const iterativeEntries = await runIterativeEdits(edits, async (edit) => {
       const response = await (current as Api).inject({
         method: 'POST',
         url: `/bff/v1/courses/${iterativeId}/route-proposals`,
@@ -829,15 +837,22 @@ async function main() {
           ]),
         },
       });
-      const body = response.json() as { outcome?: string; error?: { code?: string } };
-      iterative.push(
-        `${edit}:${response.statusCode}:${body.outcome ?? body.error?.code ?? '?'}:${Math.round(performance.now() - started)}ms`,
-      );
-    }
+      let body: unknown = null;
+      try {
+        body = response.json();
+      } catch {
+        body = null;
+      }
+      return { statusCode: response.statusCode, body };
+    });
+    const iterative = iterativeEntries.map(formatIterativeEdit);
     console.log(
       `iterative editing: ${iterative.join(' ')}; siblings held after a pick: ${siblingsHeld}`,
     );
-    if (!iterative.every((entry) => entry.split(':')[1] === '200'))
+    // M202-P1-05: each of the edits is a check of its own, and a failed one is also a finding.
+    for (const entry of iterativeEditChecks(iterativeEntries))
+      check(entry.id, entry.passed, entry.detail);
+    if (!iterativeEntries.every(iterativeEditSucceeded))
       findings.push({
         id: 'iterative-recompute-refused-by-proposal-quota',
         requirement:
@@ -905,7 +920,8 @@ async function main() {
     await rm(directory, { recursive: true, force: true });
   }
 
-  const failed = checks.filter((entry) => !entry.passed);
+  // M202-P1-05: a recorded finding fails the run as a failed check does.
+  const verdict = routingOperationalVerdict(checks, findings);
   const report = {
     schemaVersion: 1,
     node: 'M2-01k',
@@ -942,7 +958,7 @@ async function main() {
     timingsMilliseconds: timings,
     checks,
     findings,
-    result: failed.length === 0 ? 'all_checks_passed' : 'checks_failed',
+    result: verdict.result,
   };
   const reportPath = probeReportPath(process.argv.slice(2), 'routing-operational-acceptance.json');
   await mkdir(dirname(reportPath), { recursive: true });
@@ -952,12 +968,12 @@ async function main() {
   console.log(
     JSON.stringify({
       result: report.result,
-      failed: failed.map((entry) => entry.id),
-      findings: findings.map((entry) => entry.id),
+      failed: verdict.failed,
+      findings: verdict.findings,
       timings,
     }),
   );
-  if (failed.length > 0) process.exitCode = 1;
+  process.exitCode = verdict.exitCode;
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) await main();
