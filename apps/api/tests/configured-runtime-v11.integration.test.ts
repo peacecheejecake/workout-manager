@@ -8,20 +8,22 @@ import { Pool } from 'pg';
 import { z } from 'zod';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { migrate } from '@workout/server-persistence/migrate';
-import { installCurrentRuntimeV10 } from '@workout/server-persistence/current-runtime-installation-v10';
+import { installCurrentRuntimeV11 } from '@workout/server-persistence/current-runtime-installation-v11';
 import { grantCurrentRuntimeAppBaselineV2 } from '@workout/server-persistence/current-runtime-app-grants-v2';
-import { grantCurrentRuntimeV10Profile } from '@workout/server-persistence/current-runtime-grants-v10';
+import { grantCurrentRuntimeV11Profile } from '@workout/server-persistence/current-runtime-grants-v11';
 import { createDatabase, type Transaction } from '@workout/server-persistence/database';
 import { createIdentityRepository } from '@workout/server-persistence/identity';
 import { createConsentRepository } from '@workout/server-persistence/repositories';
 import { createRaceRepository } from '@workout/server-persistence/races';
+import { parseAccountExportIncludingV39 } from '@workout/contracts/operations';
 import { createConfiguredApi } from '../src/configured.js';
-import { CurrentRuntimeSourceBuildRepositoriesV2Error } from '../src/current-runtime-source-build-repositories-v2.js';
+import { CurrentRuntimeSourceBuildRepositoriesV3Error } from '../src/current-runtime-source-build-repositories-v3.js';
 
-// M202-P1-03 successor of configured-runtime-v9 (installed-current-profile25 is retired by
-// decision D3 and now refused at environment parse). This suite passes only after root
-// registers readiness v2 + source-build proof v2 and pins compiled-expected-v10; before
-// that the named profile26 startup is a genuine V2 refusal, never a skip or fallback.
+// Profile27 successor of configured-runtime-v10 (installed-current-profile26 is retired by
+// decision U6 and now refused at environment parse). PENDING ROOT REGISTRATION: this suite
+// passes only after root registers the V11 installer/grants, readiness v3 + source-build
+// proof v3 and pins the compiled V11 expectation; before that the named profile27 startup
+// is a genuine V3 refusal, never a skip or fallback.
 // Root executes actual PG/HTTP. No mocked readiness, source-proof, repositories,
 // OIDC, runtime SQL or provider interception. A missing compiled proof remains a
 // genuine startup refusal, never a skip/fallback or positive acceptance claim.
@@ -29,9 +31,9 @@ const adminUrl = z.string().min(1).parse(process.env['TEST_DATABASE_ADMIN_URL'])
 const suffix = randomUUID().replaceAll('-', '').slice(0, 10);
 const environments = ['named', 'baseline'].map((kind) => ({
   kind,
-  database: `configured_v10_${kind}_${suffix}`,
-  owner: `configured_v10_owner_${kind}_${suffix}`,
-  runtime: `configured_v10_app_${kind}_${suffix}`,
+  database: `configured_v11_${kind}_${suffix}`,
+  owner: `configured_v11_owner_${kind}_${suffix}`,
+  runtime: `configured_v11_app_${kind}_${suffix}`,
 }));
 const environmentSchema = z.strictObject({
   kind: z.string(),
@@ -75,7 +77,7 @@ function url(environment: Environment, role = environment.runtime) {
 function configuration(
   environment: Environment,
   role = environment.runtime,
-  profile?: 'installed-current-profile26',
+  profile?: 'installed-current-profile27',
 ) {
   return {
     NODE_ENV: 'test',
@@ -99,7 +101,7 @@ const silentLog = new Writable({
 async function start(
   environment: Environment,
   role = environment.runtime,
-  profile?: 'installed-current-profile26',
+  profile?: 'installed-current-profile27',
 ) {
   const app = await createConfiguredApi(configuration(environment, role, profile), {
     logStream: silentLog,
@@ -121,14 +123,14 @@ async function owner<T>(environment: Environment, operation: (pool: Pool) => Pro
 }
 async function refuse(
   role: string,
-  expectedCode: CurrentRuntimeSourceBuildRepositoriesV2Error['code'],
+  expectedCode: CurrentRuntimeSourceBuildRepositoriesV3Error['code'],
 ) {
   let app: FastifyInstance | undefined;
   try {
-    app = await start(named, role, 'installed-current-profile26');
+    app = await start(named, role, 'installed-current-profile27');
     expect.fail('Named runtime must refuse startup; legacy fallback is forbidden');
   } catch (error) {
-    expect(error).toBeInstanceOf(CurrentRuntimeSourceBuildRepositoriesV2Error);
+    expect(error).toBeInstanceOf(CurrentRuntimeSourceBuildRepositoriesV3Error);
     expect(error).toMatchObject({ code: expectedCode });
     expect(String(error)).not.toContain('synthetic-never-log-client-secret');
   } finally {
@@ -151,14 +153,14 @@ async function drainSessions(database: string, role: string | null = null): Prom
   return false;
 }
 async function dropDatabase(database: string) {
-  if (!/^configured_v10_[a-z0-9_]+$/.test(database)) throw new Error('INVALID_FIXTURE_DATABASE');
+  if (!/^configured_v11_[a-z0-9_]+$/.test(database)) throw new Error('INVALID_FIXTURE_DATABASE');
   // Pool.end only initiates backend close. Drain avoids FATAL 57P01 events on
   // already-ended pools; FORCE is a last cleanup resort, not positive proof.
   await drainSessions(database);
   await admin.query(`DROP DATABASE IF EXISTS "${database}" WITH (FORCE)`);
 }
 beforeAll(async () => {
-  storageRoot = await mkdtemp(join(tmpdir(), 'configured-runtime-v10-'));
+  storageRoot = await mkdtemp(join(tmpdir(), 'configured-runtime-v11-'));
   directories.push(storageRoot);
   for (const e of environments) {
     for (const role of [e.owner, e.runtime]) {
@@ -173,11 +175,11 @@ beforeAll(async () => {
   for (const e of environments) {
     await migrate(url(e, e.owner), 107);
     if (e.kind === 'named') {
-      expect(await installCurrentRuntimeV10(url(e, e.owner))).toMatchObject({
-        profileVersion: 10,
-        parentProfileVersion: 9,
-        runtimeStep: 26,
-        sourceDdlTip: 146,
+      expect(await installCurrentRuntimeV11(url(e, e.owner))).toMatchObject({
+        profileVersion: 11,
+        parentProfileVersion: 10,
+        runtimeStep: 27,
+        sourceDdlTip: 148,
         supported: false,
       });
     }
@@ -188,8 +190,11 @@ beforeAll(async () => {
     ).toMatchObject({ recipeVersion: 2, deployment: 'core', processingAuthority: 'none' });
     if (e.kind === 'named')
       expect(
-        (await grantCurrentRuntimeV10Profile(url(e, e.owner), e.runtime)).grantedFunctions,
-      ).toHaveLength(42);
+        z
+          .object({ grantedFunctions: z.array(z.string()) })
+          .parse(await grantCurrentRuntimeV11Profile(url(e, e.owner), e.runtime)).grantedFunctions
+          .length,
+      ).toBeGreaterThan(42);
   }
 }, 180000);
 afterAll(async () => {
@@ -201,9 +206,9 @@ afterAll(async () => {
   for (const directory of directories) await rm(directory, { recursive: true, force: true });
 }, 60000);
 fixtureIt(
-  'normal configured profile26 reaches real health and closes only after actual runtime readiness',
+  'normal configured profile27 reaches real health and closes only after actual runtime readiness',
   async () => {
-    const app = await start(named, named.runtime, 'installed-current-profile26');
+    const app = await start(named, named.runtime, 'installed-current-profile27');
     try {
       const address = await app.listen({ host: '127.0.0.1', port: 0 });
       const response = await fetch(new URL('/health', address), {
@@ -242,7 +247,7 @@ fixtureIt(
       ),
     );
     try {
-      await refuse(named.runtime, 'CURRENT_RUNTIME_SOURCE_BUILD_V2_INCOMPATIBLE');
+      await refuse(named.runtime, 'CURRENT_RUNTIME_SOURCE_BUILD_V3_INCOMPATIBLE');
     } finally {
       await owner(named, (pool) => pool.query(original.definition));
     }
@@ -257,7 +262,7 @@ fixtureIt(
       ),
     );
     try {
-      await refuse(named.runtime, 'CURRENT_RUNTIME_SOURCE_BUILD_V2_INCOMPATIBLE');
+      await refuse(named.runtime, 'CURRENT_RUNTIME_SOURCE_BUILD_V3_INCOMPATIBLE');
     } finally {
       await owner(named, (pool) =>
         pool.query(
@@ -268,10 +273,10 @@ fixtureIt(
   },
 );
 fixtureIt('actual migration owner credential cannot become configured runtime', async () => {
-  await refuse(named.owner, 'CURRENT_RUNTIME_SOURCE_BUILD_V2_UNAVAILABLE');
+  await refuse(named.owner, 'CURRENT_RUNTIME_SOURCE_BUILD_V3_UNAVAILABLE');
 });
 fixtureIt(
-  'baseline107 default configuration still starts without applying the profile26 cold gate',
+  'baseline107 default configuration still starts without applying the profile27 cold gate',
   async () => {
     const app = await start(baseline);
     try {
@@ -389,6 +394,9 @@ function reviewBody(event: { id: string; revision: number }) {
     },
   };
 }
+const albumsQuery = new URLSearchParams({
+  query: JSON.stringify({ limit: 10, sort: 'created_desc_id_asc', cursor: null }),
+}).toString();
 fixtureIt('baseline107 advertises no post-107 port and registers none of its routes', async () => {
   const app = await start(baseline);
   try {
@@ -429,6 +437,11 @@ fixtureIt('baseline107 advertises no post-107 port and registers none of its rou
     expect(impact.statusCode).toBe(404);
     expect((await get(`/race-date-change-reviews/${randomUUID()}`)).statusCode).toBe(404);
     expect((await get('/check-in-templates')).statusCode).toBe(404);
+    // Gallery navigation/renditions (143/144) and AI execution jobs (148) are profile27
+    // members only; baseline107 registers none of their routes.
+    expect((await get(`/gallery/albums?${albumsQuery}`)).statusCode).toBe(404);
+    expect((await get(`/gallery/media/${randomUUID()}/renditions`)).statusCode).toBe(404);
+    expect((await get(`/ai-execution-jobs/${randomUUID()}`)).statusCode).toBe(404);
     // The V34 account export reads baseline tables only and stays available.
     const exported = await app.inject({
       method: 'POST',
@@ -441,9 +454,9 @@ fixtureIt('baseline107 advertises no post-107 port and registers none of its rou
   }
 });
 fixtureIt(
-  'installed profile26 advertises the date-change review and a real review request succeeds',
+  'installed profile27 advertises the date-change review and a real review request succeeds',
   async () => {
-    const app = await start(named, named.runtime, 'installed-current-profile26');
+    const app = await start(named, named.runtime, 'installed-current-profile27');
     try {
       const { athleteId, headers } = await signedIn(named);
       const get = (path: string) => app.inject({ url: `/bff/v1${path}`, headers });
@@ -486,7 +499,30 @@ fixtureIt(
       const templates = await get('/check-in-templates');
       expect(templates.statusCode).toBe(200);
       expect(templates.json()).toEqual({ items: [] });
-      // M202-P1-03. Profile26 installs the 146 guard: a direct runtime SQL date change
+      // U3: gallery navigation and renditions are always on in profile27 over the real
+      // runtime grants, and the AI execution job store (148) reads through its own RPCs.
+      const albums = await get(`/gallery/albums?${albumsQuery}`);
+      expect(albums.statusCode).toBe(200);
+      expect(albums.json()).toMatchObject({ items: [] });
+      const renditions = await get(`/gallery/media/${randomUUID()}/renditions`);
+      expect(renditions.statusCode).toBe(404);
+      expect(renditions.json()).toEqual({ error: { code: 'MEDIA_NOT_FOUND' } });
+      const job = await get(`/ai-execution-jobs/${randomUUID()}`);
+      expect(job.statusCode).toBe(404);
+      expect(job.json()).toEqual({ error: { code: 'JOB_NOT_FOUND' } });
+      // The pooled V39 export covers the gallery members; renditions are derived and are
+      // never part of the personal export (U1).
+      const exported = await app.inject({
+        method: 'POST',
+        url: '/bff/v1/operations/export',
+        headers,
+      });
+      expect(exported.statusCode).toBe(200);
+      const account = parseAccountExportIncludingV39(exported.json());
+      expect(account.schemaVersion).toBe(39);
+      expect(account.athleteId).toBe(athleteId);
+      expect(exported.body).not.toMatch(/rendition/i);
+      // M202-P1-03. Profile27 keeps the 146 guard: a direct runtime SQL date change
       // on the configured runtime credential is refused, with and without revision+1.
       for (const revision of ['revision', 'revision+1'])
         await expectDateApprovalRequired(

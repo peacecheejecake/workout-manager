@@ -9,8 +9,8 @@ import {
 } from '@workout/contracts/nutrition-race-plan-v4';
 import { createDatabase, type Database } from '@workout/server-persistence/database';
 import { migrate } from '@workout/server-persistence/migrate';
-import { installCurrentRuntimeV10 } from '@workout/server-persistence/current-runtime-installation-v10';
-import { grantCurrentRuntimeV10Profile } from '@workout/server-persistence/current-runtime-grants-v10';
+import { installCurrentRuntimeV11 } from '@workout/server-persistence/current-runtime-installation-v11';
+import { grantCurrentRuntimeV11Profile } from '@workout/server-persistence/current-runtime-grants-v11';
 import { grantCurrentRuntimeAppBaselineV2 } from '@workout/server-persistence/current-runtime-app-grants-v2';
 import { createConsentRepository } from '@workout/server-persistence/repositories';
 import {
@@ -21,10 +21,10 @@ import { createRaceRepository } from '@workout/server-persistence/races';
 import { createRestoreGenerationRepository } from '@workout/server-persistence/restore-generation';
 import { createApi } from '../src/app.js';
 import {
-  currentRuntimeSourceBuildReadinessV2Schema,
-  type CurrentRuntimeSourceBuildReadinessV2,
-} from '@workout/server-persistence/current-runtime-source-build-readiness-v2';
-import { createRegisteredCurrentRuntimeRepositoriesV2 } from '../src/current-runtime-repositories-registration-v2.js';
+  currentRuntimeSourceBuildReadinessV3Schema,
+  type CurrentRuntimeSourceBuildReadinessV3,
+} from '@workout/server-persistence/current-runtime-source-build-readiness-v3';
+import { createRegisteredCurrentRuntimeRepositoriesV3 } from '../src/current-runtime-repositories-registration-v3.js';
 import {
   nutritionPlanVersionSchema,
   intakeEntryRecordSchema,
@@ -35,7 +35,9 @@ import { nutritionPlanPublicApprovalV4ResultSchema } from '@workout/contracts/nu
 import { Writable } from 'node:stream';
 import { writeFile } from 'node:fs/promises';
 
-// Current V10 (profile26) installation and configured core grants, matching the identity harness.
+// Current V11 (profile27) installation and configured core grants, matching the identity harness.
+// PENDING ROOT REGISTRATION: passes only after root registers the V11 installer/grants and
+// readiness/source-build proof v3.
 // Only authentication is synthetic. Actual HTTP routes, CSRF and the Root-registered
 // source-build readiness and named repositories run unchanged.
 // This is not evidence of OIDC or shell-proxy behavior.
@@ -141,9 +143,9 @@ beforeAll(
       await admin.query(`CREATE DATABASE "${databaseName}" OWNER "${ownerRole}"`);
       createdDatabase = true;
       await migrate(connection(ownerRole), 107);
-      await installCurrentRuntimeV10(connection(ownerRole));
+      await installCurrentRuntimeV11(connection(ownerRole));
       await grantCurrentRuntimeAppBaselineV2(connection(ownerRole), runtimeRole, 'core');
-      await grantCurrentRuntimeV10Profile(connection(ownerRole), runtimeRole);
+      await grantCurrentRuntimeV11Profile(connection(ownerRole), runtimeRole);
       database = createDatabase({ connectionString: connection(runtimeRole) });
     }),
   180000,
@@ -169,8 +171,8 @@ afterAll(async () => {
 
 const facts: {
   stage: string;
-  readinessState: CurrentRuntimeSourceBuildReadinessV2['state'] | null;
-  readinessReason: CurrentRuntimeSourceBuildReadinessV2['reason'] | null;
+  readinessState: CurrentRuntimeSourceBuildReadinessV3['state'] | null;
+  readinessReason: CurrentRuntimeSourceBuildReadinessV3['reason'] | null;
   status: number | null;
   publicDTOvalid: boolean | null;
   headCommitted: boolean | null;
@@ -228,7 +230,7 @@ it('approves the long-ID zero/unknown meal through actual current V9 HTTP and pe
         snapshotCatalog(async (transaction) => {
           const result = await operation(transaction);
           try {
-            const parsed = currentRuntimeSourceBuildReadinessV2Schema.safeParse(result);
+            const parsed = currentRuntimeSourceBuildReadinessV3Schema.safeParse(result);
             if (parsed.success) {
               facts.readinessState = parsed.data.state;
               facts.readinessReason = parsed.data.reason;
@@ -239,7 +241,7 @@ it('approves the long-ID zero/unknown meal through actual current V9 HTTP and pe
           return result;
         });
     }
-    const ports = await createRegisteredCurrentRuntimeRepositoriesV2(observedDatabase);
+    const ports = await createRegisteredCurrentRuntimeRepositoriesV3(observedDatabase);
     const origin = 'http://127.0.0.1:4301';
     const cookie = 'session=synthetic-nutrition-current-v9';
     const csrfToken = 's'.repeat(43);

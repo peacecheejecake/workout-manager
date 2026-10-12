@@ -107,6 +107,10 @@ import {
   type GalleryRenditionServices,
 } from './gallery-rendition-routes.js';
 import {
+  registerAiExecutionJobRoutes,
+  type AiExecutionJobService,
+} from './ai-execution-job-routes.js';
+import {
   registerActivityTrackRoutes,
   type ActivityTrackServices,
 } from './activity-track-routes.js';
@@ -182,6 +186,8 @@ export interface ProductRepositories {
   galleryNavigation?: GalleryNavigationServices;
   /** Derived rendition state and ready bytes (S17). Absent unless the SQL144 extension is installed. */
   galleryRenditions?: GalleryRenditionServices;
+  /** Immutable AI execution job selection (M2-05a, SQL148). Absent unless profile27 is installed. */
+  aiExecutionJobs?: AiExecutionJobService;
   /** Private recorded-track storage. Absent until object storage and a parser are wired. */
   activityTracks?: ActivityTrackServices;
   /** Internal pedestrian routing. Absent until an engine endpoint is configured. */
@@ -344,6 +350,8 @@ export function registerProductRoutes(
     registerGalleryNavigationRoutes(routes, repositories.galleryNavigation, principal);
   if (repositories.galleryRenditions)
     registerGalleryRenditionRoutes(routes, repositories.galleryRenditions, principal);
+  if (repositories.aiExecutionJobs)
+    registerAiExecutionJobRoutes(routes, repositories.aiExecutionJobs, principal);
   if (repositories.activityTracks)
     registerActivityTrackRoutes(routes, repositories.activityTracks, principal);
   if (repositories.walkingRoutes)

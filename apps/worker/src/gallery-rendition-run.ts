@@ -27,7 +27,10 @@ const JOB_DEADLINE_MS = 30000;
  */
 export interface GalleryRenditionRunEvent {
   readonly event: 'gallery_rendition_run_finished';
-  readonly result: 'completed' | 'unavailable' | 'error';
+  /** `restore_closed`: a restore processing window is not admitted (SQL147). Every worker
+   * RPC refuses then, so the run stops without leasing further and is a skip, not an error;
+   * a later invocation resumes once the window is admitted. */
+  readonly result: 'completed' | 'unavailable' | 'restore_closed' | 'error';
   readonly jobs: Readonly<Record<string, number>>;
   readonly sweep: 'no_sweep' | 'complete' | 'incomplete' | 'not_run';
   readonly runId: string;
@@ -106,6 +109,49 @@ function createCodec(config: GalleryRenditionWorkerConfig) {
   });
 }
 
+/** The worker RPCs' fixed refusal while restore processing is not admitted (SQL144/147). */
+export function isRestoreProcessingClosed(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    error.message === 'RESTORE_PROCESSING_CLOSED' &&
+    (!('code' in error) || error.code === 'P0001')
+  );
+}
+
+class RestoreProcessingClosedSignal extends Error {
+  constructor() {
+    super('RESTORE_PROCESSING_CLOSED');
+  }
+}
+
+/** Observes the closed-window refusal on every store RPC. The runtime turns a failed claim
+ * into a counted `io_failed` job; the run must not, so the refusal is remembered here. */
+function observeRestoreClosed(
+  store: GalleryRenditionRunConnection['store'],
+  onClosed: () => void,
+): GalleryRenditionRunConnection['store'] {
+  const guard =
+    <A extends unknown[], R>(call: (...args: A) => Promise<R>) =>
+    async (...args: A): Promise<R> => {
+      try {
+        return await call(...args);
+      } catch (error) {
+        if (isRestoreProcessingClosed(error)) {
+          onClosed();
+          throw new RestoreProcessingClosedSignal();
+        }
+        throw error;
+      }
+    };
+  return {
+    claim: guard(store.claim.bind(store)),
+    settle: guard(store.settle.bind(store)),
+    release: guard(store.release.bind(store)),
+    claimSweep: guard(store.claimSweep.bind(store)),
+    finishSweep: guard(store.finishSweep.bind(store)),
+  };
+}
+
 const defaults: GalleryRenditionRunDependencies = {
   connect,
   createStorage: createLocalFilesystemObjectStorage,
@@ -135,12 +181,15 @@ export async function runGalleryRenditionWorker(
     return event;
   };
   const connection = d.connect(config.connectionString);
+  let restoreClosed = false;
   try {
     // A symlinked or missing binary would only burn leased attempts as codec_unavailable.
     if (!(await d.checkBinaries(config)) || (await connection.probe()) !== 'available')
       return emit('unavailable');
     const runtime = createGalleryRenditionRuntime({
-      store: connection.store,
+      store: observeRestoreClosed(connection.store, () => {
+        restoreClosed = true;
+      }),
       storage: await d.createStorage(config.storageRoot),
       codec: d.createCodec(config),
       clock: {
@@ -157,6 +206,9 @@ export async function runGalleryRenditionWorker(
     for (let index = 0; index < GALLERY_RENDITION_JOBS_PER_RUN; index++) {
       if (d.shutdownSignal?.aborted) break;
       const result = await runtime.runJob();
+      // The job that met the closed window is not a job outcome: its lease (if any) simply
+      // expires, and no further claim or sweep is attempted in this run.
+      if (restoreClosed) return emit('restore_closed');
       if (result.state === 'no_job') break;
       // Finite vocabulary only: state, reason and the codec's fixed code.
       const key =
@@ -173,6 +225,7 @@ export async function runGalleryRenditionWorker(
     }
     return emit('completed');
   } catch (error) {
+    if (restoreClosed) return emit('restore_closed');
     emit('error');
     throw error;
   } finally {

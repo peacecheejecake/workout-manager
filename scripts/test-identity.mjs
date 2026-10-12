@@ -35,7 +35,7 @@ async function run(suite) {
     delete env.IDENTITY_E2E_CHECK_IN_TEMPLATES;
     delete env.IDENTITY_E2E_RACE_MANUAL_PUBLIC;
     if (suite === 'current-manual')
-      env.IDENTITY_E2E_RACE_MANUAL_PUBLIC = 'installed-current-profile26';
+      env.IDENTITY_E2E_RACE_MANUAL_PUBLIC = 'installed-current-profile27';
     env.IDENTITY_E2E_SUITE = suite;
     env.IDENTITY_E2E_AI_SETTINGS_LIFECYCLE = suite === 'ai-settings-lifecycle' ? 'on' : 'off';
     env.IDENTITY_E2E_AI_SETTINGS_LIFECYCLE_SPEC_ONLY =

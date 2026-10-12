@@ -6,6 +6,7 @@ import {
 } from '../src/config.js';
 import {
   GALLERY_RENDITION_JOBS_PER_RUN,
+  isRestoreProcessingClosed,
   runGalleryRenditionWorker,
   type GalleryRenditionRunConnection,
   type GalleryRenditionRunEvent,
@@ -231,5 +232,119 @@ describe('bounded gallery rendition run', () => {
     expect(event).toMatchObject({ result: 'unavailable', jobs: {}, sweep: 'not_run' });
     expect(connection.store.claim).not.toHaveBeenCalled();
     expect(end).toHaveBeenCalledTimes(1);
+  });
+});
+
+// The SQL144 worker RPCs raise this exact message (default SQLSTATE P0001) while restore
+// processing is not admitted (SQL147). It carries no tenant, key or SQL text of its own.
+function restoreClosedError() {
+  return Object.assign(new Error('RESTORE_PROCESSING_CLOSED'), { code: 'P0001' });
+}
+
+describe('gallery rendition run during a closed restore window', () => {
+  it('recognises only the exact closed-window refusal', () => {
+    expect(isRestoreProcessingClosed(restoreClosedError())).toBe(true);
+    expect(isRestoreProcessingClosed(new Error('RESTORE_PROCESSING_CLOSED'))).toBe(true);
+    expect(
+      isRestoreProcessingClosed(
+        Object.assign(new Error('RESTORE_PROCESSING_CLOSED'), { code: '42501' }),
+      ),
+    ).toBe(false);
+    expect(isRestoreProcessingClosed(new Error('RESTORE_PROCESSING_CLOSED: detail'))).toBe(false);
+    expect(isRestoreProcessingClosed({ message: 'RESTORE_PROCESSING_CLOSED' })).toBe(false);
+    expect(isRestoreProcessingClosed('RESTORE_PROCESSING_CLOSED')).toBe(false);
+  });
+
+  it('reports a skip, not an error, when the first claim meets the closed window', async () => {
+    const { connection, end } = fakeConnection('available', {
+      claim: vi.fn(async () => {
+        throw restoreClosedError();
+      }),
+    });
+    const events: GalleryRenditionRunEvent[] = [];
+    const event = await runGalleryRenditionWorker(config, {
+      connect: () => connection,
+      checkBinaries: async () => true,
+      createStorage: async () => ({}) as never,
+      createCodec: () => ({}) as never,
+      logger: (value) => events.push(value),
+    });
+    expect(event).toEqual({
+      event: 'gallery_rendition_run_finished',
+      result: 'restore_closed',
+      jobs: {},
+      sweep: 'not_run',
+      runId: expect.stringMatching(/^[0-9a-f-]{36}$/),
+      version: 'synthetic-release',
+    });
+    expect(events).toEqual([event]);
+    // One refused claim stops the run: no repeated claims and no sweep against the window.
+    expect(connection.store.claim).toHaveBeenCalledTimes(1);
+    expect(connection.store.claimSweep).not.toHaveBeenCalled();
+    expect(end).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps finished job counts when the window closes between jobs', async () => {
+    let calls = 0;
+    const { connection, end } = fakeConnection('available', {
+      claim: vi.fn(async () => {
+        calls++;
+        if (calls === 1) throw new Error('postgres://secret@host/db transient');
+        throw restoreClosedError();
+      }),
+    });
+    const event = await runGalleryRenditionWorker(config, {
+      connect: () => connection,
+      checkBinaries: async () => true,
+      createStorage: async () => ({}) as never,
+      createCodec: () => ({}) as never,
+    });
+    expect(event).toMatchObject({
+      result: 'restore_closed',
+      jobs: { 'failed:io_failed:not_observed': 1 },
+      sweep: 'not_run',
+    });
+    expect(connection.store.claim).toHaveBeenCalledTimes(2);
+    expect(connection.store.claimSweep).not.toHaveBeenCalled();
+    expect(JSON.stringify(event)).not.toMatch(/secret/);
+    expect(end).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports a sweep that meets the closed window as a skip without rethrowing', async () => {
+    const { connection, end } = fakeConnection('available', {
+      claimSweep: vi.fn(async () => {
+        throw restoreClosedError();
+      }),
+    });
+    const events: GalleryRenditionRunEvent[] = [];
+    const event = await runGalleryRenditionWorker(config, {
+      connect: () => connection,
+      checkBinaries: async () => true,
+      createStorage: async () => ({}) as never,
+      createCodec: () => ({}) as never,
+      logger: (value) => events.push(value),
+    });
+    expect(event).toMatchObject({ result: 'restore_closed', jobs: {}, sweep: 'not_run' });
+    expect(events).toEqual([event]);
+    expect(end).toHaveBeenCalledTimes(1);
+  });
+
+  it('still reports any other sweep failure as an error', async () => {
+    const { connection } = fakeConnection('available', {
+      claimSweep: vi.fn(async () => {
+        throw Object.assign(new Error('RESTORE_PROCESSING_CONTROL_MISSING'), { code: 'P0001' });
+      }),
+    });
+    const events: GalleryRenditionRunEvent[] = [];
+    await expect(
+      runGalleryRenditionWorker(config, {
+        connect: () => connection,
+        checkBinaries: async () => true,
+        createStorage: async () => ({}) as never,
+        createCodec: () => ({}) as never,
+        logger: (value) => events.push(value),
+      }),
+    ).rejects.toThrow();
+    expect(events.map((value) => value.result)).toEqual(['error']);
   });
 });
