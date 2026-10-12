@@ -304,6 +304,10 @@
     "./bounded-plain-json": {
       "types": "./src/bounded-plain-json.ts",
       "default": "./dist/bounded-plain-json.js"
+    },
+    "./postgres-instant": {
+      "types": "./src/postgres-instant.ts",
+      "default": "./dist/postgres-instant.js"
     }
   },
   "scripts": {

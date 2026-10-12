@@ -37,3 +37,6 @@ apps/mobile/ios/App/App/capacitor.config.json
 
 .geo-build/
 .geo-build-*/
+
+# SHA-pinned byte-exact restore data; reformatting would change the pinned digest.
+packages/server/persistence/src/full-restore-*/**/*.json

@@ -53,7 +53,7 @@ it('normalizes UUID identity case consistently without reordering semantic array
   };
   expect(checkInTemplateExportDataSchema.parse(input)).toEqual(data());
 });
-it('accepts exact equivalent offsets but rejects microsecond truncation and extra precision', () => {
+it('accepts exact equivalent offsets but rejects truncation and a different rounded microsecond', () => {
   const input = row();
   expect(
     checkInTemplateExportVersionRowSchema.safeParse({
@@ -65,6 +65,40 @@ it('accepts exact equivalent offsets but rejects microsecond truncation and extr
     expect(checkInTemplateExportVersionRowSchema.safeParse({ ...input, created_at }).success).toBe(
       false,
     );
+});
+it.each([
+  ['2026-10-09T00:00:00.1234567Z', '2026-10-09T00:00:00.123457Z'],
+  ['2026-10-09T00:00:00.1234565Z', '2026-10-09T00:00:00.123456Z'],
+  ['2026-10-09T00:00:00.1234575Z', '2026-10-09T00:00:00.123458Z'],
+  ['2026-10-09T23:59:59.9999999Z', '2026-10-10T00:00:00.000000Z'],
+  ['2026-12-31T23:59:59.9999995Z', '2027-01-01T00:00:00.000000Z'],
+  ['2024-02-29T23:59:59.9999999Z', '2024-03-01T00:00:00.000000Z'],
+  ['2026-10-09T09:00:00.1234565+09:00', '2026-10-09T00:00:00.123456Z'],
+  ['2026-10-08T23:59:59.9999999-00:01', '2026-10-09T00:01:00.000000Z'],
+  ['1969-12-31T23:59:59.9999995Z', '1970-01-01T00:00:00.000000Z'],
+  ['1969-12-31T23:59:59.0000005Z', '1969-12-31T23:59:59.000000Z'],
+  ['1969-12-31T23:59:59.0000015Z', '1969-12-31T23:59:59.000002Z'],
+  ['2026-10-09T00:00:00.12345650000000001Z', '2026-10-09T00:00:00.123457Z'],
+])(
+  'accepts retained >6fraction original timestamp %s with its physical microsecond tuple',
+  (original, physical) => {
+    const input = row();
+    input.created_at = physical;
+    input.record_json.createdAt = original;
+    expect(checkInTemplateExportVersionRowSchema.parse(input)).toEqual(input);
+    expect(
+      checkInTemplateExportVersionRowSchema.safeParse({
+        ...input,
+        created_at: physical.replace(/(\d)Z$/, (digit) => `${digit[0] === '9' ? '8' : '9'}Z`),
+      }).success,
+    ).toBe(false);
+  },
+);
+it('rejects year-zero retained tuple even when both spellings agree', () => {
+  const input = row();
+  input.created_at = '0000-01-01T00:00:00.000000Z';
+  input.record_json.createdAt = input.created_at;
+  expect(checkInTemplateExportVersionRowSchema.safeParse(input).success).toBe(false);
 });
 it('requires both collections rather than fabricating unsupported/absent data', () => {
   expect(
