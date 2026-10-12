@@ -50,7 +50,8 @@ import {
 // V8 authenticated chain and replayed by the exact SQL145 function into a template-copied
 // target. Retained profile27 rows are captured catalog-driven through the durable codecs.
 // Synthetic data only; no provider, key, budget or dispatch.
-const enabled = Boolean(process.env['TEST_DATABASE_ADMIN_URL']);
+// Needs wal_level=logical: runs only in the pgoutput contract runner (test-postgres.mjs).
+const enabled = process.env['TEST_PGOUTPUT_CONTRACT'] === '1';
 const adminUrl = enabled ? z.string().min(1).parse(process.env['TEST_DATABASE_ADMIN_URL']) : '';
 const suffix = randomUUID().replaceAll('-', '').slice(0, 10);
 const sourceName = `p27_codec_src_${suffix}`;

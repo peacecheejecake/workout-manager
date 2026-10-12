@@ -65,6 +65,9 @@ function runIntegrationTests(env) {
         'packages/server/persistence/tests/restore-suppression-exporter.integration.test.ts',
         'packages/server/persistence/tests/restore-suppression-coordinator.integration.test.ts',
         'packages/server/persistence/tests/race-deletion-restore.integration.test.ts',
+        'packages/server/persistence/tests/restore-suppression-v7-exporter.integration.test.ts',
+        'packages/server/persistence/tests/restore-suppression-v8-exporter.integration.test.ts',
+        'packages/server/persistence/tests/profile27-restore-codecs.integration.test.ts',
       ],
       { env: { ...env, TEST_PGOUTPUT_CONTRACT: '1' } },
     );

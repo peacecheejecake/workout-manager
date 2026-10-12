@@ -455,6 +455,9 @@ function exporterFixture(
     if (query.includes('pg_control_system')) rows = [{ system_identifier: '1234567' }];
     else if (query.includes('pg_try_advisory_lock')) rows = [{ acquired: true }];
     else if (query.includes('pg_advisory_unlock')) rows = [{ released: true }];
+    // Installed record domain read by the exporter: the profile26-era V7 domain.
+    else if (query.includes('restore_suppression_event_gallery_album_once'))
+      rows = [{ checks: 2, album_checks: 0, album_index: false }];
     else if (query.includes('registry_fingerprint'))
       rows = [
         {

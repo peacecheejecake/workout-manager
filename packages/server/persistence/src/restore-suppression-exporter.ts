@@ -14,12 +14,21 @@ import {
   decodeSuppressionHeadV7,
 } from './restore-suppression-replay-v7.js';
 import {
+  encodeSuppressionHeadV8,
+  decodeSuppressionHeadV8,
+} from './restore-suppression-replay-v8.js';
+import {
   decryptReplaySegmentV7,
+  decryptReplaySegmentV8,
   encryptReplaySegment,
   encryptReplaySegmentV7,
+  encryptReplaySegmentV8,
   makeLocalReplayRecordEnvelopeV7,
+  makeLocalReplayRecordEnvelopeV8,
   suppressionSourceBindingV7Schema,
+  suppressionSourceBindingV8Schema,
   type SuppressionSourceBindingV7,
+  type SuppressionSourceBindingV8,
 } from './restore-suppression-segment.js';
 
 const LOCK_CLASS = 0x574d4c44; // WMLD; all cooperative exporters use this database-wide lock.
@@ -59,8 +68,35 @@ type Slot = {
   wal_status: string | null;
 };
 
+type SourceBinding = SuppressionSourceBindingV7 | SuppressionSourceBindingV8;
+export type SuppressionRelationProfile = SourceBinding['relationProfile'];
+
 function fail(): never {
   throw new Error('SUPPRESSION_EXPORT_FAILED');
+}
+
+/**
+ * The installed restore_suppression_event record domain, read from the catalog: SQL145
+ * rewrites both event CHECKs with the record-8 album branch and adds the record-8 unique
+ * index. All three present -> 'suppression-physical-v8'; none -> 'suppression-physical-v7';
+ * a partial installation fails closed. This is a codec selector, not export authority.
+ */
+export async function readSuppressionRelationProfileIn(
+  client: Pick<PoolClient, 'query'>,
+): Promise<SuppressionRelationProfile> {
+  const result = await client.query<{ checks: number; album_checks: number; album_index: boolean }>(
+    `SELECT count(*)::int AS checks,
+       count(*) FILTER (WHERE pg_get_constraintdef(c.oid) LIKE '%gallery_album_deleted%')::int AS album_checks,
+       to_regclass('public.restore_suppression_event_gallery_album_once') IS NOT NULL AS album_index
+     FROM pg_constraint c
+     WHERE c.conrelid='public.restore_suppression_event'::regclass
+       AND c.conname IN ('restore_suppression_event_kind_target_check','restore_suppression_event_record_version_check')`,
+  );
+  const row = result.rows[0];
+  if (result.rows.length !== 1 || !row || row.checks !== 2) return fail();
+  if (row.album_checks === 2 && row.album_index) return 'suppression-physical-v8';
+  if (row.album_checks === 0 && !row.album_index) return 'suppression-physical-v7';
+  return fail();
 }
 
 function normalizedLsn(value: string): string {
@@ -142,8 +178,16 @@ export async function reconcileSuppressionSlotV7(
   if (source.slotName !== input.slotName) return fail();
   return reconcileSlot({ ...input, source });
 }
+/** Record-8 successor: only for an installed SQL145 record domain (no fallback to V7). */
+export async function reconcileSuppressionSlotV8(
+  input: Parameters<typeof reconcileSuppressionSlot>[0] & { source: SuppressionSourceBindingV8 },
+): Promise<void> {
+  const source = suppressionSourceBindingV8Schema.parse(input.source);
+  if (source.slotName !== input.slotName) return fail();
+  return reconcileSlot({ ...input, source });
+}
 async function reconcileSlot(
-  input: Parameters<typeof reconcileSuppressionSlot>[0] & { source?: SuppressionSourceBindingV7 },
+  input: Parameters<typeof reconcileSuppressionSlot>[0] & { source?: SourceBinding },
 ): Promise<void> {
   if (
     !/^wm_suppression_[a-z0-9_]{1,40}$/.test(input.slotName) ||
@@ -189,9 +233,7 @@ async function reconcileSlot(
       previousHash: input.previousHash,
       messages,
     };
-    const envelope = input.source
-      ? makeLocalReplayRecordEnvelopeV7({ ...common, source: input.source })
-      : makeLocalReplayRecordEnvelope(common);
+    const envelope = sourceEnvelope(input.source, common);
     if (envelope.throughLsn !== throughLsn || envelope.sha256 !== input.localHash) return fail();
     const afterPeek = await slotState(client, input.slotName);
     if (normalizedLsn(afterPeek.confirmed_flush_lsn ?? '') !== fromLsn) return fail();
@@ -224,10 +266,17 @@ async function reconcileSlot(
   }
 }
 
-async function assertSourceBinding(
-  client: PoolClient,
-  source: SuppressionSourceBindingV7,
-): Promise<void> {
+type EnvelopeInput = Parameters<typeof makeLocalReplayRecordEnvelope>[0];
+function sourceEnvelope(source: SourceBinding | undefined, common: EnvelopeInput) {
+  if (!source) return makeLocalReplayRecordEnvelope(common);
+  return source.relationProfile === 'suppression-physical-v8'
+    ? makeLocalReplayRecordEnvelopeV8({ ...common, source })
+    : makeLocalReplayRecordEnvelopeV7({ ...common, source });
+}
+
+async function assertSourceBinding(client: PoolClient, source: SourceBinding): Promise<void> {
+  // The binding's relation profile must be exactly the installed record domain.
+  if ((await readSuppressionRelationProfileIn(client)) !== source.relationProfile) return fail();
   const actual = await client.query<{
     database_name: string;
     database_oid: number;
@@ -297,9 +346,20 @@ export async function exportSuppressionSegmentV7(
   const exported = await exportSegment({ ...input, source });
   return { ...exported, source };
 }
+/** Record-8 successor: only for an installed SQL145 record domain (no fallback to V7). */
+export async function exportSuppressionSegmentV8(
+  input: Parameters<typeof exportSuppressionSegment>[0] & {
+    source: SuppressionSourceBindingV8;
+  },
+): Promise<ExportedSuppressionSegment & { source: SuppressionSourceBindingV8 }> {
+  const source = suppressionSourceBindingV8Schema.parse(input.source);
+  if (source.slotName !== input.slotName) return fail();
+  const exported = await exportSegment({ ...input, source });
+  return { ...exported, source };
+}
 async function exportSegment(
   input: Parameters<typeof exportSuppressionSegment>[0] & {
-    source?: SuppressionSourceBindingV7;
+    source?: SourceBinding;
   },
 ): Promise<ExportedSuppressionSegment> {
   if (
@@ -336,13 +396,13 @@ async function exportSegment(
       previousHash: input.previousHash,
       messages,
     };
-    const envelope = input.source
-      ? makeLocalReplayRecordEnvelopeV7({ ...common, source: input.source })
-      : makeLocalReplayRecordEnvelope(common);
+    const envelope = sourceEnvelope(input.source, common);
     const segment =
-      envelope.localRecordVersion === 2
-        ? encryptReplaySegmentV7({ envelope, key: input.key, keyId: input.keyId })
-        : encryptReplaySegment({ envelope, key: input.key, keyId: input.keyId });
+      envelope.localRecordVersion === 3
+        ? encryptReplaySegmentV8({ envelope, key: input.key, keyId: input.keyId })
+        : envelope.localRecordVersion === 2
+          ? encryptReplaySegmentV7({ envelope, key: input.key, keyId: input.keyId })
+          : encryptReplaySegment({ envelope, key: input.key, keyId: input.keyId });
     const outbound = Buffer.from(segment.bytes);
     const remote = verifiedRemote(
       await input.storeVerifiedCiphertext(outbound),
@@ -403,10 +463,9 @@ async function exportSegment(
   }
 }
 
-/** Publish authenticated V7 head before ACK. Local crypto does not certify a remote witness. */
-export async function exportAuthenticatedSuppressionSegmentV7(input: {
+type AuthenticatedExportInput<S extends SourceBinding> = {
   pool: Pool;
-  source: SuppressionSourceBindingV7;
+  source: S;
   expectedClusterId: string;
   encryptionKey: Uint8Array;
   keyId: string;
@@ -414,8 +473,81 @@ export async function exportAuthenticatedSuppressionSegmentV7(input: {
   store: SuppressionRemoteStore;
   expectedHeadVersionId: string;
   expectedHeadSha256: string;
-}): Promise<ExportedSuppressionSegment & { source: SuppressionSourceBindingV7 }> {
-  const source = suppressionSourceBindingV7Schema.parse(input.source);
+};
+type HeadCodec<S extends SourceBinding> = {
+  parseSource: (value: unknown) => S;
+  decodeHead: (bytes: Uint8Array, key: Uint8Array) => ReturnType<typeof decodeSuppressionHeadV7>;
+  encodeHead: (value: unknown, key: Uint8Array) => Buffer;
+  decrypt: (input: { bytes: Uint8Array; key: Uint8Array; expectedKeyId: string }) => {
+    sha256: string;
+    source: S;
+    clusterId: string;
+    fromLsn: string;
+    throughLsn: string;
+    previousHash: string | null;
+  };
+  reconcile: (
+    input: Parameters<typeof reconcileSuppressionSlot>[0] & { source: S },
+  ) => Promise<void>;
+  exportSegment: (
+    input: Parameters<typeof exportSuppressionSegment>[0] & { source: S },
+  ) => Promise<ExportedSuppressionSegment & { source: S }>;
+};
+const headCodecV7: HeadCodec<SuppressionSourceBindingV7> = {
+  parseSource: (value) => suppressionSourceBindingV7Schema.parse(value),
+  decodeHead: decodeSuppressionHeadV7,
+  encodeHead: encodeSuppressionHeadV7,
+  decrypt: decryptReplaySegmentV7,
+  reconcile: reconcileSuppressionSlotV7,
+  exportSegment: exportSuppressionSegmentV7,
+};
+const headCodecV8: HeadCodec<SuppressionSourceBindingV8> = {
+  parseSource: (value) => suppressionSourceBindingV8Schema.parse(value),
+  // Head formats differ only in their literal format/profile and HMAC domain.
+  decodeHead: (bytes, key) =>
+    decodeSuppressionHeadV8(bytes, key) as unknown as ReturnType<typeof decodeSuppressionHeadV7>,
+  encodeHead: encodeSuppressionHeadV8,
+  decrypt: decryptReplaySegmentV8,
+  reconcile: reconcileSuppressionSlotV8,
+  exportSegment: exportSuppressionSegmentV8,
+};
+
+/** Publish authenticated V7 head before ACK. Local crypto does not certify a remote witness. */
+export async function exportAuthenticatedSuppressionSegmentV7(
+  input: AuthenticatedExportInput<SuppressionSourceBindingV7>,
+): Promise<ExportedSuppressionSegment & { source: SuppressionSourceBindingV7 }> {
+  return exportAuthenticated(input, headCodecV7);
+}
+/** Record-8 successor (SQL145 domain): V8 segments and format-3 heads; V7 never chosen. */
+export async function exportAuthenticatedSuppressionSegmentV8(
+  input: AuthenticatedExportInput<SuppressionSourceBindingV8>,
+): Promise<ExportedSuppressionSegment & { source: SuppressionSourceBindingV8 }> {
+  return exportAuthenticated(input, headCodecV8);
+}
+/**
+ * Explicit selection from the installed record domain: the caller's binding must name the
+ * profile the source database has installed, otherwise nothing is read or exported.
+ */
+export async function exportAuthenticatedSuppressionSegmentForInstalledDomain(
+  input: AuthenticatedExportInput<SourceBinding>,
+): Promise<ExportedSuppressionSegment & { source: SourceBinding }> {
+  const client = await input.pool.connect();
+  let profile: SuppressionRelationProfile;
+  try {
+    profile = await readSuppressionRelationProfileIn(client);
+  } finally {
+    client.release();
+  }
+  if (input.source.relationProfile !== profile) return fail();
+  return input.source.relationProfile === 'suppression-physical-v8'
+    ? exportAuthenticatedSuppressionSegmentV8({ ...input, source: input.source })
+    : exportAuthenticatedSuppressionSegmentV7({ ...input, source: input.source });
+}
+async function exportAuthenticated<S extends SourceBinding>(
+  input: AuthenticatedExportInput<S>,
+  codec: HeadCodec<S>,
+): Promise<ExportedSuppressionSegment & { source: S }> {
+  const source = codec.parseSource(input.source);
   if (
     !(input.encryptionKey instanceof Uint8Array) ||
     input.encryptionKey.byteLength !== 32 ||
@@ -438,7 +570,7 @@ export async function exportAuthenticatedSuppressionSegmentV7(input: {
     createHash('sha256').update(object.bytes).digest('hex') !== input.expectedHeadSha256
   )
     return fail();
-  const head = decodeSuppressionHeadV7(object.bytes, headAuthenticationKey);
+  const head = codec.decodeHead(object.bytes, headAuthenticationKey);
   if (
     JSON.stringify(head.source) !== JSON.stringify(source) ||
     head.clusterId !== input.expectedClusterId
@@ -460,7 +592,7 @@ export async function exportAuthenticatedSuppressionSegmentV7(input: {
       createHash('sha256').update(stored.bytes).digest('hex') !== last.sha256
     )
       return fail();
-    const envelope = decryptReplaySegmentV7({
+    const envelope = codec.decrypt({
       bytes: stored.bytes,
       key: encryptionKey,
       expectedKeyId: input.keyId,
@@ -474,7 +606,7 @@ export async function exportAuthenticatedSuppressionSegmentV7(input: {
       envelope.previousHash !== last.previousHash
     )
       return fail();
-    await reconcileSuppressionSlotV7({
+    await codec.reconcile({
       pool: input.pool,
       slotName: source.slotName,
       expectedClusterId: head.clusterId,
@@ -485,7 +617,7 @@ export async function exportAuthenticatedSuppressionSegmentV7(input: {
       source,
     });
   }
-  return exportSuppressionSegmentV7({
+  return codec.exportSegment({
     pool: input.pool,
     source,
     slotName: source.slotName,
@@ -495,7 +627,7 @@ export async function exportAuthenticatedSuppressionSegmentV7(input: {
     key: encryptionKey,
     keyId: input.keyId,
     storeVerifiedCiphertext: async (bytes) => {
-      const envelope = decryptReplaySegmentV7({
+      const envelope = codec.decrypt({
         bytes,
         key: encryptionKey,
         expectedKeyId: input.keyId,
@@ -513,7 +645,7 @@ export async function exportAuthenticatedSuppressionSegmentV7(input: {
       const readback = await input.store.readSegment(remote.segmentId, remote.versionId);
       if (!readback || readback.versionId !== remote.versionId || !readback.bytes.equals(bytes))
         return fail();
-      const next = encodeSuppressionHeadV7(
+      const next = codec.encodeHead(
         {
           ...head,
           throughLsn: envelope.throughLsn,
