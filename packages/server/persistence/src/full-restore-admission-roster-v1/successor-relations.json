@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "baseRosterSha256": "e13dc970dbce462d0743acabbac273eddf0e506e3e34584b528e7c4f6c080619",
+  "relations": [
+    {
+      "schema": "wm_runtime_installation",
+      "relation": "profile_extension_v10",
+      "class": "target_local",
+      "introducedBy": "current-runtime-installation-v10 ledger (146, profile26)"
+    },
+    {
+      "schema": "public",
+      "relation": "restore_processing_admit_receipt",
+      "class": "target_local",
+      "introducedBy": "147_restore_processing_admission.sql (profile27)"
+    },
+    {
+      "schema": "wm_runtime_installation",
+      "relation": "profile_extension_v11",
+      "class": "target_local",
+      "introducedBy": "current-runtime-installation-v11 ledger (profile27, installer lane)"
+    }
+  ]
+}

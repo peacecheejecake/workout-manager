@@ -324,6 +324,10 @@
     "./gallery-rendition": {
       "types": "./src/gallery-rendition.ts",
       "default": "./dist/gallery-rendition.js"
+    },
+    "./postgres-instant": {
+      "types": "./src/postgres-instant.ts",
+      "default": "./dist/postgres-instant.js"
     }
   },
   "scripts": {

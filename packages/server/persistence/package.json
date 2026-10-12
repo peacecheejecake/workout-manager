@@ -140,6 +140,16 @@
     "./current-runtime-source-build-readiness-v2": "./src/current-runtime-source-build-readiness-v2.ts",
     "./current-runtime-catalog-witness-v9": "./src/current-runtime-catalog-witness-v9.ts",
     "./current-runtime-readiness-v9": "./src/current-runtime-readiness-v9.ts",
+    "./full-restore-inventory-v1": "./src/full-restore-inventory-v1.ts",
+    "./full-restore-row-bytes-v1": "./src/full-restore-row-bytes-v1.ts",
+    "./full-restore-durable-row-codecs-v1": "./src/full-restore-durable-row-codecs-v1.ts",
+    "./full-restore-physical-codec-v2": "./src/full-restore-physical-codec-v2.ts",
+    "./full-restore-physical-row-packet-v2": "./src/full-restore-physical-row-packet-v2.ts",
+    "./full-restore-pg17-node-decoder-v1": "./src/full-restore-pg17-node-decoder-v1.ts",
+    "./full-restore-expected-structure-v1": "./src/full-restore-expected-structure-v1.ts",
+    "./full-restore-relation-classification-v2": "./src/full-restore-relation-classification-v2.ts",
+    "./full-restore-admission-postconditions-v2": "./src/full-restore-admission-postconditions-v2.ts",
+    "./restore-processing-admission": "./src/restore-processing-admission.ts",
     "./current-runtime-source-build-proof-v1": "./src/current-runtime-source-build-proof-v1.ts",
     "./current-runtime-source-build-proof-v1-compiler": "./src/current-runtime-source-build-proof-v1-compiler.ts",
     "./current-runtime-source-build-readiness-v1": "./src/current-runtime-source-build-readiness-v1.ts",
@@ -153,7 +163,9 @@
     "./gallery-erasure-repository-candidate": "./src/gallery-erasure-repository-candidate.ts",
     "./gallery-navigation-pins-v1": "./src/gallery-navigation-pins-v1.ts",
     "./gallery-rendition-pins-v1": "./src/gallery-rendition-pins-v1.ts",
-    "./gallery-profile27-members-v1": "./src/gallery-profile27-members-v1.ts"
+    "./gallery-profile27-members-v1": "./src/gallery-profile27-members-v1.ts",
+    "./current-runtime-external-package-registration-v1": "./src/current-runtime-external-package-registration-v1.ts",
+    "./current-runtime-external-package-registration-v2": "./src/current-runtime-external-package-registration-v2.ts"
   },
   "devDependencies": {
     "@types/pg": "8.23.1",

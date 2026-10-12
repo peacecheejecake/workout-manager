@@ -1,0 +1,1461 @@
+{
+  "schemaVersion": 1,
+  "kind": "wm-restore-admission-roster-v1",
+  "baseRosterSha256": "e13dc970dbce462d0743acabbac273eddf0e506e3e34584b528e7c4f6c080619",
+  "successorRelationsSha256": "7da26b24ffa5992c3782cd56964d6a1b5cf9cb9492bafa23aabbac5bba010563",
+  "rosterSha256": "f974cca88330076540eeaf855e6baeb173d7099b4ea22f0b33fde569fad1e59c",
+  "relations": [
+    {
+      "schema": "garmin_private",
+      "relation": "ownership",
+      "class": "retained",
+      "forceRls": false
+    },
+    {
+      "schema": "garmin_private",
+      "relation": "revocation",
+      "class": "retained",
+      "forceRls": false
+    },
+    {
+      "schema": "identity_private",
+      "relation": "account",
+      "class": "retained",
+      "forceRls": false
+    },
+    {
+      "schema": "identity_private",
+      "relation": "login_attempt",
+      "class": "authentication_reset",
+      "forceRls": false
+    },
+    {
+      "schema": "identity_private",
+      "relation": "logout_token_replay",
+      "class": "retained",
+      "forceRls": false
+    },
+    {
+      "schema": "identity_private",
+      "relation": "native_exchange_code",
+      "class": "authentication_reset",
+      "forceRls": false
+    },
+    {
+      "schema": "identity_private",
+      "relation": "native_login_attempt",
+      "class": "authentication_reset",
+      "forceRls": false
+    },
+    {
+      "schema": "identity_private",
+      "relation": "session",
+      "class": "authentication_reset",
+      "forceRls": false
+    },
+    {
+      "schema": "public",
+      "relation": "activity_canonical",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "activity_import_receipt",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "activity_overlay",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "activity_overlay_revision",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "activity_source_head",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "activity_source_revision",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "activity_suppression",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "activity_track",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "activity_track_object",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "activity_track_object_ref",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "activity_track_reconcile_state",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "activity_track_revision",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "activity_track_upload_intent",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "ai_settings_catalog_definition",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "ai_settings_catalog_head",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "ai_settings_head",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "ai_settings_revision",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "approval_app_admission_binding",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "candidate_app_admission_binding",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "check_in",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "check_in_collection_head",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "check_in_receipt",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "check_in_revision",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "check_in_template_head",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "check_in_template_receipt",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "check_in_template_version",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "coaching_analysis_output",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "coaching_candidate",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "coaching_constraint",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "coaching_constraint_head",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "coaching_decision",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "coaching_message",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "coaching_proposal",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "coaching_run",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "coaching_thread",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "command_receipt",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "consent",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "core_evidence_snapshot",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "course",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "course_accessibility_note",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "course_deletion",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "course_disclosure_receipt",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "course_preference",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "course_privacy_zone",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "course_privacy_zone_share_offset",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "course_revision",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "course_revision_source",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "course_route_candidate_set",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "course_route_proposal",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "course_share",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "course_share_area_budget",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "course_share_audit",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "course_share_rate",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "course_thumbnail",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "course_thumbnail_object_ref",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "course_thumbnail_reconcile_state",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "evidence_app_admission_binding",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "food_definition_head",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "food_definition_version",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "gallery_media_derivative",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "gallery_media_item",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "gallery_media_object",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "gallery_upload_intent",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "garmin_activity_ledger",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "garmin_activity_ledger_source",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "garmin_attempt",
+      "class": "authentication_reset",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "garmin_connection",
+      "class": "authentication_reset",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "garmin_unofficial_connection",
+      "class": "authentication_reset",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "garmin_unofficial_run",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "healthkit_deregistration_work",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "healthkit_existing_binding",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "healthkit_workout_batch_receipt",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "healthkit_workout_claim",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "healthkit_workout_deregistration",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "healthkit_workout_lineage",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "healthkit_workout_registration_receipt",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "healthkit_workout_registry_head",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "healthkit_workout_sample",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "intake_entry",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "intake_entry_revision",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "integrated_approval_v4",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "integrated_candidate_app_admission_binding",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "integrated_candidate_v4",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "integrated_dependency_head",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "manual_race_chain_commit_v2",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "manual_race_chain_lifecycle_edge_v2",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "manual_race_chain_receipt_v2",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "manual_race_chain_source_ref_v2",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "manual_race_chain_suppression_v2",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "manual_race_decision_v2",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "manual_race_evidence_v2",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "manual_race_proposal_v2",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "manual_race_v2_live_transition",
+      "class": "target_local",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "nutrition_integrated_candidate_disconnection",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "nutrition_plan_head",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "nutrition_plan_history",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "nutrition_plan_version",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "nutrition_race_disconnection_lineage",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "nutrition_race_item_disconnection",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "nutrition_v4_commit_seal",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "object_scope_purge",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "openai_budget_activation",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "openai_budget_fx_definition",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "openai_budget_journal",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "openai_budget_month",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "openai_budget_price_definition",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "openai_budget_reservation",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "operations_audit",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "outbox",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "plan_head",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "plan_history",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "plan_scenario",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "plan_scenario_application",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "plan_scenario_revision",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "plan_snapshot",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "plan_snapshot_aggregate",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "race_collection_head",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "race_command_receipt",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "race_event",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "race_event_revision",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "race_manual_application_candidate_v1",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "race_manual_application_context_v1",
+      "class": "target_local",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "race_manual_application_history_v1",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "race_manual_application_receipt_v1",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "race_manual_public_receipt_v1",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "race_manual_review",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "race_manual_review_source_ref",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "race_manual_review_source_suppression",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "race_result",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "race_result_proof_ref",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "race_result_revision",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "recovery_action_log",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "recovery_action_revision",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "recovery_method_head",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "recovery_method_version",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "recovery_strategy_head",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "recovery_strategy_history",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "recovery_strategy_version",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "resource",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "resource_access_audit",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "resource_citation",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "resource_derived_cleanup",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "resource_grounding",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "resource_grounding_excerpt",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "resource_object",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "resource_object_cleanup",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "resource_passage",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "resource_retrieval_cache",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "resource_share",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "resource_upload_intent",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "resource_url_artifact",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "resource_url_fetch_hop",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "resource_url_ingestion",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "resource_url_ingestion_attempt",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "resource_url_locator",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "resource_url_provenance",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "resource_version",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "restore_activity_replay_receipt",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "restore_actual_deletion_replay_context",
+      "class": "target_local",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "restore_actual_deletion_replay_receipt",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "restore_ai_consent_replay_receipt",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "restore_app_consent_replay_receipt",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "restore_check_in_replay_receipt",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "restore_course_share_replay_context",
+      "class": "target_local",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "restore_course_share_replay_receipt",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "restore_course_share_revoke_pending",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "restore_erasure_share_replay_receipt",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "restore_exact_replay_receipt",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "restore_gallery_media_replay_receipt",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "restore_generation",
+      "class": "target_local",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "restore_healthkit_consent_replay_receipt",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "restore_healthkit_deregistration_replay_receipt",
+      "class": "retained",
+      "forceRls": false
+    },
+    {
+      "schema": "public",
+      "relation": "restore_manual_review_source_replay_receipt",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "restore_processing_admission",
+      "class": "target_local",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "restore_processing_admit_receipt",
+      "class": "target_local",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "restore_processing_close_receipt",
+      "class": "target_local",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "restore_race_deletion_replay_receipt",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "restore_resource_compound_replay_receipt",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "restore_resource_replay_receipt",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "restore_resource_share_replay_receipt",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "restore_share_erasure_context",
+      "class": "target_local",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "restore_suppression_event",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "routine_blueprint_head",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "routine_blueprint_version",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "routine_checklist_confirmation",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "routine_command_receipt",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "routine_occurrence",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "routine_run",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "routine_run_revision",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "routine_schedule_head",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "routine_schedule_history",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "routine_schedule_version",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "routine_step_timer",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "routing_admission",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "run_app_admission_binding",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "schema_migrations",
+      "class": "target_local",
+      "forceRls": false
+    },
+    {
+      "schema": "public",
+      "relation": "session_completion",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "session_completion_collection_head",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "session_completion_receipt",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "session_completion_revision",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "stretch_profile",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "stretching_log",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "stretching_log_revision",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "supplementary_execution",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "supplementary_exercise_head",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "supplementary_exercise_version",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "supplementary_rest_timer",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "supplementary_routine_head",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "supplementary_routine_target_ref",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "supplementary_routine_version",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "supplementary_session_link",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "supplementary_session_target_ref",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "supplementary_set_log",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "supplementary_set_log_revision",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "tenant_erasure",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "tenant_object_purge",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "tenant_work_index",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "training_best",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "public",
+      "relation": "training_best_revision",
+      "class": "retained",
+      "forceRls": true
+    },
+    {
+      "schema": "wm_app_load",
+      "relation": "descriptor",
+      "class": "target_local",
+      "forceRls": true
+    },
+    {
+      "schema": "wm_app_load",
+      "relation": "evidence_stage",
+      "class": "target_local",
+      "forceRls": true
+    },
+    {
+      "schema": "wm_app_load",
+      "relation": "family_stage",
+      "class": "target_local",
+      "forceRls": true
+    },
+    {
+      "schema": "wm_app_load",
+      "relation": "target",
+      "class": "target_local",
+      "forceRls": true
+    },
+    {
+      "schema": "wm_runtime_installation",
+      "relation": "migration",
+      "class": "target_local",
+      "forceRls": false
+    },
+    {
+      "schema": "wm_runtime_installation",
+      "relation": "profile_extension_v10",
+      "class": "target_local",
+      "forceRls": false
+    },
+    {
+      "schema": "wm_runtime_installation",
+      "relation": "profile_extension_v11",
+      "class": "target_local",
+      "forceRls": false
+    },
+    {
+      "schema": "wm_runtime_installation",
+      "relation": "profile_extension_v2",
+      "class": "target_local",
+      "forceRls": false
+    },
+    {
+      "schema": "wm_runtime_installation",
+      "relation": "profile_extension_v3",
+      "class": "target_local",
+      "forceRls": false
+    },
+    {
+      "schema": "wm_runtime_installation",
+      "relation": "profile_extension_v4",
+      "class": "target_local",
+      "forceRls": false
+    },
+    {
+      "schema": "wm_runtime_installation",
+      "relation": "profile_extension_v5",
+      "class": "target_local",
+      "forceRls": false
+    },
+    {
+      "schema": "wm_runtime_installation",
+      "relation": "profile_extension_v6",
+      "class": "target_local",
+      "forceRls": false
+    },
+    {
+      "schema": "wm_runtime_installation",
+      "relation": "profile_extension_v7",
+      "class": "target_local",
+      "forceRls": false
+    },
+    {
+      "schema": "wm_runtime_installation",
+      "relation": "profile_extension_v8",
+      "class": "target_local",
+      "forceRls": false
+    },
+    {
+      "schema": "wm_runtime_installation",
+      "relation": "profile_extension_v9",
+      "class": "target_local",
+      "forceRls": false
+    }
+  ]
+}

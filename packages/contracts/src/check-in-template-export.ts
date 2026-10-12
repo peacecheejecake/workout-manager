@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { postgresInstantMicros } from './postgres-instant.js';
 import {
   checkInTemplateContentSchema,
   checkInTemplateVersionSchema,
@@ -68,12 +69,9 @@ function boundedJson(maximum: number) {
       ctx.addIssue({ code: 'custom', message: 'Invalid or oversized plain retained JSON' });
   });
 }
-// Compare complete fractional instants without dropping PostgreSQL microseconds.
-function preciseInstant(value: string): string | null {
-  const match = /^(.*:\d{2})(?:\.(\d{1,6}))?(Z|[+-]\d{2}:\d{2})$/.exec(value);
-  if (!match?.[1] || !match[3]) return null;
-  const seconds = Date.parse(match[1] + match[3]);
-  return Number.isSafeInteger(seconds) ? `${seconds}:${(match[2] ?? '').padEnd(6, '0')}` : null;
+// Compare retained original spelling through PostgreSQL microsecond correspondence.
+function preciseInstant(value: string): bigint | null {
+  return postgresInstantMicros(value);
 }
 const originalVersion = checkInTemplateVersionSchema.safeExtend({
   content: checkInTemplateContentSchema.safeExtend({
