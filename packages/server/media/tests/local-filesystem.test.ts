@@ -29,6 +29,8 @@ import {
   createFinalObjectKey,
   createGalleryFinalObjectKey,
   createGalleryTemporaryObjectKey,
+  createGalleryRenditionTemporaryObjectKey,
+  createGalleryRenditionFinalObjectKey,
   createTemporaryObjectKey,
   createUrlFinalObjectKey,
   createUrlTemporaryObjectKey,
@@ -1124,4 +1126,120 @@ describe('the root is checked on every walk, not only by assertReachable (M2-01o
     );
     expect(errors, JSON.stringify(outcomes)).toBeGreaterThan(0);
   }, 120_000);
+});
+
+describe('actual gallery rendition object storage', () => {
+  it.each(['image_preview', 'image_thumbnail', 'video_playback'] as const)(
+    'publishes and lists only exact owned %s attempts',
+    async (renditionKind) => {
+      const root = await newRoot();
+      const storage = await createLocalFilesystemObjectStorage(root);
+      const body = Buffer.from('synthetic derived bytes');
+      const sha256 = createHash('sha256').update(body).digest('hex');
+      const base = {
+        tenantId,
+        mediaItemId: resourceId,
+        jobId: temporaryUploadId,
+        attemptId: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+        recipeVersion: 1 as const,
+        renditionKind,
+      };
+      const temporary = createGalleryRenditionTemporaryObjectKey(base);
+      const final = createGalleryRenditionFinalObjectKey({
+        ...base,
+        sha256,
+        extension: renditionKind === 'video_playback' ? 'mp4' : 'webp',
+      });
+      await storage.writeTemporary(temporary, chunks(body.toString()));
+      const expectation = { sizeBytes: body.length, sha256 };
+      await storage.delete(temporary);
+      expect(
+        (await lstat(join(root, temporary.substring(0, temporary.lastIndexOf('/'))))).isDirectory(),
+      ).toBe(true);
+      await storage.writeTemporary(temporary, chunks(body.toString()));
+      for (const changed of [
+        { tenantId: temporaryUploadId },
+        { mediaItemId: temporaryUploadId },
+        { jobId: resourceId },
+        { attemptId: resourceId },
+        {
+          renditionKind:
+            renditionKind === 'image_preview'
+              ? ('image_thumbnail' as const)
+              : ('image_preview' as const),
+        },
+      ]) {
+        const input = { ...base, ...changed };
+        const mismatch = createGalleryRenditionFinalObjectKey({
+          ...input,
+          sha256,
+          extension: input.renditionKind === 'video_playback' ? 'mp4' : 'webp',
+        });
+        await expect(
+          storage.publishTemporary(temporary, mismatch, expectation),
+        ).rejects.toBeInstanceOf(ObjectStorageConflictError);
+        expect(await storage.open(mismatch)).toBeNull();
+      }
+      const original = createGalleryFinalObjectKey({
+        tenantId,
+        mediaItemId: resourceId,
+        uploadId: temporaryUploadId,
+        sha256,
+        extension: 'png',
+      });
+      await expect(
+        storage.publishTemporary(temporary, original, expectation),
+      ).rejects.toBeInstanceOf(ObjectStorageConflictError);
+      const originalTemporary = createGalleryTemporaryObjectKey({
+        tenantId,
+        mediaItemId: resourceId,
+        uploadId: temporaryUploadId,
+      });
+      await storage.writeTemporary(originalTemporary, chunks(body.toString()));
+      await storage.publishTemporary(originalTemporary, original, expectation);
+      expect((await storage.publishTemporary(temporary, final, expectation)).outcome).toBe(
+        'published',
+      );
+      expect(await storage.open(temporary)).toBeNull();
+      const opened = await storage.open(final);
+      if (!opened) throw new Error('missing own synthetic rendition');
+      expect(
+        createHash('sha256')
+          .update(await readBody(opened.body))
+          .digest('hex'),
+      ).toBe(sha256);
+      expect(
+        (
+          await storage.listScopeObjects(
+            { kind: 'gallery', tenantId, mediaItemId: resourceId },
+            100,
+          )
+        ).keys,
+      ).toEqual([original, final]);
+      expect(
+        (
+          await storage.listScopeObjects(
+            { kind: 'gallery', tenantId: temporaryUploadId, mediaItemId: resourceId },
+            100,
+          )
+        ).keys,
+      ).toEqual([]);
+      expect((await storage.listTenantObjects(tenantId, 100)).keys).toEqual([original, final]);
+      await storage.delete(final);
+      expect(await storage.open(final)).toBeNull();
+      expect(await storage.open(original)).not.toBeNull();
+      // Only sha256 was pruned; the attempt ancestor is shared by later publications.
+      expect(
+        (await lstat(join(root, final.substring(0, final.lastIndexOf('/sha256/'))))).isDirectory(),
+      ).toBe(true);
+      expect(
+        (
+          await storage.listScopeObjects(
+            { kind: 'gallery', tenantId, mediaItemId: resourceId },
+            100,
+          )
+        ).keys,
+      ).toEqual([original]);
+    },
+  );
 });

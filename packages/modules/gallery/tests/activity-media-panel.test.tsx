@@ -405,3 +405,51 @@ it('names every card action with its media and nests headings under the activity
   expect(within(linkedCard).getByRole('heading', { level: 5, name: '결승선' })).toBeInTheDocument();
   expect(screen.queryAllByRole('heading', { level: 3 })).toHaveLength(0);
 });
+
+it('opens only the successful linked roster and closes the viewer on account lifetime replacement', async () => {
+  const id = '10000000-0000-4000-8000-000000000001';
+  const server = galleryServer([media(id, '연결 사진', { activityId })]);
+  const transfer = { open: vi.fn().mockResolvedValue('blob:activity-private'), upload: vi.fn() };
+  vi.stubGlobal('URL', Object.assign(URL, { revokeObjectURL: vi.fn() }));
+  Object.defineProperty(HTMLDialogElement.prototype, 'showModal', {
+    configurable: true,
+    value: function (this: HTMLDialogElement) {
+      this.open = true;
+    },
+  });
+  Object.defineProperty(HTMLDialogElement.prototype, 'close', {
+    configurable: true,
+    value: function (this: HTMLDialogElement) {
+      this.open = false;
+    },
+  });
+  try {
+    const view = render(
+      <ActivityMediaPanel
+        athleteId="alice"
+        sessionId="one"
+        activityId={activityId}
+        transport={server.transport}
+        mediaTransfer={transfer}
+      />,
+    );
+    await userEvent.click(await screen.findByRole('button', { name: '미디어 크게 보기' }));
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    view.rerender(
+      <ActivityMediaPanel
+        athleteId="bob"
+        sessionId="two"
+        activityId={otherActivityId}
+        transport={server.transport}
+        mediaTransfer={transfer}
+      />,
+    );
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:activity-private');
+  } finally {
+    cleanup();
+    vi.unstubAllGlobals();
+    Reflect.deleteProperty(HTMLDialogElement.prototype, 'showModal');
+    Reflect.deleteProperty(HTMLDialogElement.prototype, 'close');
+  }
+});

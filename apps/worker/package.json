@@ -11,6 +11,7 @@
     "resources:cleanup": "node --import tsx src/resource-cleanup.ts",
     "resources:url-ingest": "node --import tsx src/url-ingestion.ts",
     "courses:thumbnails": "node --import tsx src/course-thumbnail.ts",
+    "gallery:renditions": "node --import tsx src/gallery-rendition.ts",
     "ledger:export-once": "node --import tsx src/suppression-ledger-once.ts"
   },
   "dependencies": {

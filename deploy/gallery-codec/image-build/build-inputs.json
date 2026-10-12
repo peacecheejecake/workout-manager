@@ -1,0 +1,827 @@
+{
+  "manifestVersion": 1,
+  "recipeVersion": 1,
+  "architecture": "linux/arm64",
+  "referenceContextFreezeSha256": "ae7581ee69305c776af00ccd44d3b093dd36259d27e50a0965cf7a0c043d5635",
+  "bases": {
+    "gcc": "docker.io/library/gcc@sha256:66035d353338cb93b64f621393dc6fecde85258651ca454f0cf36ff2639b1352",
+    "runtime": "docker.io/library/debian@sha256:a1b86db52ce3daef089e45aabe36dfec4091f82464c25c1fdcf03de197cbe82a"
+  },
+  "toolVersions": {
+    "node": "24.12.0",
+    "gcc": "14.3.0",
+    "pythonRootObserved": "3.11.2",
+    "meson": "1.9.2",
+    "ninja": "1.13.1",
+    "dav1d": "1.5.4",
+    "ffmpeg": "9.0.2",
+    "ffprobe": "9.0.2",
+    "sharp": "0.35.4",
+    "vipsRootObserved": "8.18.6"
+  },
+  "sourceMap": {
+    "codec/container-entry.mjs": "deploy/gallery-codec/container-entry.mjs",
+    "codec/input-frame.mjs": "deploy/gallery-codec/input-frame.mjs",
+    "codec/output-frame.mjs": "deploy/gallery-codec/output-frame.mjs",
+    "codec/lib/gallery-image-rendition.js": "packages/server/media/dist/gallery-codec/gallery-image-rendition.js",
+    "codec/lib/gallery-video-rendition.js": "packages/server/media/dist/gallery-codec/gallery-video-rendition.js",
+    "codec/lib/gallery-codec-supervisor.js": "packages/server/media/dist/gallery-codec/gallery-codec-supervisor.js",
+    "licenses/tsconfig.codec.json": "deploy/gallery-codec/tsconfig.codec.json",
+    "licenses/pnpm-lock.yaml": "pnpm-lock.yaml"
+  },
+  "inline": {
+    "checksums.sha256": "9e7c4bba7494053d56bbdd9f52cd5af44256bff294e1550e662b22db8e9c126a  codec/container-entry.mjs\n43d58ae9250cba92482f01e58d9b98b7ab4cc173bdbf671435132267e3ea5a5e  codec/input-frame.mjs\n641d64d3f34d4b3c2c837bd47bd721f8ebcb3657f5b09b365241f072dd198837  codec/output-frame.mjs\n693fb856d0d0ffeb826693d9510bf3b068319f6d3bd5d60da123ae28197fb9aa  codec/lib/gallery-image-rendition.js\n98583ca04600c16105a79f9dd695b9281dc8b47b642bef730d682020addc4611  codec/lib/gallery-video-rendition.js\nc88106786ad4c0f9a3f659a2838744f422af87766e0b51ffc4b215468d3903c4  codec/lib/gallery-codec-supervisor.js\n3aced43bf03c85699cc046c9efa1722634ca05040a608176f006fc02102dcbcd  licenses/tsconfig.codec.json\nfe205f537eace6ea02477b0bbb058e38c25dfed5334815828c09c8000781d213  licenses/pnpm-lock.yaml\n8c3850283eb25fa026482078a04051e0be17347b09ef81a0849bec15a96e002e  artifacts/ffmpeg-9.0.2.tar.xz\nd617fd94ea354dadd2a8bb16243d37c44e1e9729b06b6ad58fe30bfb0fa943f2  artifacts/ffmpeg-9.0.2.tar.xz.asc\n397b3becedcd5a98769967ff1ff8501ddc89f8368b8f766e4701377d7dbaabe5  artifacts/ffmpeg-devel.asc\na06d42807fb500f7459e5f3fa6cb431447352826ee6f07e14adfeec58a1b3210  artifacts/node-v24.12.0-linux-arm64.tar.xz\nd0967a1348c85dfde363bb52610403be898171493100561efa0dd05d5fd1ae50  artifacts/x264-0480cb05fa188d37ae87e8f4fd8f1aea3711f7ee.tar.gz\n2b139d6c1c2a781a40c0516d8c30e60d864489321ed3c93721c254eb61fc35e8  licenses/source-verification.json\n",
+    "codec/package.json": "{\"name\":\"private-gallery-codec\",\"private\":true,\"type\":\"module\"}\n"
+  },
+  "files": [
+    {
+      "path": "Dockerfile",
+      "bytes": 4715,
+      "sha256": "aa34b10ddcf40765ee88bf34b2d117d20ba7029be347a08acd26d27c12ac374f"
+    },
+    {
+      "path": "artifacts/dav1d-1.5.4.tar.xz",
+      "bytes": 1038852,
+      "sha256": "686616b7c69eb88d44459391ab25cac13b6647a3b288835c5784e71c1514a5c5"
+    },
+    {
+      "path": "artifacts/ffmpeg-9.0.2.tar.xz",
+      "bytes": 12040788,
+      "sha256": "8c3850283eb25fa026482078a04051e0be17347b09ef81a0849bec15a96e002e"
+    },
+    {
+      "path": "artifacts/ffmpeg-9.0.2.tar.xz.asc",
+      "bytes": 520,
+      "sha256": "d617fd94ea354dadd2a8bb16243d37c44e1e9729b06b6ad58fe30bfb0fa943f2"
+    },
+    {
+      "path": "artifacts/ffmpeg-devel.asc",
+      "bytes": 1709,
+      "sha256": "397b3becedcd5a98769967ff1ff8501ddc89f8368b8f766e4701377d7dbaabe5"
+    },
+    {
+      "path": "artifacts/meson-1.9.2-py3-none-any.whl",
+      "bytes": 1033657,
+      "sha256": "1a284dc1912929098a6462401af58dc49ae3f324e94814a38a8f1020cee07cba"
+    },
+    {
+      "path": "artifacts/meson-1.9.2.tar.gz",
+      "bytes": 2382854,
+      "sha256": "3499b59bb23982496e01e57b4103ac2f826f9c3a3f59e507a0a832487fe55e3d"
+    },
+    {
+      "path": "artifacts/ninja-1.13.1-COPYING",
+      "bytes": 11358,
+      "sha256": "eb7e9ab9690124c5c9f42bdc81383d886a3dede26345b6ed15bbad7caf81f7ea"
+    },
+    {
+      "path": "artifacts/ninja-linux-aarch64.zip",
+      "bytes": 126282,
+      "sha256": "740f1b9f9d8ae68438240a6a2f3f7a27fc8b1946d2024a6a6b25857ee877987b"
+    },
+    {
+      "path": "artifacts/node-v24.12.0-linux-arm64.tar.xz",
+      "bytes": 29724424,
+      "sha256": "a06d42807fb500f7459e5f3fa6cb431447352826ee6f07e14adfeec58a1b3210"
+    },
+    {
+      "path": "artifacts/x264-0480cb05fa188d37ae87e8f4fd8f1aea3711f7ee.tar.gz",
+      "bytes": 1040667,
+      "sha256": "d0967a1348c85dfde363bb52610403be898171493100561efa0dd05d5fd1ae50"
+    },
+    {
+      "path": "build-tools/unpack-tools.py",
+      "bytes": 2567,
+      "sha256": "f50a3c10b463239e9ce84d7832d14a41b32ec1a8cf679767d61aaa036cc269b8"
+    },
+    {
+      "path": "checksums.sha256",
+      "bytes": 1391,
+      "sha256": "d7358cc6a9ce79dc857562e0b9031f53030344a5fad1469d7f213aea1be8e75e"
+    },
+    {
+      "path": "codec/container-entry.mjs",
+      "bytes": 8285,
+      "sha256": "9e7c4bba7494053d56bbdd9f52cd5af44256bff294e1550e662b22db8e9c126a"
+    },
+    {
+      "path": "codec/input-frame.mjs",
+      "bytes": 8297,
+      "sha256": "43d58ae9250cba92482f01e58d9b98b7ab4cc173bdbf671435132267e3ea5a5e"
+    },
+    {
+      "path": "codec/lib/gallery-codec-supervisor.js",
+      "bytes": 33322,
+      "sha256": "c88106786ad4c0f9a3f659a2838744f422af87766e0b51ffc4b215468d3903c4"
+    },
+    {
+      "path": "codec/lib/gallery-image-rendition.js",
+      "bytes": 8753,
+      "sha256": "693fb856d0d0ffeb826693d9510bf3b068319f6d3bd5d60da123ae28197fb9aa"
+    },
+    {
+      "path": "codec/lib/gallery-video-rendition.js",
+      "bytes": 22618,
+      "sha256": "98583ca04600c16105a79f9dd695b9281dc8b47b642bef730d682020addc4611"
+    },
+    {
+      "path": "codec/node_modules/@img/colour/LICENSE.md",
+      "bytes": 4433,
+      "sha256": "e2eaa4603c14cb26f301e88648c12a853fa3f0f5da6d4b0972958c666e7f2ab8"
+    },
+    {
+      "path": "codec/node_modules/@img/colour/README.md",
+      "bytes": 562,
+      "sha256": "be7edf3bc6467f761168cef3bb2b9b3def2532c98a86249848376ea00338ad1d"
+    },
+    {
+      "path": "codec/node_modules/@img/colour/color.cjs",
+      "bytes": 45136,
+      "sha256": "f7c3efcf482624007f2019fffee3e1dec56b8cb893faa9a420b2832805888dce"
+    },
+    {
+      "path": "codec/node_modules/@img/colour/index.cjs",
+      "bytes": 49,
+      "sha256": "e6e93e7fb209420a20fdf2ec676e9c67413be8d5ace99eec64f9468480f0368d"
+    },
+    {
+      "path": "codec/node_modules/@img/colour/index.d.ts",
+      "bytes": 21569,
+      "sha256": "2467b00d963828f540f4acd7910f4c04cfe4b489550e6bb682212f65583bca5b"
+    },
+    {
+      "path": "codec/node_modules/@img/colour/package.json",
+      "bytes": 1515,
+      "sha256": "bc38c5097693ed53b91c32f35fb0a52569736c7854ba2eb6d080f3252071f75c"
+    },
+    {
+      "path": "codec/node_modules/@img/sharp-libvips-linux-arm64/README.md",
+      "bytes": 4340,
+      "sha256": "b05efaa208519f349746a54ee195c433ab8e5c250847a257c984c7a9dc68df20"
+    },
+    {
+      "path": "codec/node_modules/@img/sharp-libvips-linux-arm64/lib/glib-2.0/include/glibconfig.h",
+      "bytes": 5894,
+      "sha256": "c5862443f3f5441996238f7aaae21516999eb0b4a1aae06f633593abb78abc7e"
+    },
+    {
+      "path": "codec/node_modules/@img/sharp-libvips-linux-arm64/lib/index.js",
+      "bytes": 28,
+      "sha256": "516a08c06660cddb50d5f30ccac29a0514b05724956a11e8a7e6b799f2e1ab72"
+    },
+    {
+      "path": "codec/node_modules/@img/sharp-libvips-linux-arm64/lib/libvips-cpp.so.8.18.6",
+      "bytes": 18259144,
+      "sha256": "264d3092d69de80f5acdb71c930efec8db5bd9627f41659ed3416566b9ae34b4"
+    },
+    {
+      "path": "codec/node_modules/@img/sharp-libvips-linux-arm64/package.json",
+      "bytes": 948,
+      "sha256": "7db60e48a9e1b701178f77cbeeac6f43b1a99d634d04d12843103ee00b3c155d"
+    },
+    {
+      "path": "codec/node_modules/@img/sharp-libvips-linux-arm64/versions.json",
+      "bytes": 597,
+      "sha256": "adddf5e76ac1cc03b503a17c488b8591dd9eb5ec3faf689a3852d02d1b5fbb10"
+    },
+    {
+      "path": "codec/node_modules/@img/sharp-linux-arm64/LICENSE",
+      "bytes": 10273,
+      "sha256": "73ba74dfaa520b49a401b5d21459a8523a146f3b7518a833eea5efa85130bf68"
+    },
+    {
+      "path": "codec/node_modules/@img/sharp-linux-arm64/README.md",
+      "bytes": 706,
+      "sha256": "ccc883ec303dac4dbe86e7e255d86c62263323aec600978761e57353c55cd63e"
+    },
+    {
+      "path": "codec/node_modules/@img/sharp-linux-arm64/index.cjs",
+      "bytes": 139,
+      "sha256": "8caf72986896ed7bbff4cd3fa5c5dedcb952eb67d29369170c5b78de0d2b399b"
+    },
+    {
+      "path": "codec/node_modules/@img/sharp-linux-arm64/lib/sharp-linux-arm64-0.35.4.node",
+      "bytes": 530120,
+      "sha256": "4f53dd2f4ce3ca21ec01f908f7c475d9ca0c9d0d6555180abcbd6e8e4f09722d"
+    },
+    {
+      "path": "codec/node_modules/@img/sharp-linux-arm64/package.json",
+      "bytes": 936,
+      "sha256": "55891f809d270721d677f1f8aecc7e5319832e69174e745beaabaf1d0de49b29"
+    },
+    {
+      "path": "codec/node_modules/detect-libc/LICENSE",
+      "bytes": 11357,
+      "sha256": "b40930bbcf80744c86c46a12bc9da056641d722716c378f5659b9e555ef833e1"
+    },
+    {
+      "path": "codec/node_modules/detect-libc/README.md",
+      "bytes": 3215,
+      "sha256": "51a97449c443889155bc872522e6de5a91a5fa73edeffa03d749e186bf0eebca"
+    },
+    {
+      "path": "codec/node_modules/detect-libc/index.d.ts",
+      "bytes": 436,
+      "sha256": "9500090533aafe039c41d8d368a44959f04482bb75636d96bc843c06f3d6a348"
+    },
+    {
+      "path": "codec/node_modules/detect-libc/lib/detect-libc.js",
+      "bytes": 7503,
+      "sha256": "5de6a1c1abec8bba5ea1261cf819d83a73c92ebe72b879ae48c59ca12320a462"
+    },
+    {
+      "path": "codec/node_modules/detect-libc/lib/elf.js",
+      "bytes": 982,
+      "sha256": "0e8820f00ee11d179d94894d4f97a6e87c34ab59e5dd4d3a571dfabcecf043af"
+    },
+    {
+      "path": "codec/node_modules/detect-libc/lib/filesystem.js",
+      "bytes": 1097,
+      "sha256": "5c98fb66b559d0b4fa82c7a3e39d9ab6840f022c4c73e6b1a73ac6d16ec13fd7"
+    },
+    {
+      "path": "codec/node_modules/detect-libc/lib/process.js",
+      "bytes": 569,
+      "sha256": "f37dd0ead9f70b50c6f5529c600e1cdf076e3c3bc8e6b4a0a9820a8d65244628"
+    },
+    {
+      "path": "codec/node_modules/detect-libc/package.json",
+      "bytes": 1278,
+      "sha256": "ee88e5b954fdf3a8480b1d01ef767d68d8ca2c6da269f58c5cf1c5550e9aa2a7"
+    },
+    {
+      "path": "codec/node_modules/semver/LICENSE",
+      "bytes": 765,
+      "sha256": "4ec3d4c66cd87f5c8d8ad911b10f99bf27cb00cdfcff82621956e379186b016b"
+    },
+    {
+      "path": "codec/node_modules/semver/README.md",
+      "bytes": 25669,
+      "sha256": "f1a789dcec285150be24db2ea04dd3175031554fa9834ec92fab83fb5e025a57"
+    },
+    {
+      "path": "codec/node_modules/semver/bin/semver.js",
+      "bytes": 4957,
+      "sha256": "bd6c871026985937dc945011fc54b74b47f5998154216d7b8d40d5ed782e4402"
+    },
+    {
+      "path": "codec/node_modules/semver/classes/comparator.js",
+      "bytes": 3631,
+      "sha256": "054202956430d63d5ff4599fae09760ce465b489e4f0b5ef5ce7cc7ac21157ac"
+    },
+    {
+      "path": "codec/node_modules/semver/classes/index.js",
+      "bytes": 143,
+      "sha256": "3bb69280c2a788d0eb16f915bb9df4dbe812075182024c753dca2283bcea1b17"
+    },
+    {
+      "path": "codec/node_modules/semver/classes/range.js",
+      "bytes": 15647,
+      "sha256": "a6544485aa8575aa9854c67e2caa67726815de18a482d0ceb8a1003244de3bc1"
+    },
+    {
+      "path": "codec/node_modules/semver/classes/semver.js",
+      "bytes": 9891,
+      "sha256": "813b2c185512d30c9b931c2fed8140889d9d7490ceeeedc370da30337dc8ca57"
+    },
+    {
+      "path": "codec/node_modules/semver/functions/clean.js",
+      "bytes": 205,
+      "sha256": "4eadb0892844cf3ae295121a86163a66c73f89acd1b7f0b114ec115b4539512f"
+    },
+    {
+      "path": "codec/node_modules/semver/functions/cmp.js",
+      "bytes": 961,
+      "sha256": "a63d74e87b73788e78e9ce0a4892b5333d6b809c0de88b31e4ed76cbf17f94b3"
+    },
+    {
+      "path": "codec/node_modules/semver/functions/coerce.js",
+      "bytes": 2004,
+      "sha256": "28a251c5ab210ddf9e97551b9f37a53329fcce91f0c3943dcbc02de1a1de915a"
+    },
+    {
+      "path": "codec/node_modules/semver/functions/compare-build.js",
+      "bytes": 281,
+      "sha256": "5ab651d5b40af289bd85c645a92b6d8cfe1a986dc413c797cfcc8d623d7c844c"
+    },
+    {
+      "path": "codec/node_modules/semver/functions/compare-loose.js",
+      "bytes": 132,
+      "sha256": "07b6a3a1db0a5210ceb784c1708bd4679f3a94fc73a9c9eb349349e7070a6f78"
+    },
+    {
+      "path": "codec/node_modules/semver/functions/compare.js",
+      "bytes": 170,
+      "sha256": "d404b5aa48aaddc8a654c5da8fb7d4443404b7948589b21ac4b045d1cee4e34c"
+    },
+    {
+      "path": "codec/node_modules/semver/functions/diff.js",
+      "bytes": 1423,
+      "sha256": "7a11fd39b987cdf06c65e928cb1aca49bec583feb86fb5c8fe47a6fd61d7de31"
+    },
+    {
+      "path": "codec/node_modules/semver/functions/eq.js",
+      "bytes": 126,
+      "sha256": "b6e30a7168e52723216fc163d300e2bbabf92ec0251f9ac5438bb6ccf57c8936"
+    },
+    {
+      "path": "codec/node_modules/semver/functions/gt.js",
+      "bytes": 124,
+      "sha256": "135523704aa48cd98834dd170ee9f74f0e68043b379f32d021db11e6304c5c93"
+    },
+    {
+      "path": "codec/node_modules/semver/functions/gte.js",
+      "bytes": 127,
+      "sha256": "991c5bbe48ecb210a562646872f05862ad9fc0d42186d85aa60bdc6fa323eb9d"
+    },
+    {
+      "path": "codec/node_modules/semver/functions/inc.js",
+      "bytes": 478,
+      "sha256": "952069fc8690b7d3af0fe9d55f7c54fe2ac067b48c5e74f6a54f9ce19a334493"
+    },
+    {
+      "path": "codec/node_modules/semver/functions/lt.js",
+      "bytes": 124,
+      "sha256": "1c897a9bc849320e2e9dc0f6c09555c01ee3ddf30734515d717b88ad7740ea25"
+    },
+    {
+      "path": "codec/node_modules/semver/functions/lte.js",
+      "bytes": 127,
+      "sha256": "3a8d0b1d00423f60cc7cb810b36ab77b61330831ad237dbe73eb5cecfa412800"
+    },
+    {
+      "path": "codec/node_modules/semver/functions/major.js",
+      "bytes": 136,
+      "sha256": "5c678480d882f511200fed2c16ec3847dfedb08a1d70328dc2f031d35d825276"
+    },
+    {
+      "path": "codec/node_modules/semver/functions/minor.js",
+      "bytes": 136,
+      "sha256": "1b051794f1713adec2a236517196691687c35f82e0b596ff3316a78b3cc10ae6"
+    },
+    {
+      "path": "codec/node_modules/semver/functions/neq.js",
+      "bytes": 128,
+      "sha256": "a662883751918822c162183b46b9e20d09489132f82686c92ab78bee67f3a127"
+    },
+    {
+      "path": "codec/node_modules/semver/functions/parse.js",
+      "bytes": 331,
+      "sha256": "29a69e15b6d02fe381d573f861881a89590e9d0f0f0ca740c5f85eaf0234c4ad"
+    },
+    {
+      "path": "codec/node_modules/semver/functions/patch.js",
+      "bytes": 136,
+      "sha256": "f02d3c1b059fe3d96ce124886f7eef321d381a95638fd3c4a8d5ccd8e76ffadd"
+    },
+    {
+      "path": "codec/node_modules/semver/functions/prerelease.js",
+      "bytes": 234,
+      "sha256": "baedbf503d5610ad041bfb56071efa48feb331ca278295c399537d35d3ffb593"
+    },
+    {
+      "path": "codec/node_modules/semver/functions/rcompare.js",
+      "bytes": 132,
+      "sha256": "84fa5e88adf08d15c993cac8cdec6d1a65045b7e95a9c55184230a7f807f4dc0"
+    },
+    {
+      "path": "codec/node_modules/semver/functions/rsort.js",
+      "bytes": 163,
+      "sha256": "6ec659ce3b6c2b173c719286caab04409adba046c0917874ec3b5e36ddfbc7e3"
+    },
+    {
+      "path": "codec/node_modules/semver/functions/satisfies.js",
+      "bytes": 247,
+      "sha256": "8cf5e122b757251671ed6c9d9680904b71cd375845853f05312e608cf2cc2946"
+    },
+    {
+      "path": "codec/node_modules/semver/functions/sort.js",
+      "bytes": 161,
+      "sha256": "c2fe2d3ed0be8a4e9de8f02abdfd5d9c0d3bcc510d88e87af84185592882c4b8"
+    },
+    {
+      "path": "codec/node_modules/semver/functions/truncate.js",
+      "bytes": 1021,
+      "sha256": "e145833a250311927c92f424f56498c52f1b7bb1271ce6afbf006db87773ff43"
+    },
+    {
+      "path": "codec/node_modules/semver/functions/valid.js",
+      "bytes": 176,
+      "sha256": "0de7ea736cb7807179d46dfac09c830a9338e02b6a07db12d7040cde2def6025"
+    },
+    {
+      "path": "codec/node_modules/semver/index.js",
+      "bytes": 2691,
+      "sha256": "4b3e57d3d40e29e0706002eba113d09f35aea593578376bbeec83b777b9912ab"
+    },
+    {
+      "path": "codec/node_modules/semver/internal/constants.js",
+      "bytes": 873,
+      "sha256": "38a112baf27ceca0260082ff26ac2fd7a9861cab1af12dd65e720277f68e6ce9"
+    },
+    {
+      "path": "codec/node_modules/semver/internal/debug.js",
+      "bytes": 240,
+      "sha256": "8a9f420572260f3cf944463b5090d62a60f0730589dc23a7ec4ca25e2ee41bb3"
+    },
+    {
+      "path": "codec/node_modules/semver/internal/identifiers.js",
+      "bytes": 525,
+      "sha256": "b4916b09dc7869ae0eb05e71c855c942a3a7365f7e6e89185d59a9e45a2451d7"
+    },
+    {
+      "path": "codec/node_modules/semver/internal/lrucache.js",
+      "bytes": 802,
+      "sha256": "14d087c87da87b6f5c36fc4cdd7d2d14077874b14a68e20fce5b6138fa2ca34f"
+    },
+    {
+      "path": "codec/node_modules/semver/internal/parse-options.js",
+      "bytes": 338,
+      "sha256": "fdf51d0de8d5442c35a997ef58cd530d239ce206f961d14c5121354451b01d01"
+    },
+    {
+      "path": "codec/node_modules/semver/internal/re.js",
+      "bytes": 8139,
+      "sha256": "5833262888e2b5d843a69193f83c05e374818dbe55379b497819b5bf58e48cd8"
+    },
+    {
+      "path": "codec/node_modules/semver/package.json",
+      "bytes": 1661,
+      "sha256": "7c94cb7f2a53c27b20d76386ec144c062894dbcc909cfabd0f728c37874b1776"
+    },
+    {
+      "path": "codec/node_modules/semver/preload.js",
+      "bytes": 83,
+      "sha256": "edb6808911bebcb324b2df57e5c9935149e56984ff083b74c6cfe215f5b710ba"
+    },
+    {
+      "path": "codec/node_modules/semver/range.bnf",
+      "bytes": 702,
+      "sha256": "15d0baf9b7b98e6d862c0cb9e822d2533d2bc23e136bb75314d802ca1fcb0392"
+    },
+    {
+      "path": "codec/node_modules/semver/ranges/gtr.js",
+      "bytes": 231,
+      "sha256": "8fadad28e36d28e93d498ac7ac20badba2a407312845eabc18e82e90a0732b19"
+    },
+    {
+      "path": "codec/node_modules/semver/ranges/intersects.js",
+      "bytes": 224,
+      "sha256": "fe87ac5d3020010ad3ec00636dadbf0c669ff07d0f57e0a8165a8264f79a676f"
+    },
+    {
+      "path": "codec/node_modules/semver/ranges/ltr.js",
+      "bytes": 227,
+      "sha256": "e5186fcc03018acf9be6d968755d4c49727aeb0d981d179eb568ae5fbe983038"
+    },
+    {
+      "path": "codec/node_modules/semver/ranges/max-satisfying.js",
+      "bytes": 593,
+      "sha256": "e1a2c0d6144cc772cd20bbc8ecb9e8a3a4074e9172a3d8e794838b591cdeb416"
+    },
+    {
+      "path": "codec/node_modules/semver/ranges/min-satisfying.js",
+      "bytes": 591,
+      "sha256": "2681abf54098aa670f12826b76a6ec77a2441186ae4243afde3be8ae4908f7ca"
+    },
+    {
+      "path": "codec/node_modules/semver/ranges/min-version.js",
+      "bytes": 1514,
+      "sha256": "fefba0a88c2bf74d5cede504b5ae50a8dc3edfd69cf0174a491e2cf3e442614b"
+    },
+    {
+      "path": "codec/node_modules/semver/ranges/outside.js",
+      "bytes": 2204,
+      "sha256": "3a2b0b23593d2f49419c06af2af75450cab103b0c25d665d48fe5bca495a21ca"
+    },
+    {
+      "path": "codec/node_modules/semver/ranges/simplify.js",
+      "bytes": 1355,
+      "sha256": "7b78581c13322bc68ece2088685386b2a9b51c15b94d0a2063bdf2546bd41934"
+    },
+    {
+      "path": "codec/node_modules/semver/ranges/subset.js",
+      "bytes": 7478,
+      "sha256": "ceb9eb6ed5bfc6c7ac7af7f47e5c3535444a4e66a0e2b58cdad4bd02a35d454d"
+    },
+    {
+      "path": "codec/node_modules/semver/ranges/to-comparators.js",
+      "bytes": 282,
+      "sha256": "6c5e966210cff270fa2850668aaf8460fac7759f8d99f282521ef7a78f4564e9"
+    },
+    {
+      "path": "codec/node_modules/semver/ranges/valid.js",
+      "bytes": 326,
+      "sha256": "5ef6f995af801868925940cf8df5735d565ebabb090b068695cae65218bcd3ac"
+    },
+    {
+      "path": "codec/node_modules/sharp/LICENSE",
+      "bytes": 10273,
+      "sha256": "73ba74dfaa520b49a401b5d21459a8523a146f3b7518a833eea5efa85130bf68"
+    },
+    {
+      "path": "codec/node_modules/sharp/README.md",
+      "bytes": 3162,
+      "sha256": "89772961fcf195b976573874555f2902bfe04a3e57be61af261ac65ce9348735"
+    },
+    {
+      "path": "codec/node_modules/sharp/dist/channel.cjs",
+      "bytes": 5383,
+      "sha256": "7445567e8001f4be3126374e4c17e282777ed14c718acca875c91bec69a2d7a1"
+    },
+    {
+      "path": "codec/node_modules/sharp/dist/channel.mjs",
+      "bytes": 5376,
+      "sha256": "6067b0ba5ebcc9682a01d0b450a12b54849a95c8ed017f8485bddb5fd0b9db91"
+    },
+    {
+      "path": "codec/node_modules/sharp/dist/colour.cjs",
+      "bytes": 5622,
+      "sha256": "da760186e75d4fd8b6da0a617ecf122deec2fa6d95fdcc194bbee0cb1c5e4605"
+    },
+    {
+      "path": "codec/node_modules/sharp/dist/colour.mjs",
+      "bytes": 5610,
+      "sha256": "760e7fa8161432a9cc97f0a3d9f3e0b757e66089c967e6b36f3131c9fdafa1b5"
+    },
+    {
+      "path": "codec/node_modules/sharp/dist/composite.cjs",
+      "bytes": 9332,
+      "sha256": "6e0837309d25c2b642d42b557f3e1292c2b057af09746647a3a6d54de772a157"
+    },
+    {
+      "path": "codec/node_modules/sharp/dist/composite.mjs",
+      "bytes": 9325,
+      "sha256": "16eadc26ba57417e90e4bb73aff1116b56ad26766088793ab0b7c4bbdd2bc9fc"
+    },
+    {
+      "path": "codec/node_modules/sharp/dist/constructor.cjs",
+      "bytes": 20364,
+      "sha256": "6b8978e0f1614d83a219cbbd455e3eed7922bc4212a5b3b99c5d37c3af3b3226"
+    },
+    {
+      "path": "codec/node_modules/sharp/dist/constructor.mjs",
+      "bytes": 20340,
+      "sha256": "8be8da679d2a028d0f53b02ce52f07f295134a297caf3068944cd8d0b57ab3d1"
+    },
+    {
+      "path": "codec/node_modules/sharp/dist/index.cjs",
+      "bytes": 620,
+      "sha256": "d69f275bc49fcd2a6188b26b35c986d4db32a1b008653fef88adb4598688232a"
+    },
+    {
+      "path": "codec/node_modules/sharp/dist/index.d.cts",
+      "bytes": 92867,
+      "sha256": "2876b0808194e7e14eb78d59f28aa835d9146bbafd4b7ae150b3fbf1da54b8e6"
+    },
+    {
+      "path": "codec/node_modules/sharp/dist/index.d.mts",
+      "bytes": 87968,
+      "sha256": "a68f36dc8c71757c01f7b0a32333997f510dd61a2de0a3ae1ac23072c368ec37"
+    },
+    {
+      "path": "codec/node_modules/sharp/dist/index.mjs",
+      "bytes": 573,
+      "sha256": "0e8f955c68a1b0bccf0ba5343c924dbfa6a46a76a0d491ec27fe6b328311363e"
+    },
+    {
+      "path": "codec/node_modules/sharp/dist/input.cjs",
+      "bytes": 33741,
+      "sha256": "e5eb5c891c0893098dbe8bc0358a2f2c7e800581018923a7956732fe1a5ddf8f"
+    },
+    {
+      "path": "codec/node_modules/sharp/dist/input.mjs",
+      "bytes": 33729,
+      "sha256": "4b0a51e678f9022cec06a1ffb34e17ea3498cfb707492b54de87541ccac54125"
+    },
+    {
+      "path": "codec/node_modules/sharp/dist/is.cjs",
+      "bytes": 2932,
+      "sha256": "3fd05ca6f6cd762c0c2279545e6114623d708f49851b3d23b8396c621455ccc8"
+    },
+    {
+      "path": "codec/node_modules/sharp/dist/is.mjs",
+      "bytes": 2930,
+      "sha256": "d87220e2c4ce04202290fdfd78105a65d32adce3fead64aaaaca15cfe324f95d"
+    },
+    {
+      "path": "codec/node_modules/sharp/dist/libvips.cjs",
+      "bytes": 5833,
+      "sha256": "3419f6cb4303feaf4a76abe122ce1caf5dc755f9f17fa013afd5561827b61062"
+    },
+    {
+      "path": "codec/node_modules/sharp/dist/libvips.mjs",
+      "bytes": 5828,
+      "sha256": "d9984601b0aafe44c393b29ce4b0712b1c40890c3d740d4fda49842a4ea5873d"
+    },
+    {
+      "path": "codec/node_modules/sharp/dist/operation.cjs",
+      "bytes": 32882,
+      "sha256": "3d1ba66d41f48afb47f1b17d93cd395d1a007159a0e79abe7291e3e0fb42b6f7"
+    },
+    {
+      "path": "codec/node_modules/sharp/dist/operation.mjs",
+      "bytes": 32875,
+      "sha256": "257872181be8d6b66f3f310fff5f17f3c297ff258ab3005d09a954844b3eeb6b"
+    },
+    {
+      "path": "codec/node_modules/sharp/dist/output.cjs",
+      "bytes": 65416,
+      "sha256": "2ef21e22c65653900ee5cf6ef9e40d7fd8a432c3b0a29bed970ed50326638f88"
+    },
+    {
+      "path": "codec/node_modules/sharp/dist/output.mjs",
+      "bytes": 65399,
+      "sha256": "a5ae31763bec9e0a5d41da3d5cbcea3fcfc7d366218c199f9cece530ce48846a"
+    },
+    {
+      "path": "codec/node_modules/sharp/dist/resize.cjs",
+      "bytes": 22784,
+      "sha256": "c37228db16357fe52e48b2cd29deba87c49a480eb488aa859961eb378e407cf8"
+    },
+    {
+      "path": "codec/node_modules/sharp/dist/resize.mjs",
+      "bytes": 22777,
+      "sha256": "641e7493bd89855605d052a9a6a2a867fbb7291d97242252ecd57aeb9ed62ae0"
+    },
+    {
+      "path": "codec/node_modules/sharp/dist/sharp.cjs",
+      "bytes": 6199,
+      "sha256": "4fc05edeae66ea8207332f7c03045856e43f371a848401a01491ff15e77d839f"
+    },
+    {
+      "path": "codec/node_modules/sharp/dist/sharp.mjs",
+      "bytes": 6294,
+      "sha256": "994230859dcfa1235dee5bf612069d14844153b997cf7309deb2ea0012ec5419"
+    },
+    {
+      "path": "codec/node_modules/sharp/dist/utility.cjs",
+      "bytes": 9786,
+      "sha256": "0f7a14858dfa8ebd01b2c6c2272297f7a34c4af3d84f0c0b926146c49a2655b1"
+    },
+    {
+      "path": "codec/node_modules/sharp/dist/utility.mjs",
+      "bytes": 9862,
+      "sha256": "761566e165bc1fc90bc6dd67a3b560c1a63e6cfe98009b726d35288606d629b9"
+    },
+    {
+      "path": "codec/node_modules/sharp/install/build.js",
+      "bytes": 860,
+      "sha256": "fea92e0d55cce8692413c479021173aa1512304e1b849039949cbee9d6ceb1de"
+    },
+    {
+      "path": "codec/node_modules/sharp/lib/index.d.ts",
+      "bytes": 92867,
+      "sha256": "2876b0808194e7e14eb78d59f28aa835d9146bbafd4b7ae150b3fbf1da54b8e6"
+    },
+    {
+      "path": "codec/node_modules/sharp/package.json",
+      "bytes": 8115,
+      "sha256": "27b5a6c6e1e1f27c527b09a963c932979403837d0f5f013ab5bdfb4a0ef2269a"
+    },
+    {
+      "path": "codec/node_modules/sharp/src/binding.gyp",
+      "bytes": 10805,
+      "sha256": "9d0a43b5db5db4e6a4a662ff059d8bf30e57ea403d2e207fc408a8c6aa0ab8c8"
+    },
+    {
+      "path": "codec/node_modules/sharp/src/common.cc",
+      "bytes": 41423,
+      "sha256": "da681305ad288d1e1947b8ad5f6b1ddbe221236d77f801c67de7bfb637cfc981"
+    },
+    {
+      "path": "codec/node_modules/sharp/src/common.h",
+      "bytes": 10988,
+      "sha256": "fcca4777bbb2363bb9c2ff082eb8e0264096151a975a332a9450dbb97d636fae"
+    },
+    {
+      "path": "codec/node_modules/sharp/src/metadata.cc",
+      "bytes": 15320,
+      "sha256": "a127c134c9e537db9c63962ff1aa1d0762a8d517d746a844e6b43b299e11a581"
+    },
+    {
+      "path": "codec/node_modules/sharp/src/metadata.h",
+      "bytes": 1878,
+      "sha256": "5e02c25ec821a525b0caf31161b1e8675ff32cfd098c17cda0b888440362b057"
+    },
+    {
+      "path": "codec/node_modules/sharp/src/operations.cc",
+      "bytes": 17412,
+      "sha256": "a61e6545cde7d2f2ae508b4eceeeec9db9ef711211d5cba1ed470f9325f914fb"
+    },
+    {
+      "path": "codec/node_modules/sharp/src/operations.h",
+      "bytes": 3625,
+      "sha256": "6f41d329634471dff8e093d12e38ff356293079e2aeecc5b922fc23ba99799e6"
+    },
+    {
+      "path": "codec/node_modules/sharp/src/pipeline.cc",
+      "bytes": 90883,
+      "sha256": "76010d19804f37f2231f3d705afdd0937ac593663797780a36c06c3952cd6571"
+    },
+    {
+      "path": "codec/node_modules/sharp/src/pipeline.h",
+      "bytes": 10131,
+      "sha256": "e09c3dbd873071a373e6d95679b470a6fe1be5fc2ef781b00fd87958b5ab5e98"
+    },
+    {
+      "path": "codec/node_modules/sharp/src/sharp.cc",
+      "bytes": 1529,
+      "sha256": "9f407b50bb2d02e5eb711b769f05d3e6659028430e055c4271e5ab1593f5a257"
+    },
+    {
+      "path": "codec/node_modules/sharp/src/stats.cc",
+      "bytes": 6756,
+      "sha256": "72f8f2ad0e4315951c88b115511eb96741fd0479385ed094141f7bd254739791"
+    },
+    {
+      "path": "codec/node_modules/sharp/src/stats.h",
+      "bytes": 1267,
+      "sha256": "db854f0c3c4a0db1751021ed676413c6d5ca00becc08bdc13258b29047450b8c"
+    },
+    {
+      "path": "codec/node_modules/sharp/src/utilities.cc",
+      "bytes": 9532,
+      "sha256": "694195a5f2aa7e4ef50aa7a97c0381d8a858a6b3a437997e17b972aff093a493"
+    },
+    {
+      "path": "codec/node_modules/sharp/src/utilities.h",
+      "bytes": 741,
+      "sha256": "0b126ab63cf1aedf8e71e6cb8179899d3ef02c46419100e847b2ca4284b8901b"
+    },
+    {
+      "path": "codec/output-frame.mjs",
+      "bytes": 15360,
+      "sha256": "641d64d3f34d4b3c2c837bd47bd721f8ebcb3657f5b09b365241f072dd198837"
+    },
+    {
+      "path": "codec/package.json",
+      "bytes": 64,
+      "sha256": "308a33b5490a6329a83e7ec66da4ada11b4b30a9df1cda619d58162d1b14b12f"
+    },
+    {
+      "path": "context-checksums.sha256",
+      "bytes": 16135,
+      "sha256": "a5b4350ce1627c1f836f3f5bbb7623e3dee7824e87753e635a7f27cffb45a6b7"
+    },
+    {
+      "path": "licenses/npm-artifacts.json",
+      "bytes": 2194,
+      "sha256": "7e4747a0fc0ffe5a9351f0f61062d5b62a9aa6b2be42a76e164a42ab96648ecb"
+    },
+    {
+      "path": "licenses/pnpm-lock.yaml",
+      "bytes": 311650,
+      "sha256": "fe205f537eace6ea02477b0bbb058e38c25dfed5334815828c09c8000781d213"
+    },
+    {
+      "path": "licenses/source-verification.json",
+      "bytes": 2154,
+      "sha256": "2b139d6c1c2a781a40c0516d8c30e60d864489321ed3c93721c254eb61fc35e8"
+    },
+    {
+      "path": "licenses/tsconfig.codec.json",
+      "bytes": 558,
+      "sha256": "3aced43bf03c85699cc046c9efa1722634ca05040a608176f006fc02102dcbcd"
+    }
+  ],
+  "artifactMetadata": [
+    {
+      "name": "dav1d-1.5.4.tar.xz",
+      "bytes": 1038852,
+      "sha256": "686616b7c69eb88d44459391ab25cac13b6647a3b288835c5784e71c1514a5c5",
+      "officialUrl": "https://download.videolan.org/pub/videolan/dav1d/1.5.4/dav1d-1.5.4.tar.xz",
+      "downloadVerified": true
+    },
+    {
+      "name": "meson-1.9.2-py3-none-any.whl",
+      "bytes": 1033657,
+      "sha256": "1a284dc1912929098a6462401af58dc49ae3f324e94814a38a8f1020cee07cba",
+      "officialUrl": "https://files.pythonhosted.org/packages/d7/ab/115470e7c6dcce024e43e2e00986864c56e48c59554bb19f4b02ed72814c/meson-1.9.2-py3-none-any.whl",
+      "downloadVerified": true
+    },
+    {
+      "name": "meson-1.9.2.tar.gz",
+      "bytes": 2382854,
+      "sha256": "3499b59bb23982496e01e57b4103ac2f826f9c3a3f59e507a0a832487fe55e3d",
+      "officialUrl": "https://files.pythonhosted.org/packages/18/ca/0e3c232fb20f0707bbddf7bb639882a3dba8684bf2f9f4eced266775fcbc/meson-1.9.2.tar.gz",
+      "downloadVerified": true
+    },
+    {
+      "name": "ninja-linux-aarch64.zip",
+      "bytes": 126282,
+      "sha256": "740f1b9f9d8ae68438240a6a2f3f7a27fc8b1946d2024a6a6b25857ee877987b",
+      "officialUrl": "https://github.com/ninja-build/ninja/releases/download/v1.13.1/ninja-linux-aarch64.zip",
+      "downloadVerified": true
+    },
+    {
+      "name": "ninja-1.13.1-COPYING",
+      "bytes": 11358,
+      "sha256": "eb7e9ab9690124c5c9f42bdc81383d886a3dede26345b6ed15bbad7caf81f7ea",
+      "officialUrl": "https://raw.githubusercontent.com/ninja-build/ninja/79feac0f3e3bc9da9effc586cd5fea41e7550051/COPYING",
+      "downloadVerified": true
+    }
+  ],
+  "processingAuthority": "none",
+  "policyAdmission": "none"
+}

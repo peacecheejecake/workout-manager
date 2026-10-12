@@ -9,6 +9,7 @@ import {
   ActivityMediaPanel,
   type GalleryMediaTransfer,
 } from '@workout/modules-gallery/activity-media-panel';
+import { createGallerySubtitlesReader } from '@workout/modules-gallery/gallery-subtitles-api';
 import { StretchingActivityPanel } from '@workout/modules-supplementary/stretching-activity-panel';
 import { shiftDashboardDate } from '@workout/contracts/dashboard';
 import type { ShellBasemap } from '../basemap-config';
@@ -24,6 +25,10 @@ function Activities({ basemap }: { basemap: ShellBasemap | null }) {
       open: (input) => fileTransfer.openGalleryMedia(input),
     }),
     [fileTransfer],
+  );
+  const subtitlesReader = useMemo(
+    () => createGallerySubtitlesReader(session.transport),
+    [session.transport],
   );
   useEffect(() => {
     const update = () => setSearch(window.location.search);
@@ -50,6 +55,7 @@ function Activities({ basemap }: { basemap: ShellBasemap | null }) {
           transport={session.transport}
           activityId={activityId}
           mediaTransfer={mediaTransfer}
+          subtitlesReader={subtitlesReader}
         />
       )}
       linkedBlockHref={(linkedPlanVersionId, linkedBlockId) =>

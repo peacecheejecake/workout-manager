@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { GalleryMediaItem } from '@workout/contracts/gallery';
 import type { GalleryMediaTransfer } from './media-transfer';
+import { useGalleryMediaSource } from './use-gallery-media-source';
 import styles from './gallery.module.css';
 
 /**
@@ -18,9 +19,7 @@ export function MediaPreview({
 }) {
   const container = useRef<HTMLDivElement | null>(null);
   const [visible, setVisible] = useState(() => typeof IntersectionObserver !== 'function');
-  const [source, setSource] = useState<string | null>(null);
-  const [failed, setFailed] = useState(false);
-  const resolvedVariant = variant === 'preview' && item.preview === null ? 'original' : variant;
+  const { state, retry } = useGalleryMediaSource(item, transfer, variant, visible);
 
   useEffect(() => {
     const element = container.current;
@@ -32,51 +31,28 @@ export function MediaPreview({
     return () => observer.disconnect();
   }, []);
 
-  useEffect(() => {
-    if (!visible || !transfer) return;
-    const controller = new AbortController();
-    let objectUrl: string | null = null;
-    let cancelled = false;
-    transfer
-      .open({ mediaItemId: item.id, variant: resolvedVariant, signal: controller.signal })
-      .then((url) => {
-        objectUrl = url;
-        if (cancelled) {
-          URL.revokeObjectURL(url);
-          return;
-        }
-        setSource(url);
-      })
-      .catch(() => {
-        if (!cancelled) setFailed(true);
-      });
-    return () => {
-      cancelled = true;
-      controller.abort();
-      setSource(null);
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-    };
-  }, [visible, transfer, item.id, resolvedVariant]);
-
   const label = item.caption ?? item.file.originalFileName;
   return (
     <div className={styles.media} ref={container}>
-      {!transfer ? (
+      {state.kind === 'unavailable' ? (
         <p className={styles.hint}>이 환경에서는 미디어를 표시할 수 없습니다.</p>
-      ) : failed ? (
-        <p role="alert">미디어를 불러오지 못했습니다.</p>
-      ) : source === null ? (
+      ) : state.kind === 'failed' ? (
+        <div role="alert">
+          미디어를 불러오지 못했습니다.
+          <button type="button" onClick={retry}>
+            미디어 다시 불러오기
+          </button>
+        </div>
+      ) : state.kind !== 'ready' ? (
         <p role="status">미디어 불러오는 중</p>
       ) : item.mediaKind === 'image' ? (
-        <img src={source} alt={label} loading="lazy" decoding="async" />
+        <img src={state.url} alt={label} loading="lazy" decoding="async" />
       ) : (
         <>
-          {/* No caption track is generated for user uploaded video in this
-              milestone, so the absence is stated below instead of implied by an
-              empty track element. */}
+          {/* Tile playback does not query subtitles; the viewer handles their explicit availability. */}
           {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-          <video src={source} controls preload="none" aria-label={label} />
-          <p className={styles.hint}>자막 없음 · 이 화면은 자막을 생성하지 않습니다.</p>
+          <video src={state.url} controls playsInline preload="none" aria-label={label} />
+          <p className={styles.hint}>이 미리보기에서는 자막을 조회하지 않습니다.</p>
         </>
       )}
     </div>

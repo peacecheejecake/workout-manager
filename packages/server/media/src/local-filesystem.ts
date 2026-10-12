@@ -112,6 +112,7 @@ function unitPrivateDirectoryDepth(parsed: ParsedObjectKey): number {
     // resources/R/temporary/<upload>, gallery/M/temporary/<upload>,
     // courses/C/thumbnails/temporary/<job>
     case 'temporary':
+    case 'gallery_rendition_temporary':
     case 'gallery_temporary':
     case 'course_thumbnail_temporary':
       return 0;
@@ -119,6 +120,8 @@ function unitPrivateDirectoryDepth(parsed: ParsedObjectKey): number {
     case 'final':
     case 'gallery_final':
       return 2;
+    case 'gallery_rendition':
+      return 1;
     // resources/R/url-ingestions/<ingestion>/temporary/<kind>
     case 'url_temporary':
       return 2;
@@ -156,6 +159,7 @@ const TENANT_DIRECTORY_DEPTH = 8;
 const SCOPE_DIRECTORY_DEPTH: Readonly<Record<ObjectScope['kind'], number>> = {
   activity: 6,
   course: 4,
+  gallery: 6,
 };
 
 /** Whether a path the walk found is an object key, and one of this tenant's (M2-01x). */
@@ -506,6 +510,7 @@ export async function createLocalFilesystemObjectStorage(
         parsedKey.kind !== 'temporary' &&
         parsedKey.kind !== 'url_temporary' &&
         parsedKey.kind !== 'gallery_temporary' &&
+        parsedKey.kind !== 'gallery_rendition_temporary' &&
         parsedKey.kind !== 'track_temporary' &&
         parsedKey.kind !== 'course_thumbnail_temporary'
       )
@@ -557,11 +562,13 @@ export async function createLocalFilesystemObjectStorage(
         (parsedTemporaryKey.kind !== 'temporary' &&
           parsedTemporaryKey.kind !== 'url_temporary' &&
           parsedTemporaryKey.kind !== 'gallery_temporary' &&
+          parsedTemporaryKey.kind !== 'gallery_rendition_temporary' &&
           parsedTemporaryKey.kind !== 'track_temporary' &&
           parsedTemporaryKey.kind !== 'course_thumbnail_temporary') ||
         (parsedFinalKey.kind !== 'final' &&
           parsedFinalKey.kind !== 'url_final' &&
           parsedFinalKey.kind !== 'gallery_final' &&
+          parsedFinalKey.kind !== 'gallery_rendition' &&
           parsedFinalKey.kind !== 'track_final' &&
           parsedFinalKey.kind !== 'course_thumbnail_final')
       )
@@ -579,6 +586,13 @@ export async function createLocalFilesystemObjectStorage(
         parsedTemporaryKey.kind === 'gallery_temporary' &&
         parsedFinalKey.kind === 'gallery_final' &&
         parsedTemporaryKey.uploadId === parsedFinalKey.uploadId;
+      const renditionPair =
+        parsedTemporaryKey.kind === 'gallery_rendition_temporary' &&
+        parsedFinalKey.kind === 'gallery_rendition' &&
+        parsedTemporaryKey.jobId === parsedFinalKey.jobId &&
+        parsedTemporaryKey.attemptId === parsedFinalKey.attemptId &&
+        parsedTemporaryKey.recipeVersion === parsedFinalKey.recipeVersion &&
+        parsedTemporaryKey.renditionKind === parsedFinalKey.renditionKind;
       // A track upload publishes three objects from one upload; the artifact kind and the
       // track id must agree as well, so a normalized derivative can never be published
       // over the original file's key.
@@ -595,7 +609,8 @@ export async function createLocalFilesystemObjectStorage(
         parsedTemporaryKey.kind === 'course_thumbnail_temporary' &&
         parsedFinalKey.kind === 'course_thumbnail_final';
       const temporaryOwnerId =
-        parsedTemporaryKey.kind === 'gallery_temporary'
+        parsedTemporaryKey.kind === 'gallery_temporary' ||
+        parsedTemporaryKey.kind === 'gallery_rendition_temporary'
           ? parsedTemporaryKey.mediaItemId
           : parsedTemporaryKey.kind === 'track_temporary'
             ? parsedTemporaryKey.activityId
@@ -603,7 +618,7 @@ export async function createLocalFilesystemObjectStorage(
               ? parsedTemporaryKey.courseId
               : parsedTemporaryKey.resourceId;
       const finalOwnerId =
-        parsedFinalKey.kind === 'gallery_final'
+        parsedFinalKey.kind === 'gallery_final' || parsedFinalKey.kind === 'gallery_rendition'
           ? parsedFinalKey.mediaItemId
           : parsedFinalKey.kind === 'track_final'
             ? parsedFinalKey.activityId
@@ -611,7 +626,12 @@ export async function createLocalFilesystemObjectStorage(
               ? parsedFinalKey.courseId
               : parsedFinalKey.resourceId;
       if (
-        (!uploadPair && !urlPair && !galleryPair && !trackPair && !courseThumbnailPair) ||
+        (!uploadPair &&
+          !urlPair &&
+          !galleryPair &&
+          !renditionPair &&
+          !trackPair &&
+          !courseThumbnailPair) ||
         parsedTemporaryKey.tenantId !== parsedFinalKey.tenantId ||
         temporaryOwnerId !== finalOwnerId ||
         parsedFinalKey.sha256 !== expectation.sha256

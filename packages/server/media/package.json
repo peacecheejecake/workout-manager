@@ -14,6 +14,15 @@
     "./object-storage": "./src/object-storage.ts",
     "./upload": "./src/upload.ts",
     "./validation": "./src/validation.ts",
-    "./local-filesystem": "./src/local-filesystem.ts"
+    "./local-filesystem": "./src/local-filesystem.ts",
+    "./gallery-webvtt": "./src/gallery-webvtt.ts",
+    "./gallery-image-rendition": "./src/gallery-image-rendition.ts",
+    "./gallery-video-rendition": "./src/gallery-video-rendition.ts",
+    "./gallery-original-bytes": "./src/gallery-original-bytes.ts",
+    "./gallery-codec-supervisor": "./src/gallery-codec-supervisor.ts"
+  },
+  "dependencies": {
+    "@workout/contracts": "workspace:*",
+    "sharp": "0.35.4"
   }
 }

@@ -96,6 +96,16 @@ import {
   type ResourceUrlIngestionRouteRepository,
 } from './resource-url-routes.js';
 import { registerGalleryMediaRoutes, type GalleryMediaServices } from './gallery-media-routes.js';
+import { registerGallerySubtitlesRoutes } from './gallery-subtitles-routes.js';
+import type { GallerySubtitlesReadService } from './gallery-subtitles-service.js';
+import {
+  registerGalleryNavigationRoutes,
+  type GalleryNavigationServices,
+} from './gallery-navigation-routes.js';
+import {
+  registerGalleryRenditionRoutes,
+  type GalleryRenditionServices,
+} from './gallery-rendition-routes.js';
 import {
   registerActivityTrackRoutes,
   type ActivityTrackServices,
@@ -166,6 +176,12 @@ export interface ProductRepositories {
   resourceAccess?: ResourceAccessRepository;
   resourceRetrieval?: ResourceRetrievalRepository;
   galleryMedia?: GalleryMediaServices;
+  /** Subtitle read storage. Absent until its persistence is installed; the route then answers 503. */
+  gallerySubtitles?: GallerySubtitlesReadService;
+  /** Owned albums and date/course navigation (S17). Absent unless the SQL143 extension is installed. */
+  galleryNavigation?: GalleryNavigationServices;
+  /** Derived rendition state and ready bytes (S17). Absent unless the SQL144 extension is installed. */
+  galleryRenditions?: GalleryRenditionServices;
   /** Private recorded-track storage. Absent until object storage and a parser are wired. */
   activityTracks?: ActivityTrackServices;
   /** Internal pedestrian routing. Absent until an engine endpoint is configured. */
@@ -320,8 +336,14 @@ export function registerProductRoutes(
     registerResourceAccessRoutes(routes, repositories.resourceAccess, principal);
   if (repositories.resourceRetrieval)
     registerResourceRetrievalRoutes(routes, repositories.resourceRetrieval, principal);
-  if (repositories.galleryMedia)
+  if (repositories.galleryMedia) {
     registerGalleryMediaRoutes(routes, repositories.galleryMedia, principal);
+    registerGallerySubtitlesRoutes(routes, repositories.gallerySubtitles, principal);
+  }
+  if (repositories.galleryNavigation)
+    registerGalleryNavigationRoutes(routes, repositories.galleryNavigation, principal);
+  if (repositories.galleryRenditions)
+    registerGalleryRenditionRoutes(routes, repositories.galleryRenditions, principal);
   if (repositories.activityTracks)
     registerActivityTrackRoutes(routes, repositories.activityTracks, principal);
   if (repositories.walkingRoutes)

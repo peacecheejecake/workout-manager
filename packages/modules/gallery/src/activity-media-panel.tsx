@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
   QueryClient,
   QueryClientProvider,
@@ -14,6 +14,10 @@ import { createGalleryApi } from './gallery-api';
 import { readableGalleryError } from './gallery-errors';
 import { deduplicateById, nextGalleryOffset } from './gallery-paging';
 import { MediaPreview } from './media-preview';
+const MediaViewer = lazy(() =>
+  import('./media-viewer').then((module) => ({ default: module.MediaViewer })),
+);
+import type { GallerySubtitlesReader } from './video-viewer';
 import type { GalleryMediaTransfer } from './media-transfer';
 import styles from './gallery.module.css';
 
@@ -33,6 +37,7 @@ export interface ActivityMediaPanelProps {
   transport: AuthenticatedTransport;
   activityId: string;
   mediaTransfer?: GalleryMediaTransfer;
+  subtitlesReader?: GallerySubtitlesReader;
   /** Where the owner uploads new media; linking only uses media that already exists. */
   galleryHref?: string;
 }
@@ -69,8 +74,10 @@ function Panel({
   transport,
   activityId,
   mediaTransfer,
+  subtitlesReader,
   galleryHref = '/gallery',
 }: ActivityMediaPanelProps) {
+  const [viewerId, setViewerId] = useState<string | null>(null);
   const api = useMemo(() => createGalleryApi(transport), [transport]);
   const queryClient = useQueryClient();
   const headingId = useId();
@@ -185,6 +192,7 @@ function Panel({
             {linkedItems.map((item) => (
               <li key={item.id}>
                 <LinkedMedia
+                  onView={() => setViewerId(item.id)}
                   headingId={cardHeadingId('linked', item.id)}
                   item={item}
                   transfer={mediaTransfer}
@@ -272,6 +280,18 @@ function Panel({
           </div>
         ) : null}
       </section>
+      {viewerId !== null ? (
+        <Suspense fallback={<p role="status">미디어 보기 준비 중</p>}>
+          <MediaViewer
+            items={linkedItems}
+            selectedId={viewerId}
+            transfer={mediaTransfer}
+            subtitlesReader={subtitlesReader}
+            onSelect={setViewerId}
+            onClose={() => setViewerId(null)}
+          />
+        </Suspense>
+      ) : null}
     </section>
   );
 }
@@ -286,12 +306,14 @@ function LinkedMedia({
   transfer,
   disabled,
   onUnlink,
+  onView,
 }: {
   headingId: string;
   item: GalleryMediaItem;
   transfer: GalleryMediaTransfer | undefined;
   disabled: boolean;
   onUnlink(): void;
+  onView(): void;
 }) {
   const [downloading, setDownloading] = useState(false);
   const [downloadFailed, setDownloadFailed] = useState(false);
@@ -338,6 +360,9 @@ function LinkedMedia({
         {mediaName(item)}
       </h5>
       <MediaPreview item={item} transfer={transfer} />
+      <button type="button" onClick={onView}>
+        미디어 크게 보기
+      </button>
       <dl className={styles.factList}>
         <div>
           <dt>종류</dt>

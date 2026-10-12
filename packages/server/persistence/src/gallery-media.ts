@@ -271,7 +271,12 @@ async function finishCommand(
   event: { mediaItemId: string },
   topic: string,
 ) {
-  await enqueue(tx, { id: randomUUID(), idempotencyKey: key, topic, payload: event });
+  await enqueue(tx, {
+    id: randomUUID(),
+    idempotencyKey: key,
+    topic,
+    payload: event,
+  });
   await tx.query(
     'INSERT INTO command_receipt(athlete_id,idempotency_key,request,result) VALUES($1,$2,$3::jsonb,$4::jsonb)',
     [
@@ -319,8 +324,14 @@ async function readItem(tx: Transaction, mediaItemId: string): Promise<ReadResul
     [tx.athleteId, mediaItemId],
   );
   if (!found.rows[0])
-    return galleryMediaReadResultSchema.parse({ status: 'unavailable', mediaItemId });
-  return galleryMediaReadResultSchema.parse({ status: 'available', item: toItem(found.rows[0]) });
+    return galleryMediaReadResultSchema.parse({
+      status: 'unavailable',
+      mediaItemId,
+    });
+  return galleryMediaReadResultSchema.parse({
+    status: 'available',
+    item: toItem(found.rows[0]),
+  });
 }
 
 function assertPreparedRefMatches(input: {
@@ -344,6 +355,17 @@ function assertPreparedRefMatches(input: {
 }
 
 export function createGalleryMediaRepository(database: Database): GalleryMediaRepository {
+  return createGalleryMediaRepositoryWithPrivacy(database, false);
+}
+/** Root selects this new factory only after a fresh installed Gallery capability
+ * proves all six relations, privacy RPC and exact parent/helper metadata. */
+export function createGalleryMediaExtensionRepository(database: Database): GalleryMediaRepository {
+  return createGalleryMediaRepositoryWithPrivacy(database, true);
+}
+function createGalleryMediaRepositoryWithPrivacy(
+  database: Database,
+  galleryExtension: boolean,
+): GalleryMediaRepository {
   async function reserve(
     tx: Transaction,
     operation: 'create_item' | 'attach_preview',
@@ -507,7 +529,10 @@ export function createGalleryMediaRepository(database: Database): GalleryMediaRe
       const tenantId = uuid.parse(athleteId);
       const uploadId = uuid.parse(rawUploadId);
       const prepared = z
-        .strictObject({ storageRef: finalStorageRef, file: galleryMediaDescriptorSchema })
+        .strictObject({
+          storageRef: finalStorageRef,
+          file: galleryMediaDescriptorSchema,
+        })
         .parse(rawPrepared);
       return database.tenant(tenantId, async (tx) => {
         await tenantLock(tx);
@@ -828,6 +853,12 @@ export function createGalleryMediaRepository(database: Database): GalleryMediaRe
           deletedAt,
           accessRevision,
         });
+        if (galleryExtension) {
+          await tx.query(
+            'SELECT public.remove_gallery_navigation_deleted_media_v1($1,$2,$3::timestamptz)',
+            [mediaItemId, accessRevision, deletedAt],
+          );
+        }
         await tx.query('SELECT public.tombstone_gallery_media_receipts($1)', [mediaItemId]);
         await tx.query("SELECT public.cancel_gallery_uploads($1,'MEDIA_DELETED')", [mediaItemId]);
         await tx.query("SELECT public.enqueue_gallery_media_cleanup($1,'resource_deleted')", [

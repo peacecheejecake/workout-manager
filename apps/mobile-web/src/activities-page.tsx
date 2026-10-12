@@ -8,6 +8,7 @@ import {
   ActivityMediaPanel,
   type GalleryMediaTransfer,
 } from '@workout/modules-gallery/activity-media-panel';
+import { createGallerySubtitlesReader } from '@workout/modules-gallery/gallery-subtitles-api';
 import { loadShellBasemap, type ShellBasemap } from './basemap';
 
 /**
@@ -34,6 +35,10 @@ function Activities({
     }),
     [fileTransfer],
   );
+  const subtitlesReader = useMemo(
+    () => createGallerySubtitlesReader(session.transport),
+    [session.transport],
+  );
   const [basemap, setBasemap] = useState<ShellBasemap | null>(null);
   useEffect(() => {
     const controller = new AbortController();
@@ -59,6 +64,7 @@ function Activities({
           transport={session.transport}
           activityId={activityId}
           mediaTransfer={mediaTransfer}
+          subtitlesReader={subtitlesReader}
         />
       )}
       coachingHref={(link) =>

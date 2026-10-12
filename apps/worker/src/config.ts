@@ -180,3 +180,72 @@ export function parseCourseThumbnailWorkerConfig(
     release: parseRelease(environment['WORKOUT_RELEASE']),
   };
 }
+
+const GALLERY_RENDITION_WORKER_ROLE = 'workout_gallery_rendition_worker';
+
+export interface GalleryRenditionWorkerConfig {
+  connectionString: string;
+  storageRoot: string;
+  ffmpegPath: string;
+  ffprobePath: string;
+  /** Codec scratch directory; each job gets its own private subdirectory. */
+  scratchRoot: string | null;
+  release: string;
+}
+
+function absoluteNonRoot(value: string | undefined, code: string): string {
+  if (!value || value.includes('\0') || !isAbsolute(value)) throw new Error(code);
+  const normalized = resolve(value);
+  if (normalized === parse(normalized).root) throw new Error(code);
+  return normalized;
+}
+
+/**
+ * The derived gallery rendition worker (M2-03c). Renditions are a mandatory member of
+ * profile27 (no deployment switch); the run still refuses unless its own database role holds
+ * exactly the five worker RPCs (startup probe). Separate from the API role, with explicit
+ * absolute FFmpeg/ffprobe binaries.
+ */
+export function parseGalleryRenditionWorkerConfig(
+  args: readonly string[],
+  environment: Readonly<Record<string, string | undefined>>,
+): GalleryRenditionWorkerConfig {
+  if (args.length !== 0) throw new Error('INVALID_GALLERY_RENDITION_WORKER_ARGUMENTS');
+  const connectionString = environment['GALLERY_RENDITION_DATABASE_URL'];
+  if (
+    !connectionString ||
+    databaseUser(connectionString, 'INVALID_GALLERY_RENDITION_DATABASE_URL') !==
+      GALLERY_RENDITION_WORKER_ROLE
+  ) {
+    throw new Error('INVALID_GALLERY_RENDITION_DATABASE_ROLE');
+  }
+  const apiConnectionString = environment['DATABASE_URL'];
+  if (
+    apiConnectionString &&
+    databaseUser(apiConnectionString, 'INVALID_GALLERY_RENDITION_API_DATABASE_URL') ===
+      GALLERY_RENDITION_WORKER_ROLE
+  ) {
+    throw new Error('GALLERY_RENDITION_DATABASE_ROLE_NOT_SEPARATE');
+  }
+  const scratch = environment['GALLERY_RENDITION_SCRATCH_ROOT'];
+  return {
+    connectionString,
+    storageRoot: absoluteNonRoot(
+      environment['RESOURCE_STORAGE_ROOT'],
+      'INVALID_RESOURCE_STORAGE_ROOT',
+    ),
+    ffmpegPath: absoluteNonRoot(
+      environment['GALLERY_RENDITION_FFMPEG_PATH'],
+      'INVALID_GALLERY_RENDITION_FFMPEG_PATH',
+    ),
+    ffprobePath: absoluteNonRoot(
+      environment['GALLERY_RENDITION_FFPROBE_PATH'],
+      'INVALID_GALLERY_RENDITION_FFPROBE_PATH',
+    ),
+    scratchRoot:
+      scratch === undefined
+        ? null
+        : absoluteNonRoot(scratch, 'INVALID_GALLERY_RENDITION_SCRATCH_ROOT'),
+    release: parseRelease(environment['WORKOUT_RELEASE']),
+  };
+}

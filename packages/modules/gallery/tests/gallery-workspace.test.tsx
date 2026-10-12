@@ -680,3 +680,90 @@ it('states that media cannot be shown when no transfer capability is injected', 
   await screen.findByRole('link', { name: '결승선' });
   expect(screen.getByText('이 환경에서는 미디어를 표시할 수 없습니다.')).toBeInTheDocument();
 });
+
+it('opens the private viewer from a stored item and restores the invoking control on close', async () => {
+  const user = userEvent.setup();
+  const transfer = { open: vi.fn().mockResolvedValue('blob:private-viewer'), upload: vi.fn() };
+  vi.stubGlobal('URL', Object.assign(URL, { revokeObjectURL: vi.fn() }));
+  Object.defineProperty(HTMLDialogElement.prototype, 'showModal', {
+    configurable: true,
+    value: function (this: HTMLDialogElement) {
+      this.open = true;
+    },
+  });
+  Object.defineProperty(HTMLDialogElement.prototype, 'close', {
+    configurable: true,
+    value: function (this: HTMLDialogElement) {
+      this.open = false;
+    },
+  });
+  try {
+    renderWorkspace(listOnly(), transfer);
+    const trigger = await screen.findByRole('button', { name: '미디어 크게 보기' });
+    await user.click(trigger);
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '보기 닫기' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:private-viewer');
+  } finally {
+    cleanup();
+    vi.unstubAllGlobals();
+    Reflect.deleteProperty(HTMLDialogElement.prototype, 'showModal');
+    Reflect.deleteProperty(HTMLDialogElement.prototype, 'close');
+  }
+});
+
+it('passes a host-injected renditions reader to the viewer and shows nothing without one', async () => {
+  Object.defineProperty(HTMLDialogElement.prototype, 'showModal', {
+    configurable: true,
+    value: function (this: HTMLDialogElement) {
+      this.open = true;
+    },
+  });
+  Object.defineProperty(HTMLDialogElement.prototype, 'close', {
+    configurable: true,
+    value: function (this: HTMLDialogElement) {
+      this.open = false;
+    },
+  });
+  const renditionsReader = {
+    list: vi.fn(async () => ({
+      schemaVersion: 1,
+      mediaItemId,
+      renditions: ['image_preview', 'image_thumbnail'].map((kind) => ({
+        schemaVersion: 1,
+        mediaItemId,
+        kind,
+        originalSha256: 'a'.repeat(64),
+        parentAccessRevision: 1,
+        recipeVersion: 1,
+        state: 'queued',
+      })),
+    })),
+  };
+  const view = render(
+    <GalleryWorkspace
+      athleteId="athlete"
+      sessionId="session"
+      transport={listOnly()}
+      renditionsReader={renditionsReader}
+    />,
+  );
+  expect(
+    await screen.findByText(/미리보기·썸네일·재생용 변환본은 촬영 메타데이터 없이 따로 만듭니다/),
+  ).toBeInTheDocument();
+  expect(screen.queryByText(/자동 변환이나 썸네일 생성을 하지 않습니다/)).not.toBeInTheDocument();
+  await userEvent.click(await screen.findByRole('button', { name: '미디어 크게 보기' }));
+  const region = await screen.findByRole('region', { name: '변환본 상태' });
+  await waitFor(() => expect(region).toHaveTextContent('미리보기 이미지: 변환 대기 중'));
+  expect(renditionsReader.list).toHaveBeenCalledWith(expect.objectContaining({ mediaItemId }));
+  view.unmount();
+  renderWorkspace(listOnly());
+  expect(
+    await screen.findByText(/이 화면은 원본만 저장하고 자동 변환이나 썸네일 생성을 하지 않습니다/),
+  ).toBeInTheDocument();
+  await userEvent.click(await screen.findByRole('button', { name: '미디어 크게 보기' }));
+  expect(await screen.findByRole('dialog')).toBeInTheDocument();
+  expect(screen.queryByRole('region', { name: '변환본 상태' })).not.toBeInTheDocument();
+});

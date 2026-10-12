@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import {
-  accountExportSchema,
+  parseAccountExportIncludingV39,
   operationsStatusSchema,
   eraseAccountSchema,
   eraseAccountResultSchema,
@@ -28,9 +28,11 @@ export function registerOperationsRoutes(
   routes.post('/operations/export', async (request, reply) => {
     input(emptyQuery, request.query);
     if (request.body !== undefined) throw new ProductRequestError(400, 'INVALID_REQUEST');
-    const result = accountExportSchema.parse(
-      await execute(() => repository.exportAccount(principal(request).athleteId)),
+    const athleteId = principal(request).athleteId;
+    const result = parseAccountExportIncludingV39(
+      await execute(() => repository.exportAccount(athleteId)),
     );
+    if (result.athleteId !== athleteId) throw new ProductRequestError(409, 'EXPORT_SCOPE_MISMATCH');
     return reply
       .header('content-disposition', 'attachment; filename="workout-account.json"')
       .send(result);

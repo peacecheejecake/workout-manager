@@ -1,0 +1,18 @@
+{
+  "extends": "../../packages/tooling/tsconfig/node.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "noEmitOnError": true,
+    "rootDir": "../../packages/server/media/src",
+    "outDir": "../../packages/server/media/dist/gallery-codec",
+    "declaration": false,
+    "sourceMap": false,
+    "types": ["node"]
+  },
+  "include": [
+    "../../packages/server/media/src/gallery-image-rendition.ts",
+    "../../packages/server/media/src/gallery-video-rendition.ts",
+    "../../packages/server/media/src/gallery-codec-supervisor.ts"
+  ],
+  "exclude": []
+}

@@ -1,0 +1,60 @@
+.albums,
+.panel,
+.list,
+.list li {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+}
+.albums {
+  color: var(--ink);
+}
+.panel {
+  padding: var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+}
+.albums h2,
+.albums h3,
+.albums p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.albums input,
+.albums select,
+.albums button {
+  box-sizing: border-box;
+  max-width: 100%;
+  min-width: 0;
+  min-height: 2.75rem;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--surface-strong);
+  color: var(--ink);
+  font: inherit;
+}
+.albums button {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.albums :focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  box-shadow: var(--focus);
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.list li {
+  border-block-end: 1px solid var(--line);
+  padding-block-end: var(--space-3);
+}

@@ -149,6 +149,19 @@ afterEach(async () => {
 });
 
 describe('gallery media API boundaries', () => {
+  it('mounts the subtitle read route with configured media and answers 503 without subtitle storage', async () => {
+    const { app, media } = setup();
+    const response = await app.inject({
+      method: 'GET',
+      url: `/bff/v1/gallery/media/${mediaItemId}/subtitles?accessRevision=1`,
+      headers: baseHeaders,
+    });
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toMatchObject({ error: { code: 'GALLERY_SUBTITLES_UNAVAILABLE' } });
+    expect(media.read).not.toHaveBeenCalled();
+    expect(response.body).not.toContain('storageRef');
+  });
+
   it('derives ownership from authentication and never echoes a storage reference', async () => {
     const { app, media } = setup();
     const response = await app.inject({

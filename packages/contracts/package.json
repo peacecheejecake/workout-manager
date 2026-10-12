@@ -304,6 +304,26 @@
     "./bounded-plain-json": {
       "types": "./src/bounded-plain-json.ts",
       "default": "./dist/bounded-plain-json.js"
+    },
+    "./gallery-viewer": {
+      "types": "./src/gallery-viewer.ts",
+      "default": "./dist/gallery-viewer.js"
+    },
+    "./gallery-navigation-v2": {
+      "types": "./src/gallery-navigation-v2.ts",
+      "default": "./dist/gallery-navigation-v2.js"
+    },
+    "./gallery-navigation-v3": {
+      "types": "./src/gallery-navigation-v3.ts",
+      "default": "./dist/gallery-navigation-v3.js"
+    },
+    "./gallery-subtitles-v1": {
+      "types": "./src/gallery-subtitles-v1.ts",
+      "default": "./dist/gallery-subtitles-v1.js"
+    },
+    "./gallery-rendition": {
+      "types": "./src/gallery-rendition.ts",
+      "default": "./dist/gallery-rendition.js"
     }
   },
   "scripts": {

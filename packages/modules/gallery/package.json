@@ -15,6 +15,15 @@
   },
   "exports": {
     "./gallery-workspace": "./src/gallery-workspace.tsx",
-    "./activity-media-panel": "./src/activity-media-panel.tsx"
+    "./activity-media-panel": "./src/activity-media-panel.tsx",
+    "./gallery-navigation": "./src/gallery-navigation.tsx",
+    "./gallery-navigation-api": "./src/gallery-navigation-api.ts",
+    "./gallery-subtitles-api": "./src/gallery-subtitles-api.ts",
+    "./gallery-albums": "./src/gallery-albums.tsx",
+    "./gallery-course-link": "./src/gallery-course-link.tsx",
+    "./gallery-navigation-search": "./src/gallery-navigation-search.ts",
+    "./gallery-renditions-api": "./src/gallery-renditions-api.ts",
+    "./rendition-status": "./src/rendition-status.tsx",
+    "./gallery-course-choices-api": "./src/gallery-course-choices-api.ts"
   }
 }

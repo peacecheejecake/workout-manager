@@ -1,3 +1,5 @@
+import { createBoundedPlainJsonSchema } from './bounded-plain-json.js';
+import { galleryAlbumV1Schema, galleryCourseLinkV2Schema } from './gallery-navigation-v2.js';
 import { z } from 'zod';
 import { garminConnectionStateSchema } from './garmin.js';
 import {
@@ -1364,6 +1366,108 @@ export function parseAccountExportV38(raw: unknown): AccountExportV38 {
   return accountExportV38Schema.parse(raw);
 }
 
+const id = z.uuid().refine((value) => value === value.toLowerCase());
+const available = z.discriminatedUnion('state', [
+  z.strictObject({ state: z.literal('available') }),
+  z.strictObject({ state: z.literal('unavailable') }),
+]);
+export const galleryAccountExportFieldsV39 = {
+  galleryAlbums: z.array(galleryAlbumV1Schema).max(1000),
+  galleryAlbumMemberships: z.array(z.strictObject({ mediaItemId: id, albumId: id })).max(1000),
+  galleryCourseAssociations: z
+    .array(
+      z.strictObject({
+        mediaItemId: id,
+        courseLink: galleryCourseLinkV2Schema,
+        courseAvailability: available,
+      }),
+    )
+    .max(1000),
+  galleryAlbumDeletions: z
+    .array(
+      z.strictObject({
+        albumId: id,
+        deletedRevision: z.number().int().min(2).max(2147483646),
+        deletedAt: z.iso.datetime({ precision: 6 }),
+      }),
+    )
+    .max(1000),
+};
+export const galleryAccountExportDataV39Schema = z.strictObject(galleryAccountExportFieldsV39);
+const wholePlain = createBoundedPlainJsonSchema(
+  8388608,
+  'Bounded whole-account V39 artifact required',
+);
+/** Explicit new version, preserving ALL inherited V38 data refinements via
+ * safeExtend. No field defaults, automatic version upgrade or source auth claim. */
+export const accountExportV39Schema = z
+  .strictObject({
+    ...accountExportV38Schema.shape,
+    schemaVersion: z.literal(39),
+    data: accountExportV38Schema.shape.data.safeExtend(galleryAccountExportFieldsV39),
+  })
+  .superRefine((value, ctx) => {
+    if (!wholePlain.safeParse(value).success)
+      ctx.addIssue({
+        code: 'custom',
+        message: 'Bounded whole-account V39 artifact required',
+      });
+    const d = value.data;
+    function reject() {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'Gallery export requires exact same-snapshot correspondence',
+      });
+    }
+    const albums = new Set(d.galleryAlbums.map((a) => a.id)),
+      deleted = new Set(d.galleryAlbumDeletions.map((a) => a.albumId)),
+      media = new Set(d.galleryMediaItems.map((a) => a['id']));
+    if (
+      albums.size !== d.galleryAlbums.length ||
+      deleted.size !== d.galleryAlbumDeletions.length ||
+      [...albums].some((a) => deleted.has(a)) ||
+      new Set(d.galleryAlbumMemberships.map((a) => a.mediaItemId)).size !==
+        d.galleryAlbumMemberships.length ||
+      new Set(d.galleryCourseAssociations.map((a) => a.mediaItemId)).size !==
+        d.galleryCourseAssociations.length
+    )
+      reject();
+    for (const a of d.galleryAlbumMemberships)
+      if (!albums.has(a.albumId) || !media.has(a.mediaItemId)) reject();
+    for (const a of d.galleryCourseAssociations) {
+      if (!media.has(a.mediaItemId)) reject();
+      const tuple = a.courseLink;
+      const exists =
+        d.courses.some(
+          (row) => row['course_id'] === tuple.courseId && row['status'] === 'available',
+        ) &&
+        d.courseRevisions.some(
+          (row) =>
+            row['course_id'] === tuple.courseId &&
+            row['course_revision'] === tuple.courseRevision &&
+            row['revision_id'] === tuple.revisionId,
+        );
+      if ((a.courseAvailability.state === 'available') !== exists) reject();
+    }
+  });
+export type AccountExportV39 = z.infer<typeof accountExportV39Schema>;
+export function parseAccountExportV39(raw: unknown): AccountExportV39 {
+  wholePlain.parse(raw);
+  return accountExportV39Schema.parse(raw);
+}
+/** Historical artifacts retain their original version and absent collections.
+ * Unknown ingress always visits the whole structural guard BEFORE version read. */
+export function parseAccountExportIncludingV39(raw: unknown) {
+  const bounded = wholePlain.parse(raw);
+  const version =
+    typeof bounded === 'object' && bounded !== null
+      ? Object.getOwnPropertyDescriptor(bounded, 'schemaVersion')
+      : undefined;
+  if (version && 'value' in version && version.value === 39)
+    return accountExportV39Schema.parse(bounded);
+  return accountExportSchema.parse(bounded);
+}
+
 // Read historical artifacts unchanged; never manufacture absent collections.
 export const accountExportSchema = z.discriminatedUnion('schemaVersion', [
   accountExportV2Schema,
@@ -1403,6 +1507,7 @@ export const accountExportSchema = z.discriminatedUnion('schemaVersion', [
   accountExportV36Schema,
   accountExportV37Schema,
   accountExportV38Schema,
+  accountExportV39Schema,
 ]);
 export const operationsStatusSchema = z.strictObject({
   checkedAt: z.iso.datetime({ offset: true }),

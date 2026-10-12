@@ -6,6 +6,10 @@ import {
   createCourseThumbnailFinalObjectKey,
   createCourseThumbnailTemporaryObjectKey,
   createFinalObjectKey,
+  createGalleryRenditionTemporaryObjectKey,
+  createGalleryRenditionFinalObjectKey,
+  isObjectKeyOfScope,
+  objectScopePrefix,
   createTemporaryObjectKey,
   createUrlFinalObjectKey,
   createUrlTemporaryObjectKey,
@@ -301,5 +305,89 @@ describe('course thumbnail object keys', () => {
     expect(() =>
       createCourseThumbnailTemporaryObjectKey({ tenantId, courseId: 'not-a-uuid', jobId }),
     ).toThrow(InvalidObjectKeyError);
+  });
+});
+
+describe('gallery rendition namespace', () => {
+  const base = {
+    tenantId,
+    mediaItemId: resourceId,
+    jobId: uploadId,
+    attemptId: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+    recipeVersion: 1 as const,
+  };
+  it.each(['image_preview', 'image_thumbnail', 'video_playback'] as const)(
+    'round trips exact recipe/job/attempt %s',
+    (renditionKind) => {
+      const temporary = createGalleryRenditionTemporaryObjectKey({ ...base, renditionKind });
+      const extension = renditionKind === 'video_playback' ? 'mp4' : 'webp';
+      const final = createGalleryRenditionFinalObjectKey({
+        ...base,
+        renditionKind,
+        extension,
+        sha256: 'a'.repeat(64),
+      });
+      const prefix = `private/v1/tenants/${tenantId}/gallery/${resourceId}/renditions/v1/${renditionKind}/${uploadId}/${base.attemptId}`;
+      expect(temporary).toBe(`${prefix}/temporary`);
+      expect(final).toBe(`${prefix}/sha256/${'a'.repeat(64)}.${extension}`);
+      expect(parseObjectKey(temporary)).toEqual({
+        kind: 'gallery_rendition_temporary',
+        ...base,
+        renditionKind,
+      });
+      expect(parseObjectKey(final)).toEqual({
+        kind: 'gallery_rendition',
+        ...base,
+        renditionKind,
+        extension,
+        sha256: 'a'.repeat(64),
+      });
+      const scope = { kind: 'gallery' as const, tenantId, mediaItemId: resourceId };
+      expect(objectScopePrefix(scope)).toBe(`private/v1/tenants/${tenantId}/gallery/${resourceId}`);
+      expect(isObjectKeyOfScope(final, scope)).toBe(true);
+      expect(isObjectKeyOfScope(temporary, scope)).toBe(true);
+      expect(isObjectKeyOfScope(final, { ...scope, tenantId: uploadId })).toBe(false);
+      expect(isObjectKeyOfScope(final, { ...scope, mediaItemId: uploadId })).toBe(false);
+      expect(isObjectKeyOfScope(final, { kind: 'course', tenantId, courseId: resourceId })).toBe(
+        false,
+      );
+      for (const bad of [
+        final.replace('/renditions/v1/', '/renditions/v2/'),
+        final.replace(renditionKind, 'other'),
+        final.replace('/sha256/', '/../sha256/'),
+        final + '/extra',
+        final.replace(extension, extension === 'webp' ? 'mp4' : 'webp'),
+        final.replace(base.attemptId, 'invalid'),
+      ]) {
+        expect(() => parseObjectKey(bad)).toThrow(InvalidObjectKeyError);
+      }
+    },
+  );
+  it('rejects wrong runtime recipe/kind/extension and leaves old resource keys outside gallery', () => {
+    expect(() =>
+      createGalleryRenditionTemporaryObjectKey({
+        ...base,
+        recipeVersion: JSON.parse('2'),
+        renditionKind: 'image_preview',
+      }),
+    ).toThrow(InvalidObjectKeyError);
+    expect(() =>
+      createGalleryRenditionTemporaryObjectKey({ ...base, renditionKind: JSON.parse('"other"') }),
+    ).toThrow(InvalidObjectKeyError);
+    expect(() =>
+      createGalleryRenditionFinalObjectKey({
+        ...base,
+        renditionKind: 'image_preview',
+        extension: 'mp4',
+        sha256: 'a'.repeat(64),
+      }),
+    ).toThrow(InvalidObjectKeyError);
+    expect(
+      isObjectKeyOfScope(createTemporaryObjectKey({ tenantId, resourceId, uploadId }), {
+        kind: 'gallery',
+        tenantId,
+        mediaItemId: resourceId,
+      }),
+    ).toBe(false);
   });
 });

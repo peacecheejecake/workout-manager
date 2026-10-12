@@ -1,11 +1,18 @@
+import {
+  readGalleryAccountExportV39In,
+  GalleryAccountExportV39Error,
+} from './gallery-account-export-v39.js';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
+import { createGalleryExtensionErasureRepositoryCandidate } from './gallery-erasure-repository-candidate.js';
 import {
   accountExportSchema,
   accountExportV35Schema,
   accountExportV36Schema,
   parseAccountExportV37,
   parseAccountExportV38,
+  parseAccountExportV39,
+  type AccountExportV39,
   type AccountExportV38,
   type AccountExportV37,
   operationsStatusSchema,
@@ -830,15 +837,31 @@ export function createOperationsV38PooledRepository(database: Database): Operati
   return createRetainedOperationsRepository(database, 38, parseAccountExportV38, 'pooled');
 }
 
+export interface OperationsV39Repository extends Omit<OperationsRepository, 'exportAccount'> {
+  exportAccount(athleteId: string): Promise<AccountExportV39>;
+}
+/** Root selects only after exact fresh Gallery installed/read capability proof. */
+export function createOperationsV39PooledRepository(database: Database): OperationsV39Repository {
+  return createRetainedOperationsRepository(database, 39, parseAccountExportV39, 'pooled');
+}
+
 function createRetainedOperationsRepository<T>(
   database: Database,
-  version: 36 | 37 | 38,
+  version: 36 | 37 | 38 | 39,
   parse: (raw: unknown) => T,
   sourceTransport: 'separate' | 'batch' | 'pooled' = 'separate',
 ): Omit<OperationsRepository, 'exportAccount'> & { exportAccount(athleteId: string): Promise<T> } {
   const historical = createOperationsRepository(database);
   return {
-    eraseAccount: historical.eraseAccount,
+    eraseAccount:
+      version === 39
+        ? async (athleteId) => {
+            await createGalleryExtensionErasureRepositoryCandidate(database).eraseAccount(
+              athleteId,
+            );
+            return { erased: true };
+          }
+        : historical.eraseAccount,
     status: historical.status,
     exportAccount(athleteId) {
       if (!database.snapshotTenant) throw new Error('OPERATIONS_SNAPSHOT_REQUIRED');
@@ -878,7 +901,11 @@ function createRetainedOperationsRepository<T>(
           try {
             return await operation();
           } catch (error) {
-            if (error instanceof RetainedPersonalExportError && error.code === 'TOO_LARGE')
+            if (
+              (error instanceof RetainedPersonalExportError ||
+                error instanceof GalleryAccountExportV39Error) &&
+              error.code === 'TOO_LARGE'
+            )
               throw new OperationsError('EXPORT_TOO_LARGE');
             throw error;
           }
@@ -921,7 +948,7 @@ function createRetainedOperationsRepository<T>(
           };
         }
         let source = {};
-        if (version === 38) {
+        if (version >= 38) {
           const observed =
             pooled?.sources ??
             batch?.sources ??
@@ -938,11 +965,15 @@ function createRetainedOperationsRepository<T>(
             originalEventAuthentication: observed.originalEventAuthentication,
           };
         }
+        const gallery =
+          version === 39
+            ? await loadRetained(() => readGalleryAccountExportV39In(tx, remaining, debit))
+            : {};
         const artifact = parse({
           schemaVersion: version,
           athleteId,
           exportedAt,
-          data: { ...withTemplates, ...manual, ...internal, ...source },
+          data: { ...withTemplates, ...manual, ...internal, ...source, ...gallery },
         });
         if (Buffer.byteLength(JSON.stringify(artifact), 'utf8') > maxBytes)
           throw new OperationsError('EXPORT_TOO_LARGE');

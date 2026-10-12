@@ -8,6 +8,12 @@ export default defineConfig({
           name: 'node',
           environment: 'node',
           include: [
+            'deploy/gallery-codec/sandbox-policy.test.mjs',
+            'deploy/gallery-codec/inspect-projection.test.mjs',
+            'deploy/gallery-codec/input-frame.test.mjs',
+            'deploy/gallery-codec/output-frame.test.mjs',
+            'deploy/gallery-codec/container-entry.test.mjs',
+            'deploy/gallery-codec/docker-attach.test.mjs',
             'packages/tooling/tests/**/*.test.{ts,mjs}',
             'packages/api-client/tests/**/*.test.ts',
             'packages/experience/conversation-kit/tests/**/*.test.ts',

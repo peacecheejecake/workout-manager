@@ -13,6 +13,9 @@ const galleryTemporaryKeyPattern = new RegExp(
 const galleryFinalKeyPattern = new RegExp(
   `^private/v1/tenants/(${UUID_PATTERN})/gallery/(${UUID_PATTERN})/objects/uploads/(${UUID_PATTERN})/sha256/(${SHA256_PATTERN})[.](jpg|png|webp|mp4|webm)$`,
 );
+const galleryRenditionKeyPattern = new RegExp(
+  `^private/v1/tenants/(${UUID_PATTERN})/gallery/(${UUID_PATTERN})/renditions/v1/(image_preview|image_thumbnail|video_playback)/(${UUID_PATTERN})/(${UUID_PATTERN})/(temporary|sha256/(${SHA256_PATTERN})[.](webp|mp4))$`,
+);
 const urlTemporaryKeyPattern = new RegExp(
   `^private/v1/tenants/(${UUID_PATTERN})/resources/(${UUID_PATTERN})/url-ingestions/(${UUID_PATTERN})/temporary/(raw|parsed)$`,
 );
@@ -50,6 +53,8 @@ export type ObjectKey = TemporaryObjectKey | FinalObjectKey;
 export type StoredFileExtension = 'pdf' | 'md';
 export type GalleryMediaExtension = 'jpg' | 'png' | 'webp' | 'mp4' | 'webm';
 const GALLERY_MEDIA_EXTENSIONS: readonly string[] = ['jpg', 'png', 'webp', 'mp4', 'webm'];
+export type GalleryRenditionKind = 'image_preview' | 'image_thumbnail' | 'video_playback';
+export type GalleryRenditionExtension = 'webp' | 'mp4';
 export type UrlArtifactKind = 'raw' | 'parsed';
 export type UrlArtifactExtension = 'html' | 'xhtml' | 'txt' | 'md' | 'json';
 export type TrackArtifactKind = 'raw' | 'normalized' | 'map_path';
@@ -102,7 +107,8 @@ export function tenantObjectPrefix(tenantId: string): string {
  */
 export type ObjectScope =
   | { readonly kind: 'activity'; readonly tenantId: string; readonly activityId: string }
-  | { readonly kind: 'course'; readonly tenantId: string; readonly courseId: string };
+  | { readonly kind: 'course'; readonly tenantId: string; readonly courseId: string }
+  | { readonly kind: 'gallery'; readonly tenantId: string; readonly mediaItemId: string };
 
 /**
  * The directory every object of one scope lives under (M2-01y), e.g.
@@ -119,6 +125,9 @@ export function objectScopePrefix(scope: ObjectScope): string {
     case 'activity':
       if (!canonical.test(scope.activityId)) throw new InvalidObjectKeyError();
       return `${tenantPrefix}/activities/${scope.activityId}`;
+    case 'gallery':
+      if (!canonical.test(scope.mediaItemId)) throw new InvalidObjectKeyError();
+      return `${tenantPrefix}/gallery/${scope.mediaItemId}`;
     case 'course':
       if (!canonical.test(scope.courseId)) throw new InvalidObjectKeyError();
       return `${tenantPrefix}/courses/${scope.courseId}`;
@@ -146,6 +155,14 @@ export function isObjectKeyOfScope(key: string, scope: ObjectScope): boolean {
       return (
         (parsed.kind === 'track_temporary' || parsed.kind === 'track_final') &&
         parsed.activityId === scope.activityId
+      );
+    case 'gallery':
+      return (
+        (parsed.kind === 'gallery_temporary' ||
+          parsed.kind === 'gallery_final' ||
+          parsed.kind === 'gallery_rendition_temporary' ||
+          parsed.kind === 'gallery_rendition') &&
+        parsed.mediaItemId === scope.mediaItemId
       );
     case 'course':
       return (
@@ -209,6 +226,44 @@ export function createGalleryFinalObjectKey(input: {
   if (!new RegExp(`^${SHA256_PATTERN}$`).test(sha256)) throw new InvalidObjectKeyError();
   if (!GALLERY_MEDIA_EXTENSIONS.includes(input.extension)) throw new InvalidObjectKeyError();
   return `private/v1/tenants/${tenantId}/gallery/${mediaItemId}/objects/uploads/${uploadId}/sha256/${sha256}.${input.extension}` as FinalObjectKey;
+}
+
+interface GalleryRenditionKeyInput {
+  tenantId: string;
+  mediaItemId: string;
+  jobId: string;
+  attemptId: string;
+  recipeVersion: 1;
+  renditionKind: GalleryRenditionKind;
+}
+function galleryRenditionPrefix(input: GalleryRenditionKeyInput): string {
+  const tenantId = normalizeUuid(input.tenantId);
+  const mediaItemId = normalizeUuid(input.mediaItemId);
+  const jobId = normalizeUuid(input.jobId);
+  const attemptId = normalizeUuid(input.attemptId);
+  if (
+    input.recipeVersion !== 1 ||
+    !['image_preview', 'image_thumbnail', 'video_playback'].includes(input.renditionKind)
+  )
+    throw new InvalidObjectKeyError();
+  return `private/v1/tenants/${tenantId}/gallery/${mediaItemId}/renditions/v1/${input.renditionKind}/${jobId}/${attemptId}`;
+}
+export function createGalleryRenditionTemporaryObjectKey(
+  input: GalleryRenditionKeyInput,
+): TemporaryObjectKey {
+  return `${galleryRenditionPrefix(input)}/temporary` as TemporaryObjectKey;
+}
+export function createGalleryRenditionFinalObjectKey(
+  input: GalleryRenditionKeyInput & { sha256: string; extension: GalleryRenditionExtension },
+): FinalObjectKey {
+  const prefix = galleryRenditionPrefix(input);
+  const sha256 = input.sha256.toLowerCase();
+  if (
+    !new RegExp(`^${SHA256_PATTERN}$`).test(sha256) ||
+    input.extension !== (input.renditionKind === 'video_playback' ? 'mp4' : 'webp')
+  )
+    throw new InvalidObjectKeyError();
+  return `${prefix}/sha256/${sha256}.${input.extension}` as FinalObjectKey;
 }
 
 export function createUrlTemporaryObjectKey(input: {
@@ -332,6 +387,26 @@ export type ParsedObjectKey =
       extension: GalleryMediaExtension;
     }
   | {
+      kind: 'gallery_rendition_temporary';
+      tenantId: string;
+      mediaItemId: string;
+      jobId: string;
+      attemptId: string;
+      recipeVersion: 1;
+      renditionKind: GalleryRenditionKind;
+    }
+  | {
+      kind: 'gallery_rendition';
+      tenantId: string;
+      mediaItemId: string;
+      jobId: string;
+      attemptId: string;
+      recipeVersion: 1;
+      renditionKind: GalleryRenditionKind;
+      sha256: string;
+      extension: GalleryRenditionExtension;
+    }
+  | {
       kind: 'url_temporary';
       tenantId: string;
       resourceId: string;
@@ -440,6 +515,37 @@ export function parseObjectKey(value: string): ParsedObjectKey {
       sha256,
       extension: extension as GalleryMediaExtension,
     };
+  }
+  const renditionMatch = galleryRenditionKeyPattern.exec(value);
+  if (renditionMatch) {
+    const [, tenantId, mediaItemId, renditionKind, jobId, attemptId, tail, sha256, extension] =
+      renditionMatch;
+    if (
+      !tenantId ||
+      !mediaItemId ||
+      !jobId ||
+      !attemptId ||
+      (renditionKind !== 'image_preview' &&
+        renditionKind !== 'image_thumbnail' &&
+        renditionKind !== 'video_playback')
+    )
+      throw new InvalidObjectKeyError();
+    const fields: GalleryRenditionKeyInput = {
+      tenantId,
+      mediaItemId,
+      renditionKind,
+      jobId,
+      attemptId,
+      recipeVersion: 1 as const,
+    };
+    if (tail === 'temporary') return { kind: 'gallery_rendition_temporary', ...fields };
+    if (
+      !sha256 ||
+      (extension !== 'webp' && extension !== 'mp4') ||
+      extension !== (renditionKind === 'video_playback' ? 'mp4' : 'webp')
+    )
+      throw new InvalidObjectKeyError();
+    return { kind: 'gallery_rendition', ...fields, sha256, extension };
   }
   const urlTemporaryMatch = urlTemporaryKeyPattern.exec(value);
   if (urlTemporaryMatch) {
