@@ -9,9 +9,11 @@ import {
 
 import {
   decodeSuppressionPgoutputRecordsV7,
+  decodeSuppressionPgoutputRecordsV8,
   type LocalReplayRecordEnvelope,
 } from './restore-suppression-pgoutput.js';
 import { suppressionRecordV7Schema } from './restore-suppression-records-v7.js';
+import { suppressionRecordV8Schema } from './restore-suppression-records-v8.js';
 
 // Only the encrypted bytes may be handed to a file or remote-store adapter.
 // This codec does not issue keys, acknowledge a slot, or prove ledger coverage.
@@ -377,6 +379,34 @@ const envelopeV7Schema = envelopeSchema
 export type LocalReplayRecordEnvelopeV7 = z.infer<typeof envelopeV7Schema>;
 const MAGIC_V7 = Buffer.from('WMLEDG02');
 
+/** SQL145 successor capture binding. The physical columns are the unchanged V7 roster, but
+ * the record domain admits record_version 8, so a V8 capture is a distinct relation profile
+ * and a V7 envelope/head can never carry (or be confused with) an album-deletion record. */
+export const suppressionSourceBindingV8Schema = suppressionSourceBindingV7Schema
+  .extend({ relationProfile: z.literal('suppression-physical-v8') })
+  .strict();
+export type SuppressionSourceBindingV8 = z.infer<typeof suppressionSourceBindingV8Schema>;
+const envelopeV8Schema = envelopeSchema
+  .extend({
+    localRecordVersion: z.literal(3),
+    source: suppressionSourceBindingV8Schema,
+    transactions: z
+      .array(
+        z.strictObject({
+          commitLsn: lsn,
+          endLsn: lsn,
+          records: z
+            .array(z.union([record, suppressionRecordV7Schema, suppressionRecordV8Schema]))
+            .max(1000),
+        }),
+      )
+      .min(1)
+      .max(1000),
+  })
+  .strict();
+export type LocalReplayRecordEnvelopeV8 = z.infer<typeof envelopeV8Schema>;
+const MAGIC_V8 = Buffer.from('WMLEDG03');
+
 const headerSchema = z
   .object({
     codecVersion: z.literal(1),
@@ -399,7 +429,15 @@ const headerV7Schema = headerSchema
     source: suppressionSourceBindingV7Schema,
   })
   .strict();
-type Header = z.infer<typeof headerSchema> | z.infer<typeof headerV7Schema>;
+const headerV8Schema = headerSchema
+  .extend({
+    codecVersion: z.literal(3),
+    localRecordVersion: z.literal(3),
+    source: suppressionSourceBindingV8Schema,
+  })
+  .strict();
+type Header =
+  z.infer<typeof headerSchema> | z.infer<typeof headerV7Schema> | z.infer<typeof headerV8Schema>;
 
 function reject(): never {
   throw new Error('INVALID_ENCRYPTED_SEGMENT');
@@ -502,6 +540,36 @@ function checkedEnvelopeV7(value: unknown): LocalReplayRecordEnvelopeV7 {
   return envelope;
 }
 
+function checkedEnvelopeV8(value: unknown): LocalReplayRecordEnvelopeV8 {
+  let serialized: string | undefined;
+  try {
+    serialized = JSON.stringify(value);
+  } catch {
+    return reject();
+  }
+  if (serialized === undefined || Buffer.byteLength(serialized) > MAX_PLAINTEXT_BYTES)
+    return reject();
+  const parsed = envelopeV8Schema.safeParse(value);
+  if (!parsed.success) return reject();
+  const envelope = parsed.data;
+  const { sha256, ...body } = envelope;
+  if (createHash('sha256').update(JSON.stringify(body)).digest('hex') !== sha256) return reject();
+  let cursor = lsnValue(envelope.fromLsn);
+  const seen = new Set<string>();
+  for (const tx of envelope.transactions) {
+    const commit = lsnValue(tx.commitLsn),
+      end = lsnValue(tx.endLsn);
+    if (commit < cursor || end <= commit) return reject();
+    for (const item of tx.records) {
+      if (seen.has(item.eventId)) return reject();
+      seen.add(item.eventId);
+    }
+    cursor = end;
+  }
+  if (seen.size === 0 || cursor !== lsnValue(envelope.throughLsn)) return reject();
+  return envelope;
+}
+
 /** Uses only the explicit physical V7 relation profile, including legacy NULL successor fields. */
 export function makeLocalReplayRecordEnvelopeV7(input: {
   clusterId: string;
@@ -527,6 +595,36 @@ export function makeLocalReplayRecordEnvelopeV7(input: {
   const { sha256: _placeholder, ...body } = parsed.data;
   void _placeholder;
   return checkedEnvelopeV7({
+    ...body,
+    sha256: createHash('sha256').update(JSON.stringify(body)).digest('hex'),
+  });
+}
+
+/** SQL145 successor: the same physical roster decoded through record_version 8. */
+export function makeLocalReplayRecordEnvelopeV8(input: {
+  clusterId: string;
+  fromLsn: string;
+  previousHash: string | null;
+  source: SuppressionSourceBindingV8;
+  messages: readonly Buffer[];
+}): LocalReplayRecordEnvelopeV8 {
+  const transactions = decodeSuppressionPgoutputRecordsV8(input.messages, input.fromLsn);
+  const last = transactions.at(-1);
+  if (!last) return reject();
+  const parsed = envelopeV8Schema.safeParse({
+    localRecordVersion: 3,
+    clusterId: input.clusterId,
+    fromLsn: input.fromLsn,
+    throughLsn: last.endLsn,
+    previousHash: input.previousHash,
+    transactions,
+    source: input.source,
+    sha256: '0'.repeat(64),
+  });
+  if (!parsed.success) return reject();
+  const { sha256: _placeholder, ...body } = parsed.data;
+  void _placeholder;
+  return checkedEnvelopeV8({
     ...body,
     sha256: createHash('sha256').update(JSON.stringify(body)).digest('hex'),
   });
@@ -564,13 +662,20 @@ export function encryptReplaySegmentV7(input: {
 }): EncryptedReplaySegment {
   return encryptSegment(input, checkedEnvelopeV7, headerV7Schema, MAGIC_V7);
 }
+export function encryptReplaySegmentV8(input: {
+  envelope: LocalReplayRecordEnvelopeV8;
+  key: Uint8Array;
+  keyId: string;
+}): EncryptedReplaySegment {
+  return encryptSegment(input, checkedEnvelopeV8, headerV8Schema, MAGIC_V8);
+}
 type EnvelopeMetadata = {
-  localRecordVersion: 1 | 2;
+  localRecordVersion: 1 | 2 | 3;
   clusterId: string;
   fromLsn: string;
   throughLsn: string;
   previousHash: string | null;
-  source?: SuppressionSourceBindingV7;
+  source?: SuppressionSourceBindingV7 | SuppressionSourceBindingV8;
 };
 function encryptSegment<T extends EnvelopeMetadata>(
   input: { envelope: T; key: Uint8Array; keyId: string },
@@ -631,6 +736,13 @@ export function decryptReplaySegmentV7(input: {
   expectedKeyId: string;
 }): LocalReplayRecordEnvelopeV7 {
   return decryptSegment(input, checkedEnvelopeV7, headerV7Schema, MAGIC_V7);
+}
+export function decryptReplaySegmentV8(input: {
+  bytes: Uint8Array;
+  key: Uint8Array;
+  expectedKeyId: string;
+}): LocalReplayRecordEnvelopeV8 {
+  return decryptSegment(input, checkedEnvelopeV8, headerV8Schema, MAGIC_V8);
 }
 function decryptSegment<T extends EnvelopeMetadata>(
   input: { bytes: Uint8Array; key: Uint8Array; expectedKeyId: string },
