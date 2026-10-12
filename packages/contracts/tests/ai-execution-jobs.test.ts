@@ -41,6 +41,7 @@ const item = {
   consentRevisions: { app: 1, ai: 1 },
   selectionDigest: 'e'.repeat(64),
   createdAt: '2026-10-13T00:00:00.000Z',
+  disposition: null,
 };
 
 describe('AI execution job contracts', () => {
@@ -88,6 +89,18 @@ describe('AI execution job contracts', () => {
     expect(
       aiExecutionJobV1Schema.safeParse({ ...job, dispatchAuthority: 'admitted' }).success,
     ).toBe(false);
+    const cancelled = {
+      ...job,
+      runStatus: { kind: 'cancelled', reason: 'stale_basis' },
+      disposition: { kind: 'restore_cancelled', decidedAt: '2026-10-13T01:00:00.000Z' },
+    };
+    expect(aiExecutionJobV1Schema.safeParse(cancelled).success).toBe(true);
+    for (const disposition of [
+      { kind: 'cancelled', decidedAt: '2026-10-13T01:00:00.000Z' },
+      { kind: 'restore_cancelled' },
+      undefined,
+    ])
+      expect(aiExecutionJobV1Schema.safeParse({ ...job, disposition }).success).toBe(false);
   });
   it('export rejects duplicate jobs and internal identifiers', () => {
     const exported = { schemaVersion: 1, kind: 'ai_execution_jobs', items: [item] };

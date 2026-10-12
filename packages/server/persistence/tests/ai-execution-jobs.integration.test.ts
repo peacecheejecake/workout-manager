@@ -23,6 +23,8 @@ import { prepareCoachingExecutionIn } from '../src/coaching-execution-preparatio
 import {
   AiExecutionJobError,
   createAiExecutionJobRepository,
+  cancelRestoredAiExecutionJobIn,
+  classifyAttestedSyntheticEvidenceIn,
   exportAiExecutionJobsIn,
   readAiExecutionJobIn,
 } from '../src/ai-execution-jobs.js';
@@ -131,6 +133,12 @@ beforeAll(async () => {
     await client.query('BEGIN');
     await client.query(sql);
     await client.query(`GRANT SELECT,INSERT ON public.ai_execution_job TO "${runtimeRole}"`);
+    await client.query(
+      `GRANT SELECT ON public.ai_synthetic_evidence_attestation TO "${runtimeRole}"`,
+    );
+    await client.query(
+      `GRANT SELECT,INSERT ON public.ai_execution_job_disposition TO "${runtimeRole}"`,
+    );
     await client.query('COMMIT');
     await client.query('BEGIN');
     await client.query('SELECT pg_advisory_xact_lock_shared(77210,1)');
@@ -272,6 +280,34 @@ async function facts(athleteId: string) {
   );
   return result.rows[0];
 }
+/** Owner-only: an identity account with the given issuer for the scenario subject. */
+async function account(athleteId: string, issuer: string) {
+  await owner.query(
+    'INSERT INTO identity_private.account(athlete_id,issuer,subject) VALUES($1,$2,$3)',
+    [athleteId, issuer, randomUUID()],
+  );
+}
+/** Owner fixture publisher: attests the exact current body of one snapshot. */
+async function attest(s: Scenario, overrides: { bodySha256?: string } = {}) {
+  const client = await owner.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query("SELECT set_config('app.athlete_id',$1,true)", [s.athleteId]);
+    await client.query(
+      `INSERT INTO ai_synthetic_evidence_attestation(athlete_id,evidence_snapshot_id,provenance,fixture_id,subject_issuer,body_sha256,item_manifest)
+       SELECT athlete_id,id,'synthetic_fixture_v1','synthetic:m2-05a:1','https://synthetic.invalid',
+        coalesce($2,encode(sha256(convert_to(body::text,'UTF8')),'hex')),public.ai_synthetic_evidence_manifest_v1(body)
+       FROM core_evidence_snapshot WHERE athlete_id=$1 AND id=$3`,
+      [s.athleteId, overrides.bodySha256 ?? null, s.evidence.id],
+    );
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
 async function expectCode(operation: Promise<unknown>, code: string) {
   await expect(operation).rejects.toSatisfy(
     (error: unknown) =>
@@ -370,8 +406,8 @@ it('profile26 + raw148: V10 verification unchanged, FORCE RLS, no PUBLIC and run
     `SELECT c.relrowsecurity,c.relforcerowsecurity,pg_get_userbyid(c.relowner)=$1 AS owned,
       (SELECT array_agg(DISTINCT a.privilege_type ORDER BY a.privilege_type) FROM aclexplode(c.relacl) a WHERE a.grantee=(SELECT oid FROM pg_roles WHERE rolname=$2)) AS runtime,
       NOT EXISTS(SELECT 1 FROM aclexplode(c.relacl) a WHERE a.grantee=0) AS no_public,
-      (SELECT bool_and(NOT has_function_privilege($2,p.oid,'EXECUTE')) FROM pg_proc p WHERE p.proname IN ('guard_ai_execution_job_v1','check_ai_execution_job_commit_v1')) AS no_function_execute,
-      (SELECT bool_and(NOT p.prosecdef) FROM pg_proc p WHERE p.proname IN ('guard_ai_execution_job_v1','check_ai_execution_job_commit_v1')) AS invoker
+      (SELECT bool_and(NOT has_function_privilege($2,p.oid,'EXECUTE')) FROM pg_proc p WHERE p.proname IN ('guard_ai_execution_job_v1','check_ai_execution_job_commit_v1','ai_synthetic_evidence_manifest_v1','guard_ai_synthetic_evidence_attestation_v1','guard_ai_execution_job_disposition_v1','check_ai_execution_job_disposition_commit_v1')) AS no_function_execute,
+      (SELECT bool_and(NOT p.prosecdef) FROM pg_proc p WHERE p.proname IN ('guard_ai_execution_job_v1','check_ai_execution_job_commit_v1','ai_synthetic_evidence_manifest_v1','guard_ai_synthetic_evidence_attestation_v1','guard_ai_execution_job_disposition_v1','check_ai_execution_job_disposition_commit_v1')) AS invoker
      FROM pg_class c WHERE c.oid='public.ai_execution_job'::regclass`,
     [ownerRole, runtimeRole],
   );
@@ -500,6 +536,105 @@ it('synthetic comparison is refused for health evidence under the conservative c
     'SYNTHETIC_PAYLOAD_REQUIRED',
   );
   expect(await facts(s.athleteId)).toEqual(before);
+});
+
+it('U3: a Luna job proceeds only on an owner-attested synthetic-fixture snapshot', async () => {
+  const s = await scenario('luna');
+  await account(s.athleteId, 'https://synthetic.invalid');
+  await expectCode(
+    repository.create(s.athleteId, s.thread.id, s.command('synthetic_comparison')),
+    'SYNTHETIC_PAYLOAD_REQUIRED',
+  );
+  await attest(s);
+  const manifest = await inspector.query(
+    'SELECT item_manifest FROM ai_synthetic_evidence_attestation WHERE athlete_id=$1',
+    [s.athleteId],
+  );
+  expect(manifest.rows[0]?.['item_manifest']).toMatchObject({
+    schemaVersion: 1,
+    plan: expect.any(String),
+    thread: s.thread.id,
+    messages: [[expect.any(String), 1]],
+  });
+  const job = await repository.create(s.athleteId, s.thread.id, s.command('synthetic_comparison'));
+  expect(job).toMatchObject({
+    purpose: 'synthetic_comparison',
+    payloadClassification: 'synthetic_only',
+    selection: luna,
+    dispatchAuthority: 'none',
+  });
+  // The same attested snapshot may also back a Sol job, still marked synthetic_only.
+  expect(await repository.create(s.athleteId, s.thread.id, s.command())).toMatchObject({
+    payloadClassification: 'synthetic_only',
+    selection: sol,
+  });
+  // Withdrawal purges the body: the attestation no longer matches and Luna is refused.
+  await createConsentRepository(database).setConsent(s.athleteId, {
+    kind: 'ai',
+    granted: false,
+    expectedRevision: 1,
+    idempotencyKey: randomUUID(),
+  });
+  expect(
+    await database.tenant(s.athleteId, (tx) =>
+      classifyAttestedSyntheticEvidenceIn(tx, { id: s.evidence.id }),
+    ),
+  ).toBe('health');
+  await createOperationsRepository(database).eraseAccount(s.athleteId);
+  expect(
+    (
+      await inspector.query(
+        'SELECT count(*)::int AS n FROM ai_synthetic_evidence_attestation WHERE athlete_id=$1',
+        [s.athleteId],
+      )
+    ).rows,
+  ).toEqual([{ n: 0 }]);
+});
+
+it('U3: real or missing subjects, forged digests, runtime writes and forged jobs cannot mark data synthetic', async () => {
+  const real = await scenario('luna');
+  await account(real.athleteId, 'https://accounts.example.com');
+  await expect(attest(real)).rejects.toThrow('AI_SYNTHETIC_SUBJECT_NOT_FIXTURE');
+  const missing = await scenario('luna');
+  await expect(attest(missing)).rejects.toThrow('AI_SYNTHETIC_SUBJECT_NOT_FIXTURE');
+  const fixture = await scenario('luna');
+  await account(fixture.athleteId, 'https://synthetic.invalid');
+  await expect(attest(fixture, { bodySha256: 'a'.repeat(64) })).rejects.toThrow(
+    'AI_SYNTHETIC_ATTESTATION_MISMATCH',
+  );
+  await expect(
+    database.tenant(fixture.athleteId, (tx) =>
+      tx.query(
+        `INSERT INTO ai_synthetic_evidence_attestation(athlete_id,evidence_snapshot_id,provenance,fixture_id,subject_issuer,body_sha256,item_manifest)
+         VALUES($1,$2,'synthetic_fixture_v1','synthetic:x','https://synthetic.invalid',$3,'{}'::jsonb)`,
+        [fixture.athleteId, fixture.evidence.id, 'a'.repeat(64)],
+      ),
+    ),
+  ).rejects.toMatchObject({ code: '42501' });
+  for (const s of [real, missing])
+    await expectCode(
+      repository.create(s.athleteId, s.thread.id, s.command('synthetic_comparison')),
+      'SYNTHETIC_PAYLOAD_REQUIRED',
+    );
+  // A caller forging the classification is stopped by the SQL guard.
+  await expect(
+    database.tenant(real.athleteId, (tx) =>
+      manualJob(tx, real, { payload_classification: 'synthetic_only' }),
+    ),
+  ).rejects.toThrow('AI_EXECUTION_JOB_SYNTHETIC_UNATTESTED');
+  await attest(fixture);
+  const ownerClient = await owner.connect();
+  try {
+    await ownerClient.query('BEGIN');
+    await ownerClient.query("SELECT set_config('app.athlete_id',$1,true)", [fixture.athleteId]);
+    await expect(
+      ownerClient.query("UPDATE ai_synthetic_evidence_attestation SET fixture_id='synthetic:y'"),
+    ).rejects.toThrow('AI_SYNTHETIC_ATTESTATION_IMMUTABLE');
+    await ownerClient.query('ROLLBACK');
+  } finally {
+    ownerClient.release();
+  }
+  for (const s of [real, missing]) expect(await facts(s.athleteId)).toMatchObject({ jobs: 0 });
 });
 
 it('jobs are immutable to owner and runtime; runtime cannot delete or truncate', async () => {
@@ -782,5 +917,87 @@ it('restore target or generation change refuses new jobs; replay stays readable;
     await revision(),
     randomUUID(),
   ]);
-  await repository.create(s.athleteId, s.thread.id, s.command());
+  const current = await repository.create(s.athleteId, s.thread.id, s.command());
+  // U5 restore_cancelled vocabulary and transition contract.
+  const second = (
+    await inspector.query(
+      `SELECT job_id FROM ai_execution_job WHERE athlete_id=$1 AND job_id NOT IN ($2,$3)`,
+      [s.athleteId, job.jobId, current.jobId],
+    )
+  ).rows[0]?.['job_id'] as string;
+  await expect(
+    database.tenant(s.athleteId, (tx) =>
+      tx.query(
+        `INSERT INTO ai_execution_job_disposition(athlete_id,job_id,disposition,source_generation_id,target_generation_id)
+         SELECT athlete_id,job_id,'restore_cancelled',restore_generation_id,public.current_restore_generation()
+         FROM ai_execution_job WHERE job_id=$1`,
+        [second],
+      ),
+    ),
+  ).rejects.toThrow('AI_EXECUTION_JOB_DISPOSITION_INCOMPLETE');
+  await expect(
+    database.tenant(s.athleteId, async (tx) => {
+      await tx.query(
+        `UPDATE outbox SET lease_token=gen_random_uuid(),lease_until=clock_timestamp()+interval '60 seconds',attempts=attempts+1
+         WHERE athlete_id=$1 AND topic='coaching.execution_job_queued' AND payload->>'jobId'=$2`,
+        [s.athleteId, second],
+      );
+      expect(await cancelRestoredAiExecutionJobIn(tx, second)).toEqual({ kind: 'busy' });
+      throw new Error('synthetic rollback');
+    }),
+  ).rejects.toThrow('synthetic rollback');
+  for (const id of [job.jobId, second]) {
+    const result = await database.tenant(s.athleteId, (tx) =>
+      cancelRestoredAiExecutionJobIn(tx, id),
+    );
+    expect(result).toMatchObject({
+      kind: 'restore_cancelled',
+      job: {
+        jobId: id,
+        runStatus: { kind: 'cancelled', reason: 'stale_basis' },
+        disposition: { kind: 'restore_cancelled' },
+      },
+    });
+    expect(
+      await database.tenant(s.athleteId, (tx) => cancelRestoredAiExecutionJobIn(tx, id)),
+    ).toEqual({ kind: 'not_applicable' });
+  }
+  // A job of the current generation is never restore-cancelled.
+  expect(
+    await database.tenant(s.athleteId, (tx) => cancelRestoredAiExecutionJobIn(tx, current.jobId)),
+  ).toEqual({ kind: 'not_applicable' });
+  expect((await repository.read(s.athleteId, current.jobId))?.disposition).toBeNull();
+  const events = await inspector.query(
+    `SELECT payload->>'jobId' AS job,completed_at IS NOT NULL AS done FROM outbox
+     WHERE athlete_id=$1 AND topic='coaching.execution_job_queued' ORDER BY 1`,
+    [s.athleteId],
+  );
+  expect(Object.fromEntries(events.rows.map((row) => [row['job'], row['done']]))).toEqual({
+    [job.jobId]: true,
+    [second]: true,
+    [current.jobId]: false,
+  });
+  const exported = await database.tenant(s.athleteId, (tx) => exportAiExecutionJobsIn(tx));
+  expect(exported.items.filter((item) => item.disposition !== null)).toHaveLength(2);
+  const ownerClient = await owner.connect();
+  try {
+    await ownerClient.query('BEGIN');
+    await ownerClient.query("SELECT set_config('app.athlete_id',$1,true)", [s.athleteId]);
+    await expect(
+      ownerClient.query('UPDATE ai_execution_job_disposition SET decided_at=clock_timestamp()'),
+    ).rejects.toThrow('AI_EXECUTION_JOB_DISPOSITION_IMMUTABLE');
+    await ownerClient.query('ROLLBACK');
+  } finally {
+    ownerClient.release();
+  }
+  // Account erasure cascades through jobs into dispositions.
+  await createOperationsRepository(database).eraseAccount(s.athleteId);
+  expect(
+    (
+      await inspector.query(
+        'SELECT count(*)::int AS n FROM ai_execution_job_disposition WHERE athlete_id=$1',
+        [s.athleteId],
+      )
+    ).rows,
+  ).toEqual([{ n: 0 }]);
 });

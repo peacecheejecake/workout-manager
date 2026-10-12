@@ -12,6 +12,86 @@
 -- settings revision for the purpose; no substitution and no newer-head lookup.
 -- Lock order: global shared(77210,1) -> lifecycle shared77206 -> tenant exclusive0 ->
 -- coaching77209 -> catalog shared77212. Outbox topic: coaching.execution_job_queued.
+-- Synthetic-only payloads (user decision U3, 2026-10-13): a job may be classified
+-- synthetic_only only when its whole evidence snapshot carries an owner-written
+-- synthetic-fixture attestation bound to the exact current body. The attestation is
+-- refused unless the subject account's issuer is the reserved https://synthetic.invalid
+-- (RFC 2606 .invalid: never a real OIDC issuer), so real user/health data can never
+-- carry it. Restore terminal vocabulary (user decision U5): restore_cancelled is an
+-- append-only job disposition; the restore-time transition is M2-05b/EXT-RESTOREa work.
+
+-- Owner-written synthetic-fixture attestation of ONE evidence snapshot. The body
+-- digest binds every item (plan, thread, messages, activities, check-ins, session
+-- completions, user constraints); item_manifest lists those items for audit.
+CREATE FUNCTION public.ai_synthetic_evidence_manifest_v1(body jsonb) RETURNS jsonb
+LANGUAGE sql IMMUTABLE PARALLEL SAFE SET search_path=pg_catalog,pg_temp AS $$
+ SELECT jsonb_build_object('schemaVersion',1,
+  'plan',body->'plan'->'id','thread',body->'thread'->'id',
+  'messages',(SELECT coalesce(jsonb_agg(jsonb_build_array(m->'id',m->'revision') ORDER BY m->>'id'),'[]'::jsonb) FROM jsonb_array_elements(coalesce(body->'messages','[]'::jsonb)) m),
+  'activities',(SELECT coalesce(jsonb_agg(jsonb_build_array(a->'record'->'id',a->'record'->'revision') ORDER BY a->'record'->>'id'),'[]'::jsonb) FROM jsonb_array_elements(coalesce(body->'activities','[]'::jsonb)) a),
+  'checkIns',(SELECT coalesce(jsonb_agg(jsonb_build_array(c->'record'->'id',c->'record'->'revision') ORDER BY c->'record'->>'id'),'[]'::jsonb) FROM jsonb_array_elements(coalesce(body->'checkIns','[]'::jsonb)) c),
+  'sessionCompletions',(SELECT coalesce(jsonb_agg(jsonb_build_array(c->'sessionId',c->'revision') ORDER BY c->>'sessionId'),'[]'::jsonb) FROM jsonb_array_elements(coalesce(body->'sessionCompletions','[]'::jsonb)) c),
+  'userConstraints',(SELECT coalesce(jsonb_agg(jsonb_build_array(u->'id',u->'revision') ORDER BY u->>'id'),'[]'::jsonb) FROM jsonb_array_elements(coalesce(body->'userConstraints'->'items','[]'::jsonb)) u))
+$$;
+REVOKE ALL ON FUNCTION public.ai_synthetic_evidence_manifest_v1(jsonb) FROM PUBLIC;
+CREATE TABLE public.ai_synthetic_evidence_attestation (
+ athlete_id text NOT NULL CHECK(length(athlete_id) BETWEEN 1 AND 200 AND btrim(athlete_id)=athlete_id),
+ evidence_snapshot_id uuid NOT NULL,
+ provenance text NOT NULL CHECK(provenance='synthetic_fixture_v1'),
+ fixture_id text NOT NULL CHECK(fixture_id ~ '^synthetic:[A-Za-z0-9][A-Za-z0-9._:-]{0,89}$'),
+ subject_issuer text NOT NULL CHECK(subject_issuer='https://synthetic.invalid'),
+ body_sha256 text NOT NULL CHECK(body_sha256 ~ '^[0-9a-f]{64}$'),
+ item_manifest jsonb NOT NULL CHECK(jsonb_typeof(item_manifest)='object' AND octet_length(item_manifest::text)<=262144),
+ attested_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+ PRIMARY KEY(athlete_id,evidence_snapshot_id),
+ FOREIGN KEY(athlete_id,evidence_snapshot_id) REFERENCES public.core_evidence_snapshot(athlete_id,id) ON DELETE CASCADE
+);
+REVOKE ALL ON public.ai_synthetic_evidence_attestation FROM PUBLIC;
+ALTER TABLE public.ai_synthetic_evidence_attestation ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.ai_synthetic_evidence_attestation FORCE ROW LEVEL SECURITY;
+CREATE POLICY ai_synthetic_evidence_attestation_tenant ON public.ai_synthetic_evidence_attestation
+ USING(athlete_id=nullif(current_setting('app.athlete_id',true),''))
+ WITH CHECK(athlete_id=nullif(current_setting('app.athlete_id',true),''));
+CREATE FUNCTION public.guard_ai_synthetic_evidence_attestation_v1() RETURNS trigger
+LANGUAGE plpgsql SET search_path=pg_catalog,pg_temp AS $$
+DECLARE tenant text:=nullif(current_setting('app.athlete_id',true),'');
+DECLARE table_owner text:=pg_get_userbyid((SELECT relowner FROM pg_class WHERE oid=TG_RELID));
+DECLARE evidence jsonb;
+BEGIN
+ IF TG_OP='TRUNCATE' OR TG_OP='UPDATE' THEN RAISE EXCEPTION 'AI_SYNTHETIC_ATTESTATION_IMMUTABLE'; END IF;
+ IF TG_OP='DELETE' THEN
+  IF current_user=table_owner AND OLD.athlete_id IS NOT DISTINCT FROM tenant THEN RETURN OLD; END IF;
+  RAISE EXCEPTION 'AI_SYNTHETIC_ATTESTATION_IMMUTABLE';
+ END IF;
+ IF current_user<>table_owner OR session_user<>current_user
+  OR EXISTS(SELECT 1 FROM pg_roles WHERE rolname=current_user AND (rolsuper OR rolbypassrls))
+ THEN RAISE EXCEPTION 'AI_SYNTHETIC_ATTESTATION_OWNER_ONLY'; END IF;
+ IF tenant IS NULL OR NEW.athlete_id IS DISTINCT FROM tenant THEN RAISE EXCEPTION 'AI_SYNTHETIC_ATTESTATION_TENANT_MISMATCH'; END IF;
+ PERFORM pg_advisory_xact_lock_shared(77210,1);
+ PERFORM pg_advisory_xact_lock_shared(hashtextextended(tenant,77206));
+ PERFORM pg_advisory_xact_lock(hashtextextended(tenant,0));
+ IF EXISTS(SELECT 1 FROM public.tenant_erasure WHERE athlete_id=tenant) THEN RAISE EXCEPTION 'ACCOUNT_ERASED'; END IF;
+ -- Only a reserved synthetic subject. A real login can never mint this issuer.
+ IF NOT EXISTS(SELECT 1 FROM identity_private.account a
+   WHERE a.athlete_id::text=tenant AND a.issuer='https://synthetic.invalid')
+ THEN RAISE EXCEPTION 'AI_SYNTHETIC_SUBJECT_NOT_FIXTURE'; END IF;
+ SELECT e.body INTO evidence FROM public.core_evidence_snapshot e WHERE e.athlete_id=tenant AND e.id=NEW.evidence_snapshot_id;
+ IF evidence IS NULL OR NEW.body_sha256 IS DISTINCT FROM encode(sha256(convert_to(evidence::text,'UTF8')),'hex')
+  OR NEW.item_manifest IS DISTINCT FROM public.ai_synthetic_evidence_manifest_v1(evidence)
+ THEN RAISE EXCEPTION 'AI_SYNTHETIC_ATTESTATION_MISMATCH'; END IF;
+ NEW.attested_at:=clock_timestamp();
+ RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION public.guard_ai_synthetic_evidence_attestation_v1() FROM PUBLIC;
+CREATE TRIGGER ai_synthetic_evidence_attestation_guard BEFORE INSERT OR UPDATE OR DELETE ON public.ai_synthetic_evidence_attestation
+ FOR EACH ROW EXECUTE FUNCTION public.guard_ai_synthetic_evidence_attestation_v1();
+CREATE TRIGGER ai_synthetic_evidence_attestation_no_truncate BEFORE TRUNCATE ON public.ai_synthetic_evidence_attestation
+ FOR EACH STATEMENT EXECUTE FUNCTION public.guard_ai_synthetic_evidence_attestation_v1();
+-- Owner fixture publisher: BEGIN; set_config('app.athlete_id',<synthetic subject>,true);
+-- INSERT ... SELECT tenant,id,'synthetic_fixture_v1',<fixture id>,'https://synthetic.invalid',
+--  encode(sha256(convert_to(body::text,'UTF8')),'hex'),public.ai_synthetic_evidence_manifest_v1(body)
+--  FROM core_evidence_snapshot WHERE ...; COMMIT. No runtime INSERT/UPDATE/DELETE grant.
+
 
 CREATE TABLE public.ai_execution_job (
  athlete_id text NOT NULL CHECK(length(athlete_id) BETWEEN 1 AND 200 AND btrim(athlete_id)=athlete_id),
@@ -119,6 +199,13 @@ BEGIN
     '{"version":"coaching-execution-consent-v1","athleteId":%s,"kind":"ai","granted":true,"revision":%s}',
     to_json(tenant)::text,ai.revision),'UTF8')),'hex')
  THEN RAISE EXCEPTION 'AI_EXECUTION_JOB_CONSENT_MISMATCH'; END IF;
+ -- synthetic_only requires the owner attestation of this exact, still present body.
+ IF NEW.payload_classification='synthetic_only' AND NOT EXISTS(
+   SELECT 1 FROM public.ai_synthetic_evidence_attestation a
+   JOIN public.core_evidence_snapshot e ON e.athlete_id=a.athlete_id AND e.id=a.evidence_snapshot_id
+   WHERE a.athlete_id=tenant AND a.evidence_snapshot_id=NEW.evidence_snapshot_id AND e.body IS NOT NULL
+    AND a.body_sha256=encode(sha256(convert_to(e.body::text,'UTF8')),'hex'))
+ THEN RAISE EXCEPTION 'AI_EXECUTION_JOB_SYNTHETIC_UNATTESTED'; END IF;
  SELECT s.catalog_revision,s.policy_version,s.disclosure_version,s.default_provider_id,s.default_model_id,
   s.comparison_kind,s.comparison_provider_id,s.comparison_model_id
   INTO settings FROM public.ai_settings_revision s WHERE s.athlete_id=tenant AND s.revision=NEW.settings_revision;
@@ -186,9 +273,80 @@ END $$;
 REVOKE ALL ON FUNCTION public.check_ai_execution_job_commit_v1() FROM PUBLIC;
 CREATE CONSTRAINT TRIGGER ai_execution_job_commit_atomic AFTER INSERT ON public.ai_execution_job
  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.check_ai_execution_job_commit_v1();
+-- Append-only terminal disposition of a job. restore_cancelled: a job (and its queued
+-- run) restored from another restore generation never resumes; the user must issue a
+-- new command. Transition contract, ONE transaction (M2-05b dispatcher or EXT-RESTOREa
+-- owner admission): INSERT disposition (run still queued/running, job generation <>
+-- current) -> UPDATE coaching_run status to cancelled/stale_basis -> complete the job's
+-- unleased coaching.execution_job_queued event. Commit fails otherwise.
+CREATE TABLE public.ai_execution_job_disposition (
+ athlete_id text NOT NULL CHECK(length(athlete_id) BETWEEN 1 AND 200 AND btrim(athlete_id)=athlete_id),
+ job_id uuid NOT NULL,
+ disposition text NOT NULL CHECK(disposition='restore_cancelled'),
+ source_generation_id uuid NOT NULL,
+ target_generation_id uuid NOT NULL,
+ decided_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+ PRIMARY KEY(athlete_id,job_id),
+ CHECK(source_generation_id<>target_generation_id),
+ FOREIGN KEY(athlete_id,job_id) REFERENCES public.ai_execution_job(athlete_id,job_id) ON DELETE CASCADE
+);
+REVOKE ALL ON public.ai_execution_job_disposition FROM PUBLIC;
+ALTER TABLE public.ai_execution_job_disposition ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.ai_execution_job_disposition FORCE ROW LEVEL SECURITY;
+CREATE POLICY ai_execution_job_disposition_tenant ON public.ai_execution_job_disposition
+ USING(athlete_id=nullif(current_setting('app.athlete_id',true),''))
+ WITH CHECK(athlete_id=nullif(current_setting('app.athlete_id',true),''));
+CREATE FUNCTION public.guard_ai_execution_job_disposition_v1() RETURNS trigger
+LANGUAGE plpgsql SET search_path=pg_catalog,pg_temp AS $$
+DECLARE tenant text:=nullif(current_setting('app.athlete_id',true),''); job record;
+BEGIN
+ IF TG_OP='TRUNCATE' OR TG_OP='UPDATE' THEN RAISE EXCEPTION 'AI_EXECUTION_JOB_DISPOSITION_IMMUTABLE'; END IF;
+ IF TG_OP='DELETE' THEN
+  IF current_user=pg_get_userbyid((SELECT relowner FROM pg_class WHERE oid=TG_RELID))
+   AND OLD.athlete_id IS NOT DISTINCT FROM tenant THEN RETURN OLD; END IF;
+  RAISE EXCEPTION 'AI_EXECUTION_JOB_DISPOSITION_IMMUTABLE';
+ END IF;
+ IF tenant IS NULL OR NEW.athlete_id IS DISTINCT FROM tenant THEN RAISE EXCEPTION 'AI_EXECUTION_JOB_TENANT_MISMATCH'; END IF;
+ -- No authoring predicate: a cancellation must work on a CLOSED restore target.
+ PERFORM pg_advisory_xact_lock_shared(77210,1);
+ PERFORM pg_advisory_xact_lock_shared(hashtextextended(tenant,77206));
+ PERFORM pg_advisory_xact_lock(hashtextextended(tenant,0));
+ PERFORM pg_advisory_xact_lock(hashtextextended(tenant,77209));
+ SELECT j.restore_generation_id,r.status INTO job FROM public.ai_execution_job j
+  JOIN public.coaching_run r ON r.athlete_id=j.athlete_id AND r.id=j.run_id
+  WHERE j.athlete_id=tenant AND j.job_id=NEW.job_id;
+ IF NOT FOUND OR NEW.source_generation_id IS DISTINCT FROM job.restore_generation_id
+  OR NEW.target_generation_id IS DISTINCT FROM public.current_restore_generation()
+  OR job.restore_generation_id=public.current_restore_generation()
+  OR (job.status->>'kind' IN ('queued','running')) IS NOT TRUE
+ THEN RAISE EXCEPTION 'AI_EXECUTION_JOB_DISPOSITION_NOT_APPLICABLE'; END IF;
+ NEW.decided_at:=clock_timestamp();
+ RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION public.guard_ai_execution_job_disposition_v1() FROM PUBLIC;
+CREATE TRIGGER ai_execution_job_disposition_guard BEFORE INSERT OR UPDATE OR DELETE ON public.ai_execution_job_disposition
+ FOR EACH ROW EXECUTE FUNCTION public.guard_ai_execution_job_disposition_v1();
+CREATE TRIGGER ai_execution_job_disposition_no_truncate BEFORE TRUNCATE ON public.ai_execution_job_disposition
+ FOR EACH STATEMENT EXECUTE FUNCTION public.guard_ai_execution_job_disposition_v1();
+CREATE FUNCTION public.check_ai_execution_job_disposition_commit_v1() RETURNS trigger
+LANGUAGE plpgsql SET search_path=pg_catalog,pg_temp AS $$
+BEGIN
+ IF NOT EXISTS(SELECT 1 FROM public.ai_execution_job j JOIN public.coaching_run r ON r.athlete_id=j.athlete_id AND r.id=j.run_id
+   WHERE j.athlete_id=NEW.athlete_id AND j.job_id=NEW.job_id AND r.status='{"kind":"cancelled","reason":"stale_basis"}'::jsonb
+    AND NOT EXISTS(SELECT 1 FROM public.outbox o WHERE o.athlete_id=j.athlete_id AND o.idempotency_key=j.receipt_key
+     AND o.topic='coaching.execution_job_queued' AND o.completed_at IS NULL))
+ THEN RAISE EXCEPTION 'AI_EXECUTION_JOB_DISPOSITION_INCOMPLETE'; END IF;
+ RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION public.check_ai_execution_job_disposition_commit_v1() FROM PUBLIC;
+CREATE CONSTRAINT TRIGGER ai_execution_job_disposition_commit AFTER INSERT ON public.ai_execution_job_disposition
+ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.check_ai_execution_job_disposition_commit_v1();
+
 -- Root V11 runtime grants ONLY (not applied here):
 -- GRANT SELECT,INSERT ON public.ai_execution_job TO <approved_api_role>;
+-- GRANT SELECT ON public.ai_synthetic_evidence_attestation TO <approved_api_role>;
+-- GRANT SELECT,INSERT ON public.ai_execution_job_disposition TO <M2-05b dispatcher role>;
 -- Existing coaching_run SELECT/INSERT, consent/ai_settings/catalog/command_receipt/outbox/
 -- tenant_erasure SELECT, command_receipt/outbox INSERT and EXECUTE on
 -- read_restore_processing_admission()/current_restore_generation() remain required.
--- NO UPDATE/DELETE/TRUNCATE/REFERENCES/TRIGGER, no worker grant, no function EXECUTE.
+-- NO UPDATE/DELETE/TRUNCATE/REFERENCES/TRIGGER, no attestation write, no function EXECUTE.

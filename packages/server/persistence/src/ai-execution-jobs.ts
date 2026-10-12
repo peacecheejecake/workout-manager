@@ -45,9 +45,9 @@ export interface AiExecutionJobRepositoryOptions {
   readonly policy: unknown;
   /** Trusted local adapter registry; empty means no job can be frozen. */
   readonly registry: unknown;
-  /** Classifies owned evidence. Conservative default: everything is `health`,
-   * so a synthetic-comparison job is refused unless a trusted classifier says
-   * the payload is synthetic-only. */
+  /** Classifies owned evidence. Default: `classifyAttestedSyntheticEvidenceIn`
+   * (synthetic_only only for owner-attested synthetic-fixture snapshots; all real
+   * data is `health`, so a synthetic-comparison job on it is refused). */
   readonly classifyEvidenceIn?: (transaction: Transaction, evidence: unknown) => Promise<unknown>;
 }
 
@@ -104,18 +104,23 @@ const rowSchema = z.strictObject({
   ai_consent_digest: hex,
   selection_digest: hex,
   created_at: z.date(),
+  restore_generation_id: uuid,
   run_status: z.unknown(),
   catalog_definition: z.unknown(),
+  disposition: z.enum(['restore_cancelled']).nullable(),
+  disposition_at: z.date().nullable(),
 });
 const jobColumns = `j.job_id,j.run_id,j.thread_id,j.evidence_snapshot_id,j.command_version,j.selection_version,
  j.purpose,j.payload_classification,j.settings_revision,j.catalog_revision,j.catalog_digest,j.policy_version,
  j.disclosure_version,j.recipient_id,j.recipient_disclosure_version,j.provider_id,j.model_id,
  j.adapter_binding_version,j.vendor_model_ref,j.price_model_ref,j.price_version,j.tokenizer_version,
  j.app_consent_revision,j.app_consent_digest,j.ai_consent_revision,j.ai_consent_digest,j.selection_digest,
- j.created_at,r.status AS run_status,d.definition AS catalog_definition`;
+ j.created_at,j.restore_generation_id,r.status AS run_status,d.definition AS catalog_definition,
+ x.disposition,x.decided_at AS disposition_at`;
 const jobFrom = `FROM public.ai_execution_job j
  JOIN public.coaching_run r ON r.athlete_id=j.athlete_id AND r.id=j.run_id
- JOIN public.ai_settings_catalog_definition d ON d.catalog_revision=j.catalog_revision`;
+ JOIN public.ai_settings_catalog_definition d ON d.catalog_revision=j.catalog_revision
+ LEFT JOIN public.ai_execution_job_disposition x ON x.athlete_id=j.athlete_id AND x.job_id=j.job_id`;
 
 export class AiExecutionJobIntegrityError extends Error {
   constructor() {
@@ -129,6 +134,8 @@ export interface StoredAiExecutionJob {
   /** Reconstructed exact frozen selection; inspect with live facts before use. */
   readonly frozen: FrozenExecutionSelection;
   readonly consentRevisions: { readonly app: number; readonly ai: number };
+  /** Generation that created the job. A dispatcher must refuse a mismatch. */
+  readonly restoreGenerationId: string;
 }
 
 /** Decode and re-verify a stored row. A digest or catalog mismatch fails closed. */
@@ -195,6 +202,10 @@ function decodeStored(value: unknown): StoredAiExecutionJob {
     selectionDigest: row.selection_digest,
     createdAt: row.created_at.toISOString(),
     runStatus: status.data,
+    disposition:
+      row.disposition === null
+        ? null
+        : { kind: row.disposition, decidedAt: row.disposition_at?.toISOString() },
     dispatchAuthority: 'none',
   });
   if (!job.success) throw new AiExecutionJobIntegrityError();
@@ -202,6 +213,7 @@ function decodeStored(value: unknown): StoredAiExecutionJob {
     job: job.data,
     frozen: { draft, selectionDigest: row.selection_digest },
     consentRevisions: { app: row.app_consent_revision, ai: row.ai_consent_revision },
+    restoreGenerationId: row.restore_generation_id,
   };
 }
 
@@ -252,9 +264,103 @@ export async function exportAiExecutionJobsIn(
         consentRevisions,
         selectionDigest: job.selectionDigest,
         createdAt: job.createdAt,
+        disposition: job.disposition,
       };
     }),
   });
+}
+
+/**
+ * Default trusted classifier (user decision U3). `synthetic_only` only when the
+ * whole snapshot carries the owner-written synthetic-fixture attestation bound to
+ * the exact current body; everything else, including all real user data, is
+ * `health`. The SQL job guard re-checks the same fact, so a forged classifier
+ * result cannot store a synthetic-only job.
+ */
+export async function classifyAttestedSyntheticEvidenceIn(
+  transaction: Transaction,
+  evidence: unknown,
+): Promise<'health' | 'synthetic_only'> {
+  const parsed = z.object({ id: uuid }).safeParse(evidence);
+  if (!parsed.success) return 'health';
+  const result = await transaction.query(
+    `SELECT EXISTS(SELECT 1 FROM public.ai_synthetic_evidence_attestation a
+      JOIN public.core_evidence_snapshot e ON e.athlete_id=a.athlete_id AND e.id=a.evidence_snapshot_id
+      WHERE a.athlete_id=$1 AND a.evidence_snapshot_id=$2 AND e.body IS NOT NULL
+       AND a.provenance='synthetic_fixture_v1' AND a.subject_issuer='https://synthetic.invalid'
+       AND a.body_sha256=encode(sha256(convert_to(e.body::text,'UTF8')),'hex')) AS attested`,
+    [transaction.athleteId, parsed.data.id],
+  );
+  return result.rows[0]?.['attested'] === true ? 'synthetic_only' : 'health';
+}
+
+const restoreCancelBlocked = z.object({
+  code: z.literal('P0001'),
+  message: z.literal('AI_EXECUTION_JOB_DISPOSITION_NOT_APPLICABLE'),
+});
+export type RestoreCancellationResult =
+  | { readonly kind: 'restore_cancelled'; readonly job: AiExecutionJobV1 }
+  | { readonly kind: 'not_applicable' | 'busy' };
+/**
+ * Reference implementation of the restore_cancelled transition contract for
+ * M2-05b/EXT-RESTOREa (they decide when to call it). Caller owns the tenant
+ * transaction and its rollback. In this transaction: disposition INSERT (SQL
+ * checks the job's generation differs from the current one and the run is still
+ * queued/running) -> run cancelled/stale_basis -> the job's unleased queued event
+ * completed. A live lease returns `busy` with no writes. Never dispatches.
+ */
+export async function cancelRestoredAiExecutionJobIn(
+  transaction: Transaction,
+  jobId: string,
+): Promise<RestoreCancellationResult> {
+  const id = uuid.parse(jobId);
+  await transaction.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [
+    transaction.athleteId,
+  ]);
+  await transaction.query('SELECT pg_advisory_xact_lock(hashtextextended($1,77209))', [
+    transaction.athleteId,
+  ]);
+  const stored = await readAiExecutionJobIn(transaction, id);
+  if (!stored || stored.job.disposition !== null) return { kind: 'not_applicable' };
+  const leased = await transaction.query(
+    `SELECT 1 FROM public.outbox o JOIN public.ai_execution_job j
+      ON j.athlete_id=o.athlete_id AND j.receipt_key=o.idempotency_key
+     WHERE j.athlete_id=$1 AND j.job_id=$2 AND o.topic=$3 AND o.completed_at IS NULL
+      AND o.lease_until>clock_timestamp() FOR UPDATE OF o`,
+    [transaction.athleteId, id, aiExecutionJobQueuedTopic],
+  );
+  if (leased.rows.length > 0) return { kind: 'busy' };
+  await transaction.query('SAVEPOINT ai_execution_restore_cancel');
+  try {
+    await transaction.query(
+      `INSERT INTO public.ai_execution_job_disposition(athlete_id,job_id,disposition,source_generation_id,target_generation_id)
+       VALUES($1,$2,'restore_cancelled',$3,public.current_restore_generation())`,
+      [transaction.athleteId, id, stored.restoreGenerationId],
+    );
+    await transaction.query('RELEASE SAVEPOINT ai_execution_restore_cancel');
+  } catch (error) {
+    await transaction.query('ROLLBACK TO SAVEPOINT ai_execution_restore_cancel');
+    await transaction.query('RELEASE SAVEPOINT ai_execution_restore_cancel');
+    if (restoreCancelBlocked.safeParse(error).success) return { kind: 'not_applicable' };
+    throw error;
+  }
+  const run = await transaction.query(
+    `UPDATE public.coaching_run SET status='{"kind":"cancelled","reason":"stale_basis"}'::jsonb,
+      updated_at=clock_timestamp() WHERE athlete_id=$1 AND id=$2 AND status->>'kind' IN ('queued','running')`,
+    [transaction.athleteId, stored.job.runId],
+  );
+  if (run.rowCount !== 1) throw new AiExecutionJobIntegrityError();
+  await transaction.query(
+    `UPDATE public.outbox o SET completed_at=clock_timestamp(),lease_token=NULL,lease_until=NULL
+     FROM public.ai_execution_job j
+     WHERE j.athlete_id=$1 AND j.job_id=$2 AND o.athlete_id=j.athlete_id AND o.idempotency_key=j.receipt_key
+      AND o.topic=$3 AND o.completed_at IS NULL`,
+    [transaction.athleteId, id, aiExecutionJobQueuedTopic],
+  );
+  const after = await readAiExecutionJobIn(transaction, id);
+  if (!after || after.job.disposition?.kind !== 'restore_cancelled')
+    throw new AiExecutionJobIntegrityError();
+  return { kind: 'restore_cancelled', job: after.job };
 }
 
 const closedFailure = z.object({
@@ -284,7 +390,7 @@ export function createAiExecutionJobRepository(
   options: AiExecutionJobRepositoryOptions,
 ): AiExecutionJobRepository {
   const policy = trainingCoachingPolicySchema.parse(options.policy);
-  const classifyEvidenceIn = options.classifyEvidenceIn ?? (async () => 'health');
+  const classifyEvidenceIn = options.classifyEvidenceIn ?? classifyAttestedSyntheticEvidenceIn;
   return {
     read: (athleteId, jobId) =>
       database.tenant(athleteId, async (transaction) => {

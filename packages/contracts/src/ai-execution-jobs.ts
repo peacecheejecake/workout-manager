@@ -62,6 +62,13 @@ export const aiExecutionJobQueuedPayloadV1Schema = z.strictObject({
 });
 export const aiExecutionJobQueuedTopic = 'coaching.execution_job_queued' as const;
 
+/** Append-only terminal disposition. `restore_cancelled`: restored from another
+ * restore generation; never resumed, a new explicit command is required. */
+export const aiExecutionJobDispositionV1Schema = z.strictObject({
+  kind: z.literal('restore_cancelled'),
+  decidedAt: instantSchema,
+});
+
 export const aiExecutionBindingV1Schema = z.strictObject({
   adapterBindingVersion: definitionVersion,
   vendorModelRef: definitionVersion,
@@ -93,6 +100,7 @@ export const aiExecutionJobV1Schema = z.strictObject({
   selectionDigest: digest,
   createdAt: instantSchema,
   runStatus: coachingRunStatusSchema,
+  disposition: aiExecutionJobDispositionV1Schema.nullable(),
   dispatchAuthority: z.literal('none'),
 });
 
@@ -119,6 +127,7 @@ export const aiExecutionJobExportItemV1Schema = z.strictObject({
   consentRevisions: z.strictObject({ app: int4Revision, ai: int4Revision }),
   selectionDigest: digest,
   createdAt: instantSchema,
+  disposition: aiExecutionJobDispositionV1Schema.nullable(),
 });
 export const aiExecutionJobExportV1Schema = z
   .strictObject({
@@ -136,4 +145,5 @@ export type AiExecutionRunCommandV1 = z.infer<typeof aiExecutionRunCommandV1Sche
 export type AiExecutionRunReceiptV1 = z.infer<typeof aiExecutionRunReceiptV1Schema>;
 export type AiExecutionJobV1 = z.infer<typeof aiExecutionJobV1Schema>;
 export type AiExecutionJobExportV1 = z.infer<typeof aiExecutionJobExportV1Schema>;
+export type AiExecutionJobDispositionV1 = z.infer<typeof aiExecutionJobDispositionV1Schema>;
 export type AiExecutionJobQueuedPayloadV1 = z.infer<typeof aiExecutionJobQueuedPayloadV1Schema>;
