@@ -115,6 +115,11 @@
     "./race-manual-review-retention-preparation-v2": "./src/race-manual-review-retention-preparation-v2.ts",
     "./race-manual-review-lifecycle-inventory-v2": "./src/race-manual-review-lifecycle-inventory-v2.ts",
     "./restore-suppression-records-v7": "./src/restore-suppression-records-v7.ts",
+    "./restore-suppression-exporter": "./src/restore-suppression-exporter.ts",
+    "./restore-suppression-pgoutput": "./src/restore-suppression-pgoutput.ts",
+    "./restore-suppression-replay-v7": "./src/restore-suppression-replay-v7.ts",
+    "./restore-suppression-replay-v8": "./src/restore-suppression-replay-v8.ts",
+    "./restore-suppression-segment": "./src/restore-suppression-segment.ts",
     "./check-in-templates": "./src/check-in-templates.ts",
     "./race-manual-public": "./src/race-manual-public.ts",
     "./race-plan-impact-preview": {
