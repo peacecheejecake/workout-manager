@@ -19,7 +19,7 @@ import { createNutritionRacePlanV4Writer } from '@workout/server-persistence/nut
 import { createNutritionRacePlanV4PreviewRepository } from '@workout/server-persistence/nutrition-race-plan-v4-preview';
 import { createRaceResultV2Repository } from '@workout/server-persistence/race-result-v2';
 import { createRaceManualPooledPublicRepositoryV2 } from '@workout/server-persistence/race-manual-pooled-bundle-v2';
-import { createOperationsV39PooledRepository } from '@workout/server-persistence/operations';
+import { createOperationsV40PooledRepository } from '@workout/server-persistence/operations';
 
 /** Explicit disposable acceptance composition, never production admission.
  * Existing named fixture helpers retain their historical composition. */
@@ -188,7 +188,7 @@ export async function setupIdentityInstalledCurrentRuntimeV11(raw: unknown) {
     baselineRecipe: baseline.recipe,
     baselineAtomicity: baseline.atomicity,
     productionActivation: false as const,
-    sourceExportBatch: 'installed_profile27_pooled_v39' as const,
+    sourceExportBatch: 'installed_profile27_pooled_v40' as const,
     analysisFixtureGrants: 'not_applied' as const,
   });
 }
@@ -196,13 +196,13 @@ export async function setupIdentityInstalledCurrentRuntimeV11(raw: unknown) {
  * No JSON capability/readiness boolean, handle, clock or hash grants authority.
  * Per-command services still enforce their authenticated snapshot/app policies.
  * SQL139, SQL142, the SQL146 date guard and the profile27 members (143-148) are
- * explicitly installed; pooled V39 and public V2 are selected. */
+ * explicitly installed; pooled V40 and public V2 are selected. */
 export function composeIdentityInstalledCurrentRuntimeV11Ports(database: Database) {
   return {
     nutritionV4Writer: createNutritionRacePlanV4Writer(database),
     nutritionV4Preview: createNutritionRacePlanV4PreviewRepository(database),
     raceResultsV2: createRaceResultV2Repository(database),
-    operations: createOperationsV39PooledRepository(database),
+    operations: createOperationsV40PooledRepository(database),
     raceManualPublic: createRaceManualPooledPublicRepositoryV2(database),
   };
 }

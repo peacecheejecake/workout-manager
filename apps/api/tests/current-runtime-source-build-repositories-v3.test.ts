@@ -9,7 +9,7 @@ import { createNutritionRacePlanV4PreviewRepository } from '@workout/server-pers
 import { createRaceResultV2Repository } from '@workout/server-persistence/race-result-v2';
 import type { Database, CatalogTransaction } from '@workout/server-persistence/database';
 import { createRaceManualPooledPublicRepositoryV2 } from '@workout/server-persistence/race-manual-pooled-bundle-v2';
-import { createOperationsV39PooledRepository } from '@workout/server-persistence/operations';
+import { createOperationsV40PooledRepository } from '@workout/server-persistence/operations';
 import {
   createCurrentRuntimeSourceBuildRepositoriesV3,
   CurrentRuntimeSourceBuildRepositoriesV3Error,
@@ -34,7 +34,7 @@ vi.mock('@workout/server-persistence/current-runtime-source-build-readiness-v3',
     profileVersion: z.literal(11),
     runtimeStep: z.literal(27),
     sourceDdlTip: z.literal(148),
-    protocol: z.literal('named-profile27-pooled-v3-v39'),
+    protocol: z.literal('named-profile27-pooled-v3-v40'),
     processingAuthority: z.literal('none'),
     restore: z.literal('not_verified'),
     installationReceiptRows: z.literal('not_observed_by_runtime'),
@@ -88,7 +88,7 @@ vi.mock('@workout/server-persistence/operations', async (original) => {
   const actual = await original<typeof OperationsModule>();
   return {
     ...actual,
-    createOperationsV39PooledRepository: vi.fn(actual.createOperationsV39PooledRepository),
+    createOperationsV40PooledRepository: vi.fn(actual.createOperationsV40PooledRepository),
   };
 });
 vi.mock('@workout/server-persistence/nutrition-race-plan-v4-writer', async (original) => {
@@ -112,7 +112,7 @@ vi.mock('@workout/server-persistence/race-result-v2', async (original) => {
   return { ...actual, createRaceResultV2Repository: vi.fn(actual.createRaceResultV2Repository) };
 });
 const publicFactory = vi.mocked(createRaceManualPooledPublicRepositoryV2);
-const operationsFactory = vi.mocked(createOperationsV39PooledRepository);
+const operationsFactory = vi.mocked(createOperationsV40PooledRepository);
 const nutritionWriterFactory = vi.mocked(createNutritionRacePlanV4Writer);
 const nutritionPreviewFactory = vi.mocked(createNutritionRacePlanV4PreviewRepository);
 const raceResultFactory = vi.mocked(createRaceResultV2Repository);
@@ -138,7 +138,7 @@ const ready = {
   profileVersion: 11,
   runtimeStep: 27,
   sourceDdlTip: 148,
-  protocol: 'named-profile27-pooled-v3-v39',
+  protocol: 'named-profile27-pooled-v3-v40',
   processingAuthority: 'none',
   restore: 'not_verified',
   installationReceiptRows: 'not_observed_by_runtime',

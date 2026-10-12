@@ -15,7 +15,8 @@ outside Git. The source tree currently belongs to the deployment user; before
 enabling the backup window, replace it with the root-controlled reviewed release
 described in [the privilege cutover plan](HOST-PRIVILEGE-CUTOVER.md). The secrets
 directory must be root-owned and mode 0700. The path passed as `WORKOUT_DATA_DIR` needs
-separate `postgres`, `private`, `routing`, `basemap`, and `geo-data` directories. `private` is a
+separate `postgres`, `private`, `routing`, `basemap`, `geo-data`, and `ledger-witness` directories
+(`ledger-witness` holds the suppression ledger's durable head witness; root-owned, mode 0700). `private` is a
 dedicated persistent mount, readable and writable by the app's container user
 (UID/GID 20001 in the prepared image, UID/GID 1000 on the current server); it is
 not the existing site's storage. PostgreSQL's data directory

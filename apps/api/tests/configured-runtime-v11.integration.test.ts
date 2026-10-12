@@ -15,7 +15,7 @@ import { createDatabase, type Transaction } from '@workout/server-persistence/da
 import { createIdentityRepository } from '@workout/server-persistence/identity';
 import { createConsentRepository } from '@workout/server-persistence/repositories';
 import { createRaceRepository } from '@workout/server-persistence/races';
-import { parseAccountExportIncludingV39 } from '@workout/contracts/operations';
+import { parseAccountExportIncludingV40 } from '@workout/contracts/operations';
 import { createConfiguredApi } from '../src/configured.js';
 import { CurrentRuntimeSourceBuildRepositoriesV3Error } from '../src/current-runtime-source-build-repositories-v3.js';
 
@@ -510,7 +510,7 @@ fixtureIt(
       const job = await get(`/ai-execution-jobs/${randomUUID()}`);
       expect(job.statusCode).toBe(404);
       expect(job.json()).toEqual({ error: { code: 'JOB_NOT_FOUND' } });
-      // The pooled V39 export covers the gallery members; renditions are derived and are
+      // The pooled V40 export covers the gallery members; renditions are derived and are
       // never part of the personal export (U1).
       const exported = await app.inject({
         method: 'POST',
@@ -518,7 +518,7 @@ fixtureIt(
         headers,
       });
       expect(exported.statusCode).toBe(200);
-      const account = parseAccountExportIncludingV39(exported.json());
+      const account = parseAccountExportIncludingV40(exported.json());
       expect(account.schemaVersion).toBe(39);
       expect(account.athleteId).toBe(athleteId);
       expect(exported.body).not.toMatch(/rendition/i);

@@ -231,7 +231,15 @@ services:
       SUPPRESSION_LEDGER_EXPORT_ENABLED: 'true'
       SUPPRESSION_LEDGER_ENCRYPTION_KEY_FILE: /run/ledger-secrets/encryption.key
       SUPPRESSION_LEDGER_HEAD_HMAC_KEY_FILE: /run/ledger-secrets/head-hmac.key
+      # Identifiers (database URL, slot, cluster, source database name/OID, capture,
+      # registry fingerprint, relation profile, key id, bucket) come from ledger-export.env.
+      SUPPRESSION_LEDGER_HEAD_WITNESS_FILE: /var/lib/ledger-witness/head-witness.json
     volumes:
+      # The only writable path on the read-only root: the durable head witness.
+      # The operator creates <data>/ledger-witness, owned by uid 0, mode 0700.
+      - type: bind
+        source: ${WORKOUT_DATA_DIR:?Set the workout data directory}/ledger-witness
+        target: /var/lib/ledger-witness
       - type: bind
         source: ${WORKOUT_SECRETS_DIR:?Set an external secrets directory}/ledger-encryption.key
         target: /run/ledger-secrets/encryption.key

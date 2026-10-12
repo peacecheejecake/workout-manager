@@ -88,7 +88,7 @@ vi.mock('@workout/server-persistence/race-manual-pooled-bundle-v2', () => ({
   createRaceManualPooledPublicRepositoryV2: mocks.publicRace,
 }));
 vi.mock('@workout/server-persistence/operations', () => ({
-  createOperationsV39PooledRepository: mocks.batch,
+  createOperationsV40PooledRepository: mocks.batch,
   createOperationsV38PooledRepository: mocks.oldOperations,
 }));
 
@@ -168,7 +168,7 @@ describe('explicit disposable profile27 composition', () => {
       profileVersion: 11,
       runtimeStep: 27,
       sourceDdlTip: 148,
-      sourceExportBatch: 'installed_profile27_pooled_v39',
+      sourceExportBatch: 'installed_profile27_pooled_v40',
       productionActivation: false,
       supported: false,
       processingAuthority: 'none',
