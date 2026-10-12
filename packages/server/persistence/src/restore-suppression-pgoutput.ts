@@ -11,6 +11,10 @@ import {
   decodeSuppressionRecordColumnsV7,
   type SuppressionRecordThroughV7,
 } from './restore-suppression-records-v7.js';
+import {
+  decodeSuppressionRecordColumnsV8,
+  type SuppressionRecordThroughV8,
+} from './restore-suppression-records-v8.js';
 
 // This is a local, content-free sequence envelope. It cannot replay a deletion.
 // In particular, its hash is not a remote durability acknowledgement.
@@ -359,6 +363,28 @@ export function decodeSuppressionPgoutputRecordsV7(
     messages,
     fromLsn,
     decodeSuppressionRecordColumnsV7,
+    (record) => record.eventId,
+    v7Profiles,
+  ).map(({ commitLsn, endLsn, events }) => ({ commitLsn, endLsn, records: events }));
+}
+
+export type ReplayRecordTransactionV8 = {
+  commitLsn: string;
+  endLsn: string;
+  records: SuppressionRecordThroughV8[];
+};
+/** SQL145 successor record domain over the unchanged 46-column V7 physical profile:
+ * records 1-7 decode exactly as V7, record 8 only as the album-deletion branch, any
+ * other version fails closed. Complete committed local diagnostics only; not an
+ * authenticated remote tail, continuity proof or restore admission. */
+export function decodeSuppressionPgoutputRecordsV8(
+  messages: readonly Buffer[],
+  fromLsn: string,
+): ReplayRecordTransactionV8[] {
+  return decodePgoutput(
+    messages,
+    fromLsn,
+    decodeSuppressionRecordColumnsV8,
     (record) => record.eventId,
     v7Profiles,
   ).map(({ commitLsn, endLsn, events }) => ({ commitLsn, endLsn, records: events }));
