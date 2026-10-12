@@ -4,7 +4,7 @@ import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { z } from 'zod';
 import {
-  parseAccountExportIncludingV39,
+  parseAccountExportIncludingV40,
   operationsStatusSchema,
   eraseAccountResultSchema,
 } from '@workout/contracts/operations';
@@ -139,7 +139,7 @@ function OperationsLifetime({
       });
       await requireSession(response, controller.signal);
       if (!response.ok) throw new Error('EXPORT_UNAVAILABLE');
-      const data = parseAccountExportIncludingV39(await response.json());
+      const data = parseAccountExportIncludingV40(await response.json());
       requireActive(controller.signal);
       if (data.athleteId !== session.athleteId) throw new Error('EXPORT_SCOPE_MISMATCH');
       const url = URL.createObjectURL(

@@ -12,6 +12,8 @@ import {
   parseAccountExportV37,
   parseAccountExportV38,
   parseAccountExportV39,
+  parseAccountExportV40,
+  type AccountExportV40,
   type AccountExportV39,
   type AccountExportV38,
   type AccountExportV37,
@@ -20,6 +22,7 @@ import {
   type OperationsStatus,
 } from '@workout/contracts/operations';
 import { readManualSourcePersonalExportV1In } from './manual-source-personal-export.js';
+import { exportAiExecutionJobsIn } from './ai-execution-jobs.js';
 import { readManualRetainedSourceExportBatchV1In } from './manual-retained-source-export-batch-reader.js';
 import { readRaceManualInternalPersonalExportV1In } from './race-manual-internal-personal-export-reader.js';
 import type { Database } from './database.js';
@@ -35,7 +38,9 @@ export class OperationsError extends Error {
   }
 }
 export interface OperationsRepository {
-  exportAccount(athleteId: string): Promise<AccountExport>;
+  /** V40 is outside the historical `accountExportSchema` union (TS declaration
+   * limit); route ingress parses with `parseAccountExportIncludingV40`. */
+  exportAccount(athleteId: string): Promise<AccountExport | AccountExportV40>;
   eraseAccount(athleteId: string): Promise<{ erased: true }>;
   status(athleteId: string): Promise<OperationsStatus>;
 }
@@ -845,16 +850,27 @@ export function createOperationsV39PooledRepository(database: Database): Operati
   return createRetainedOperationsRepository(database, 39, parseAccountExportV39, 'pooled');
 }
 
+export interface OperationsV40Repository extends Omit<OperationsRepository, 'exportAccount'> {
+  exportAccount(athleteId: string): Promise<AccountExportV40>;
+}
+/** V39 pooled export plus the user's AI execution jobs (ai-execution-jobs export v1)
+ * read in the SAME snapshot transaction and shared byte budget. Renditions (SQL144)
+ * stay excluded. Erasure uses the gallery erase wrapper over the unchanged
+ * public.erase_account chain (SQL148 rows cascade from runs/settings revisions). */
+export function createOperationsV40PooledRepository(database: Database): OperationsV40Repository {
+  return createRetainedOperationsRepository(database, 40, parseAccountExportV40, 'pooled');
+}
+
 function createRetainedOperationsRepository<T>(
   database: Database,
-  version: 36 | 37 | 38 | 39,
+  version: 36 | 37 | 38 | 39 | 40,
   parse: (raw: unknown) => T,
   sourceTransport: 'separate' | 'batch' | 'pooled' = 'separate',
 ): Omit<OperationsRepository, 'exportAccount'> & { exportAccount(athleteId: string): Promise<T> } {
   const historical = createOperationsRepository(database);
   return {
     eraseAccount:
-      version === 39
+      version >= 39
         ? async (athleteId) => {
             await createGalleryExtensionErasureRepositoryCandidate(database).eraseAccount(
               athleteId,
@@ -966,14 +982,23 @@ function createRetainedOperationsRepository<T>(
           };
         }
         const gallery =
-          version === 39
+          version >= 39
             ? await loadRetained(() => readGalleryAccountExportV39In(tx, remaining, debit))
             : {};
+        let aiJobs = {};
+        if (version === 40) {
+          const budget = remaining();
+          const aiExecutionJobs = await exportAiExecutionJobsIn(tx);
+          const bytes = Buffer.byteLength(JSON.stringify({ aiExecutionJobs }), 'utf8');
+          if (bytes > budget) throw new OperationsError('EXPORT_TOO_LARGE');
+          await loadRetained(async () => debit(bytes));
+          aiJobs = { aiExecutionJobs };
+        }
         const artifact = parse({
           schemaVersion: version,
           athleteId,
           exportedAt,
-          data: { ...withTemplates, ...manual, ...internal, ...source, ...gallery },
+          data: { ...withTemplates, ...manual, ...internal, ...source, ...gallery, ...aiJobs },
         });
         if (Buffer.byteLength(JSON.stringify(artifact), 'utf8') > maxBytes)
           throw new OperationsError('EXPORT_TOO_LARGE');
