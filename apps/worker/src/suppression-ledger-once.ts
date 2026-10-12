@@ -2,20 +2,38 @@ import { randomUUID } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 
 import { S3Client } from '@aws-sdk/client-s3';
-import { coordinateSuppressionExport } from '@workout/server-persistence/restore-suppression-coordinator';
+import type { SuppressionRemoteStore } from '@workout/server-persistence/restore-suppression-coordinator';
+import { exportAuthenticatedSuppressionSegmentForInstalledDomain } from '@workout/server-persistence/restore-suppression-exporter';
 import { Pool } from 'pg';
 
-import { createSuppressionRemoteStore } from '../../../deploy/lightsail/backup/ledger-remote-store.mjs';
+import {
+  createSuppressionRemoteStore,
+  type SuppressionRemoteConfig,
+  type SuppressionVersionedObjectClient,
+} from '../../../deploy/lightsail/backup/ledger-remote-store.mjs';
 import {
   parseSuppressionLedgerOnceConfig,
   readSuppressionLedgerKey,
 } from './suppression-ledger-config.js';
+import {
+  bootstrapSuppressionLedgerHead,
+  inspectSuppressionSource,
+  runSuppressionLedgerExport,
+  SuppressionLedgerFailure,
+  type SuppressionLedgerRunResult,
+  type SuppressionLedgerRunInput,
+} from './suppression-ledger-export.js';
 import { createSuppressionLedgerS3Client } from './suppression-ledger-s3-client.js';
 
 export interface SuppressionLedgerOnceDependencies {
   createS3(region: 'ap-northeast-2'): S3Client;
   createPool(connectionString: string): Pool;
-  coordinate: typeof coordinateSuppressionExport;
+  createRemote(
+    config: SuppressionRemoteConfig,
+    s3: S3Client,
+  ): { client: SuppressionVersionedObjectClient; store: SuppressionRemoteStore };
+  inspectSource: SuppressionLedgerRunInput['inspectSource'];
+  exportForInstalledDomain: SuppressionLedgerRunInput['exportForInstalledDomain'];
   readKey(path: string): Buffer;
 }
 
@@ -30,24 +48,43 @@ const defaults: SuppressionLedgerOnceDependencies = {
       query_timeout: 30_000,
       statement_timeout: 30_000,
     }),
-  coordinate: coordinateSuppressionExport,
+  createRemote: (config, s3) => {
+    const client = createSuppressionLedgerS3Client(config, s3);
+    return { client, store: createSuppressionRemoteStore({ config, client }) };
+  },
+  inspectSource: inspectSuppressionSource,
+  exportForInstalledDomain: exportAuthenticatedSuppressionSegmentForInstalledDomain,
   readKey: readSuppressionLedgerKey,
 };
 
-/** One opt-in invocation. The coordinator requires a pre-provisioned signed head. */
+function configFailure(): never {
+  throw new SuppressionLedgerFailure('SUPPRESSION_LEDGER_CONFIG_FAILED');
+}
+
+/**
+ * One opt-in invocation: `--run-once` exports through the authenticated installed-domain
+ * exporter (V7 or V8, as configured and installed); `--bootstrap-head` creates the initial
+ * signed head. The legacy v1 coordinator is never used here.
+ */
 export async function runSuppressionLedgerOnce(
   args: readonly string[],
   env: Readonly<Record<string, string | undefined>>,
   dependencies: SuppressionLedgerOnceDependencies = defaults,
-): Promise<void> {
-  const config = parseSuppressionLedgerOnceConfig(args, env);
-  const encryptionKey = dependencies.readKey(config.encryptionKeyPath);
+): Promise<SuppressionLedgerRunResult> {
+  let config: ReturnType<typeof parseSuppressionLedgerOnceConfig>;
+  let encryptionKey: Buffer;
+  try {
+    config = parseSuppressionLedgerOnceConfig(args, env);
+    encryptionKey = dependencies.readKey(config.encryptionKeyPath);
+  } catch {
+    return configFailure();
+  }
   let headAuthenticationKey: Buffer;
   try {
     headAuthenticationKey = dependencies.readKey(config.headAuthenticationKeyPath);
-  } catch (error) {
+  } catch {
     encryptionKey.fill(0);
-    throw error;
+    return configFailure();
   }
   if (
     encryptionKey.length !== 32 ||
@@ -56,7 +93,7 @@ export async function runSuppressionLedgerOnce(
   ) {
     encryptionKey.fill(0);
     headAuthenticationKey.fill(0);
-    throw new Error('SUPPRESSION_LEDGER_CONFIG_FAILED');
+    return configFailure();
   }
 
   let s3: S3Client | undefined;
@@ -64,17 +101,27 @@ export async function runSuppressionLedgerOnce(
   try {
     s3 = dependencies.createS3(config.remote.region);
     pool = dependencies.createPool(config.connectionString);
-    const client = createSuppressionLedgerS3Client(config.remote, s3);
-    const store = createSuppressionRemoteStore({ config: config.remote, client });
-    await dependencies.coordinate({
+    const { client, store } = dependencies.createRemote(config.remote, s3);
+    const input: SuppressionLedgerRunInput = {
+      config,
       pool,
       store,
-      slotName: config.slotName,
-      expectedClusterId: config.expectedClusterId,
+      client,
       encryptionKey,
-      encryptionKeyId: config.encryptionKeyId,
       headAuthenticationKey,
-    });
+      inspectSource: dependencies.inspectSource,
+      exportForInstalledDomain: dependencies.exportForInstalledDomain,
+    };
+    return config.command === 'bootstrap-head'
+      ? await bootstrapSuppressionLedgerHead(input)
+      : await runSuppressionLedgerExport(input);
+  } catch (error) {
+    if (error instanceof SuppressionLedgerFailure) throw error;
+    throw new SuppressionLedgerFailure(
+      config.command === 'bootstrap-head'
+        ? 'SUPPRESSION_LEDGER_BOOTSTRAP_FAILED'
+        : 'SUPPRESSION_LEDGER_EXPORT_FAILED',
+    );
   } finally {
     try {
       await pool?.end();
@@ -98,13 +145,21 @@ export async function runSuppressionLedgerCli(
       ? configuredRelease
       : 'unreleased';
   try {
-    await runSuppressionLedgerOnce(args, env, dependencies);
+    const result = await runSuppressionLedgerOnce(args, env, dependencies);
     process.stdout.write(
-      `${JSON.stringify({ kind: 'suppression_ledger_export_attempt_completed', runId, version })}\n`,
+      `${JSON.stringify({
+        kind: 'suppression_ledger_export_attempt_completed',
+        runId,
+        version,
+        outcome: result.outcome,
+        relationProfile: result.relationProfile,
+      })}\n`,
     );
-  } catch {
+  } catch (error) {
+    const reason =
+      error instanceof SuppressionLedgerFailure ? error.code : 'SUPPRESSION_LEDGER_UNEXPECTED';
     process.stderr.write(
-      `${JSON.stringify({ kind: 'suppression_ledger_export_failed', runId, version })}\n`,
+      `${JSON.stringify({ kind: 'suppression_ledger_export_failed', runId, version, reason })}\n`,
     );
     process.exitCode = 1;
   }
