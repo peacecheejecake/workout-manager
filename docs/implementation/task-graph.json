@@ -1880,7 +1880,7 @@
         "M2-02m"
       ],
       "kind": "task",
-      "status": "in_progress",
+      "status": "completed",
       "scope": "competitions; 코스 참조·결과; 2026-10-09 승인: 로컬 코스 통합을 구현 선행으로 사용하고 운영 수용은 G2-EXTERNAL/공개 gate에 보존한다."
     },
     {

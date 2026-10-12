@@ -152,3 +152,9 @@ source-build proof를 R9(`1986332e`)·R10(`e9f73e27`, asset `d99a853b…`)으로
 `b6fa848b` gate: static7 exit0, unit 617파일 9977 passed/5 skipped. canonical r22는 `object-scope-purge.integration.test.ts:1281` 동시성 stress 1건 실패(3166 passed), 같은 파일 단독 4회 24/24, 원 오류 본문은 runner가 보존하지 않아 원인 미확정의 간헐 실패로 기록한다. canonical r23(같은 freeze `79b6ca59…`) **3167 passed/14 skipped/0 failed**, exit0. identity×2 두 회차 accepted(current-manual 22).
 
 병렬 설계 산출(읽기 전용, 구현 전): gallery profile27 계획 `/private/tmp/wm-gallery-profile27-plan-20261013/plan.md`(사용자 결정 2026-10-12: U1 rendition 개인 내보내기 제외, U2 앨범·코스 연결·receipt 복원 보장, U3 항상 켜짐·`WORKOUT_GALLERY_*` 제거, U4 복원 후 재생성, U5 145는 gallery 복원·삭제 억제이고 자막은 147+ profile28, U6 profile26 은퇴). EXT-RESTOREa admission 제안 v2 `/private/tmp/wm-ext-restorea-ddl-v2-20261013/`(profile27 extension 배치, 번호 미배정, 사용자 결정 D1~D7 대기).
+
+### 2026-10-13 독립 phase 검토 완료 · M2-02 완료 · main fast-forward
+
+독립 검토(Codex CLI `gpt-6-sol` high, 읽기 전용, base `e7fb1d0b33eeaa52e6d1e5cb7765687a641a1193`)의 최종 판정은 **APPROVE**다(head `b926eb2df830b534876b9da668ce96d08a5ffcda`, `/private/tmp/wm-m2-02-phase-review-r7-focused-20261013/review-output.md`). 전체 diff는 다음으로 완독됐다: head `0ca4dcb9`의 5개 분할(P2·P3a 완독 APPROVE)과 미완독 146파일의 14 chunk(전부 완독), 이후 수정 delta `0ca4dcb9..74afecc8`(27파일)과 `74afecc8..b926eb2d`(3파일)의 집중 재검토. 지적 10건(M202-P1-01~~06, P2-01~~04)은 모두 FIXED이며 새 지적은 없다. 남은 한계는 판정에 포함해 기록한다: baseline107은 146을 받지 못하고 날짜 변경 기능을 제공하지 않음(D5), runtime의 `race_event_revision` 이력 INSERT와 새 대회의 임의 날짜 생성, legacy proof v1/v9 검증 불가, `period_days`·`session_links` 시각 미정 재개 경로의 통합 시험 부재, r22 `object-scope-purge` 간헐 실패(원인 미확정), 외부·운영·실기기 gate 미실행.
+
+이에 따라 task graph `M2-02`를 completed로 올리고(운영 수용은 G2-EXTERNAL·공개 gate에 보존), 이 문서 commit을 포함한 `phase/m2-02`로 `main`을 fast-forward한다. push는 사용자 작업이다.
