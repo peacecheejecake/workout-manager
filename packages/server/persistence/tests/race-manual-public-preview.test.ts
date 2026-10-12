@@ -4,6 +4,7 @@ import { toRaceManualReviewPooledDatabaseEnvelopeV1 } from '../src/race-manual-r
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { raceEventSchema } from '@workout/contracts/races';
+import { raceManualPublicPreviewSchema } from '@workout/contracts/race-manual-public-preview';
 import { planSnapshotSchema } from '@workout/contracts/planning';
 import { coreEvidenceDependencyManifestSchema } from '@workout/contracts/evidence-dependencies';
 import { nutritionPlanVersionCompatibleV4Schema } from '@workout/contracts/nutrition-race-plan-v4';
@@ -309,6 +310,7 @@ function inputFixture(
   move = false,
   large = false,
   unordered = false,
+  unresolvedStored = false,
 ) {
   const c = raceImpactConsumedCaptureSchema.parse(fixture());
   c.calendarIntent = {
@@ -542,6 +544,20 @@ function inputFixture(
         startedRun: { state: 'present', runId: id(20), revision: 0 },
       },
     ];
+    // A stored, unstarted occurrence of the frozen current schedule whose
+    // timing remained unresolved; the date change does not affect this routine.
+    if (unresolvedStored)
+      c.routineActualManifest.occurrences.push({
+        record: routineOccurrenceSchema.parse({
+          ...occurrence,
+          id: id(22),
+          anchorKey: 'stored-unresolved-anchor',
+          scheduledAt: null,
+          timingStatus: 'unresolved',
+        }),
+        currentSchedule: { state: 'present', versionId: schedule.versionId },
+        startedRun: { state: 'absent' },
+      });
     const run = routineRunSchema.parse({
       id: id(20),
       revision: 0,
@@ -761,6 +777,63 @@ describe('public preview pure stored projection', () => {
       itemId: null,
       code: 'STARTED_RUN_PRESERVED',
     });
+  });
+  it('surfaces a stored unresolved current occurrence outside the impact with an explicit notice', () => {
+    const out = projectRaceManualPublicPreview(
+      inputFixture(true, false, false, false, false, true),
+    );
+    if (out.status !== 'present' || out.routines.state !== 'present')
+      throw Error('Routine required');
+    const member = out.routines.members[0];
+    if (!member) throw Error('Member required');
+    expect(member.after.kind).toBe('retained');
+    expect(member.storedCurrentOccurrences.map((o) => o.occurrenceId).sort()).toEqual(
+      [member.retainedStarted[0]?.occurrenceId, id(22)].sort(),
+    );
+    expect(member.storedCurrentOccurrences).toContainEqual({
+      occurrenceId: id(22),
+      schedule: { id: id(18), versionId: id(19) },
+      blueprint: { id: id(16), versionId: id(17) },
+      anchorKey: 'stored-unresolved-anchor',
+      scheduledAt: null,
+      timingStatus: 'unresolved',
+    });
+    expect(out.affected).toEqual([]);
+    expect(out.notices.filter((n) => n.code === 'UNCHANGED_UNRESOLVED')).toEqual([
+      {
+        domain: 'routine_schedule',
+        aggregateId: id(18),
+        itemId: null,
+        code: 'UNCHANGED_UNRESOLVED',
+      },
+    ]);
+    expect(JSON.stringify(member.storedCurrentOccurrences)).not.toContain('stepBindings');
+    // The wire contract re-derives the notice from the stored rows: omitting it,
+    // or hiding the unresolved row while keeping it, is not a valid review.
+    expect(
+      raceManualPublicPreviewSchema.safeParse({
+        ...out,
+        notices: out.notices.filter((n) => n.code !== 'UNCHANGED_UNRESOLVED'),
+      }).success,
+    ).toBe(false);
+    expect(
+      raceManualPublicPreviewSchema.safeParse({
+        ...out,
+        routines: {
+          state: 'present',
+          members: [
+            {
+              ...member,
+              storedCurrentOccurrences: member.storedCurrentOccurrences.map((o) => ({
+                ...o,
+                timingStatus: 'resolved',
+                scheduledAt: now,
+              })),
+            },
+          ],
+        },
+      }).success,
+    ).toBe(false);
   });
   it('shows exact frozen training before and hypothetical date move without applying it', () => {
     const raw = inputFixture(true, false, true),

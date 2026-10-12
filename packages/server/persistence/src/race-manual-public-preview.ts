@@ -622,6 +622,21 @@ function projectReadySource(read: z.infer<typeof readySourceSchema>) {
         expansion: w ? { state: 'expanded' as const, occurrences: w.occurrences } : beforeExpansion,
       },
       retainedStarted: started,
+      // Frozen current-version rows only; no reason or time is derived for them.
+      storedCurrentOccurrences: c.routineActualManifest.occurrences.flatMap(({ record: o }) =>
+        o.schedule.versionId === r.record.versionId
+          ? [
+              {
+                occurrenceId: o.id,
+                schedule: o.schedule,
+                blueprint: o.blueprint,
+                anchorKey: o.anchorKey,
+                scheduledAt: o.scheduledAt,
+                timingStatus: o.timingStatus,
+              },
+            ]
+          : [],
+      ),
     };
   });
   const retainedUnplanned = (p.retainedUnplannedRuns ?? []).map((row) => ({
@@ -649,6 +664,16 @@ function projectReadySource(read: z.infer<typeof readySourceSchema>) {
           code: t.before.state === 'suspended' ? 'DISCONNECTED_RETAINED' : 'UNCHANGED_UNRESOLVED',
         });
   for (const r of routines) {
+    if (
+      r.after.kind === 'retained' &&
+      r.storedCurrentOccurrences.some((o) => o.timingStatus === 'unresolved')
+    )
+      notices.push({
+        domain: 'routine_schedule',
+        aggregateId: r.aggregateId,
+        itemId: null,
+        code: 'UNCHANGED_UNRESOLVED',
+      });
     if (r.before.schedule.state === 'ended')
       notices.push({
         domain: 'routine_schedule',

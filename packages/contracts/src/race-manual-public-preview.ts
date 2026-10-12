@@ -343,6 +343,21 @@ const started = z.strictObject({
   anchorKey: routineOccurrenceSchema.shape.anchorKey,
   preservation: z.literal('started_run_frozen'),
 });
+/** A physical occurrence row of the frozen current schedule version. It
+ * stores no unresolved reason, and none is invented here. */
+const storedCurrent = z
+  .strictObject({
+    occurrenceId: idSchema,
+    schedule: routineOccurrenceSchema.shape.schedule,
+    blueprint: routineOccurrenceSchema.shape.blueprint,
+    anchorKey: routineOccurrenceSchema.shape.anchorKey,
+    scheduledAt: instantSchema.nullable(),
+    timingStatus: z.enum(['resolved', 'unresolved']),
+  })
+  .superRefine((row, context) => {
+    if ((row.timingStatus === 'resolved') !== (row.scheduledAt !== null))
+      context.addIssue({ code: 'custom', message: 'Exact stored planned timing required' });
+  });
 const routineMember = z
   .strictObject({
     aggregateId: uuid,
@@ -354,8 +369,41 @@ const routineMember = z
       expansion,
     }),
     retainedStarted: z.array(started).max(1000),
+    /** Every stored occurrence of the frozen current schedule version. */
+    storedCurrentOccurrences: z.array(storedCurrent).max(1000),
   })
   .superRefine((member, context) => {
+    unique(
+      member.storedCurrentOccurrences.map((row) => row.occurrenceId),
+      context,
+      'Duplicate stored occurrence',
+    );
+    unique(
+      member.storedCurrentOccurrences.map((row) => row.anchorKey),
+      context,
+      'Duplicate stored occurrence anchor',
+    );
+    if (
+      member.storedCurrentOccurrences.some(
+        (row) =>
+          row.schedule.id !== member.aggregateId ||
+          row.schedule.versionId !== member.before.schedule.versionId ||
+          row.blueprint.id !== member.blueprint.routineId ||
+          row.blueprint.versionId !== member.blueprint.versionId,
+      )
+    )
+      context.addIssue({ code: 'custom', message: 'Stored current occurrence tuple mismatch' });
+    for (const run of member.retainedStarted)
+      if (
+        run.scheduleVersionId === member.before.schedule.versionId &&
+        !member.storedCurrentOccurrences.some(
+          (row) => row.occurrenceId === run.occurrenceId && row.anchorKey === run.anchorKey,
+        )
+      )
+        context.addIssue({
+          code: 'custom',
+          message: 'Started current occurrence requires stored source',
+        });
     for (const side of [member.before, member.after]) {
       if (
         side.schedule.id !== member.aggregateId ||
@@ -556,6 +604,18 @@ const present = z
           });
       }
     for (const member of preview.routines.state === 'present' ? preview.routines.members : []) {
+      // Outside the impact, stored unresolved current occurrences are preserved
+      // as-is; approval must state that explicitly instead of implying a time.
+      if (
+        member.after.kind === 'retained' &&
+        member.storedCurrentOccurrences.some((row) => row.timingStatus === 'unresolved')
+      )
+        expectedNotices.push({
+          domain: 'routine_schedule',
+          aggregateId: member.aggregateId,
+          itemId: null,
+          code: 'UNCHANGED_UNRESOLVED',
+        });
       if (member.before.schedule.state === 'ended')
         expectedNotices.push({
           domain: 'routine_schedule',

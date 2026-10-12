@@ -5,6 +5,14 @@ import {
   raceManualPublicPreviewSchema,
   raceManualPublicPreviewBlockedSchema,
 } from '../src/race-manual-public-preview.js';
+type StoredCurrent = {
+  occurrenceId: string;
+  schedule: { id: string; versionId: string };
+  blueprint: { id: string; versionId: string };
+  anchorKey: string;
+  scheduledAt: string | null;
+  timingStatus: 'resolved' | 'unresolved';
+};
 const id = (n: number) => `abcdefab-abcd-4abc-8abc-${String(n).padStart(12, '0')}`;
 const stamp = '2026-10-08T00:00:00.123456Z';
 function first<T>(rows: readonly T[]): T {
@@ -270,6 +278,7 @@ function fixture() {
               preservation: 'started_run_frozen',
             },
           ],
+          storedCurrentOccurrences: [] as StoredCurrent[],
         },
       ],
     },
@@ -591,6 +600,99 @@ describe('whole public frozen/hypothetical preview', () => {
       raceManualPublicPreviewBlockedSchema.safeParse({ ...blocked, reference: fixture().reference })
         .success,
     ).toBe(false);
+  });
+});
+
+describe('stored current routine occurrences outside the impact', () => {
+  const unresolvedRow = (): StoredCurrent => ({
+    occurrenceId: 'occ-current-unresolved',
+    schedule: { id: id(4), versionId: 'schedule-current' },
+    blueprint: { id: 'bp', versionId: 'bp-v1' },
+    anchorKey: 'current-anchor',
+    scheduledAt: null,
+    timingStatus: 'unresolved',
+  });
+  const unresolvedNotice = {
+    domain: 'routine_schedule' as const,
+    aggregateId: id(4),
+    itemId: null,
+    code: 'UNCHANGED_UNRESOLVED' as const,
+  };
+  function withUnresolved() {
+    const f = fixture();
+    first(f.routines.members).storedCurrentOccurrences = [unresolvedRow()];
+    return f;
+  }
+  it('requires UNCHANGED_UNRESOLVED for a retained routine with a stored unresolved occurrence', () => {
+    const f = withUnresolved();
+    expect(parse(f)).toBe(false);
+    f.notices.push(unresolvedNotice);
+    expect(parse(f)).toBe(true);
+    const parsed = raceManualPublicPreviewSchema.parse(f);
+    if (parsed.status !== 'present' || parsed.routines.state !== 'present') throw Error('present');
+    expect(first(parsed.routines.members).storedCurrentOccurrences).toEqual([unresolvedRow()]);
+  });
+  it('does not claim the notice for resolved stored occurrences', () => {
+    const f = fixture();
+    first(f.routines.members).storedCurrentOccurrences = [
+      { ...unresolvedRow(), scheduledAt: stamp, timingStatus: 'resolved' },
+    ];
+    expect(parse(f)).toBe(true);
+    expect(parse({ ...f, notices: [...f.notices, unresolvedNotice] })).toBe(false);
+  });
+  it('does not claim preservation when the routine is replaced on approval', () => {
+    const f = withUnresolved();
+    const member = first(f.routines.members);
+    const next = { ...structuredClone(member.after.schedule), versionId: 'next' };
+    Object.assign(member, {
+      after: {
+        kind: 'new_version_on_approval',
+        schedule: next,
+        expansion: { state: 'expanded', occurrences: [] },
+      },
+    });
+    f.affected = [{ domain: 'routine_schedule', aggregateId: id(4) }] as never;
+    expect(parse(f)).toBe(true);
+    expect(parse({ ...f, notices: [...f.notices, unresolvedNotice] })).toBe(false);
+  });
+  it('rejects stored rows that are not exact current-version facts', () => {
+    for (const patch of [
+      { schedule: { id: id(4), versionId: 'schedule-historical' } },
+      { schedule: { id: id(99), versionId: 'schedule-current' } },
+      { blueprint: { id: 'bp', versionId: 'bp-old' } },
+      { scheduledAt: stamp },
+      { timingStatus: 'resolved' as const },
+      { unresolvedReason: 'MISSING_ANCHOR' },
+    ]) {
+      const f = withUnresolved();
+      f.notices.push(unresolvedNotice);
+      Object.assign(first(first(f.routines.members).storedCurrentOccurrences), patch);
+      expect(parse(f)).toBe(false);
+    }
+    const f = withUnresolved();
+    f.notices.push(unresolvedNotice);
+    first(f.routines.members).storedCurrentOccurrences.push(unresolvedRow());
+    expect(parse(f)).toBe(false);
+  });
+  it('requires a stored source row for a started run of the current version', () => {
+    const f = fixture();
+    const member = first(f.routines.members);
+    Object.assign(first(member.retainedStarted), {
+      occurrenceId: 'occ-current',
+      scheduleVersionId: 'schedule-current',
+      blueprintVersionId: 'bp-v1',
+      anchorKey: 'current-anchor',
+    });
+    expect(parse(f)).toBe(false);
+    member.storedCurrentOccurrences = [
+      {
+        ...unresolvedRow(),
+        occurrenceId: 'occ-current',
+        scheduledAt: stamp,
+        timingStatus: 'resolved',
+      },
+    ];
+    expect(parse(f)).toBe(true);
   });
 });
 

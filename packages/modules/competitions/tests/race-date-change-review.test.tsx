@@ -514,6 +514,7 @@ it('shows full training goals, recovery choice, routine rule and started/unplann
               preservation: 'started_run_frozen',
             },
           ],
+          storedCurrentOccurrences: [],
         },
       ],
     },
@@ -533,6 +534,85 @@ it('shows full training goals, recovery choice, routine rule and started/unplann
   expect(preview.getByText('준비되었습니까?')).toBeInTheDocument();
   expect(preview.getByText(/started: 시작된 실행/)).toBeInTheDocument();
   expect(preview.getByText(/unplanned: 계획 밖 실행/)).toBeInTheDocument();
+});
+it('states that an unresolved stored routine schedule outside the impact is preserved', async () => {
+  const blueprint = {
+    schemaVersion: 4,
+    routineId: 'bp',
+    versionId: 'bp-v1',
+    title: '영향 밖 루틴',
+    intent: '확인',
+    status: 'published',
+    tags: [],
+    steps: [
+      {
+        id: 'step',
+        title: '확인 단계',
+        content: { kind: 'checklist', prompt: '준비?' },
+        timing: { kind: 'user_scheduled' },
+        required: true,
+        choiceGroupId: null,
+      },
+    ],
+    choiceGroups: [],
+    estimatedDurationSeconds: 0,
+    createdAt: stamp,
+  };
+  const schedule = {
+    schemaVersion: 4,
+    id,
+    versionId: 'schedule-v1',
+    blueprint: { id: 'bp', versionId: 'bp-v1' },
+    window: {
+      startDate: '2026-10-08',
+      endDateExclusive: '2026-10-10',
+      timezone: 'UTC',
+      maxOccurrences: 10,
+    },
+    rule: { kind: 'dates', dates: ['2026-10-08'], localTime: null },
+    state: 'active',
+  };
+  const member = {
+    aggregateId: id,
+    blueprint,
+    before: { schedule, expansion: { state: 'unresolved', reason: 'SOURCE_PLAN_REQUIRED' } },
+    after: {
+      kind: 'retained',
+      schedule,
+      expansion: { state: 'unresolved', reason: 'SOURCE_PLAN_REQUIRED' },
+    },
+    retainedStarted: [],
+    storedCurrentOccurrences: [
+      {
+        occurrenceId: 'occ-unresolved',
+        schedule: { id, versionId: 'schedule-v1' },
+        blueprint: { id: 'bp', versionId: 'bp-v1' },
+        anchorKey: 'unresolved-anchor',
+        scheduledAt: null,
+        timingStatus: 'unresolved',
+      },
+    ],
+  };
+  const withoutNotice = { ...basePreview(), routines: { state: 'present', members: [member] } };
+  expect(raceManualPublicPreviewSchema.safeParse(withoutNotice).success).toBe(false);
+  const value = raceManualPublicPreviewSchema.parse({
+    ...withoutNotice,
+    notices: [
+      { domain: 'routine_schedule', aggregateId: id, itemId: null, code: 'UNCHANGED_UNRESOLVED' },
+    ],
+  });
+  setup(value);
+  await review();
+  await screen.findByRole('checkbox');
+  const preview = within(screen.getByLabelText('전체 계획 영향 미리보기'));
+  expect(
+    preview.getByText('unresolved-anchor: 미해결 · 영향 밖이라 시각을 정하지 않고 그대로 보존'),
+  ).toBeInTheDocument();
+  expect(
+    within(
+      preview.getByRole('heading', { name: '보존 안내' }).closest('section') as HTMLElement,
+    ).getByText('영향 밖 루틴의 미해결 저장 일정은 그대로 보존 · 승인해도 시각을 정하지 않음'),
+  ).toBeInTheDocument();
 });
 it('retains committed state if the Host refresh callback fails', async () => {
   const { request } = setup(undefined, {

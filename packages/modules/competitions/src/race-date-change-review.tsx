@@ -686,6 +686,7 @@ const labels: Readonly<Record<string, string>> = {
   before: '고정된 변경 전',
   after: '가정한 변경 후 · 아직 적용하지 않음',
   storedOccurrences: '고정된 저장 일정 시각',
+  storedCurrentOccurrences: '저장된 현재 일정',
   retainedStarted: '시작된 실행 보존',
   requirement: '검토 전 해결 필요',
   state: '상태',
@@ -863,6 +864,23 @@ function Preview({ value }: { value: RaceManualPublicPreview }) {
                 <PlannedFields value={m.blueprint} />
                 <BeforeAfter before={m.before.schedule} after={m.after.schedule} />
                 <BeforeAfter before={m.before.expansion} after={m.after.expansion} />
+                <h4>저장된 현재 일정</h4>
+                {m.storedCurrentOccurrences.length ? (
+                  <ul>
+                    {m.storedCurrentOccurrences.map((o) => (
+                      <li key={o.occurrenceId}>
+                        {o.anchorKey}:{' '}
+                        {o.timingStatus === 'unresolved'
+                          ? m.after.kind === 'retained'
+                            ? '미해결 · 영향 밖이라 시각을 정하지 않고 그대로 보존'
+                            : '미해결 · 승인 시 새 일정으로 대체'
+                          : o.scheduledAt}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p>없음</p>
+                )}
                 <h4>시작된 실행 보존</h4>
                 {m.retainedStarted.length ? (
                   <ul>
@@ -900,7 +918,9 @@ function Preview({ value }: { value: RaceManualPublicPreview }) {
                   {n.code === 'DISCONNECTED_RETAINED'
                     ? '연결 해제 영양 시각 중단 · 재연결·재승인 필요'
                     : n.code === 'UNCHANGED_UNRESOLVED'
-                      ? '영향 밖 미해결 항목은 그대로 보존'
+                      ? n.domain === 'routine_schedule'
+                        ? '영향 밖 루틴의 미해결 저장 일정은 그대로 보존 · 승인해도 시각을 정하지 않음'
+                        : '영향 밖 미해결 항목은 그대로 보존'
                       : n.code === 'STARTED_RUN_PRESERVED'
                         ? '시작된 실행 보존'
                         : '종료된 일정 보존'}
