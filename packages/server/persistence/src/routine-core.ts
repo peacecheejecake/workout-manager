@@ -47,6 +47,7 @@ import {
   type RoutineRun,
   type RoutineScheduleVersion,
 } from '@workout/contracts/routines';
+import type { PlanDraft } from '@workout/contracts/planning';
 import type { Database, Transaction } from './database.js';
 import { enqueue, PersistenceConflict } from './outbox.js';
 import { expandRoutineSchedule, localDateOf, parsePlanDraft } from './routine-expansion.js';
@@ -263,7 +264,7 @@ async function expandWithConflicts(
   tx: Transaction,
   schedule: RoutineScheduleVersion,
   sourcePlanVersionId: string | null,
-  keep: (occurrence: RoutineOccurrence) => boolean,
+  keep: (occurrence: RoutineOccurrence, plan: PlanDraft | null) => boolean,
   basis: string | null,
 ) {
   const blueprint = await blueprintVersion(tx, uuid.parse(schedule.blueprint.versionId));
@@ -274,7 +275,7 @@ async function expandWithConflicts(
     throw new RoutineReferenceError('BLUEPRINT_UNAVAILABLE');
   await validateContentRefs(tx, blueprint);
   const { plan, head: planHead } = await planForSchedule(tx, sourcePlanVersionId);
-  const occurrences = expandRoutineSchedule(schedule, plan).filter(keep);
+  const occurrences = expandRoutineSchedule(schedule, plan).filter((item) => keep(item, plan));
   const conflicts: RoutineSchedulePreview['conflicts'] = [];
   for (const occurrence of occurrences) {
     if (occurrence.timingStatus === 'unresolved')
@@ -379,8 +380,40 @@ function resumedVersionId(scheduleId: string, priorVersionId: string) {
   const h = bytes.subarray(0, 16).toString('hex');
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
 }
+const dayMs = 86_400_000;
+const addDays = (date: string, days: number) =>
+  new Date(Date.parse(`${date}T00:00:00.000Z`) + days * dayMs).toISOString().slice(0, 10);
+/** Local anchor date of every anchor the expander can emit, derived from the rule and the
+ * frozen source plan with the expander's own key and date conventions. No time is
+ * fabricated: an unresolved anchor keeps only its local calendar date. */
+function anchorLocalDates(schedule: RoutineScheduleVersion, plan: PlanDraft | null) {
+  const { rule } = schedule;
+  const dates = new Map<string, string>();
+  switch (rule.kind) {
+    case 'dates':
+    case 'weekdays':
+    case 'every_n_days':
+      // These anchors are keyed by their local date (YYYY-MM-DD) itself.
+      return null;
+    case 'period_days': {
+      const period = plan?.periods.find((item) => item.id === rule.periodId);
+      if (period)
+        for (const offset of rule.offsetsDays)
+          dates.set(`${period.id}:${offset}`, addDays(period.startDate, offset));
+      return dates;
+    }
+    case 'session_links':
+      // An unresolved session anchor has no instant; the expander dates it by the session.
+      for (const sessionId of rule.sessionIds) {
+        const session = plan?.sessions.find((item) => item.id === sessionId);
+        if (session) dates.set(`${sessionId}:${rule.point}`, session.date);
+      }
+      return dates;
+  }
+}
 /** Resume re-materializes the finite remaining part of the approved rule as occurrences of
- * the new active version. Past resolved anchors and anchors whose occurrence in an earlier
+ * the new active version. Past anchors (resolved: instant <= now; unresolved: local anchor
+ * date before today in the schedule timezone) and anchors whose occurrence in an earlier
  * version already has a run are left out; earlier versions' occurrences and runs stay. */
 async function resumePreview(tx: Transaction, prior: RoutineScheduleRead, now: number) {
   if (prior.schedule.state !== 'paused')
@@ -390,6 +423,7 @@ async function resumePreview(tx: Transaction, prior: RoutineScheduleRead, now: n
     versionId: resumedVersionId(prior.schedule.id, prior.schedule.versionId),
     state: 'active',
   });
+  const today = localDateOf(new Date(now).toISOString(), next.window.timezone);
   const started = new Set(
     (
       await tx.query(
@@ -404,9 +438,19 @@ async function resumePreview(tx: Transaction, prior: RoutineScheduleRead, now: n
     tx,
     next,
     prior.sourcePlanVersionId,
-    (occurrence) =>
-      !started.has(occurrence.anchorKey) &&
-      (occurrence.scheduledAt === null || Date.parse(occurrence.scheduledAt) > now),
+    (occurrence, plan) => {
+      if (started.has(occurrence.anchorKey)) return false;
+      // A resolved anchor is future iff its instant is strictly after now.
+      if (occurrence.scheduledAt !== null) return Date.parse(occurrence.scheduledAt) > now;
+      // An unresolved anchor is kept iff its local anchor date is on or after today's
+      // local date in the schedule timezone: today's stays, any earlier day is missed
+      // and is never carried into the resumed version.
+      const dates = anchorLocalDates(next, plan);
+      const date = dates === null ? occurrence.anchorKey : dates.get(occurrence.anchorKey);
+      if (date === undefined || !/^\d{4}-\d{2}-\d{2}$/.test(date))
+        throw new RoutineReferenceError('ANCHOR_DATE_UNAVAILABLE');
+      return date >= today;
+    },
     prior.impactDigest,
   );
   // Normal107 still keys occurrences by (schedule, anchor) across versions, so an anchor

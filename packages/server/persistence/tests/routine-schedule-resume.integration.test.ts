@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import {
   routineBlueprintVersionSchema,
+  routineOccurrenceSchema,
   routineScheduleVersionSchema,
 } from '@workout/contracts/routines';
 import { createDatabase, type Database } from '../src/database.js';
@@ -79,8 +80,31 @@ const dayMs = 86_400_000;
 const utcDate = (offsetDays: number) =>
   new Date(Date.now() + offsetDays * dayMs).toISOString().slice(0, 10);
 
-/** Approved and paused schedule with one past anchor and two future anchors. */
-async function setup(db: Database) {
+/** Local calendar date `offsetDays` from today in `timezone` (same Intl rule as the server). */
+function localDate(timezone: string, offsetDays = 0) {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('en', {
+      timeZone: timezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    })
+      .formatToParts(new Date())
+      .filter((part) => part.type !== 'literal')
+      .map((part) => [part.type, part.value]),
+  );
+  const today = Date.parse(`${parts['year']}-${parts['month']}-${parts['day']}T00:00:00.000Z`);
+  return new Date(today + offsetDays * dayMs).toISOString().slice(0, 10);
+}
+/** Approved and paused schedule; by default one past anchor and two future anchors. */
+async function setup(
+  db: Database,
+  options: { timezone: string; localTime: string | null; dates: string[] } = {
+    timezone: 'UTC',
+    localTime: '07:00',
+    dates: [utcDate(-2), utcDate(3), utcDate(4)],
+  },
+) {
   const athlete = randomUUID();
   await createConsentRepository(db).setConsent(athlete, {
     kind: 'app',
@@ -117,19 +141,22 @@ async function setup(db: Database) {
     idempotencyKey: randomUUID(),
     confirmed: true,
   });
-  const dates = [utcDate(-2), utcDate(3), utcDate(4)];
+  const { dates } = options;
+  const sorted = [...dates].sort();
   const schedule = routineScheduleVersionSchema.parse({
     schemaVersion: 4,
     id: randomUUID(),
     versionId: randomUUID(),
     blueprint: { id: blueprint.routineId, versionId: blueprint.versionId },
     window: {
-      startDate: utcDate(-2),
-      endDateExclusive: utcDate(5),
-      timezone: 'UTC',
-      maxOccurrences: 3,
+      startDate: required(sorted[0]),
+      endDateExclusive: new Date(Date.parse(`${required(sorted.at(-1))}T00:00:00.000Z`) + dayMs)
+        .toISOString()
+        .slice(0, 10),
+      timezone: options.timezone,
+      maxOccurrences: dates.length,
     },
-    rule: { kind: 'dates', dates, localTime: '07:00' },
+    rule: { kind: 'dates', dates, localTime: options.localTime },
     state: 'draft',
   });
   const preview = await repository.previewSchedule(athlete, {
@@ -336,3 +363,64 @@ it('normal107 refuses a resume with future occurrences and leaves the schedule p
   expect(await f.repository.readSchedule(f.athlete, f.approved.schedule.id)).toEqual(paused);
   expect(await occurrenceRows(normal, f)).toEqual(before);
 });
+
+async function resumeNow(f: Fixture) {
+  const paused = await f.pause();
+  const preview = await f.repository.previewScheduleResume(f.athlete, f.approved.schedule.id);
+  const resumed = await f.repository.changeSchedule(f.athlete, {
+    scheduleId: f.approved.schedule.id,
+    expectedVersionId: paused.schedule.versionId,
+    action: 'resume',
+    previewDigest: preview.previewDigest,
+    idempotencyKey: randomUUID(),
+    confirmed: true,
+  });
+  return { preview, resumed };
+}
+
+// M202-P1-06: an unresolved (localTime: null) anchor has no instant, so resume compares its
+// local anchor date with today's local date in the schedule timezone: kept iff anchor date
+// >= today. Missed earlier days are never carried into the resumed version.
+it('resume keeps only today-or-later unresolved anchors; missed ones are not re-stored or runnable', async () => {
+  const timezone = 'Asia/Seoul';
+  const dates = [-3, -1, 2, 5].map((offset) => localDate(timezone, offset));
+  const f = await setup(versioned, { timezone, localTime: null, dates });
+  expect(f.approved.occurrences.every((o) => o.scheduledAt === null)).toBe(true);
+  const original = await occurrenceRows(versioned, f);
+  const { preview, resumed } = await resumeNow(f);
+  expect(preview.occurrences.map((o) => o.anchorKey)).toEqual(dates.slice(2));
+  expect(resumed.occurrences).toEqual(preview.occurrences);
+  expect(
+    resumed.occurrences.every((o) => o.timingStatus === 'unresolved' && o.scheduledAt === null),
+  ).toBe(true);
+  const rows = await occurrenceRows(versioned, f);
+  expect(rows).toHaveLength(original.length + 2);
+  expect(
+    rows
+      .filter((row) => row['schedule_version_id'] === resumed.schedule.versionId)
+      .map((row) => routineOccurrenceSchema.parse(row['record_json']).anchorKey)
+      .sort(),
+  ).toEqual(dates.slice(2));
+  for (const missed of f.approved.occurrences.slice(0, 2))
+    await expect(start(f, missed.id)).rejects.toMatchObject({ code: 'OCCURRENCE_UNAVAILABLE' });
+  expect((await start(f, required(resumed.occurrences[0]).id)).run.origin).toMatchObject({
+    kind: 'planned',
+  });
+});
+
+// The boundary follows the schedule timezone, not UTC: Kiritimati (UTC+14) and Pago Pago
+// (UTC-11) never share a local date, so at any instant at least one differs from UTC's.
+for (const timezone of ['Pacific/Kiritimati', 'Pacific/Pago_Pago']) {
+  it(`resume boundary in ${timezone}: local today is kept, local yesterday is dropped`, async () => {
+    const dates = [-1, 0, 1].map((offset) => localDate(timezone, offset));
+    const f = await setup(versioned, { timezone, localTime: null, dates });
+    const { resumed } = await resumeNow(f);
+    expect(resumed.occurrences.map((o) => o.anchorKey)).toEqual(dates.slice(1));
+    expect((await start(f, required(resumed.occurrences[0]).id)).run.origin).toMatchObject({
+      kind: 'planned',
+    });
+    await expect(start(f, required(f.approved.occurrences[0]).id)).rejects.toMatchObject({
+      code: 'OCCURRENCE_UNAVAILABLE',
+    });
+  });
+}
