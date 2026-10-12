@@ -13,7 +13,7 @@ it('keeps the historical default and staged compositions independent', () => {
     installedRuntime: false,
     installedCurrentRuntime: false,
     installedCurrentRuntimeV7: false,
-    installedCurrentRuntimeV9: false,
+    installedCurrentRuntimeV10: false,
     enableRaceResultsV2: false,
     enableRaceManualPublic: false,
     enableCheckInTemplates: false,
@@ -29,7 +29,7 @@ it('keeps the historical default and staged compositions independent', () => {
     stageRaceResults: true,
     installedCurrentRuntime: false,
     installedCurrentRuntimeV7: false,
-    installedCurrentRuntimeV9: false,
+    installedCurrentRuntimeV10: false,
     installedRuntime: false,
     enableRaceResultsV2: true,
     enableRaceManualPublic: true,
@@ -38,7 +38,7 @@ it('keeps the historical default and staged compositions independent', () => {
     stageCheckInTemplates: true,
     installedCurrentRuntime: false,
     installedCurrentRuntimeV7: false,
-    installedCurrentRuntimeV9: false,
+    installedCurrentRuntimeV10: false,
     enableCheckInTemplates: true,
     installedRuntime: false,
   });
@@ -61,7 +61,7 @@ it.each([
     installedRuntime: false,
     installedCurrentRuntime: false,
     installedCurrentRuntimeV7: false,
-    installedCurrentRuntimeV9: false,
+    installedCurrentRuntimeV10: false,
   });
 });
 it('installed-runtime explicitly enables all installed public families without any raw staging', () => {
@@ -73,7 +73,7 @@ it('installed-runtime explicitly enables all installed public families without a
       installedRuntime: true,
       installedCurrentRuntime: false,
       installedCurrentRuntimeV7: false,
-      installedCurrentRuntimeV9: false,
+      installedCurrentRuntimeV10: false,
       enableRaceResultsV2: true,
       enableRaceManualPublic: true,
       enableCheckInTemplates: true,
@@ -90,7 +90,7 @@ it('profile22 is a separate installed path with all public families and no raw s
     installedRuntime: false,
     installedCurrentRuntime: true,
     installedCurrentRuntimeV7: false,
-    installedCurrentRuntimeV9: false,
+    installedCurrentRuntimeV10: false,
     enableRaceResultsV2: true,
     enableRaceManualPublic: true,
     enableCheckInTemplates: true,
@@ -106,7 +106,7 @@ it('profile23 explicitly selects V7 while sharing installed current families', (
     installedRuntime: false,
     installedCurrentRuntime: true,
     installedCurrentRuntimeV7: true,
-    installedCurrentRuntimeV9: false,
+    installedCurrentRuntimeV10: false,
     enableRaceResultsV2: true,
     enableRaceManualPublic: true,
     enableCheckInTemplates: true,
@@ -193,9 +193,9 @@ it.each(['', true, null, {}, 'installed-runtime', 'staged-123 '])(
   },
 );
 
-it('profile25 selects only the named V9 pooled fixture without claiming production activation', () => {
+it('profile26 selects only the named V10 pooled fixture without claiming production activation', () => {
   expect(
-    parseIdentityRuntimeProfile({ ...normal, raceManualPublic: 'installed-current-profile25' }),
+    parseIdentityRuntimeProfile({ ...normal, raceManualPublic: 'installed-current-profile26' }),
   ).toEqual({
     stageRaceResults: false,
     stageCheckInTemplates: false,
@@ -203,7 +203,7 @@ it('profile25 selects only the named V9 pooled fixture without claiming producti
     installedRuntime: false,
     installedCurrentRuntime: true,
     installedCurrentRuntimeV7: false,
-    installedCurrentRuntimeV9: true,
+    installedCurrentRuntimeV10: true,
     enableRaceResultsV2: true,
     enableRaceManualPublic: true,
     enableCheckInTemplates: true,
@@ -213,20 +213,22 @@ it.each([
   { raceResultsV2: 'staged-108-111' },
   { checkInTemplates: 'staged-123' },
   { raceResultsV2: 'staged-108-111', checkInTemplates: 'staged-123' },
-])('rejects profile25/raw overlap before DB startup: %j', (overlap) => {
+])('rejects profile26/raw overlap before DB startup: %j', (overlap) => {
   expect(() =>
     parseIdentityRuntimeProfile({
       ...normal,
       ...overlap,
-      raceManualPublic: 'installed-current-profile25',
+      raceManualPublic: 'installed-current-profile26',
     }),
   ).toThrow('IDENTITY_RUNTIME_PROFILE_CONFLICT');
 });
+// M202-P1-03 decision D3: profile25 is retired and rejected like any unknown selector.
 it.each([
-  ' installed-current-profile25',
-  'installed-current-profile25 ',
-  'installed-current-profile26',
-])('rejects malformed or future V9 selectors: %j', (raw) => {
+  'installed-current-profile25',
+  ' installed-current-profile26',
+  'installed-current-profile26 ',
+  'installed-current-profile27',
+])('rejects retired, malformed or future V10 selectors: %j', (raw) => {
   expect(() => parseIdentityRuntimeProfile({ ...normal, raceManualPublic: raw })).toThrow(
     'IDENTITY_RACE_MANUAL_STAGE_INVALID',
   );

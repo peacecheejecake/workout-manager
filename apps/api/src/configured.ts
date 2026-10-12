@@ -35,7 +35,7 @@ import { createCheckInRepository } from '@workout/server-persistence/check-ins';
 import { createCheckInTemplateRepository } from '@workout/server-persistence/check-in-templates';
 import { createDashboardRepository } from '@workout/server-persistence/dashboard';
 import { createOperationsRepository } from '@workout/server-persistence/operations';
-import { createRegisteredCurrentRuntimeRepositoriesV1 } from './current-runtime-repositories-registration-v1.js';
+import { createRegisteredCurrentRuntimeRepositoriesV2 } from './current-runtime-repositories-registration-v2.js';
 import { createGalleryMediaRepository } from '@workout/server-persistence/gallery-media';
 import { createActivityTrackRepository } from '@workout/server-persistence/activity-tracks';
 import { createCourseRepository } from '@workout/server-persistence/courses';
@@ -98,7 +98,7 @@ const environmentSchema = z.object({
     .url()
     .refine((value) => ['postgres:', 'postgresql:'].includes(new URL(value).protocol)),
   WORKOUT_RUNTIME_PROFILE: z
-    .enum(['baseline107', 'installed-current-profile25'])
+    .enum(['baseline107', 'installed-current-profile26'])
     .default('baseline107'),
   PUBLIC_ORIGIN: z.string().url(),
   OIDC_ISSUER: z.string().url(),
@@ -286,9 +286,9 @@ export async function createConfiguredApi(
     // capability answers false instead of advertising requests that cannot succeed. The
     // V34 account export reads only baseline tables and stays.
     const runtimeRepositories =
-      env.WORKOUT_RUNTIME_PROFILE === 'installed-current-profile25'
+      env.WORKOUT_RUNTIME_PROFILE === 'installed-current-profile26'
         ? {
-            ...(await createRegisteredCurrentRuntimeRepositoriesV1(database)),
+            ...(await createRegisteredCurrentRuntimeRepositoriesV2(database)),
             checkInTemplates: createCheckInTemplateRepository(database),
           }
         : { operations: createOperationsRepository(database) };

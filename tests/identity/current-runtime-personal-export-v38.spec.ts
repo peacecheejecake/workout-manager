@@ -28,9 +28,9 @@ test.skip(
   ![
     'installed-current-profile22',
     'installed-current-profile23',
-    'installed-current-profile25',
+    'installed-current-profile26',
   ].includes(process.env['IDENTITY_E2E_RACE_MANUAL_PUBLIC'] ?? ''),
-  'Requires an explicit installed profile22, profile23 or profile25 harness with its actual V38 repository; older/default modes are not this acceptance.',
+  'Requires an explicit installed profile22, profile23 or profile26 harness with its actual V38 repository; older/default modes are not this acceptance.',
 );
 async function login(page: Page, origin: string) {
   await page.goto(`${origin}/account`);

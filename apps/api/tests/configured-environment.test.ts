@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createConfiguredApi } from '../src/configured.js';
 import { createCurrentRuntimeV9Repositories } from '../src/current-runtime-v9-repositories.js';
 import { createCurrentRuntimeSourceBuildRepositoriesV1 } from '../src/current-runtime-source-build-repositories-v1.js';
+import { createCurrentRuntimeSourceBuildRepositoriesV2 } from '../src/current-runtime-source-build-repositories-v2.js';
 
 // Startup OIDC discovery is a network call; this test is about what the entrypoint hands the
 // factory, so the provider is replaced and nothing here reaches the network or a database.
@@ -23,6 +24,12 @@ vi.mock('../src/current-runtime-v9-repositories.js', () => ({
 vi.mock('../src/current-runtime-source-build-repositories-v1.js', () => ({
   createCurrentRuntimeSourceBuildRepositoriesV1: vi.fn(async () => {
     throw new Error('CURRENT_RUNTIME_SOURCE_BUILD_V1_UNAVAILABLE');
+  }),
+}));
+
+vi.mock('../src/current-runtime-source-build-repositories-v2.js', () => ({
+  createCurrentRuntimeSourceBuildRepositoriesV2: vi.fn(async () => {
+    throw new Error('CURRENT_RUNTIME_SOURCE_BUILD_V2_UNAVAILABLE');
   }),
 }));
 
@@ -71,6 +78,7 @@ describe('createConfiguredApi given the real process environment (M2-01aa)', () 
     try {
       expect(createCurrentRuntimeV9Repositories).not.toHaveBeenCalled();
       expect(createCurrentRuntimeSourceBuildRepositoriesV1).not.toHaveBeenCalled();
+      expect(createCurrentRuntimeSourceBuildRepositoriesV2).not.toHaveBeenCalled();
       expect((await app.inject('/health')).statusCode).toBe(200);
     } finally {
       await app.close();
@@ -94,18 +102,29 @@ describe('createConfiguredApi given the real process environment (M2-01aa)', () 
     vi.stubEnv('WORKOUT_RELEASE', 'token=secret value');
     await expect(createConfiguredApi(process.env)).rejects.toThrow();
   });
-  it('selects the named profile25 gate explicitly and refuses startup without readiness', async () => {
-    vi.stubEnv('WORKOUT_RUNTIME_PROFILE', 'installed-current-profile25');
-    await expect(createConfiguredApi(process.env)).rejects.toThrow(
-      'CURRENT_RUNTIME_SOURCE_BUILD_V1_UNAVAILABLE',
-    );
-    expect(createCurrentRuntimeSourceBuildRepositoriesV1).toHaveBeenCalledTimes(1);
-    expect(createCurrentRuntimeV9Repositories).not.toHaveBeenCalled();
-  });
-  it('refuses unknown runtime profiles before selecting a repository', async () => {
+  it('selects the named profile26 gate explicitly and refuses startup without readiness', async () => {
     vi.stubEnv('WORKOUT_RUNTIME_PROFILE', 'installed-current-profile26');
-    await expect(createConfiguredApi(process.env)).rejects.toThrow();
-    expect(createCurrentRuntimeV9Repositories).not.toHaveBeenCalled();
+    await expect(createConfiguredApi(process.env)).rejects.toThrow(
+      'CURRENT_RUNTIME_SOURCE_BUILD_V2_UNAVAILABLE',
+    );
+    expect(createCurrentRuntimeSourceBuildRepositoriesV2).toHaveBeenCalledTimes(1);
     expect(createCurrentRuntimeSourceBuildRepositoriesV1).not.toHaveBeenCalled();
+    expect(createCurrentRuntimeV9Repositories).not.toHaveBeenCalled();
   });
+  // M202-P1-03 decision D3: the retired profile25 name is an unknown profile now. It is
+  // refused at environment parse, so neither the v1 nor the v2 gate is ever selected.
+  it.each([
+    'installed-current-profile25',
+    'installed-current-profile27',
+    'Installed-Current-Profile26',
+  ])(
+    'refuses retired or unknown runtime profile %s before selecting a repository',
+    async (profile) => {
+      vi.stubEnv('WORKOUT_RUNTIME_PROFILE', profile);
+      await expect(createConfiguredApi(process.env)).rejects.toThrow();
+      expect(createCurrentRuntimeV9Repositories).not.toHaveBeenCalled();
+      expect(createCurrentRuntimeSourceBuildRepositoriesV1).not.toHaveBeenCalled();
+      expect(createCurrentRuntimeSourceBuildRepositoriesV2).not.toHaveBeenCalled();
+    },
+  );
 });
