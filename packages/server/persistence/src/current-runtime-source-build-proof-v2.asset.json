@@ -3,8 +3,8 @@
   "buildProofVersion": 2,
   "sourceBuildRevision": 1,
   "currentFunctionalExecution": "not_executed",
-  "sourceManifestSha256": "210335591a2d249fc0147fe79987b4d66d5c6bdabe0b14c7c0135f46a877eff5",
-  "manifestFileSha256": "9fed1611d5204640a4de671170e1ca8197e434bc5df266641a575c06befe289e",
+  "sourceManifestSha256": "90178b983592baaa54d1852f8f81b10972d31484de04fc6b94baaede87ba1449",
+  "manifestFileSha256": "da569e25969848aeb6621058dcbf8e59fbbd3fe3e3bc0c792e3f7846bb17a082",
   "manifestPath": "manifest.json",
   "profileVersion": 10,
   "runtimeStep": 26,
@@ -214,7 +214,7 @@
     },
     {
       "path": "packages/contracts/src/race-manual-public-preview.ts",
-      "sha256": "060dbb5662458641d466bfcd4ba6e39bbf0f8bff56bc1a09fa3e16545432465c",
+      "sha256": "773c31145551f8504255dbad0c6f5664e97aed5918955301a3a35e03334d1c75",
       "role": "source"
     },
     {
@@ -1359,7 +1359,7 @@
     },
     {
       "path": "packages/server/persistence/src/race-manual-public-preview.ts",
-      "sha256": "d046ec5a1d143213cc3ea0e8e16481bafeb67e17b7418e9ad429c986ae10bf33",
+      "sha256": "7e1952c8dc39563087a6a22afb4680391c71652defa8b2103391b5f4453d3127",
       "role": "source"
     },
     {
