@@ -135,3 +135,12 @@ source-build proof를 R9(`1986332e`)·R10(`e9f73e27`, asset `d99a853b…`)으로
 - root 실DB: V10 6 suite 82/82, `configured-runtime-v10` 7/7(직접 SQL 날짜 변경 42501, 실제 HTTP 승인 성공, 이후 직접 되돌림 거절).
 
 `36eeaab8` 실제 gate: static7 모두 exit0, unit 614파일 9951 passed/5 skipped. canonical r18(freeze `8d7236f5…`) upgrade 1/1, normal 309 passed/3 skipped, **3160 passed/14 skipped/0 failed**, exit0, post 정리 정상. identity×2(seed `6d4d84b6…`) 두 회차 accepted: general 320/11 skip, app-consent 4, ai-settings-lifecycle 1, current-manual(profile26) 22, unexpected/flaky 0, owned container 제거. 남은 잔여 위험(재검토 제시): runtime의 `race_event_revision` 이력 행 INSERT, 새 대회 생성 시 임의 날짜(정상 생성), baseline107 미가드(D5), legacy proof v1/v9 검증 불가.
+
+### 2026-10-12 재검토 3회차·분할 검토 · 새 지적 5건 수정
+
+재검토 3회차(head `0ca4dcb9`)는 이전 지적 4건을 모두 FIXED로 판정했으나 미검토 범위 때문에 승인하지 않았다. 같은 diff identity를 5개 분할(그 뒤 미완독 146파일을 14 chunk로 재분할)로 나눠 독립 검토를 완료했다: 분할·chunk 대부분 APPROVE, 새 지적 5건(ID 재부여): **M202-P1-04** routine 일시정지→재개 뒤 occurrence 0, **M202-P1-05** routing probe의 finding이 exit 0, **M202-P2-02** 영양 재연결 후보 첫 50개만, **M202-P2-03** 날짜 변경 검토에 영향 밖 미해결 일정 `UNCHANGED_UNRESOLVED` 안내 누락, **M202-P2-04** course performance probe 실패에도 exit 0. 결과: `/private/tmp/wm-m2-02-phase-review-r4-partitions-20261012/`, `/private/tmp/wm-m2-02-phase-review-r5-chunks-20261012/`.
+
+- 수정: P2-02 재연결 후보 cursor paging(`1423a810`), P1-05/P2-04 probe verdict와 exit code(`a0a3d3f1`), P1-04 재개 preview와 미래 occurrence 원자적 저장(`f57e165e`, normal107은 versioned occurrence가 없으면 재개 거절), P2-03 review DTO의 현재 일정 저장 occurrence와 안내 생성·계약 검증·화면(`bcf440d1`). source-build proof v2를 R2(`26d7cc37…`, `1cb7bd8d`)로 재컴파일하고 이전은 `r1-20261012`로 보존했다. 외부 guard successor `static-seven-r11`은 v1 legacy drift를 6파일로 갱신하고 v2 r1→R2 delta를 그 2파일로 제한한다.
+- 실행 조건 문제: r19는 시험 종료(terminal 0) 뒤 source 전후 비교에서 `ENOENT`, r20은 시작 시 GEO seed `ENOENT`로 중단됐다. 원인은 macOS의 `/private/tmp` 정기 정리가 2026-10-09 pinned 입력 5개를 지운 것이었다. finite reporter·budget projector·lifecycle wrapper는 보존 사본에서 pin SHA 일치로 복원했고 geo snapshot `.py`는 보존 사본으로 복원했다(SHA pin 없음). GEO seed는 사본이 없어 r18 identity list의 현재 `.geo-build` snapshot을 새 SHA로 pin한 runner successor를 썼다.
+
+`1cb7bd8d` 실제 gate: static7 모두 exit0, unit 617파일 9977 passed/5 skipped. canonical r21(freeze `bde7821a…`) upgrade 1/1, normal 310 passed/3 skipped, **3164 passed/14 skipped/0 failed**, exit0, post 정리 정상. identity×2(seed `e5c9fce5…`) 두 회차 accepted: general 320/11 skip, app-consent 4, ai-settings-lifecycle 1, current-manual 22, unexpected/flaky 0, owned container 제거. 다음은 5건 수정의 집중 재검토다.
