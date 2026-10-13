@@ -16,3 +16,10 @@ M2-01k-w-a의 준비 결과는 `storage:not_persisted`, `sourceCompleteness:fals
 기존 `phase/m2-05` HEAD `dd974084fe008397fe2ab2963191de6bea9e0380`의 미검토 prototype 12개 커밋은 그대로 보존한다. 그 branch를 초기화하거나 자동 main 병합하지 않았다. 후속 구현 시작 때 승인된 최신 main 기준과 기존 prototype을 대조하고 전체 phase 검증·독립 검토를 새로 받는다. SQL 번호·공통 계약·grants·export/registry는 Root가 직렬 통합한다.
 
 이번 변경의 검증은 graph 고유 ID·선행 ID·순환 검사와 문서 연결/format/diff다. 구현, PostgreSQL, 브라우저, 실제 제공자, phase review, main 병합은 실행하지 않았다.
+
+## M2-05a 로컬 완료 · 2026-10-14
+
+148 `ai_execution_job_store`의 불변 job·frozen selection·synthetic evidence 확인·복원 취소 disposition, tenant/RLS, 원자적 receipt/outbox,
+account export V40 포함을 profile27로 설치·검증했다. 리뷰 r1 P27-p1-1(위조 catalog digest)을 148 guard의 canonical digest 비교로 고쳤다.
+독립 phase 리뷰 r2 APPROVE 뒤 완료로 바꾼다. 실제 dispatch·complete freshness(M2-05b), 예산(M2-05c), 실제 OpenAI(M2-05d)는 미실행이며
+worker job registry는 비어 있다. 근거: [profile27 기록](PROFILE27-local-20261013.md).

@@ -88,3 +88,10 @@ Codex `gpt-6-sol` high, 읽기 전용, `a0c430ce..c7634a5c`를 6개 partition으
 리뷰 수정 HEAD `5ea51623` gate(첫 시도): static7 exit0, unit 699파일·11643 통과·5 skip. Canonical 3353 통과·21 skip·실패0, cleanup clean.
 Identity 두 회차 accepted(general 320/skip11, app-consent 4, ai-settings 1, current-manual 22). result SHA
 `4440f9d77ef73c3a0c715ffea1c98c335921beeac04b9f5641d8f2e3590c4edc`.
+
+## 독립 phase 리뷰 r2 (집중) · APPROVE
+
+Codex `gpt-6-sol` high, 읽기 전용, `c7634a5c..7010230b`: r1 13건 모두 FIXED, 새 지적 없음
+(`/private/tmp/wm-profile27-phase-review-r2-focused-20261014/review-output.md`). main을 이 phase로 fast-forward한다.
+Task graph: M2-05a completed. M2-03a(자막은 profile28 범위)·M2-03b·M2-03c(UI Aside→Chrome→Playwright 검증과 실제 codec 실행 전)·
+EXT-RESTOREa(완전 인증 복원 protocol 아님)는 in_progress를 유지한다.

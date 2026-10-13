@@ -2379,7 +2379,7 @@
       "title": "AI 실행 선택의 immutable job 저장",
       "dependsOn": ["M2-01k-w-a", "M2-02", "M2-05"],
       "kind": "task",
-      "status": "not_started",
+      "status": "completed",
       "scope": "기존 M2-01k-w-b의 미시작 범위를 일대일 이관(2026-10-07); Versioned run command/receipt·frozen selection·tenant/RLS·삭제/export/restore·outbox 원자성. 기존 fixture/역사 run에 자동 binding 또는 모델 대체 금지.",
       "evidence": "docs/implementation/progress/M2-05-execution.md"
     },
