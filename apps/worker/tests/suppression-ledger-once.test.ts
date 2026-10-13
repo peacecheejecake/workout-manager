@@ -433,6 +433,124 @@ describe('suppression ledger export through the installed-domain exporter', () =
     expect(calls.exportForInstalledDomain).not.toHaveBeenCalled();
   });
 
+  /** Publishes one real segment, a signed head referencing it, and pins that head locally. */
+  async function withOneSegment(reference: { versionId?: string } = {}) {
+    const setup = await bootstrapped('suppression-physical-v8');
+    const { calls, headWitnessPath } = setup;
+    const segmentBytes = Buffer.from('synthetic encrypted segment bytes');
+    const segment = await calls.bucket.store.putImmutableSegment(segmentBytes);
+    const throughLsn = '0/1A2B3D0';
+    const headBytes = encodeSuppressionHeadV8(
+      {
+        formatVersion: 3,
+        source: {
+          databaseName: 'workout',
+          databaseOid: 16384,
+          slotName: 'wm_suppression_primary',
+          publication: 'workout_restore_suppression_events',
+          relationProfile: 'suppression-physical-v8',
+          captureId,
+          registryFingerprint: fingerprint,
+        },
+        clusterId: '123456789',
+        fromLsn: '0/1A2B3C8',
+        throughLsn,
+        previousHash: null,
+        finalLocalHash: 'c'.repeat(64),
+        segments: [
+          {
+            segmentId: segment.segmentId,
+            versionId: reference.versionId ?? segment.versionId,
+            sha256: createHash('sha256').update(segmentBytes).digest('hex'),
+            byteLength: segmentBytes.byteLength,
+            fromLsn: '0/1A2B3C8',
+            throughLsn,
+            previousHash: null,
+            localHash: 'c'.repeat(64),
+          },
+        ],
+      },
+      Buffer.alloc(32, 2),
+    );
+    const head = calls.bucket.forcePut(calls.bucket.headKey, headBytes);
+    writeFileSync(
+      headWitnessPath,
+      JSON.stringify({
+        schemaVersion: 1,
+        captureId,
+        relationProfile: 'suppression-physical-v8',
+        headVersionId: head.versionId,
+        headSha256: createHash('sha256').update(headBytes).digest('hex'),
+        pendingHeadSha256: null,
+      }) + '\n',
+    );
+    calls.inspectSource.mockResolvedValue(inspection({ confirmedFlushLsn: throughLsn }));
+    return {
+      ...setup,
+      segment,
+      segmentBytes,
+      segmentKey: `${remoteConfig.prefix}/segments/${segment.segmentId}.bin`,
+    };
+  }
+
+  it('reports no_new_records only after the head-referenced segments verify', async () => {
+    const { env, calls } = await withOneSegment();
+    const readSegment = vi.spyOn(calls.bucket.store, 'readSegment');
+    await expect(
+      runSuppressionLedgerOnce(['--run-once'], env, calls.dependencies),
+    ).resolves.toEqual({ outcome: 'no_new_records', relationProfile: 'suppression-physical-v8' });
+    expect(readSegment).toHaveBeenCalledOnce();
+    expect(calls.exportForInstalledDomain).not.toHaveBeenCalled();
+  });
+
+  it('refuses an empty run when the head-referenced segment was deleted', async () => {
+    const { env, calls, segmentKey } = await withOneSegment();
+    calls.bucket.removeKey(segmentKey);
+    await expect(runSuppressionLedgerOnce(['--run-once'], env, calls.dependencies)).rejects.toThrow(
+      'SUPPRESSION_LEDGER_REMOTE_CHAIN_UNVERIFIED',
+    );
+    expect(calls.exportForInstalledDomain).not.toHaveBeenCalled();
+  });
+
+  it('refuses an empty run when the segment bytes were tampered with', async () => {
+    // At-rest corruption of the referenced version.
+    const corrupted = await withOneSegment();
+    corrupted.calls.bucket.corrupt(corrupted.segmentKey, corrupted.segment.versionId);
+    await expect(
+      runSuppressionLedgerOnce(['--run-once'], corrupted.env, corrupted.calls.dependencies),
+    ).rejects.toThrow('SUPPRESSION_LEDGER_REMOTE_CHAIN_UNVERIFIED');
+    // A replacement version written over the immutable key.
+    const replaced = await withOneSegment();
+    replaced.calls.bucket.forcePut(replaced.segmentKey, Buffer.from('replacement bytes'));
+    await expect(
+      runSuppressionLedgerOnce(['--run-once'], replaced.env, replaced.calls.dependencies),
+    ).rejects.toThrow('SUPPRESSION_LEDGER_REMOTE_CHAIN_UNVERIFIED');
+    // A store that returns other bytes at the referenced version is caught by the run itself.
+    const lying = await withOneSegment();
+    const store = lying.calls.bucket.store;
+    lying.calls.dependencies.createRemote = () => ({
+      client: lying.calls.bucket.client,
+      store: {
+        ...store,
+        readSegment: async (id, version) => ({
+          versionId: version,
+          bytes: Buffer.from(lying.segmentBytes.map((byte) => byte ^ 1)),
+        }),
+      },
+    });
+    await expect(
+      runSuppressionLedgerOnce(['--run-once'], lying.env, lying.calls.dependencies),
+    ).rejects.toThrow('SUPPRESSION_LEDGER_REMOTE_CHAIN_UNVERIFIED');
+  });
+
+  it('refuses an empty run when the head references another segment version', async () => {
+    const { env, calls } = await withOneSegment({ versionId: 'v999' });
+    await expect(runSuppressionLedgerOnce(['--run-once'], env, calls.dependencies)).rejects.toThrow(
+      'SUPPRESSION_LEDGER_REMOTE_CHAIN_UNVERIFIED',
+    );
+    expect(calls.exportForInstalledDomain).not.toHaveBeenCalled();
+  });
+
   it('refuses without a witness, with a foreign head, or with a head for another binding', async () => {
     const { env, headWitnessPath, calls } = await bootstrapped('suppression-physical-v8');
     calls.inspectSource.mockResolvedValue(inspection({ pendingMessages: 1 }));

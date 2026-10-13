@@ -63,5 +63,13 @@ export function memoryVersionedBucket(config: SuppressionRemoteConfig) {
       [...objects.keys()].filter((key) => key.startsWith(`${config.prefix}/segments/`)).length,
     /** Simulates a foreign writer (test only). */
     forcePut: put,
+    /** Simulates a permanently deleted object: every version of the key is gone (test only). */
+    removeKey: (key: string) => objects.delete(key),
+    /** Simulates at-rest corruption of one stored version in place (test only). */
+    corrupt: (key: string, versionId: string) => {
+      const found = find(key, versionId);
+      found.bytes = Buffer.from(found.bytes);
+      found.bytes[0] = (found.bytes[0] ?? 0) ^ 0xff;
+    },
   };
 }

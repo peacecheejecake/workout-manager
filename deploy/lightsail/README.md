@@ -27,14 +27,17 @@ mount even if its path exists inside the image.
 `WORKOUT_SECRETS_DIR` must be outside the checkout, root-owned mode 0700,
 with mode 0600 files. Run Compose as root so it can read them. Required files are:
 
-| File                    | Minimum contents                                                                                                                                              |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `postgres.env`          | `POSTGRES_DB=workout`, `POSTGRES_PASSWORD=<strong unique secret>`; keep the bootstrap role private.                                                           |
-| `app.env`               | `DATABASE_URL` for the restricted `workout_runtime` role; `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`; any explicitly approved production settings. |
-| `resource-cleanup.env`  | `RESOURCE_CLEANUP_DATABASE_URL` for its dedicated worker role.                                                                                                |
-| `course-thumbnails.env` | `COURSE_THUMBNAIL_DATABASE_URL` for its dedicated worker role.                                                                                                |
-| `url-ingestion.env`     | `RESOURCE_URL_INGESTION_DATABASE_URL` for its dedicated worker role.                                                                                          |
-| `setup.env`             | The six database URLs listed below; used only by the one-shot `db_setup` service.                                                                             |
+| File                    | Minimum contents                                                                                                                                                |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `postgres.env`          | `POSTGRES_DB=workout`, `POSTGRES_PASSWORD=<strong unique secret>`; keep the bootstrap role private.                                                             |
+| `app.env`               | `DATABASE_URL` for the restricted `workout_runtime` role; `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`; any explicitly approved production settings.   |
+| `resource-cleanup.env`  | `RESOURCE_CLEANUP_DATABASE_URL` for its dedicated worker role.                                                                                                  |
+| `course-thumbnails.env` | `COURSE_THUMBNAIL_DATABASE_URL` for its dedicated worker role.                                                                                                  |
+| `url-ingestion.env`     | `RESOURCE_URL_INGESTION_DATABASE_URL` for its dedicated worker role.                                                                                            |
+| `setup.env`             | The six database URLs listed below; used only by the one-shot `db_setup` service.                                                                               |
+| `ledger-export.env`     | The `SUPPRESSION_LEDGER_*` identifiers for the opt-in `ledger_export` one-shot (see below); required for any Compose render that includes the `ledger` profile. |
+| `ledger-encryption.key` | Exactly 32 random bytes (binary), the ledger segment encryption key; root-owned regular file, mode 0600, one link, not a symlink.                               |
+| `ledger-head-hmac.key`  | Exactly 32 random bytes (binary), the signed-head HMAC key; same file rules, and it must differ from `ledger-encryption.key`.                                   |
 
 `setup.env` holds `POSTGRES_BOOTSTRAP_URL` (role `postgres`),
 `MIGRATION_DATABASE_URL` (`workout_owner`), `WORKOUT_RUNTIME_DATABASE_URL`
@@ -54,16 +57,41 @@ external Caddy network also contains a service named `postgres`. The Workout app
 joins both networks; an unqualified `postgres` host may resolve to the existing
 site's database. Never point a Workout URL at that shared name.
 
-Only `url_ingestion` joins `workout_egress`, a dedicated non-internal bridge
-network that provides outbound DNS and HTTPS for approved URL sources. It also
-stays on `workout_internal` to reach `wm-postgres` and uses the same private
-object bind mount as the app and cleanup workers. The other workers do not need
-outbound access; `url_ingestion` does not join the existing site's Caddy network.
-No Workout service publishes a host port through this network. The bridge is
-an egress path, not a network-level host allowlist: keep
+Two services join `workout_egress`, a dedicated non-internal bridge network
+that provides outbound DNS and HTTPS: `url_ingestion` (approved URL sources) and
+the opt-in `ledger_export` one-shot (the dedicated suppression-ledger S3 bucket
+in `ap-northeast-2`). Both also stay on `workout_internal` to reach
+`wm-postgres`; neither joins the existing site's Caddy network. `url_ingestion`
+uses the same private object bind mount as the app and cleanup workers;
+`ledger_export` has no private object mount. The other workers do not need
+outbound access. No Workout service publishes a host port through this network.
+The bridge is an egress path, not a network-level host allowlist: keep
 `RESOURCE_URL_ALLOWED_HOSTS` restricted to approved exact hostnames and retain
-the worker's URL, redirect, DNS, and address checks. Verify outbound reachability
-from the one-shot container on the actual host before enabling ingestion.
+the worker's URL, redirect, DNS, and address checks; the ledger exporter only
+addresses the configured bucket, owner and region, which the bucket's IAM policy
+must also bound. Verify outbound reachability from each one-shot container on
+the actual host before enabling it.
+
+`ledger_export` (Compose profile `ledger`) runs as an explicit root exception
+(`user: '0:0'`) on a read-only root filesystem. `ledger-export.env` supplies
+`SUPPRESSION_LEDGER_DATABASE_URL`, `SUPPRESSION_LEDGER_BUCKET`,
+`SUPPRESSION_LEDGER_PREFIX`, `SUPPRESSION_LEDGER_BUCKET_OWNER`,
+`SUPPRESSION_LEDGER_REGION`, `SUPPRESSION_LEDGER_SLOT_NAME`,
+`SUPPRESSION_LEDGER_CLUSTER_ID`, `SUPPRESSION_LEDGER_SOURCE_DATABASE_NAME`,
+`SUPPRESSION_LEDGER_SOURCE_DATABASE_OID`, `SUPPRESSION_LEDGER_CAPTURE_ID`,
+`SUPPRESSION_LEDGER_REGISTRY_FINGERPRINT`, `SUPPRESSION_LEDGER_RELATION_PROFILE`,
+and `SUPPRESSION_LEDGER_ENCRYPTION_KEY_ID`. Compose itself sets the enable flag
+and the in-container key and witness paths; do not set those in the env file.
+`db_setup` does not create the ledger's database role, logical slot, or
+publication. Compose bind-mounts `ledger-encryption.key` and
+`ledger-head-hmac.key` read-only from `WORKOUT_SECRETS_DIR` and
+`<WORKOUT_DATA_DIR>/ledger-witness` as the only writable path; the exporter
+refuses a key that is not exactly 32 bytes, not mode 0600, not owned by the
+container user (root), hard-linked or symlinked, and refuses identical keys.
+Compose provides no AWS credential configuration to this container: the S3
+client uses the AWS SDK default credential chain, so container credentials are
+a separate, still-open prerequisite. Creating these files does not make the
+ledger operational or verified.
 
 The one-shot `db_setup` service creates or limits the five non-bootstrap roles,
 transfers the dedicated database/schema to `workout_owner`, applies the checked

@@ -1142,89 +1142,101 @@ try {
     activeKeyId: 'fixture',
     keys: { fixture: Buffer.alloc(32, 7).toString('base64') },
   });
-  const revocations = createGarminRevocationStore({
-    connectionString: fixtureUrl('workout_garmin_worker'),
-  });
-  closers.push(() => revocations.close());
-  let workerRun: Promise<unknown> | undefined;
-  const timer = setInterval(() => {
-    if (workerRun !== undefined) return;
-    workerRun = processGarminRevocations({
-      store: revocations,
-      provider: garminProvider,
-      cipher: garminCipher,
-    })
-      .catch(() => {
-        console.error('Synthetic Garmin cleanup retry pending.');
+  // Profile27 (installed current runtime V11) provisions no Garmin or course-thumbnail worker
+  // role, so those two background paths are not started at all rather than started against a
+  // role that cannot connect. The run states this explicitly: identity results in that mode do
+  // not exercise Garmin revocation cleanup or course thumbnail rendering.
+  if (installedCurrentRuntimeV11)
+    console.log('Identity E2E background worker paths', {
+      garminRevocation: 'not_exercised',
+      courseThumbnailRender: 'not_exercised',
+      reason: 'profile27-v11-provisions-no-garmin-or-course-thumbnail-worker-role',
+    });
+  if (!installedCurrentRuntimeV11) {
+    const revocations = createGarminRevocationStore({
+      connectionString: fixtureUrl('workout_garmin_worker'),
+    });
+    closers.push(() => revocations.close());
+    let workerRun: Promise<unknown> | undefined;
+    const timer = setInterval(() => {
+      if (workerRun !== undefined) return;
+      workerRun = processGarminRevocations({
+        store: revocations,
+        provider: garminProvider,
+        cipher: garminCipher,
       })
-      .finally(() => {
-        workerRun = undefined;
-      });
-  }, 250);
-  closers.push(async () => {
-    clearInterval(timer);
-    await workerRun;
-  });
-  // One bounded render per tick, driven by the real lease/prepare/publish/finalize path.
-  // Nothing about the screen knows this is running: it shows the drawn line until a stored
-  // picture exists, which is the fallback this node is required to keep working.
-  const thumbnailRenderer = createCourseThumbnailWorkerRepository({
-    connectionString: fixtureUrl('workout_course_thumbnail_worker'),
-  });
-  closers.push(() => thumbnailRenderer.close());
-  let renderRun: Promise<unknown> | undefined;
-  const renderTimer = setInterval(() => {
-    if (renderRun !== undefined) return;
-    renderRun = (async () => {
-      const lease = await thumbnailRenderer.lease(30);
-      if (lease === null) return;
-      const drawn = renderCourseThumbnail(lease.coordinates);
-      const temporaryKey = createCourseThumbnailTemporaryObjectKey({
-        tenantId: lease.athleteId,
-        courseId: lease.courseId,
-        jobId: lease.jobId,
-      });
-      const finalKey = createCourseThumbnailFinalObjectKey({
-        tenantId: lease.athleteId,
-        courseId: lease.courseId,
-        revisionId: lease.revisionId,
-        sha256: drawn.sha256,
-      });
-      await resourceStorage.delete(temporaryKey).catch(() => undefined);
-      await resourceStorage.writeTemporary(
-        temporaryKey,
-        (async function* () {
-          yield drawn.bytes;
-        })(),
-      );
-      if (
-        !(await thumbnailRenderer.prepare(lease, {
-          storageRef: finalKey,
+        .catch(() => {
+          console.error('Synthetic Garmin cleanup retry pending.');
+        })
+        .finally(() => {
+          workerRun = undefined;
+        });
+    }, 250);
+    closers.push(async () => {
+      clearInterval(timer);
+      await workerRun;
+    });
+    // One bounded render per tick, driven by the real lease/prepare/publish/finalize path.
+    // Nothing about the screen knows this is running: it shows the drawn line until a stored
+    // picture exists, which is the fallback this node is required to keep working.
+    const thumbnailRenderer = createCourseThumbnailWorkerRepository({
+      connectionString: fixtureUrl('workout_course_thumbnail_worker'),
+    });
+    closers.push(() => thumbnailRenderer.close());
+    let renderRun: Promise<unknown> | undefined;
+    const renderTimer = setInterval(() => {
+      if (renderRun !== undefined) return;
+      renderRun = (async () => {
+        const lease = await thumbnailRenderer.lease(30);
+        if (lease === null) return;
+        const drawn = renderCourseThumbnail(lease.coordinates);
+        const temporaryKey = createCourseThumbnailTemporaryObjectKey({
+          tenantId: lease.athleteId,
+          courseId: lease.courseId,
+          jobId: lease.jobId,
+        });
+        const finalKey = createCourseThumbnailFinalObjectKey({
+          tenantId: lease.athleteId,
+          courseId: lease.courseId,
+          revisionId: lease.revisionId,
           sha256: drawn.sha256,
-          byteSize: drawn.byteSize,
-          vertexCount: drawn.vertexCount,
-        }))
-      )
-        return;
-      if (!(await thumbnailRenderer.publicationFenceOpen(lease))) return;
-      await resourceStorage.publishTemporary(temporaryKey, finalKey, {
-        sha256: drawn.sha256,
-        sizeBytes: drawn.byteSize,
-      });
-      if ((await thumbnailRenderer.finalize(lease)) !== 'ready')
-        await thumbnailRenderer.requeueRefs(lease);
-    })()
-      .catch(() => {
-        console.error('Synthetic course thumbnail render retry pending.');
-      })
-      .finally(() => {
-        renderRun = undefined;
-      });
-  }, 250);
-  closers.push(async () => {
-    clearInterval(renderTimer);
-    await renderRun;
-  });
+        });
+        await resourceStorage.delete(temporaryKey).catch(() => undefined);
+        await resourceStorage.writeTemporary(
+          temporaryKey,
+          (async function* () {
+            yield drawn.bytes;
+          })(),
+        );
+        if (
+          !(await thumbnailRenderer.prepare(lease, {
+            storageRef: finalKey,
+            sha256: drawn.sha256,
+            byteSize: drawn.byteSize,
+            vertexCount: drawn.vertexCount,
+          }))
+        )
+          return;
+        if (!(await thumbnailRenderer.publicationFenceOpen(lease))) return;
+        await resourceStorage.publishTemporary(temporaryKey, finalKey, {
+          sha256: drawn.sha256,
+          sizeBytes: drawn.byteSize,
+        });
+        if ((await thumbnailRenderer.finalize(lease)) !== 'ready')
+          await thumbnailRenderer.requeueRefs(lease);
+      })()
+        .catch(() => {
+          console.error('Synthetic course thumbnail render retry pending.');
+        })
+        .finally(() => {
+          renderRun = undefined;
+        });
+    }, 250);
+    closers.push(async () => {
+      clearInterval(renderTimer);
+      await renderRun;
+    });
+  }
   const jointApproval = createJointApprovalRepository(database, {
     policy: { id: 'running-core-v3-joint', version: '1' },
   });

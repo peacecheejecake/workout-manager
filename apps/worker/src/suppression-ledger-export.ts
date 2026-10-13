@@ -34,6 +34,7 @@ export const suppressionLedgerFailureCodes = [
   'SUPPRESSION_LEDGER_SOURCE_MISMATCH',
   'SUPPRESSION_LEDGER_HEAD_WITNESS_FAILED',
   'SUPPRESSION_LEDGER_HEAD_INVALID',
+  'SUPPRESSION_LEDGER_REMOTE_CHAIN_UNVERIFIED',
   'SUPPRESSION_LEDGER_HEAD_EXISTS',
   'SUPPRESSION_LEDGER_BOOTSTRAP_FAILED',
   'SUPPRESSION_LEDGER_EXPORT_FAILED',
@@ -183,7 +184,13 @@ type DecodedHead = {
   source: SuppressionLedgerSourceBinding;
   clusterId: string;
   throughLsn: string;
-  segments: readonly { fromLsn: string }[];
+  segments: readonly {
+    segmentId: string;
+    versionId: string;
+    sha256: string;
+    byteLength: number;
+    fromLsn: string;
+  }[];
 };
 function decodeHead(
   profile: SuppressionRelationProfile,
@@ -262,6 +269,32 @@ async function expectedHead(
   return { versionId: remote.versionId, sha256: digest, bytes: remote.bytes };
 }
 
+/**
+ * An empty run reports success only after every segment the pinned head references is read
+ * back at its exact version with the recorded length and sha256 (the remote store also refuses a
+ * key that gained another version or a delete marker). The head schema bounds this to at most
+ * 256 segments and the chain byte limit. A deleted, replaced, or corrupted segment is an
+ * explicit failure, never `no_new_records`.
+ */
+async function verifyHeadSegments(
+  input: SuppressionLedgerRunInput,
+  segments: DecodedHead['segments'],
+): Promise<void> {
+  for (const segment of segments) {
+    const object = await step('SUPPRESSION_LEDGER_REMOTE_CHAIN_UNVERIFIED', () =>
+      input.store.readSegment(segment.segmentId, segment.versionId),
+    );
+    if (
+      !object ||
+      object.versionId !== segment.versionId ||
+      !(object.bytes instanceof Uint8Array) ||
+      object.bytes.byteLength !== segment.byteLength ||
+      sha256(object.bytes) !== segment.sha256
+    )
+      fail('SUPPRESSION_LEDGER_REMOTE_CHAIN_UNVERIFIED');
+  }
+}
+
 /** One bounded export through the authenticated installed-domain exporter (V7 or V8). */
 export async function runSuppressionLedgerExport(
   input: SuppressionLedgerRunInput,
@@ -278,8 +311,10 @@ export async function runSuppressionLedgerExport(
     head.clusterId !== config.expectedClusterId
   )
     return fail('SUPPRESSION_LEDGER_HEAD_INVALID');
-  if (live.confirmedFlushLsn === head.throughLsn && live.pendingMessages === 0)
+  if (live.confirmedFlushLsn === head.throughLsn && live.pendingMessages === 0) {
+    await verifyHeadSegments(input, head.segments);
     return { outcome: 'no_new_records', relationProfile };
+  }
   const reconciling = live.confirmedFlushLsn !== head.throughLsn;
   if (reconciling && live.confirmedFlushLsn !== head.segments.at(-1)?.fromLsn)
     return fail('SUPPRESSION_LEDGER_HEAD_INVALID');
@@ -319,8 +354,10 @@ export async function runSuppressionLedgerExport(
     // nothing new the export itself then refuses. Only that exact state is a success.
     if (reconciling) {
       const after = await step('SUPPRESSION_LEDGER_EXPORT_FAILED', () => checkedSource(input));
-      if (after.confirmedFlushLsn === head.throughLsn && after.pendingMessages === 0)
+      if (after.confirmedFlushLsn === head.throughLsn && after.pendingMessages === 0) {
+        await verifyHeadSegments(input, head.segments);
         return { outcome: 'reconciled', relationProfile };
+      }
     }
     return fail('SUPPRESSION_LEDGER_EXPORT_FAILED');
   }

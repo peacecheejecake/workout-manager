@@ -176,9 +176,21 @@ const lifecycleSchema = z.discriminatedUnion('state', [
 export const galleryRenditionLineageV1Schema = plainInput.pipe(lineageSchema);
 export const galleryRenditionV1Schema = plainInput.pipe(lifecycleSchema);
 
-/** An authenticated reader must fence ownership, consent, deletion and CLOSED
- * before returning a state. Matching request lineage cannot establish that fence.
- * Unavailable carries requested lineage; it never asserts current parent proof. */
+/** Read boundary, exactly as SQL144 enforces it. A reader (read_gallery_renditions_v1,
+ * resolve_gallery_rendition_object_v1) fences only tenant ownership (app.athlete_id) and
+ * deletion: a deleted item reads `media_deleted`, and an object resolves only for a `ready`
+ * job of a live item whose current content hash still equals the job's source. Reads are NOT
+ * gated by app consent nor by restore processing admission: presentation of existing
+ * renditions continues while consent is withdrawn and while a restore target is pending
+ * (product decision: consent gates only new processing; reads, deletes and replays continue).
+ * New rendition work is what is gated. Without restore admission (the CLOSED control with no
+ * pending target in the current generation) enqueue and every worker RPC (claim, settle,
+ * release, sweep claim/finish) raise RESTORE_PROCESSING_CLOSED, and a media insert mints no job.
+ * Missing/withdrawn app consent postpones claim (job requeued, no lease) and makes settle reject
+ * with `consent_withdrawn`; it does not block enqueue or reads. Deletion and erasure retire
+ * jobs regardless of either gate. The SQL144 readers never emit the `consent_withdrawn` or
+ * `target_closed` unavailable reasons. Matching request lineage proves none of this; an
+ * unavailable state carries the requested lineage and never asserts current parent proof. */
 export const galleryRenditionResponseV1Schema = plainInput.pipe(
   z
     .strictObject({

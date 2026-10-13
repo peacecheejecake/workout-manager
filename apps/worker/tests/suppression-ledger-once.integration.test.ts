@@ -388,6 +388,12 @@ describe.skipIf(!enabled).sequential('suppression ledger worker on real logical 
     expect(await slotPosition(p26, p26Slot)).toBe(ahead.throughLsn);
     expect(s.bucket.segmentCount()).toBe(2);
     await expect(runOnce(s)).resolves.toMatchObject({ outcome: 'no_new_records' });
+
+    // An empty run is not a success once a head-referenced segment is gone remotely.
+    const atHead = await slotPosition(p26, p26Slot);
+    s.bucket.removeKey(`${remoteConfig.prefix}/segments/${ahead.segments[0]?.segmentId}.bin`);
+    await expect(runOnce(s)).rejects.toThrow('SUPPRESSION_LEDGER_REMOTE_CHAIN_UNVERIFIED');
+    expect(await slotPosition(p26, p26Slot)).toBe(atHead);
   });
 
   it('refuses misconfigured bindings on a profile27 source without advancing the slot, then exports V8 and replays', async () => {
