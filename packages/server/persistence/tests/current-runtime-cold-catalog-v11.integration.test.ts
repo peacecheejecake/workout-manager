@@ -260,14 +260,14 @@ fixtureIt(
   60000,
 );
 fixtureIt(
-  'runtime cannot read the v11 ledger, the dispositions or execute worker/owner-only functions',
+  'runtime cannot read the v11 ledger, write the dispositions or execute worker/owner-only functions',
   async () => {
     await session(first, first.runtime, async (tx) => {
       await expect(
         tx.query('SELECT * FROM wm_runtime_installation.profile_extension_v11'),
       ).rejects.toMatchObject({ code: '42501' });
       await expect(
-        tx.query('SELECT 1 FROM public.ai_execution_job_disposition'),
+        tx.query('INSERT INTO public.ai_execution_job_disposition DEFAULT VALUES'),
       ).rejects.toMatchObject({ code: '42501' });
       await expect(
         tx.query('SELECT public.claim_gallery_rendition_v1(gen_random_uuid(),1)'),

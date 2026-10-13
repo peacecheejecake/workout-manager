@@ -3,13 +3,13 @@
   "buildProofVersion": 3,
   "sourceBuildRevision": 1,
   "currentFunctionalExecution": "not_executed",
-  "sourceManifestSha256": "ede47ce0cc61c98019048b7f6c8733a5453c663ea4c7ad1596f492659e25857b",
-  "manifestFileSha256": "103ff2e654bf7da15b7b4065f208a739dfd8fcc93f1ac7b8867e020688fec93a",
+  "sourceManifestSha256": "589ec25169b974aa452bd3de55a164042f7ebf5b9fc11e2435516578c7f7eeb5",
+  "manifestFileSha256": "c33c2bb499711efed8c64c42afc6b823f33810eec8a4839f2ed9459a9ae35674",
   "manifestPath": "manifest.json",
   "profileVersion": 11,
   "runtimeStep": 27,
   "sourceDdlTip": 148,
-  "catalogDigest": "d1234cc891e1bf3bba1a439ce5c169f4ec990caee2df2c8446539f8f06e0e133",
+  "catalogDigest": "46ab5572642c8958e688dddd45c1f014559d9cb628e10a66cceb12443ba6aa61",
   "compilerAlgorithm": "source-bound-evidence-build-v1-static-imports-v1",
   "sourceFiles": [
     {
@@ -1189,7 +1189,7 @@
     },
     {
       "path": "packages/server/persistence/src/current-runtime-catalog-witness-v11.ts",
-      "sha256": "3c6c1d4a5a7c4d62ce01d8c095030ba530190e7d7c362ce48d1d5951cf46d404",
+      "sha256": "8d32154ee13ab3036109d619108004976b1fb3d38c282a7b95dc7dd3d7d64cb9",
       "role": "source"
     },
     {
@@ -1234,7 +1234,7 @@
     },
     {
       "path": "packages/server/persistence/src/current-runtime-compiled-expected-v11.ts",
-      "sha256": "c652e47e518f0df55584cef71b8183eaa6aeef63e035444a8298bee411f32034",
+      "sha256": "75a9ae8d85476d7702284ce0c717df6ad32c05990180e23e1822706b38b82dfe",
       "role": "source"
     },
     {
@@ -1244,7 +1244,7 @@
     },
     {
       "path": "packages/server/persistence/src/current-runtime-grants-v11.ts",
-      "sha256": "5aaa1bcbf9892e7e20db963db2c0cc613efc2dbd805d2f041713b9ed5d20c4ac",
+      "sha256": "6165b405fd5b6ae50330107ad1b0927475e954d0b6186f082d82dd38cdf0ca05",
       "role": "source"
     },
     {
@@ -1349,7 +1349,7 @@
     },
     {
       "path": "packages/server/persistence/src/current-runtime-source-build-proof-v3.ts",
-      "sha256": "56e57d4beba05db94e4bf5c976b36db2133fce14829ef8991de48ed8b528bbcd",
+      "sha256": "794340c381cb5bb03570c9d74f2af1f9311f10916b6f9698bed6fa1e72a0d819",
       "role": "source"
     },
     {
@@ -5194,7 +5194,7 @@
     {
       "runner": "vitest",
       "fixture": "packages/server/persistence/tests/current-runtime-cold-catalog-v11.integration.test.ts",
-      "label": "runtime cannot read the v11 ledger, the dispositions or execute worker/owner-only functions",
+      "label": "runtime cannot read the v11 ledger, write the dispositions or execute worker/owner-only functions",
       "log": "evidence/logs/wm-p27-root-current-runtime-cold-catalog-v11-pg176-20261013.log",
       "suitePassed": 8,
       "scope": "same_body_suite"

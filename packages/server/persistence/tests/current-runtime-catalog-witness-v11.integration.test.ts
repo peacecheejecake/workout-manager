@@ -271,10 +271,10 @@ fixtureIt(
         `GRANT SELECT ON public.ai_execution_job TO "${dispatcher}"`,
         `REVOKE SELECT ON public.ai_execution_job FROM "${dispatcher}"`,
       ],
-      // runtime reaches the dispatcher's disposition table
+      // runtime writes the dispatcher's disposition table
       [
-        `GRANT SELECT ON public.ai_execution_job_disposition TO "${first.runtime}"`,
-        `REVOKE SELECT ON public.ai_execution_job_disposition FROM "${first.runtime}"`,
+        `GRANT INSERT ON public.ai_execution_job_disposition TO "${first.runtime}"`,
+        `REVOKE INSERT ON public.ai_execution_job_disposition FROM "${first.runtime}"`,
       ],
       // missing direct gallery root grant
       [

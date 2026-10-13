@@ -546,7 +546,7 @@ fixtureIt(
       });
       expect(exported.statusCode).toBe(200);
       const account = parseAccountExportIncludingV40(exported.json());
-      expect(account.schemaVersion).toBe(39);
+      expect(account.schemaVersion).toBe(40);
       expect(account.athleteId).toBe(athleteId);
       expect(exported.body).not.toMatch(/rendition/i);
       // M202-P1-03. Profile27 keeps the 146 guard: a direct runtime SQL date change

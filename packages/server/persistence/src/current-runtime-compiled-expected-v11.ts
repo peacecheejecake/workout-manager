@@ -25,8 +25,8 @@ const compiled = {
   profileVersion: 11,
   runtimeStep: 27,
   sourceDdlTip: 148,
-  catalogSha256: 'd1234cc891e1bf3bba1a439ce5c169f4ec990caee2df2c8446539f8f06e0e133',
-  sqlJsonbSha256: 'e2b701eaebb12fef199e7eabcc81e70c548a731f779f6160db2d87695efba7d3',
+  catalogSha256: '46ab5572642c8958e688dddd45c1f014559d9cb628e10a66cceb12443ba6aa61',
+  sqlJsonbSha256: 'db1fa948b1044e9bbf5a48b4935de524c20da0cf336ffb30f101a1459a598e61',
   sections: [
     {
       section: 'schemas',
@@ -43,8 +43,8 @@ const compiled = {
     {
       section: 'relations',
       rowCount: 756,
-      bytes: 2335901,
-      sha256: '5b64e1b0889f7bc98db680a37ba04fb52f17c6fdd3ac2e1e32be9a7d14131363',
+      bytes: 2335973,
+      sha256: '0c83b75ce155a649510249292f5a53e5b1fb53c0db930df5c20c0dae2d69d734',
     },
     {
       section: 'defaultPrivileges',
@@ -192,19 +192,19 @@ const compiled = {
     },
     {
       section: 'sharedDependencies',
-      rowCount: 1450,
-      bytes: 150589,
-      sha256: '2a8dc396db18ada64cce197014cdfca1afd049a7a2c9a9697d895c569bc5d072',
+      rowCount: 1451,
+      bytes: 150681,
+      sha256: '21fdd382372ba1ae6dd16f14757fdb0ae5277042a11d2d3b705a5b2a7ec9a937',
     },
   ],
   provenance: {
-    sourceManifestSha256: 'ec47dfe865eccc193c15836fee9637e1ecf2c4991c63974e21f4ff07cc9cc32a',
-    recipeSha256: '3ea5f8b609173ef2e9005f0c14397948c8c36b94803a82dcf7ecf505b1ba152d',
-    captureScriptSha256: '61960386e35f4d455f2fe6f83122940e446d90b68c64645ce601cf9190a2cb2f',
+    sourceManifestSha256: '0bf38dce2aaff21b777aeb7bea52b773565c65bfbbf47dd620a0533800ce5ba4',
+    recipeSha256: '47205e21fdde011b74cfc72ccaf9ab096c329babe1536daa9151544cecab471c',
+    captureScriptSha256: '6db87a92c767fe044c78907ea53a391f22a324eeb0bec6834d5c905decc206f2',
     manifestGeneratorSha256: '899b3706dd2c202bcf09422366da81cba8f9bc8f01afbe8de5aa591e21d1c807',
-    artifactSha256: '1db6d0a459d06cb366dd73f2e8987a775f9a8de1b37c77ad9c6151479b89e3a7',
+    artifactSha256: '86014a7cd5db90b40f67dfdea70e3c6f40bec606a3f3063e202b917d5fafd73f',
     profile26ControlArtifactSha256:
-      'b4bf59e8f3c79f5340cbe146550f926bdd4a3ab12d8e5ee6d424a981b88b06da',
+      '0d844e9e81f42e7469e7e478d289f9a427c48879b94b45c065e21f56eb9f6004',
     profile26ControlCatalogSha256:
       'eb61b2d63191eb10e802fbf155a7e1b48f550c6b66bca93d5372d2992f62ee17',
     ownerObservations: 2,
