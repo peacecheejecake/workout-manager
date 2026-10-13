@@ -1,3 +1,3 @@
 // Root registers the final independent asset only after source self-closure compilation.
 export const currentRuntimeSourceBuildProofV3AssetSha256: string | null =
-  '4350fad70800adebc33954edcef168e69d515fe4d423cc1e996ff268414a82f1';
+  'd017bbf216a04735febd055e86413a952b03ec863740ed669320e34fa3871de6';

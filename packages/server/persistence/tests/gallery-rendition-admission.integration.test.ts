@@ -282,7 +282,8 @@ describe('SQL144 restore admission', () => {
       expect(read.rows[0]?.['v']).toMatchObject({ mediaItemId: loaded });
       await tx(owner, athlete, (c) =>
         c.query(
-          'UPDATE public.gallery_media_item SET access_revision=2,updated_at=clock_timestamp(),deleted_at=clock_timestamp() WHERE athlete_id=$1 AND id=$2',
+          // One instant for both: the transition guard requires deleted_at = updated_at.
+          'UPDATE public.gallery_media_item SET access_revision=2,updated_at=t.at,deleted_at=t.at FROM (SELECT clock_timestamp() AS at) t WHERE athlete_id=$1 AND id=$2',
           [athlete, before],
         ),
       );
