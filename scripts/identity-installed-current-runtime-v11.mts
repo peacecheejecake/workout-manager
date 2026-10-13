@@ -11,6 +11,7 @@ import {
   grantCurrentRuntimeV11GalleryWorker,
   grantCurrentRuntimeV11AiDispatcher,
   currentRuntimeV11RpcSignatures,
+  currentRuntimeV11RuntimeTableGrants,
   currentRuntimeV11WorkerRpcSignatures,
   currentRuntimeV11AiDispatcherTableGrants,
   currentRuntimeV11GalleryWorkerRole,
@@ -166,6 +167,7 @@ export async function setupIdentityInstalledCurrentRuntimeV11(raw: unknown) {
         installation: observedProfile,
         runtimeRole: z.literal(input.runtimeRole),
         grantedFunctions: z.array(z.string()).length(currentRuntimeV11RpcSignatures.length),
+        grantedTables: z.array(z.unknown()),
         supported: z.literal(false),
         processingAuthority: z.literal('none'),
         catalogSecurity: z.literal('not_verified'),
@@ -184,7 +186,8 @@ export async function setupIdentityInstalledCurrentRuntimeV11(raw: unknown) {
     granted.supported !== false ||
     granted.processingAuthority !== 'none' ||
     granted.grantedFunctions.length !== currentRuntimeV11RpcSignatures.length ||
-    JSON.stringify(granted.grantedFunctions) !== JSON.stringify(currentRuntimeV11RpcSignatures)
+    JSON.stringify(granted.grantedFunctions) !== JSON.stringify(currentRuntimeV11RpcSignatures) ||
+    JSON.stringify(granted.grantedTables) !== JSON.stringify(currentRuntimeV11RuntimeTableGrants)
   )
     fail('IDENTITY_CURRENT_PROFILE_INVALID');
   // The profile27 catalog always contains both fixed principals with their exact grants;

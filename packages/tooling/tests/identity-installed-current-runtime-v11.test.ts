@@ -71,6 +71,7 @@ vi.mock('@workout/server-persistence/current-runtime-grants-v11', () => ({
   grantCurrentRuntimeV11AiDispatcher: mocks.dispatcher,
   currentRuntimeV11GalleryWorkerRole: 'workout_gallery_rendition_worker',
   currentRuntimeV11AiDispatcherRole: 'workout_ai_dispatcher',
+  currentRuntimeV11RuntimeTableGrants: [{ table: 'synthetic_runtime', privileges: ['SELECT'] }],
   currentRuntimeV11WorkerRpcSignatures: ['public.synthetic_worker_rpc_v1(uuid)'],
   currentRuntimeV11AiDispatcherTableGrants: [{ table: 'synthetic', privileges: ['SELECT'] }],
   currentRuntimeV11RpcSignatures: pinned.rpcSignatures,
@@ -132,6 +133,7 @@ function granted() {
     installation: installed(),
     runtimeRole: input.runtimeRole,
     grantedFunctions: currentRuntimeV11RpcSignatures,
+    grantedTables: [{ table: 'synthetic_runtime', privileges: ['SELECT'] }],
     supported: false,
     processingAuthority: 'none',
     catalogSecurity: 'not_verified',
@@ -342,6 +344,15 @@ describe('profile27 fixed principals', () => {
       dispatcherRole: 'other_role',
       grantedTables: [{ table: 'synthetic', privileges: ['SELECT'] }],
     });
+    await expect(setupIdentityInstalledCurrentRuntimeV11(input)).rejects.toThrow(
+      'IDENTITY_CURRENT_PROFILE_INVALID',
+    );
+  });
+});
+
+describe('profile27 runtime table grants', () => {
+  it('rejects a runtime grant result whose table grants differ from the pinned set', async () => {
+    mocks.grant.mockResolvedValue({ ...granted(), grantedTables: [] });
     await expect(setupIdentityInstalledCurrentRuntimeV11(input)).rejects.toThrow(
       'IDENTITY_CURRENT_PROFILE_INVALID',
     );
