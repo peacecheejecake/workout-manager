@@ -84,3 +84,7 @@ Codex `gpt-6-sol` high, 읽기 전용, `a0c430ce..c7634a5c`를 6개 partition으
 - P27-p2b-1: 빈 ledger 실행이 head가 참조하는 원격 segment를 모두 다시 읽어 검증한다. p3a-1: rendition 계약 주석을 SQL144 실제 동작으로 맞췄다. p4-1: profile27 identity는 역할이 없는 Garmin/course thumbnail worker를 시작하지 않고 미실행으로 표시한다. p4-2: 배포 README에 ledger 비밀·네트워크를 적었다.
 - 143·148은 미배포 profile27이므로 제자리 수정했다(143 `2beb8a2c…`, 148 `aefbff30…`). Catalog를 두 번 독립 재관측하고 proof v3 stage r6(`74eb9ca2…`, asset `47be9097…`, 416 case)을 다시 컴파일했다.
 - 남은 한계: structure census는 trigger 함수가 호출하는 다른 함수는 묶지 않는다. ledger_export의 AWS 자격 증명 구성은 EXT-HOSTING 범위로 남았다.
+
+리뷰 수정 HEAD `5ea51623` gate(첫 시도): static7 exit0, unit 699파일·11643 통과·5 skip. Canonical 3353 통과·21 skip·실패0, cleanup clean.
+Identity 두 회차 accepted(general 320/skip11, app-consent 4, ai-settings 1, current-manual 22). result SHA
+`4440f9d77ef73c3a0c715ffea1c98c335921beeac04b9f5641d8f2e3590c4edc`.
