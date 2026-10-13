@@ -17,8 +17,8 @@ import {
 
 // ROOT PIN (single place): the agreed two-observation profile27 cold catalog
 // catalogSha256 (= the V11 compiled expected catalogSha256). Readiness v3 imports
-// this constant; until Root pins it (all zeros), no observed catalog can match.
-const catalogDigestV11 = '0000000000000000000000000000000000000000000000000000000000000000';
+// this constant; an all-zero value would match no observed catalog.
+const catalogDigestV11 = 'd1234cc891e1bf3bba1a439ce5c169f4ec990caee2df2c8446539f8f06e0e133';
 const catalogDigest = catalogDigestV11;
 export const currentRuntimeSourceBuildProofV3CatalogDigest = catalogDigest;
 const selfEntrypoints = Object.freeze([
