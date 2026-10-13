@@ -24,7 +24,8 @@ API 선택은 `baseline107`과 `installed-current-profile27`만 남고, account 
 두 독립 관측(각각 고정 PG17.6 이미지, a/b fresh V11, c = profile26 → V11 upgrade)이 모든 section·catalogSha256·sqlJsonbSha256에서 일치했다.
 c의 V10 control은 profile26 digest `eb61b2d6…`을 재현했고 V10 witness는 V11을 거절했다.
 
-- 최종 catalogSha256 `46ab5572642c8958e688dddd45c1f014559d9cb628e10a66cceb12443ba6aa61`, sqlJsonb `db1fa948…`, metadata 7024619 bytes.
+- 리뷰 수정 후 최종 catalogSha256 `40c62f7e186124b34661469328bbfc8c1d8028189cc1ff2ca8215f1769861a43`, sqlJsonb `add5bf29…`, metadata 7024620 bytes.
+  직전 `46ab5572…`과의 차이는 143·148 함수 본문 두 개와 설치 seal의 member SHA뿐이다.
 - 첫 관측 `d1234cc8…`은 runtime disposition SELECT 추가 전 값이다. 차이는 그 ACL 한 행과 shared dependency 한 행뿐이다.
 
 ## Proof v3
@@ -69,3 +70,17 @@ v1/v2 proof는 이 branch에서 의도적으로 source_drift다(profile26 은퇴
 - Worker AI job registry는 비어 있다(작업 생성 경로 없음). Subtitle storage는 profile27 밖이다.
 - 배포 bootstrap은 profile27 설치·고정 principal 생성을 아직 하지 않는다(EXT-HOSTING 범위).
 - macOS 사용자 TMPDIR에 이전 실행의 `wm-identity-mobile-*` 10개가 남아 있다(수정 전 생성분).
+
+## 독립 phase 리뷰 r1과 수정 (2026-10-14)
+
+Codex `gpt-6-sol` high, 읽기 전용, `a0c430ce..c7634a5c`를 6개 partition으로 나눴다(`/private/tmp/wm-profile27-phase-review-r1-20261014/`).
+3개 APPROVE, 3개 REQUEST_CHANGES, P1 4건·P2 9건이다. 모두 고쳤다.
+
+- P27-p1-1(P1): 148 job guard가 불변 catalog 정의에서 canonical digest를 다시 계산해 위조 `catalog_digest`를 거절한다.
+- P27-p1-2(P1): V11 검증은 고정 worker 외 역할의 worker RPC EXECUTE와 dispatcher 외 역할의 disposition INSERT를 거절한다(멤버 없는 역할만 허용). 모든 grant가 먼저 검증한다.
+- P27-p1-3: 143은 restore CLOSED에서 연결 해제만 하는 요청을 허용한다.
+- P27-p2a-1(P1): dump 대조는 허용 목록 문법만 받고 중복·상충 setval을 거절한다. p2a-2: 한계값 검증과 고정 상한. p2a-3: structure census가 trigger 함수 본문 SHA와 보안 속성을 묶는다(V1 `1d26190f…`, V2 재생성).
+- P27-p3b-1(P1): gallery host가 media transfer adapter를 session별로 memo하고 hook은 adapter 정체성으로 다시 열지 않는다. p3b-2: 409 뒤 새 목록 조회 전까지 그 앨범 쓰기를 막는다. p3b-3: mobile dist exit 정리를 mkdtemp 직후 등록한다.
+- P27-p2b-1: 빈 ledger 실행이 head가 참조하는 원격 segment를 모두 다시 읽어 검증한다. p3a-1: rendition 계약 주석을 SQL144 실제 동작으로 맞췄다. p4-1: profile27 identity는 역할이 없는 Garmin/course thumbnail worker를 시작하지 않고 미실행으로 표시한다. p4-2: 배포 README에 ledger 비밀·네트워크를 적었다.
+- 143·148은 미배포 profile27이므로 제자리 수정했다(143 `2beb8a2c…`, 148 `aefbff30…`). Catalog를 두 번 독립 재관측하고 proof v3 stage r6(`74eb9ca2…`, asset `47be9097…`, 416 case)을 다시 컴파일했다.
+- 남은 한계: structure census는 trigger 함수가 호출하는 다른 함수는 묶지 않는다. ledger_export의 AWS 자격 증명 구성은 EXT-HOSTING 범위로 남았다.

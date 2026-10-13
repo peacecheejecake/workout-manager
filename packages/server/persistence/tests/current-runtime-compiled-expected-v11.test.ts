@@ -25,8 +25,8 @@ describe('compiled profile27 expected asset', () => {
       profileVersion: 11,
       runtimeStep: 27,
       sourceDdlTip: 148,
-      catalogSha256: '46ab5572642c8958e688dddd45c1f014559d9cb628e10a66cceb12443ba6aa61',
-      sqlJsonbSha256: 'db1fa948b1044e9bbf5a48b4935de524c20da0cf336ffb30f101a1459a598e61',
+      catalogSha256: '40c62f7e186124b34661469328bbfc8c1d8028189cc1ff2ca8215f1769861a43',
+      sqlJsonbSha256: 'add5bf297a0dcfba5c1a17911cff9349c4db382cca8a94eb479f05158a4259a5',
     });
     expect(v11.recognizedNamespaces).toEqual(v10.recognizedNamespaces);
     expect(v11.principalRoleTags).toEqual(['ai_dispatcher', 'gallery_rendition_worker']);

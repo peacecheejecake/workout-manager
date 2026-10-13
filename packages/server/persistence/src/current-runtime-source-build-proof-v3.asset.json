@@ -3,13 +3,13 @@
   "buildProofVersion": 3,
   "sourceBuildRevision": 1,
   "currentFunctionalExecution": "not_executed",
-  "sourceManifestSha256": "383411d21c1a2651b52a76bd8530d546992ad5c4ad1f9bdc2fb247931940889d",
-  "manifestFileSha256": "9d0e73f7c1d89bf6ffd35e06ff729d7d48c8ddf3892962f033e9b1e9834435d0",
+  "sourceManifestSha256": "2d68f902f48c894b6ed7633ebcc03885aedeae9efc91c3c44f57e7fea20536c1",
+  "manifestFileSha256": "74eb9ca248bc38ad55e44a99f7d704f3cba9684b5bc82974a7bcb84f3a779aba",
   "manifestPath": "manifest.json",
   "profileVersion": 11,
   "runtimeStep": 27,
   "sourceDdlTip": 148,
-  "catalogDigest": "46ab5572642c8958e688dddd45c1f014559d9cb628e10a66cceb12443ba6aa61",
+  "catalogDigest": "40c62f7e186124b34661469328bbfc8c1d8028189cc1ff2ca8215f1769861a43",
   "compilerAlgorithm": "source-bound-evidence-build-v1-static-imports-v1",
   "sourceFiles": [
     {
@@ -1099,7 +1099,7 @@
     },
     {
       "path": "packages/server/persistence/migrations/143_gallery_albums.sql",
-      "sha256": "8e1844a4032f35ef41657a7036e4367da0f908c42922d8766bba26a2c723b08a",
+      "sha256": "2beb8a2c1872a4ade51cbc2ddec4a8d204b8213b249a5af6756e302c6cc99ab2",
       "role": "sql"
     },
     {
@@ -1124,7 +1124,7 @@
     },
     {
       "path": "packages/server/persistence/migrations/148_ai_execution_job_store.sql",
-      "sha256": "cb835a2620a5727ce67529c29c743ab5af814f352ce7606cc97dc46893b40bf0",
+      "sha256": "aefbff30f62084084c22b692647d2543119d6e299f95a793c2bb9b2af75c43ca",
       "role": "sql"
     },
     {
@@ -1189,7 +1189,7 @@
     },
     {
       "path": "packages/server/persistence/src/current-runtime-catalog-witness-v11.ts",
-      "sha256": "8d32154ee13ab3036109d619108004976b1fb3d38c282a7b95dc7dd3d7d64cb9",
+      "sha256": "da316fe99c6ad7dbd491791271850052c1133cc13b5b36784a4454753185d4b3",
       "role": "source"
     },
     {
@@ -1234,7 +1234,7 @@
     },
     {
       "path": "packages/server/persistence/src/current-runtime-compiled-expected-v11.ts",
-      "sha256": "75a9ae8d85476d7702284ce0c717df6ad32c05990180e23e1822706b38b82dfe",
+      "sha256": "593439a07a87299d87ac7364f4f6da8a89900840aefc6a85afcb3c41e418af5a",
       "role": "source"
     },
     {
@@ -1244,7 +1244,7 @@
     },
     {
       "path": "packages/server/persistence/src/current-runtime-grants-v11.ts",
-      "sha256": "6165b405fd5b6ae50330107ad1b0927475e954d0b6186f082d82dd38cdf0ca05",
+      "sha256": "4a366989d5ab9cfe0fbb2d163467c52dba5c613d48f98b24991cff1ee561cf31",
       "role": "source"
     },
     {
@@ -1294,7 +1294,7 @@
     },
     {
       "path": "packages/server/persistence/src/current-runtime-installation-v11.ts",
-      "sha256": "d8c2842dc5ab0a6189fe34d568cf07f8710d1dfb7e34e764a6be7c5c692eb788",
+      "sha256": "a59b447a35ca7d2d1bed6ace20cb22f1e1649760cd316be3325be5365be243f0",
       "role": "source"
     },
     {
@@ -1349,7 +1349,7 @@
     },
     {
       "path": "packages/server/persistence/src/current-runtime-source-build-proof-v3.ts",
-      "sha256": "794340c381cb5bb03570c9d74f2af1f9311f10916b6f9698bed6fa1e72a0d819",
+      "sha256": "61c6f240139237fe836c39a9541a3cf96d0a3bd0010108fa01db9695909ed3b0",
       "role": "source"
     },
     {
@@ -1379,7 +1379,7 @@
     },
     {
       "path": "packages/server/persistence/src/gallery-navigation-pins-v1.ts",
-      "sha256": "dfcef984390ca6450855a25e4ae6104b9737bcb43df6b910f6def0631280539d",
+      "sha256": "f388aa957fb11344c3c2eb055abdec7d8ce54897ace45a3d34a39d42b0f95305",
       "role": "source"
     },
     {
@@ -1909,7 +1909,7 @@
     },
     {
       "path": "scripts/identity-e2e.mts",
-      "sha256": "4b54c4deebba2fbabd4c683a2cb8af89479e606d4975ddc4491036ab50a40ca6",
+      "sha256": "ee93e2bcc6c0330ea8872c540e410b587fdb40efe2e950d35a612c6fc8a50ef6",
       "role": "dependency"
     },
     {
@@ -4404,7 +4404,7 @@
       "fixture": "packages/server/persistence/tests/current-runtime-installation-v11.integration.test.ts",
       "label": "fresh normal107 installs parent26 and five receipts without activating runtime",
       "log": "evidence/logs/wm-p27-root-current-runtime-installation-v11-pg176-20261013.log",
-      "suitePassed": 59,
+      "suitePassed": 61,
       "scope": "same_body_suite"
     },
     {
@@ -4412,7 +4412,7 @@
       "fixture": "packages/server/persistence/tests/current-runtime-installation-v11.integration.test.ts",
       "label": "committed profile26 upgrades with 143..148 only: parent receipts/xmin, functions and ACLs keep, except the pinned 147 replacements",
       "log": "evidence/logs/wm-p27-root-current-runtime-installation-v11-pg176-20261013.log",
-      "suitePassed": 59,
+      "suitePassed": 61,
       "scope": "same_body_suite"
     },
     {
@@ -4420,7 +4420,7 @@
       "fixture": "packages/server/persistence/tests/current-runtime-installation-v11.integration.test.ts",
       "label": "repeated install returns the original receipts without rewriting them",
       "log": "evidence/logs/wm-p27-root-current-runtime-installation-v11-pg176-20261013.log",
-      "suitePassed": 59,
+      "suitePassed": 61,
       "scope": "same_body_suite"
     },
     {
@@ -4428,7 +4428,7 @@
       "fixture": "packages/server/persistence/tests/current-runtime-installation-v11.integration.test.ts",
       "label": "two genuine owner connections serialize one fresh installation",
       "log": "evidence/logs/wm-p27-root-current-runtime-installation-v11-pg176-20261013.log",
-      "suitePassed": 59,
+      "suitePassed": 61,
       "scope": "same_body_suite"
     },
     {
@@ -4436,7 +4436,7 @@
       "fixture": "packages/server/persistence/tests/current-runtime-installation-v11.integration.test.ts",
       "label": "any 143..148 object without the v11 ledger is an unregistered stage, never adopted",
       "log": "evidence/logs/wm-p27-root-current-runtime-installation-v11-pg176-20261013.log",
-      "suitePassed": 59,
+      "suitePassed": 61,
       "scope": "same_body_suite"
     },
     {
@@ -4444,7 +4444,7 @@
       "fixture": "packages/server/persistence/tests/current-runtime-installation-v11.integration.test.ts",
       "label": "runtime/elevated principals and out-of-transaction reads cannot verify provenance",
       "log": "evidence/logs/wm-p27-root-current-runtime-installation-v11-pg176-20261013.log",
-      "suitePassed": 59,
+      "suitePassed": 61,
       "scope": "same_body_suite"
     },
     {
@@ -4452,7 +4452,7 @@
       "fixture": "packages/server/persistence/tests/current-runtime-installation-v11.integration.test.ts",
       "label": "actual ${label} drift fails closed and rollback restores the original receipts",
       "log": "evidence/logs/wm-p27-root-current-runtime-installation-v11-pg176-20261013.log",
-      "suitePassed": 59,
+      "suitePassed": 61,
       "scope": "same_body_suite"
     },
     {
@@ -4460,7 +4460,7 @@
       "fixture": "packages/server/persistence/tests/current-runtime-installation-v11.integration.test.ts",
       "label": "a delegated runtime RPC and the allowed table privileges still verify",
       "log": "evidence/logs/wm-p27-root-current-runtime-installation-v11-pg176-20261013.log",
-      "suitePassed": 59,
+      "suitePassed": 61,
       "scope": "same_body_suite"
     },
     {
@@ -4468,7 +4468,7 @@
       "fixture": "packages/server/persistence/tests/current-runtime-installation-v11.integration.test.ts",
       "label": "body tampering of a new function and of a 147 replacement is function drift",
       "log": "evidence/logs/wm-p27-root-current-runtime-installation-v11-pg176-20261013.log",
-      "suitePassed": 59,
+      "suitePassed": 61,
       "scope": "same_body_suite"
     },
     {
@@ -4476,7 +4476,7 @@
       "fixture": "packages/server/persistence/tests/current-runtime-installation-v11.integration.test.ts",
       "label": "install refuses any parent change beyond the pinned one and any unpinned new object",
       "log": "evidence/logs/wm-p27-root-current-runtime-installation-v11-pg176-20261013.log",
-      "suitePassed": 59,
+      "suitePassed": 61,
       "scope": "same_body_suite"
     },
     {
@@ -4484,7 +4484,7 @@
       "fixture": "packages/server/persistence/tests/current-runtime-installation-v11.integration.test.ts",
       "label": "a fault after members and before the last receipt rolls back to a genuine verifying profile26",
       "log": "evidence/logs/wm-p27-root-current-runtime-installation-v11-pg176-20261013.log",
-      "suitePassed": 59,
+      "suitePassed": 61,
       "scope": "same_body_suite"
     },
     {
@@ -4492,7 +4492,7 @@
       "fixture": "packages/server/persistence/tests/current-runtime-installation-v11.integration.test.ts",
       "label": "read-only verifier cannot turn normal107 or genuine profile26 into receipted profile27",
       "log": "evidence/logs/wm-p27-root-current-runtime-installation-v11-pg176-20261013.log",
-      "suitePassed": 59,
+      "suitePassed": 61,
       "scope": "same_body_suite"
     },
     {
@@ -4500,7 +4500,7 @@
       "fixture": "packages/server/persistence/tests/current-runtime-installation-v11.integration.test.ts",
       "label": "fresh and upgraded catalogs agree on every V11 structure line",
       "log": "evidence/logs/wm-p27-root-current-runtime-installation-v11-pg176-20261013.log",
-      "suitePassed": 59,
+      "suitePassed": 61,
       "scope": "same_body_suite"
     },
     {
@@ -4508,7 +4508,7 @@
       "fixture": "packages/server/persistence/tests/current-runtime-grants-v11.integration.test.ts",
       "label": "normal107, committed profile26 and raw-148 staging refuse every V11 grant without granting",
       "log": "evidence/logs/wm-p27-root-current-runtime-grants-v11-pg176-20261013.log",
-      "suitePassed": 5,
+      "suitePassed": 6,
       "scope": "same_body_suite"
     },
     {
@@ -4516,7 +4516,7 @@
       "fixture": "packages/server/persistence/tests/current-runtime-grants-v11.integration.test.ts",
       "label": "runtime grant gives exactly 51 RPCs and 6 table privileges; restore admission stays read_/require_/lock_",
       "log": "evidence/logs/wm-p27-root-current-runtime-grants-v11-pg176-20261013.log",
-      "suitePassed": 5,
+      "suitePassed": 6,
       "scope": "same_body_suite"
     },
     {
@@ -4524,7 +4524,7 @@
       "fixture": "packages/server/persistence/tests/current-runtime-grants-v11.integration.test.ts",
       "label": "worker gets only the five worker RPCs; dispatcher only SELECT/INSERT on dispositions",
       "log": "evidence/logs/wm-p27-root-current-runtime-grants-v11-pg176-20261013.log",
-      "suitePassed": 5,
+      "suitePassed": 6,
       "scope": "same_body_suite"
     },
     {
@@ -4532,7 +4532,15 @@
       "fixture": "packages/server/persistence/tests/current-runtime-grants-v11.integration.test.ts",
       "label": "overlapping or unsafe principals are refused and leave no grant behind",
       "log": "evidence/logs/wm-p27-root-current-runtime-grants-v11-pg176-20261013.log",
-      "suitePassed": 5,
+      "suitePassed": 6,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/current-runtime-grants-v11.integration.test.ts",
+      "label": "a third role holding a worker RPC or a dispatcher-only privilege fails verification and every grant",
+      "log": "evidence/logs/wm-p27-root-current-runtime-grants-v11-pg176-20261013.log",
+      "suitePassed": 6,
       "scope": "same_body_suite"
     },
     {
@@ -4540,7 +4548,7 @@
       "fixture": "packages/server/persistence/tests/current-runtime-grants-v11.integration.test.ts",
       "label": "committed profile26 runtime upgrades: V10 grant refuses profile27, V11 grant succeeds",
       "log": "evidence/logs/wm-p27-root-current-runtime-grants-v11-pg176-20261013.log",
-      "suitePassed": 5,
+      "suitePassed": 6,
       "scope": "same_body_suite"
     },
     {
@@ -4668,7 +4676,7 @@
       "fixture": "packages/server/persistence/tests/ai-execution-jobs.integration.test.ts",
       "label": "profile27 (installation v11): verification holds, FORCE RLS, no PUBLIC and runtime SELECT/INSERT only",
       "log": "evidence/logs/wm-p27-root-ai-execution-jobs-pg176-20261013.log",
-      "suitePassed": 16,
+      "suitePassed": 17,
       "scope": "same_body_suite"
     },
     {
@@ -4676,7 +4684,7 @@
       "fixture": "packages/server/persistence/tests/ai-execution-jobs.integration.test.ts",
       "label": "creates run, immutable job, versioned receipt and unclaimed outbox atomically without budget or dispatch",
       "log": "evidence/logs/wm-p27-root-ai-execution-jobs-pg176-20261013.log",
-      "suitePassed": 16,
+      "suitePassed": 17,
       "scope": "same_body_suite"
     },
     {
@@ -4684,7 +4692,7 @@
       "fixture": "packages/server/persistence/tests/ai-execution-jobs.integration.test.ts",
       "label": "exact replay returns the original job without writes, even after consent withdrawal; conflicts are refused",
       "log": "evidence/logs/wm-p27-root-ai-execution-jobs-pg176-20261013.log",
-      "suitePassed": 16,
+      "suitePassed": 17,
       "scope": "same_body_suite"
     },
     {
@@ -4692,7 +4700,7 @@
       "fixture": "packages/server/persistence/tests/ai-execution-jobs.integration.test.ts",
       "label": "concurrent duplicate commands commit exactly one job",
       "log": "evidence/logs/wm-p27-root-ai-execution-jobs-pg176-20261013.log",
-      "suitePassed": 16,
+      "suitePassed": 17,
       "scope": "same_body_suite"
     },
     {
@@ -4700,7 +4708,7 @@
       "fixture": "packages/server/persistence/tests/ai-execution-jobs.integration.test.ts",
       "label": "a newer settings head never substitutes the model of an explicit revision or an existing job",
       "log": "evidence/logs/wm-p27-root-ai-execution-jobs-pg176-20261013.log",
-      "suitePassed": 16,
+      "suitePassed": 17,
       "scope": "same_body_suite"
     },
     {
@@ -4708,7 +4716,7 @@
       "fixture": "packages/server/persistence/tests/ai-execution-jobs.integration.test.ts",
       "label": "synthetic comparison is refused for health evidence under the conservative classifier",
       "log": "evidence/logs/wm-p27-root-ai-execution-jobs-pg176-20261013.log",
-      "suitePassed": 16,
+      "suitePassed": 17,
       "scope": "same_body_suite"
     },
     {
@@ -4716,7 +4724,7 @@
       "fixture": "packages/server/persistence/tests/ai-execution-jobs.integration.test.ts",
       "label": "U3: a Luna job proceeds only on an owner-attested synthetic-fixture snapshot",
       "log": "evidence/logs/wm-p27-root-ai-execution-jobs-pg176-20261013.log",
-      "suitePassed": 16,
+      "suitePassed": 17,
       "scope": "same_body_suite"
     },
     {
@@ -4724,7 +4732,7 @@
       "fixture": "packages/server/persistence/tests/ai-execution-jobs.integration.test.ts",
       "label": "U3: real or missing subjects, forged digests, runtime writes and forged jobs cannot mark data synthetic",
       "log": "evidence/logs/wm-p27-root-ai-execution-jobs-pg176-20261013.log",
-      "suitePassed": 16,
+      "suitePassed": 17,
       "scope": "same_body_suite"
     },
     {
@@ -4732,7 +4740,7 @@
       "fixture": "packages/server/persistence/tests/ai-execution-jobs.integration.test.ts",
       "label": "jobs are immutable to owner and runtime; runtime cannot delete or truncate",
       "log": "evidence/logs/wm-p27-root-ai-execution-jobs-pg176-20261013.log",
-      "suitePassed": 16,
+      "suitePassed": 17,
       "scope": "same_body_suite"
     },
     {
@@ -4740,7 +4748,7 @@
       "fixture": "packages/server/persistence/tests/ai-execution-jobs.integration.test.ts",
       "label": "no automatic binding: committed fixture or earlier provider runs cannot receive a job",
       "log": "evidence/logs/wm-p27-root-ai-execution-jobs-pg176-20261013.log",
-      "suitePassed": 16,
+      "suitePassed": 17,
       "scope": "same_body_suite"
     },
     {
@@ -4748,7 +4756,15 @@
       "fixture": "packages/server/persistence/tests/ai-execution-jobs.integration.test.ts",
       "label": "SQL refuses model substitution and forged selection, consent or source facts",
       "log": "evidence/logs/wm-p27-root-ai-execution-jobs-pg176-20261013.log",
-      "suitePassed": 16,
+      "suitePassed": 17,
+      "scope": "same_body_suite"
+    },
+    {
+      "runner": "vitest",
+      "fixture": "packages/server/persistence/tests/ai-execution-jobs.integration.test.ts",
+      "label": "SQL binds catalog_digest to the immutable live catalog definition (forged digest + recomputed selection digest)",
+      "log": "evidence/logs/wm-p27-root-ai-execution-jobs-pg176-20261013.log",
+      "suitePassed": 17,
       "scope": "same_body_suite"
     },
     {
@@ -4756,7 +4772,7 @@
       "fixture": "packages/server/persistence/tests/ai-execution-jobs.integration.test.ts",
       "label": "commit fails unless the exact receipt and unclaimed outbox event exist in the same transaction",
       "log": "evidence/logs/wm-p27-root-ai-execution-jobs-pg176-20261013.log",
-      "suitePassed": 16,
+      "suitePassed": 17,
       "scope": "same_body_suite"
     },
     {
@@ -4764,7 +4780,7 @@
       "fixture": "packages/server/persistence/tests/ai-execution-jobs.integration.test.ts",
       "label": "tenant RLS: another tenant cannot read, export or write the job",
       "log": "evidence/logs/wm-p27-root-ai-execution-jobs-pg176-20261013.log",
-      "suitePassed": 16,
+      "suitePassed": 17,
       "scope": "same_body_suite"
     },
     {
@@ -4772,7 +4788,7 @@
       "fixture": "packages/server/persistence/tests/ai-execution-jobs.integration.test.ts",
       "label": "personal export lists frozen facts only, in deterministic order",
       "log": "evidence/logs/wm-p27-root-ai-execution-jobs-pg176-20261013.log",
-      "suitePassed": 16,
+      "suitePassed": 17,
       "scope": "same_body_suite"
     },
     {
@@ -4780,7 +4796,7 @@
       "fixture": "packages/server/persistence/tests/ai-execution-jobs.integration.test.ts",
       "label": "account erasure removes jobs through the unchanged erase chain",
       "log": "evidence/logs/wm-p27-root-ai-execution-jobs-pg176-20261013.log",
-      "suitePassed": 16,
+      "suitePassed": 17,
       "scope": "same_body_suite"
     },
     {
@@ -4788,7 +4804,7 @@
       "fixture": "packages/server/persistence/tests/ai-execution-jobs.integration.test.ts",
       "label": "restore target or generation change refuses new jobs; replay stays readable; jobs keep their generation",
       "log": "evidence/logs/wm-p27-root-ai-execution-jobs-pg176-20261013.log",
-      "suitePassed": 16,
+      "suitePassed": 17,
       "scope": "same_body_suite"
     },
     {

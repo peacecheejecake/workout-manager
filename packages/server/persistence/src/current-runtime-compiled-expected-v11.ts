@@ -25,8 +25,8 @@ const compiled = {
   profileVersion: 11,
   runtimeStep: 27,
   sourceDdlTip: 148,
-  catalogSha256: '46ab5572642c8958e688dddd45c1f014559d9cb628e10a66cceb12443ba6aa61',
-  sqlJsonbSha256: 'db1fa948b1044e9bbf5a48b4935de524c20da0cf336ffb30f101a1459a598e61',
+  catalogSha256: '40c62f7e186124b34661469328bbfc8c1d8028189cc1ff2ca8215f1769861a43',
+  sqlJsonbSha256: 'add5bf297a0dcfba5c1a17911cff9349c4db382cca8a94eb479f05158a4259a5',
   sections: [
     {
       section: 'schemas',
@@ -37,14 +37,14 @@ const compiled = {
     {
       section: 'functions',
       rowCount: 731,
-      bytes: 417303,
-      sha256: '39fa70df2158629054b7631983c2b4b86d8d72670c251a2958e550412282eed1',
+      bytes: 417304,
+      sha256: '5159eb264a3ee48d0fc3fe30f4c266814db7590b599ac2cf5bbfd2d9c69f74c5',
     },
     {
       section: 'relations',
       rowCount: 756,
       bytes: 2335973,
-      sha256: '0c83b75ce155a649510249292f5a53e5b1fb53c0db930df5c20c0dae2d69d734',
+      sha256: '3f092d69f5d0c91326d57d2ab4fe1776f51c8fc80244dd94a58be9b6c1e40eac',
     },
     {
       section: 'defaultPrivileges',
@@ -198,13 +198,13 @@ const compiled = {
     },
   ],
   provenance: {
-    sourceManifestSha256: '0bf38dce2aaff21b777aeb7bea52b773565c65bfbbf47dd620a0533800ce5ba4',
+    sourceManifestSha256: '9e914eef187416c0d4724e0bd87e26be7da3745f23ae6a2e1dfcc8897cd0764b',
     recipeSha256: '47205e21fdde011b74cfc72ccaf9ab096c329babe1536daa9151544cecab471c',
     captureScriptSha256: '6db87a92c767fe044c78907ea53a391f22a324eeb0bec6834d5c905decc206f2',
     manifestGeneratorSha256: '899b3706dd2c202bcf09422366da81cba8f9bc8f01afbe8de5aa591e21d1c807',
-    artifactSha256: '86014a7cd5db90b40f67dfdea70e3c6f40bec606a3f3063e202b917d5fafd73f',
+    artifactSha256: '7c7069d98a67f555230726852da3c018b4519828f947758a9964acf30e832266',
     profile26ControlArtifactSha256:
-      '0d844e9e81f42e7469e7e478d289f9a427c48879b94b45c065e21f56eb9f6004',
+      '4bf5cf049174597a1d7c639cdfd12a739e49731b25b0f7f8d6810a97998a0b13',
     profile26ControlCatalogSha256:
       'eb61b2d63191eb10e802fbf155a7e1b48f550c6b66bca93d5372d2992f62ee17',
     ownerObservations: 2,

@@ -65,7 +65,7 @@ const rpcRecipe = Object.freeze({
   dispatcherRole: currentRuntimeV11AiDispatcherRole,
   runtimeTableGrants: currentRuntimeV11RuntimeTableGrants,
   dispatcherTableGrants: currentRuntimeV11AiDispatcherTableGrants,
-  grantSourceSha256: '6165b405fd5b6ae50330107ad1b0927475e954d0b6186f082d82dd38cdf0ca05',
+  grantSourceSha256: '4a366989d5ab9cfe0fbb2d163467c52dba5c613d48f98b24991cff1ee561cf31',
   // The 42 parent roots keep the post142 root metadata artifact; the nine gallery roots
   // and the five worker RPCs are pinned by installer V11's function pins.
   parentRootMetadataArtifactSha256:
