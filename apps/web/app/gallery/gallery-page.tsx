@@ -6,7 +6,10 @@ import {
   AuthenticatedWorkspace,
   useAuthenticatedSession,
 } from '@workout/platform/authenticated-workspace';
-import { GalleryWorkspace } from '@workout/modules-gallery/gallery-workspace';
+import {
+  GalleryWorkspace,
+  type GalleryMediaTransfer,
+} from '@workout/modules-gallery/gallery-workspace';
 import { createGallerySubtitlesReader } from '@workout/modules-gallery/gallery-subtitles-api';
 import { createGalleryRenditionsApi } from '@workout/modules-gallery/gallery-renditions-api';
 import { createGalleryNavigationApi } from '@workout/modules-gallery/gallery-navigation-api';
@@ -32,7 +35,16 @@ function Gallery({
   renditionsEnabled: boolean;
 }) {
   const session = useAuthenticatedSession();
-  const { transport } = session;
+  const { transport, fileTransfer } = session;
+  // One adapter per session transfer: a new identity on every render (URL/filter/back
+  // navigation) would make every visible tile revoke its Blob URL and re-download the media.
+  const mediaTransfer = useMemo<GalleryMediaTransfer>(
+    () => ({
+      upload: (input) => fileTransfer.uploadGalleryMedia(input),
+      open: (input) => fileTransfer.openGalleryMedia(input),
+    }),
+    [fileTransfer],
+  );
   // One reader per transport so an open viewer does not re-request on every render.
   const subtitlesReader = useMemo(() => createGallerySubtitlesReader(transport), [transport]);
   const renditionsReader = useMemo(
@@ -63,10 +75,7 @@ function Gallery({
       athleteId={session.athleteId}
       sessionId={session.sessionId}
       transport={session.transport}
-      mediaTransfer={{
-        upload: (input) => session.fileTransfer.uploadGalleryMedia(input),
-        open: (input) => session.fileTransfer.openGalleryMedia(input),
-      }}
+      mediaTransfer={mediaTransfer}
       subtitlesReader={subtitlesReader}
       {...(renditionsReader === undefined ? {} : { renditionsReader })}
       {...(navigationApi === undefined || externalQuery === undefined

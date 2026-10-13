@@ -436,6 +436,19 @@ it('never reuses revoked A when navigating A to delayed B to A, and revokes late
   });
   expect(screen.getByRole('img')).toHaveAttribute('src', 'blob:fresh-A');
 });
+it('keeps one open per item lifetime when the adapter object identity changes', async () => {
+  const open = vi.fn().mockResolvedValueOnce('blob:stable').mockResolvedValue('blob:extra');
+  const view = render(<SourceLifetime media={item} transfer={{ open, upload: vi.fn() }} />);
+  expect(await screen.findByRole('img')).toHaveAttribute('src', 'blob:stable');
+  for (let pass = 0; pass < 3; pass += 1)
+    view.rerender(<SourceLifetime media={item} transfer={{ open, upload: vi.fn() }} />);
+  await act(async () => {
+    await Promise.resolve();
+  });
+  expect(open).toHaveBeenCalledOnce();
+  expect(URL.revokeObjectURL).not.toHaveBeenCalledWith('blob:stable');
+  expect(screen.getByRole('img')).toHaveAttribute('src', 'blob:stable');
+});
 it('treats a re-enabled aborted invocation as loading until a fresh URL arrives', async () => {
   let resolveFresh: ((url: string) => void) | undefined;
   const open = vi

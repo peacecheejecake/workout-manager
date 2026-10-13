@@ -298,17 +298,26 @@ async function nextReady(): Promise<void> {
   if (![200, 404].includes(response.status))
     throw new Error('IDENTITY_NEXT_GUARDED_ROUTE_NOT_READY');
 }
+/** A run-owned dist; its synchronous exit removal stays armed until `remove()` succeeds. */
+export interface IdentityMobileDist {
+  outDir: string;
+  remove: () => Promise<void>;
+}
 /**
  * VITE_WORKOUT_RUNTIME_PROFILE is baked at build time, so a shared dist cannot be trusted to
  * match this suite's API. Build a run-owned dist with exactly the harness-selected profile
  * (profile27 or absent) and remove it on close. Generated public assets (map worker, notices)
  * are the same prerequisite the shared `pnpm build` already provides.
+ *
+ * The exit hook is armed as soon as the directory exists, so a normal exit or a signal that
+ * ends in process.exit() during the build (or later, e.g. Vite preview's own SIGTERM handler)
+ * still removes it synchronously. The returned owner disarms it only after async removal.
  */
 export async function buildIdentityMobileDist(
   directory: string,
   profile: IdentityShellRuntimeProfile,
   build: (options: Record<string, unknown>) => Promise<unknown>,
-): Promise<string> {
+): Promise<IdentityMobileDist> {
   for (const asset of [
     'public/dist/maplibre/maplibre-gl-worker.mjs',
     'public/dist/notices/THIRD_PARTY_NOTICES.txt',
@@ -317,6 +326,20 @@ export async function buildIdentityMobileDist(
       throw new Error('IDENTITY_MOBILE_BUILD_PREREQUISITE_MISSING');
     });
   const outDir = await mkdtemp(join(tmpdir(), 'wm-identity-mobile-'));
+  const removeOnExit = () => rmSync(outDir, { recursive: true, force: true });
+  process.once('exit', removeOnExit);
+  let removal: Promise<void> | null = null;
+  const remove = () =>
+    (removal ??= rm(outDir, { recursive: true, force: true }).then(
+      () => {
+        process.off('exit', removeOnExit);
+      },
+      (error: unknown) => {
+        // Keep the exit hook armed as the fallback and allow a later retry.
+        removal = null;
+        throw error;
+      },
+    ));
   const previous = process.env['VITE_WORKOUT_RUNTIME_PROFILE'];
   try {
     if (profile === undefined) delete process.env['VITE_WORKOUT_RUNTIME_PROFILE'];
@@ -329,9 +352,9 @@ export async function buildIdentityMobileDist(
       logLevel: 'error',
       build: { outDir, emptyOutDir: true },
     });
-    return outDir;
+    return { outDir, remove };
   } catch (error) {
-    await rm(outDir, { recursive: true, force: true });
+    await remove();
     throw error;
   } finally {
     if (previous === undefined) delete process.env['VITE_WORKOUT_RUNTIME_PROFILE'];
@@ -352,15 +375,13 @@ export async function runIdentityMobilePreview(): Promise<void> {
     mobilePort: identityMobilePort,
     webPort: identityWebPort,
     startPreview: async () => {
-      const outDir = await buildIdentityMobileDist(directory, profile, build);
       // Vite's preview handles SIGTERM itself and calls process.exit() after closing, which
-      // would cut the async removal short; the exit hook removes the dist synchronously.
-      const removeOnExit = () => rmSync(outDir, { recursive: true, force: true });
-      process.once('exit', removeOnExit);
-      const removeDist = () =>
-        rm(outDir, { recursive: true, force: true }).finally(() =>
-          process.off('exit', removeOnExit),
-        );
+      // would cut the async removal short; the dist's armed exit hook removes it synchronously.
+      const { outDir, remove: removeDist } = await buildIdentityMobileDist(
+        directory,
+        profile,
+        build,
+      );
       try {
         const owned = await preview({
           root: directory,

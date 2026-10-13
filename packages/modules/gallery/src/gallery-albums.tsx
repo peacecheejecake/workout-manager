@@ -49,6 +49,8 @@ export interface GalleryAlbumsProps {
   deleteTarget: GalleryAlbumDeleteTarget | null;
   result: GalleryAlbumsResult;
   operation: GalleryAlbumOperation;
+  /** A row whose cached revision a 409 proved stale; reselectable only after a fresh read. */
+  staleAlbumId?: string | null;
   actions: GalleryAlbumsActions | null;
 }
 const operationLabels = { create: '앨범 만들기', rename: '앨범 이름 변경', delete: '앨범 삭제' };
@@ -60,6 +62,7 @@ export function GalleryAlbums({
   deleteTarget,
   result,
   operation,
+  staleAlbumId = null,
   actions,
 }: GalleryAlbumsProps) {
   const id = useId();
@@ -197,34 +200,43 @@ export function GalleryAlbums({
             <p>현재 페이지에 앨범이 없습니다.</p>
           ) : (
             <ul className={styles.list}>
-              {page.items.map((album) => (
-                <li key={album.id}>
-                  <h3>{album.title}</h3>
-                  <p>조회된 리비전 {album.revision}</p>
-                  <div className={styles.actions}>
-                    <button
-                      type="button"
-                      disabled={locked}
-                      aria-label={`${album.title} 이름 변경`}
-                      onClick={() => {
-                        if (!locked) actions?.beginRename(album);
-                      }}
-                    >
-                      이름 변경
-                    </button>
-                    <button
-                      type="button"
-                      disabled={locked}
-                      aria-label={`${album.title} 삭제 대상 선택`}
-                      onClick={() => {
-                        if (!locked) actions?.requestDelete(album);
-                      }}
-                    >
-                      삭제 대상 선택
-                    </button>
-                  </div>
-                </li>
-              ))}
+              {page.items.map((album) => {
+                const blocked = locked || album.id === staleAlbumId;
+                return (
+                  <li key={album.id}>
+                    <h3>{album.title}</h3>
+                    <p>조회된 리비전 {album.revision}</p>
+                    {album.id === staleAlbumId ? (
+                      <p>
+                        이 리비전은 최신이 아닐 수 있습니다. 목록을 다시 불러온 뒤 선택할 수
+                        있습니다.
+                      </p>
+                    ) : null}
+                    <div className={styles.actions}>
+                      <button
+                        type="button"
+                        disabled={blocked}
+                        aria-label={`${album.title} 이름 변경`}
+                        onClick={() => {
+                          if (!blocked) actions?.beginRename(album);
+                        }}
+                      >
+                        이름 변경
+                      </button>
+                      <button
+                        type="button"
+                        disabled={blocked}
+                        aria-label={`${album.title} 삭제 대상 선택`}
+                        onClick={() => {
+                          if (!blocked) actions?.requestDelete(album);
+                        }}
+                      >
+                        삭제 대상 선택
+                      </button>
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
           )}
           <button

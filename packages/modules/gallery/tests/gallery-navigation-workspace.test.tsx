@@ -1,11 +1,20 @@
 import '@testing-library/jest-dom/vitest';
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
+import { useState } from 'react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, expect, it, vi } from 'vitest';
 import { transportReplySchema, type AuthenticatedTransport } from '@workout/contracts/core';
-import { galleryMediaNavigationQueryV2Schema } from '@workout/contracts/gallery-navigation-v2';
+import {
+  galleryMediaNavigationQueryV2Schema,
+  type GalleryMediaNavigationQueryV2,
+} from '@workout/contracts/gallery-navigation-v2';
 import { createGalleryNavigationApi } from '../src/gallery-navigation-api';
 import { GalleryWorkspace } from '../src/gallery-workspace';
+import type { GalleryMediaOpenInput } from '../src/media-transfer';
+import {
+  readGalleryNavigationSearch,
+  writeGalleryNavigationSearch,
+} from '../src/gallery-navigation-search';
 import {
   createGalleryCourseChoicesApi,
   type GalleryCourseChoicesApi,
@@ -60,6 +69,7 @@ const initialQuery = galleryMediaNavigationQueryV2Schema.parse({
 function fixture(
   write?: (method: string, body: unknown) => Promise<{ status: number; body: unknown }>,
   courseAvailability?: 'available' | 'unavailable',
+  albumRevision: () => number = () => album.revision,
 ) {
   const requests: {
     path: string;
@@ -115,7 +125,13 @@ function fixture(
         );
         reply = {
           status: 200,
-          body: { schemaVersion: 1, query, items: [album], hasMore: false, nextCursor: null },
+          body: {
+            schemaVersion: 1,
+            query,
+            items: [{ ...album, revision: albumRevision() }],
+            hasMore: false,
+            nextCursor: null,
+          },
         };
       } else throw new Error('UNEXPECTED_LEGACY_REQUEST');
       return transportReplySchema.parse({ ...reply, traceId: null });
@@ -226,6 +242,52 @@ it('preserves frozen rename revision and draft on conflict without automatic res
   await user.click(screen.getByRole('button', { name: '변경된 앨범 다시 확인하기' }));
   expect(screen.getByRole('button', { name: '앨범 이름 저장' })).toBeDisabled();
   expect(f.requests.filter((r) => r.method === 'PATCH')).toHaveLength(1);
+});
+
+it('refuses to reselect a 409-stale row until a fresh list read confirms its latest revision', async () => {
+  let revision = 1;
+  let listReads = 0;
+  const f = fixture(
+    async () => {
+      revision = 2;
+      return { status: 409, body: null };
+    },
+    undefined,
+    () => {
+      listReads += 1;
+      return revision;
+    },
+  );
+  mount(f);
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole('button', { name: '기록 이름 변경' }));
+  await user.click(screen.getByRole('button', { name: '앨범 이름 저장' }));
+  await screen.findByText(/선택한 앨범이 변경되었습니다/);
+  const readsAtConflict = listReads;
+  // The cached row still shows the stale revision 1; reselecting it must not reset the conflict.
+  expect(screen.getByText('조회된 리비전 1')).toBeInTheDocument();
+  const staleRename = screen.getByRole('button', { name: '기록 이름 변경' });
+  expect(staleRename).toBeDisabled();
+  expect(screen.getByRole('button', { name: '기록 삭제 대상 선택' })).toBeDisabled();
+  await user.click(staleRename);
+  await user.click(screen.getByRole('button', { name: '이름 변경 취소' }));
+  // Cancelling the draft does not clear the conflict before a fresh read either.
+  expect(screen.getByText(/선택한 앨범이 변경되었습니다/)).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: '기록 이름 변경' })).toBeDisabled();
+  expect(screen.queryByRole('form', { name: '앨범 이름 변경' })).not.toBeInTheDocument();
+  expect(f.requests.filter((r) => r.method === 'PATCH')).toHaveLength(1);
+  await user.click(screen.getByRole('button', { name: '변경된 앨범 다시 확인하기' }));
+  await screen.findByText('조회된 리비전 2');
+  expect(listReads).toBeGreaterThan(readsAtConflict);
+  await user.click(screen.getByRole('button', { name: '기록 이름 변경' }));
+  expect(screen.queryByText(/선택한 앨범이 변경되었습니다/)).not.toBeInTheDocument();
+  expect(screen.getByText(/선택한 리비전 2/)).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: '앨범 이름 저장' }));
+  await waitFor(() => expect(f.requests.filter((r) => r.method === 'PATCH')).toHaveLength(2));
+  expect(f.requests.filter((r) => r.method === 'PATCH')[1]?.body).toMatchObject({
+    albumId,
+    expectedRevision: 2,
+  });
 });
 
 it('keeps uncertain writes locked after a list read and never infers a receipt', async () => {
@@ -586,3 +648,55 @@ it.each(['adapter', 'session'] as const)(
     expect(screen.getByLabelText('연결된 코스 리비전')).toHaveValue('');
   },
 );
+
+it('does not reopen or revoke visible media when URL navigation re-renders a host with a new adapter object', async () => {
+  const f = fixture();
+  const revoke = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
+  const open = vi.fn(async (input: GalleryMediaOpenInput) => `blob:${input.mediaItemId}`);
+  let setSearch: ((search: string) => void) | undefined;
+  // Mirrors a shell that owns the URL search and (wrongly) rebuilds its adapter every render.
+  function Host() {
+    const [search, update] = useState(`?${writeGalleryNavigationSearch(initialQuery)}`);
+    setSearch = update;
+    const read = readGalleryNavigationSearch(search.slice(1));
+    const externalQuery: GalleryMediaNavigationQueryV2 =
+      read.state === 'valid' ? read.query : initialQuery;
+    return (
+      <GalleryWorkspace
+        athleteId="alice"
+        sessionId="one"
+        transport={f.transport}
+        mediaTransfer={{ upload: vi.fn(), open: (input) => open(input) }}
+        navigation={{
+          api: f.navigation.api,
+          externalQuery,
+          onNavigate: (query) => update(`?${writeGalleryNavigationSearch(query)}`),
+        }}
+      />
+    );
+  }
+  try {
+    render(<Host />);
+    expect(await screen.findByRole('img', { name: '내 사진' })).toHaveAttribute(
+      'src',
+      `blob:${id}`,
+    );
+    const opensFor = () => open.mock.calls.filter(([input]) => input.mediaItemId === id).length;
+    expect(opensFor()).toBe(1);
+    // Back/forward or an echoed push yields an equivalent search and a fresh host render.
+    for (const search of [
+      `?${writeGalleryNavigationSearch(initialQuery)}`,
+      `?${writeGalleryNavigationSearch({ ...initialQuery })}&unrelated=1`,
+    ]) {
+      act(() => setSearch?.(search));
+      await act(async () => {
+        await Promise.resolve();
+      });
+    }
+    expect(screen.getByRole('img', { name: '내 사진' })).toHaveAttribute('src', `blob:${id}`);
+    expect(opensFor()).toBe(1);
+    expect(revoke).not.toHaveBeenCalledWith(`blob:${id}`);
+  } finally {
+    revoke.mockRestore();
+  }
+});

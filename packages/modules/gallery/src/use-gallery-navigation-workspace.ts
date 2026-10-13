@@ -7,6 +7,7 @@ import {
   type GalleryAlbumCreateCommandV1,
   type GalleryAlbumRenameCommandV1,
   type GalleryAlbumDeleteCommandV1,
+  type GalleryAlbumV1,
 } from '@workout/contracts/gallery-navigation-v2';
 import { writeGalleryNavigationSearch } from './gallery-navigation-search';
 import type { GalleryMediaKind } from '@workout/contracts/gallery';
@@ -115,13 +116,17 @@ export function useGalleryNavigationWorkspace(
       return { api, page: await api.navigate(query, signal) };
     },
   });
+  // Monotonic album-read sequence: a 409 gate opens only for a read started after the conflict.
+  const albumReadSequence = useRef(0);
   const albums = useQuery({
     queryKey: [...scope, 'albums', albumQuery],
     structuralSharing: false,
     enabled: api !== undefined,
     queryFn: async ({ signal }) => {
       if (!api) throw new Error('NAVIGATION_UNAVAILABLE');
-      return { api, page: await api.listAlbums(albumQuery, signal) };
+      albumReadSequence.current += 1;
+      const sequence = albumReadSequence.current;
+      return { api, sequence, page: await api.listAlbums(albumQuery, signal) };
     },
   });
   const previousApi = useRef(api);
@@ -136,6 +141,32 @@ export function useGalleryNavigationWorkspace(
   const [renameDraft, setRenameDraft] = useState<GalleryAlbumRenameCommandV1 | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<GalleryAlbumDeleteTarget | null>(null);
   const [operation, setOperation] = useState<GalleryAlbumOperation>({ state: 'idle' });
+  // After a 409 the cached row is stale. Until an album read that started after the conflict
+  // succeeds, the conflict stays visible and the stale row cannot be reselected or written.
+  const [conflictGate, setConflictGate] = useState<{
+    albumId: string | null;
+    afterSequence: number;
+  } | null>(null);
+  const freshAlbums =
+    albums.isSuccess && albums.data.api === api && conflictGate !== null
+      ? albums.data.sequence > conflictGate.afterSequence
+        ? albums.data.page
+        : null
+      : null;
+  const gateOpen = conflictGate === null || freshAlbums !== null;
+  /** True when the row is not gated, or the fresh read lists this exact revision. */
+  function selectable(album: GalleryAlbumV1) {
+    if (conflictGate === null || conflictGate.albumId !== album.id) return true;
+    return (
+      freshAlbums?.items.some((row) => row.id === album.id && row.revision === album.revision) ??
+      false
+    );
+  }
+  function resetOperationAfterSelection() {
+    if (!gateOpen) return;
+    setConflictGate(null);
+    setOperation({ state: 'idle' });
+  }
   const locked = useRef(false);
   const controllers = useRef(new Set<AbortController>());
   const pendingCommand = useRef<{
@@ -161,7 +192,9 @@ export function useGalleryNavigationWorkspace(
     kind: 'create' | 'rename' | 'delete',
     input: GalleryAlbumCreateCommandV1 | GalleryAlbumRenameCommandV1 | GalleryAlbumDeleteCommandV1,
   ) {
-    if (!api || locked.current || operation.state === 'conflict') return;
+    if (!api || locked.current || operation.state === 'conflict' || !gateOpen) return;
+    if (conflictGate !== null && 'albumId' in input && conflictGate.albumId === input.albumId)
+      return;
     locked.current = true;
     const controller = new AbortController();
     controllers.current.add(controller);
@@ -191,6 +224,11 @@ export function useGalleryNavigationWorkspace(
         error.status !== null &&
         error.status >= 400 &&
         error.status < 500;
+      if (conflict)
+        setConflictGate({
+          albumId: 'albumId' in input ? input.albumId : null,
+          afterSequence: albumReadSequence.current,
+        });
       setOperation({ state: conflict ? 'conflict' : rejected ? 'error' : 'uncertain', kind });
       locked.current = !rejected;
       if (rejected) pendingCommand.current = null;
@@ -247,6 +285,7 @@ export function useGalleryNavigationWorkspace(
       deleteTarget,
       result: albumResult,
       operation,
+      staleAlbumId: freshAlbums === null ? (conflictGate?.albumId ?? null) : null,
       actions: !api
         ? null
         : {
@@ -257,31 +296,31 @@ export function useGalleryNavigationWorkspace(
               if (!locked.current) setRenameDraft((current) => current && { ...current, title });
             },
             beginRename: (album) => {
-              if (!locked.current) {
+              if (!locked.current && selectable(album)) {
                 setRenameDraft({
                   albumId: album.id,
                   expectedRevision: album.revision,
                   title: album.title,
                 });
-                setOperation({ state: 'idle' });
+                resetOperationAfterSelection();
               }
             },
             cancelRename: () => {
               if (!locked.current) {
                 setRenameDraft(null);
-                setOperation({ state: 'idle' });
+                resetOperationAfterSelection();
               }
             },
             requestDelete: (album) => {
-              if (!locked.current) {
+              if (!locked.current && selectable(album)) {
                 setDeleteTarget({ album, detachedMediaCount: null });
-                setOperation({ state: 'idle' });
+                resetOperationAfterSelection();
               }
             },
             cancelDelete: () => {
               if (!locked.current) {
                 setDeleteTarget(null);
-                setOperation({ state: 'idle' });
+                resetOperationAfterSelection();
               }
             },
             create: (input) => {
