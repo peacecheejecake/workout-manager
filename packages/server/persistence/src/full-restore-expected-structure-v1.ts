@@ -21,6 +21,12 @@ import {
  * query nodes the decoder does not support; they are compared by
  * `pg_get_expr` deparse text only and labelled as such.
  *
+ * Each trigger also binds its routine, not only its signature: language, kind,
+ * SECURITY DEFINER, owner (relation owner or other), proconfig (e.g. search_path),
+ * volatility, strictness, leakproof, parallel safety, return type and the SHA-256
+ * of the prosrc/probin text (stored source text, independent of server platform).
+ * Functions the trigger routine itself calls are not followed.
+ *
  * The expected census is a committed, SHA-pinned file generated from a clean
  * install of the reviewed migrations (not from an archive or the target under
  * test). Equality yields structure facts only: authority none, no admission.
@@ -82,11 +88,21 @@ SELECT pg_catalog.jsonb_build_object('schema',rel.s,'relation',rel.r,'present',r
    'enabled',t.tgenabled,'deferrable',t.tgdeferrable,'initDeferred',t.tginitdeferred,
    'constraint',(SELECT k.conname FROM pg_catalog.pg_constraint k WHERE k.oid=t.tgconstraint),
    'function',pn.nspname||'.'||p.proname||'('||pg_catalog.oidvectortypes(p.proargtypes)||')',
+   'routine',pg_catalog.jsonb_build_object('kind',p.prokind,'language',pl.lanname,
+     'securityDefiner',p.prosecdef,'owner',CASE WHEN p.proowner=rel.relowner THEN '$owner' ELSE 'other' END,
+     'config',pg_catalog.to_jsonb(p.proconfig),'volatility',p.provolatile,'strict',p.proisstrict,
+     'leakproof',p.proleakproof,'parallel',p.proparallel,'returnsSet',p.proretset,
+     'returns',pg_catalog.format_type(p.prorettype,NULL),
+     'bodySha256',pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(p.prosrc,'UTF8')),'hex'),
+     'binarySha256',CASE WHEN p.probin IS NULL THEN NULL
+       ELSE pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(p.probin,'UTF8')),'hex') END,
+     'sqlBody',p.prosqlbody IS NOT NULL),
    'arguments',pg_catalog.encode(t.tgargs,'hex'),
    'columns',(SELECT pg_catalog.jsonb_agg(a.attname ORDER BY u.o) FROM unnest(t.tgattr::int2[]) WITH ORDINALITY u(n,o)
      JOIN pg_catalog.pg_attribute a ON a.attrelid=t.tgrelid AND a.attnum=u.n),
    'when',t.tgqual::text,'oldTable',t.tgoldtable,'newTable',t.tgnewtable) ORDER BY t.tgname),'[]'::jsonb)
   FROM pg_catalog.pg_trigger t JOIN pg_catalog.pg_proc p ON p.oid=t.tgfoid JOIN pg_catalog.pg_namespace pn ON pn.oid=p.pronamespace
+  JOIN pg_catalog.pg_language pl ON pl.oid=p.prolang
   WHERE t.tgrelid=rel.oid AND NOT t.tgisinternal),
  'indexes',(SELECT coalesce(pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object('name',ic.relname,'method',am.amname,
    'unique',i.indisunique,'primary',i.indisprimary,'nullsNotDistinct',i.indnullsnotdistinct,'immediate',i.indimmediate,
@@ -140,6 +156,7 @@ export const fullRestoreStructureQuerySha256V1 = createHash('sha256')
 const name = z.string().min(1).max(63);
 const nullableText = z.string().max(1048576).nullable();
 const char = z.string().max(1);
+const sha256Hex = z.string().regex(/^[a-f0-9]{64}$/);
 const rawColumn = z.strictObject({
   attnum: z.number().int().min(1).max(1600),
   name,
@@ -191,6 +208,22 @@ const rawRelation = z.strictObject({
       initDeferred: z.boolean(),
       constraint: name.nullable(),
       function: z.string().max(4096),
+      routine: z.strictObject({
+        kind: z.literal('f'),
+        language: name,
+        securityDefiner: z.boolean(),
+        owner: z.enum(['$owner', 'other']),
+        config: z.array(z.string().max(4096)).max(64).nullable(),
+        volatility: z.enum(['i', 's', 'v']),
+        strict: z.boolean(),
+        leakproof: z.boolean(),
+        parallel: z.enum(['s', 'r', 'u']),
+        returnsSet: z.boolean(),
+        returns: z.literal('trigger'),
+        bodySha256: sha256Hex,
+        binarySha256: sha256Hex.nullable(),
+        sqlBody: z.literal(false),
+      }),
       arguments: z.string().max(65536),
       columns: nameList,
       when: nullableText,
@@ -269,7 +302,7 @@ const textSha = (text: string | null) =>
 
 export type FullRestoreStructureV1 = Readonly<{
   schemaVersion: 1;
-  method: 'pg17-normalized-node-tree-v1+policy-deparse-text';
+  method: 'pg17-normalized-node-tree-v1+policy-deparse-text+trigger-routine-v1';
   relations: readonly unknown[];
 }>;
 
@@ -431,7 +464,7 @@ export async function captureFullRestoreStructureV1(
   });
   return Object.freeze({
     schemaVersion: 1,
-    method: 'pg17-normalized-node-tree-v1+policy-deparse-text',
+    method: 'pg17-normalized-node-tree-v1+policy-deparse-text+trigger-routine-v1',
     relations: JSON.parse(canonicalPg17Json(normalized)) as unknown[],
   });
 }
@@ -499,7 +532,7 @@ export function createFullRestoreStructureComparatorV1(input: {
   }
   if (
     expected.schemaVersion !== 1 ||
-    expected.method !== 'pg17-normalized-node-tree-v1+policy-deparse-text' ||
+    expected.method !== 'pg17-normalized-node-tree-v1+policy-deparse-text+trigger-routine-v1' ||
     !Array.isArray(expected.relations)
   )
     fail('STRUCTURE_EXPECTED_INVALID');

@@ -76,12 +76,53 @@ function qualified(text: string): { schema: string; relation: string } {
   };
 }
 
+/** Fixed hard caps; caller limits must be positive safe integers at or below them. */
+export const FULL_RESTORE_DUMP_HARD_LIMITS_V1 = Object.freeze({
+  maxBytes: 256 * 1024 * 1024,
+  maxRelations: 4096,
+  timeoutMs: 15 * 60 * 1000,
+});
+const bounded = (value: unknown, cap: number): value is number =>
+  typeof value === 'number' && Number.isSafeInteger(value) && value > 0 && value <= cap;
+function checkedLimits(limits: unknown): { maxBytes: number; maxRelations: number } {
+  if (typeof limits !== 'object' || limits === null) return fail('DUMP_INPUT_INVALID');
+  const { maxBytes, maxRelations } = limits as Record<string, unknown>;
+  if (
+    !bounded(maxBytes, FULL_RESTORE_DUMP_HARD_LIMITS_V1.maxBytes) ||
+    !bounded(maxRelations, FULL_RESTORE_DUMP_HARD_LIMITS_V1.maxRelations)
+  )
+    return fail('DUMP_INPUT_INVALID');
+  return { maxBytes, maxRelations };
+}
+
+/**
+ * The session preamble pg_dump 17 writes for `--data-only --no-owner --no-privileges
+ * --enable-row-security --encoding=UTF8`, each allowed once and only before data. Every
+ * other non-comment, non-blank line must be the `\restrict`/`\unrestrict` pair, a COPY
+ * section or one setval per sequence; anything else (INSERT, UPDATE, DELETE, DDL, other
+ * meta-commands, arbitrary SQL) is rejected rather than ignored (allow-list).
+ */
+const PREAMBLE_LINES_V1: ReadonlySet<string> = new Set([
+  'SET statement_timeout = 0;',
+  'SET lock_timeout = 0;',
+  'SET idle_in_transaction_session_timeout = 0;',
+  'SET transaction_timeout = 0;',
+  "SET client_encoding = 'UTF8';",
+  'SET standard_conforming_strings = on;',
+  "SELECT pg_catalog.set_config('search_path', '', false);",
+  'SET check_function_bodies = false;',
+  'SET xmloption = content;',
+  'SET client_min_messages = warning;',
+  'SET row_security = on;',
+]);
+
 export function parsePlainDataDumpV1(
   bytes: Uint8Array,
   limits: Readonly<{ maxBytes: number; maxRelations: number }>,
 ): ParsedDataDumpV1 {
+  const bound = checkedLimits(limits);
   if (!(bytes instanceof Uint8Array)) fail('DUMP_INPUT_INVALID');
-  if (bytes.byteLength > limits.maxBytes) fail('DUMP_BOUND_EXCEEDED');
+  if (bytes.byteLength > bound.maxBytes) fail('DUMP_BOUND_EXCEEDED');
   let text: string;
   try {
     text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes);
@@ -99,15 +140,41 @@ export function parsePlainDataDumpV1(
   const sequences: { schema: string; relation: string; lastValue: string; isCalled: boolean }[] =
     [];
   const seen = new Set<string>();
+  const seenSequences = new Set<string>();
+  const seenPreamble = new Set<string>();
+  // \restrict (optional, first construct) ... \unrestrict (same key); afterwards comments only.
+  let restrictKey: string | null = null;
+  let unrestricted = false;
+  let constructs = 0;
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i] ?? '';
+    if (line === '' || line.startsWith('--')) continue;
+    if (unrestricted) fail('DUMP_SYNTAX_UNSUPPORTED');
+    const restrict = /^\\(restrict|unrestrict) ([A-Za-z0-9]{1,64})$/.exec(line);
+    if (restrict) {
+      if (restrict[1] === 'restrict') {
+        if (restrictKey !== null || constructs > 0) fail('DUMP_SYNTAX_UNSUPPORTED');
+        restrictKey = restrict[2] ?? '';
+      } else {
+        if (restrictKey === null || restrict[2] !== restrictKey) fail('DUMP_SYNTAX_UNSUPPORTED');
+        unrestricted = true;
+      }
+      continue;
+    }
+    constructs++;
+    if (PREAMBLE_LINES_V1.has(line)) {
+      if (seenPreamble.has(line) || seen.size > 0 || seenSequences.size > 0)
+        fail('DUMP_SYNTAX_UNSUPPORTED');
+      seenPreamble.add(line);
+      continue;
+    }
     const copy = /^COPY (\S+(?:\.\S+)?) \((.*)\) FROM stdin;$/.exec(line);
     if (copy) {
       const target = qualified(copy[1] ?? '');
       const key = `${target.schema}.${target.relation}`;
       if (seen.has(key)) fail('DUMP_SYNTAX_UNSUPPORTED');
       seen.add(key);
-      if (seen.size > limits.maxRelations) fail('DUMP_BOUND_EXCEEDED');
+      if (seen.size > bound.maxRelations) fail('DUMP_BOUND_EXCEEDED');
       const hash = createHash('sha256');
       let rowCount = 0;
       for (i++; ; i++) {
@@ -125,20 +192,22 @@ export function parsePlainDataDumpV1(
       });
       continue;
     }
-    if (line.startsWith('COPY ')) fail('DUMP_SYNTAX_UNSUPPORTED');
     const setval =
-      /^SELECT pg_catalog\.setval\('((?:[^']|'')+)', (-?[0-9]+), (true|false)\);$/.exec(line);
+      /^SELECT pg_catalog\.setval\('((?:[^']|'')+)', (-?[0-9]{1,19}), (true|false)\);$/.exec(line);
     if (setval) {
-      sequences.push({
-        ...qualified((setval[1] ?? '').replaceAll("''", "'")),
-        lastValue: setval[2] ?? '',
-        isCalled: setval[3] === 'true',
-      });
+      const target = qualified((setval[1] ?? '').replaceAll("''", "'"));
+      const key = `${target.schema}.${target.relation}`;
+      // One record per sequence: a second setval (conflicting or not) is rejected.
+      if (seenSequences.has(key)) fail('DUMP_SYNTAX_UNSUPPORTED');
+      seenSequences.add(key);
+      if (seenSequences.size > bound.maxRelations) fail('DUMP_BOUND_EXCEEDED');
+      sequences.push({ ...target, lastValue: setval[2] ?? '', isCalled: setval[3] === 'true' });
       continue;
     }
-    if (/^\s*(INSERT|ALTER TABLE .* DISABLE TRIGGER|CREATE|DROP)\b/i.test(line))
-      fail('DUMP_SYNTAX_UNSUPPORTED');
+    // Allow-list: every other line is an unsupported (possibly data-changing) command.
+    fail('DUMP_SYNTAX_UNSUPPORTED');
   }
+  if (restrictKey !== null && !unrestricted) fail('DUMP_SYNTAX_UNSUPPORTED');
   const order = (
     a: { schema: string; relation: string },
     b: { schema: string; relation: string },
@@ -184,6 +253,12 @@ export function compareDumpCorrespondenceV1(
   const actual = new Map(dump.relations.map((r) => [key(r), r]));
   const wanted = new Map(expected.relations.map((r) => [key(r), r]));
   if (wanted.size !== expected.relations.length) differences.push('expected:duplicate');
+  // A parsed dump never repeats a key; a hand-built one that does must not be collapsed.
+  if (actual.size !== dump.relations.length) differences.push('dump:duplicate');
+  if (new Set(dump.sequences.map(key)).size !== dump.sequences.length)
+    differences.push('dump:sequence_duplicate');
+  if (new Set(expected.sequences.map(key)).size !== expected.sequences.length)
+    differences.push('expected:sequence_duplicate');
   for (const [name, want] of wanted) {
     const got = actual.get(name);
     if (!got) differences.push(`${name}:missing`);
@@ -236,6 +311,10 @@ export async function runSnapshotDataDumpV1(input: {
   readonly timeoutMs: number;
 }): Promise<Uint8Array> {
   if (
+    !bounded(input.maxBytes, FULL_RESTORE_DUMP_HARD_LIMITS_V1.maxBytes) ||
+    !bounded(input.timeoutMs, FULL_RESTORE_DUMP_HARD_LIMITS_V1.timeoutMs) ||
+    typeof input.pgDumpPath !== 'string' ||
+    typeof input.snapshotId !== 'string' ||
     !/^\/[A-Za-z0-9._/@-]+\/pg_dump$/.test(input.pgDumpPath) ||
     !/^[0-9A-F]{8}-[0-9A-F]{8}-[1-9][0-9]{0,9}$/.test(input.snapshotId) ||
     (input.connection.password !== undefined &&

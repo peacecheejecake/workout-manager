@@ -16,7 +16,9 @@ import { fullRestoreDurableRowColumnsV1 } from '../src/full-restore-durable-row-
 import {
   compareDumpCorrespondenceV1,
   parsePlainDataDumpV1,
+  runSnapshotDataDumpV1,
   FullRestoreDumpCorrespondenceErrorV1,
+  FULL_RESTORE_DUMP_HARD_LIMITS_V1,
 } from '../src/full-restore-dump-correspondence-v1.js';
 import {
   createFullRestoreStructureComparatorV1,
@@ -512,6 +514,176 @@ describe('pg_dump data correspondence', () => {
     expect(code(dump([]), { maxBytes: 10, maxRelations: 10 })).toBe('DUMP_BOUND_EXCEEDED');
     expect(code(Buffer.from([0xff]))).toBe('DUMP_INPUT_INVALID');
   });
+  const code = (bytes: Uint8Array, l: unknown = limits) => {
+    try {
+      parsePlainDataDumpV1(bytes, l as typeof limits);
+    } catch (error) {
+      if (error instanceof FullRestoreDumpCorrespondenceErrorV1) return error.code;
+      throw error;
+    }
+    return 'NO_ERROR';
+  };
+  const withLine = (extra: string, at: 'preamble' | 'afterCopy' | 'afterSetval' | 'tail') => {
+    const text = dump(['1\ta\t\\N', '2\tb\tline\\nbreak']).toString('utf8').split('\n');
+    const index = {
+      preamble: text.indexOf('SET statement_timeout = 0;') + 1,
+      afterCopy: text.indexOf('COPY "odd""schema".beta (id) FROM stdin;') - 1,
+      afterSetval: text.findIndex((l) => l.startsWith('SELECT pg_catalog.setval')) + 1,
+      tail: text.length - 1,
+    }[at];
+    text.splice(index, 0, extra);
+    return Buffer.from(text.join('\n'));
+  };
+  it('accepts only allow-listed dump constructs (P27-p2a-1)', () => {
+    expect(code(withLine('-- any comment; DELETE FROM public.alpha;', 'afterCopy'))).toBe(
+      'NO_ERROR',
+    );
+    for (const extra of [
+      'DELETE FROM public.alpha;',
+      'UPDATE public.alpha SET note = NULL;',
+      "INSERT INTO public.alpha VALUES (3, 'c', NULL);",
+      'TRUNCATE public.alpha;',
+      'ALTER TABLE public.alpha DISABLE TRIGGER ALL;',
+      "SELECT pg_catalog.setval('public.other_seq', 1, true); DELETE FROM public.alpha;",
+      "SELECT pg_catalog.set_config('search_path', 'public', false);",
+      'SET row_security = off;',
+      'SET session_replication_role = replica;',
+      'SET SESSION AUTHORIZATION admin;',
+      'BEGIN;',
+      '\\i /etc/passwd',
+      '\\! true',
+      ' DELETE FROM public.alpha;',
+      'delete from public.alpha;',
+      'COPY public.alpha (id) TO stdout;',
+      'COPY public.gamma FROM stdin;',
+      'SELECT 1;',
+    ])
+      for (const at of ['preamble', 'afterCopy', 'afterSetval'] as const)
+        expect([extra, at, code(withLine(extra, at))]).toEqual([
+          extra,
+          at,
+          'DUMP_SYNTAX_UNSUPPORTED',
+        ]);
+    // Nothing but comments after \unrestrict; preamble lines only once and before data.
+    expect(code(withLine('SET statement_timeout = 0;', 'tail'))).toBe('DUMP_SYNTAX_UNSUPPORTED');
+    expect(code(withLine('SET statement_timeout = 0;', 'preamble'))).toBe(
+      'DUMP_SYNTAX_UNSUPPORTED',
+    );
+    expect(code(withLine('SET lock_timeout = 0;', 'afterCopy'))).toBe('DUMP_SYNTAX_UNSUPPORTED');
+    expect(code(withLine('SET lock_timeout = 0;', 'preamble'))).toBe('NO_ERROR');
+    // \restrict / \unrestrict must pair with the same key, restrict first.
+    const text = dump([]).toString('utf8');
+    expect(code(Buffer.from(text.replace('\\unrestrict synthetic', '\\unrestrict other')))).toBe(
+      'DUMP_SYNTAX_UNSUPPORTED',
+    );
+    expect(code(Buffer.from(text.replace('\\unrestrict synthetic\n', '')))).toBe(
+      'DUMP_SYNTAX_UNSUPPORTED',
+    );
+    expect(code(Buffer.from(text.replace('\\restrict synthetic\n', '')))).toBe(
+      'DUMP_SYNTAX_UNSUPPORTED',
+    );
+    expect(
+      code(
+        Buffer.from(
+          text.replace('\\restrict synthetic\n', '').replace('\\unrestrict synthetic\n', ''),
+        ),
+      ),
+    ).toBe('NO_ERROR');
+  });
+  it('rejects duplicate sequence records instead of keeping the last one (P27-p2a-1)', () => {
+    const seq =
+      "SELECT pg_catalog.setval('public.openai_budget_journal_sequence_id_seq', 3, true);";
+    for (const second of [
+      seq,
+      "SELECT pg_catalog.setval('public.openai_budget_journal_sequence_id_seq', 1, false);",
+      "SELECT pg_catalog.setval('public.openai_budget_journal_sequence_id_seq', 9, true);",
+      'SELECT pg_catalog.setval(\'"public"."openai_budget_journal_sequence_id_seq"\', 3, true);',
+    ])
+      expect(code(withLine(second, 'afterSetval'))).toBe('DUMP_SYNTAX_UNSUPPORTED');
+    expect(
+      code(
+        withLine(
+          "SELECT pg_catalog.setval('public.other_seq', 99999999999999999999, true);",
+          'afterSetval',
+        ),
+      ),
+    ).toBe('DUMP_SYNTAX_UNSUPPORTED');
+    // A hand-built parse result with repeated keys is reported, never collapsed.
+    const parsed = parsePlainDataDumpV1(dump(['1\ta\t\\N', '2\tb\tline\\nbreak']), limits);
+    const doubled = {
+      relations: parsed.relations,
+      sequences: [
+        ...parsed.sequences,
+        { ...expected.sequences[0], lastValue: '9' } as (typeof parsed.sequences)[number],
+      ],
+    };
+    const result = compareDumpCorrespondenceV1(doubled, expected);
+    expect(result.corresponds).toBe(false);
+    expect(result.differences).toContain('dump:sequence_duplicate');
+    const relDoubled = { ...parsed, relations: [...parsed.relations, ...parsed.relations] };
+    expect(compareDumpCorrespondenceV1(relDoubled, expected).differences).toContain(
+      'dump:duplicate',
+    );
+    expect(
+      compareDumpCorrespondenceV1(parsed, {
+        ...expected,
+        sequences: [...expected.sequences, ...expected.sequences],
+      }).differences,
+    ).toContain('expected:sequence_duplicate');
+  });
+  it('validates limits as finite positive safe integers under fixed hard caps (P27-p2a-2)', () => {
+    const bytes = dump([]);
+    for (const bad of [
+      { maxBytes: Infinity, maxRelations: 10 },
+      { maxBytes: Number.NaN, maxRelations: 10 },
+      { maxBytes: -1, maxRelations: 10 },
+      { maxBytes: 0, maxRelations: 10 },
+      { maxBytes: 1.5, maxRelations: 10 },
+      { maxBytes: 2 ** 53, maxRelations: 10 },
+      { maxBytes: FULL_RESTORE_DUMP_HARD_LIMITS_V1.maxBytes + 1, maxRelations: 10 },
+      { maxBytes: '1048576', maxRelations: 10 },
+      { maxBytes: 1 << 20, maxRelations: Infinity },
+      { maxBytes: 1 << 20, maxRelations: FULL_RESTORE_DUMP_HARD_LIMITS_V1.maxRelations + 1 },
+      { maxBytes: 1 << 20 },
+      null,
+      [],
+      7,
+    ])
+      expect([bad, code(bytes, bad)]).toEqual([bad, 'DUMP_INPUT_INVALID']);
+    expect(
+      code(bytes, {
+        maxBytes: FULL_RESTORE_DUMP_HARD_LIMITS_V1.maxBytes,
+        maxRelations: FULL_RESTORE_DUMP_HARD_LIMITS_V1.maxRelations,
+      }),
+    ).toBe('NO_ERROR');
+    expect(code(bytes, { maxBytes: 1 << 20, maxRelations: 1 })).toBe('DUMP_BOUND_EXCEEDED');
+  });
+  it('validates pg_dump run limits before spawning (P27-p2a-2)', async () => {
+    const base = {
+      pgDumpPath: '/nonexistent/bin/pg_dump',
+      snapshotId: '00000003-00000002-1',
+      connection: { host: '127.0.0.1', user: 'x', database: 'y' },
+      maxBytes: 1 << 20,
+      timeoutMs: 1000,
+    };
+    for (const bad of [
+      { maxBytes: Infinity },
+      { maxBytes: Number.NaN },
+      { maxBytes: 0 },
+      { maxBytes: FULL_RESTORE_DUMP_HARD_LIMITS_V1.maxBytes + 1 },
+      { timeoutMs: Infinity },
+      { timeoutMs: -1 },
+      { timeoutMs: 0.5 },
+      { timeoutMs: FULL_RESTORE_DUMP_HARD_LIMITS_V1.timeoutMs + 1 },
+    ])
+      await expect(runSnapshotDataDumpV1({ ...base, ...bad })).rejects.toMatchObject({
+        code: 'DUMP_INPUT_INVALID',
+      });
+    // Valid limits reach the spawn, which fails for the absent binary.
+    await expect(runSnapshotDataDumpV1(base)).rejects.toMatchObject({
+      code: 'DUMP_EXECUTION_FAILED',
+    });
+  });
 });
 
 describe('committed expected structure census', () => {
@@ -520,7 +692,7 @@ describe('committed expected structure census', () => {
       new URL('../src/full-restore-expected-structure-v1/expected-structure.json', import.meta.url),
     ),
   );
-  const EXPECTED_SHA256 = '67892899ed73ff33bf8b03be615ff3c43b17752f65414ca270a88d313195cfae';
+  const EXPECTED_SHA256 = '1d26190fb4c0ea29e111675b224d6cd73097df1c8ee622e63186de3b897cd949';
   type Census = FullRestoreStructureV1 & {
     relations: {
       schema: string;
@@ -586,5 +758,54 @@ describe('committed expected structure census', () => {
     expect(result.matched).toBe(false);
     expect(result.differences).toEqual(['/relations/0/columns/0/notNull']);
     expect(result.admissionAllowed).toBe(false);
+  });
+  it('binds every trigger routine and detects body or security drift under one signature (P27-p2a-3)', () => {
+    type Routine = { securityDefiner: boolean; bodySha256: string; config: string[] | null };
+    const census = JSON.parse(Buffer.from(expectedBytes).toString('utf8')) as {
+      method: string;
+      relations: { triggers: { function: string; routine: Routine }[] }[];
+    };
+    expect(census.method).toBe(
+      'pg17-normalized-node-tree-v1+policy-deparse-text+trigger-routine-v1',
+    );
+    const triggers = census.relations.flatMap((r) => r.triggers);
+    expect(triggers.length).toBeGreaterThan(0);
+    for (const t of triggers) {
+      expect(t.routine.bodySha256).toMatch(/^[a-f0-9]{64}$/);
+      expect(t.routine.config).not.toBeNull();
+    }
+    // The same function always carries the same routine facts.
+    const byFunction = new Map<string, string>();
+    for (const t of triggers) {
+      const facts = JSON.stringify(t.routine);
+      expect(byFunction.get(t.function) ?? facts).toBe(facts);
+      byFunction.set(t.function, facts);
+    }
+    const comparator = createFullRestoreStructureComparatorV1({
+      expectedBytes,
+      expectedSha256: EXPECTED_SHA256,
+    });
+    const index = census.relations.findIndex((r) => r.triggers.length > 0);
+    for (const [field, change] of [
+      ['bodySha256', (r: Routine) => (r.bodySha256 = 'f'.repeat(64))],
+      ['securityDefiner', (r: Routine) => (r.securityDefiner = !r.securityDefiner)],
+    ] as const) {
+      const actual = JSON.parse(Buffer.from(expectedBytes).toString('utf8')) as typeof census;
+      const routine = actual.relations[index]?.triggers[0]?.routine;
+      if (!routine) throw new Error('fixture');
+      change(routine);
+      const result = comparator.compare(actual as unknown as FullRestoreStructureV1);
+      expect(result.differences).toEqual([`/relations/${index}/triggers/0/routine/${field}`]);
+    }
+    // A census without routine binding (the previous method) is not accepted as expected input.
+    const old = JSON.parse(Buffer.from(expectedBytes).toString('utf8')) as typeof census;
+    old.method = 'pg17-normalized-node-tree-v1+policy-deparse-text';
+    const oldBytes = new Uint8Array(Buffer.from(JSON.stringify(old)));
+    expect(() =>
+      createFullRestoreStructureComparatorV1({
+        expectedBytes: oldBytes,
+        expectedSha256: createHash('sha256').update(oldBytes).digest('hex'),
+      }),
+    ).toThrow(FullRestoreStructureErrorV1);
   });
 });

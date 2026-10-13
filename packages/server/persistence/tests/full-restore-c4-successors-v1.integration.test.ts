@@ -35,7 +35,7 @@ const source = `c4_successor_source_${suffix}`;
 const target = `c4_successor_target_${suffix}`;
 const admin = new Pool({ connectionString: adminUrl });
 const created: string[] = [];
-const EXPECTED_SHA256 = '67892899ed73ff33bf8b03be615ff3c43b17752f65414ca270a88d313195cfae';
+const EXPECTED_SHA256 = '1d26190fb4c0ea29e111675b224d6cd73097df1c8ee622e63186de3b897cd949';
 const comparator = createFullRestoreStructureComparatorV1({
   expectedBytes: new Uint8Array(
     readFileSync(
@@ -155,6 +155,56 @@ describe('C4 independent expected structure (real PostgreSQL)', () => {
     // The undo leaves a dropped attribute behind, which is itself a structural difference.
     const afterDrop = comparator.compare(await capture());
     expect(afterDrop.differences.some((d) => d.endsWith('/droppedColumns'))).toBe(true);
+  }, 180000);
+
+  it('binds trigger routine body and security attributes, not only the signature (P27-p2a-3)', async () => {
+    const fn = 'public.activity_track_cleanup_on_delete()';
+    const routine = /^\/relations\/\d+\/triggers\/\d+\/routine\/(\w+)(?:\/\d+)?$/;
+    // The earlier drift test leaves a dropped attribute on the source; only new differences count.
+    const baseline = comparator.compare(await capture()).differences;
+    const fields = (differences: readonly string[]) =>
+      [
+        ...new Set(
+          differences
+            .filter((d) => !baseline.includes(d))
+            .map((d) => routine.exec(d)?.[1] ?? `other:${d}`),
+        ),
+      ].sort();
+    const original = await session(
+      source,
+      owner,
+      async (tx) =>
+        (await tx.query(`SELECT pg_catalog.pg_get_functiondef('${fn}'::regprocedure) AS d`))
+          .rows[0]?.['d'] as string,
+    );
+    expect(original).toContain('SECURITY DEFINER');
+    // Same signature, same attributes, body changed only by an inert comment.
+    const replaced = original.replace(/\$function\$\n/, '$function$\n-- c4 drift\n');
+    expect(replaced).not.toBe(original);
+    const body = await mutation(replaced, original);
+    expect(body.matched).toBe(false);
+    expect(fields(body.differences)).toEqual(['bodySha256']);
+
+    const invoker = await mutation(
+      `ALTER FUNCTION ${fn} SECURITY INVOKER`,
+      `ALTER FUNCTION ${fn} SECURITY DEFINER`,
+    );
+    expect(fields(invoker.differences)).toEqual(['securityDefiner']);
+
+    const searchPath = await mutation(
+      `ALTER FUNCTION ${fn} SET search_path = public, pg_catalog`,
+      `ALTER FUNCTION ${fn} SET search_path = pg_catalog`,
+    );
+    expect(fields(searchPath.differences)).toEqual(['config']);
+
+    const volatility = await mutation(
+      `ALTER FUNCTION ${fn} STABLE`,
+      `ALTER FUNCTION ${fn} VOLATILE`,
+    );
+    expect(fields(volatility.differences)).toEqual(['volatility']);
+
+    // Every undo restored the prior census exactly.
+    expect(comparator.compare(await capture()).differences).toEqual(baseline);
   }, 180000);
 
   it('requires a REPEATABLE READ READ ONLY transaction and every registered relation', async () => {
