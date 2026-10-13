@@ -11,6 +11,8 @@ const mocks = vi.hoisted(() => ({
   install: vi.fn(),
   baseline: vi.fn(),
   grant: vi.fn(),
+  worker: vi.fn(),
+  dispatcher: vi.fn(),
   writer: vi.fn(),
   preview: vi.fn(),
   results: vi.fn(),
@@ -65,6 +67,12 @@ vi.mock('@workout/server-persistence/current-runtime-installation-v11', () => ({
 }));
 vi.mock('@workout/server-persistence/current-runtime-grants-v11', () => ({
   grantCurrentRuntimeV11Profile: mocks.grant,
+  grantCurrentRuntimeV11GalleryWorker: mocks.worker,
+  grantCurrentRuntimeV11AiDispatcher: mocks.dispatcher,
+  currentRuntimeV11GalleryWorkerRole: 'workout_gallery_rendition_worker',
+  currentRuntimeV11AiDispatcherRole: 'workout_ai_dispatcher',
+  currentRuntimeV11WorkerRpcSignatures: ['public.synthetic_worker_rpc_v1(uuid)'],
+  currentRuntimeV11AiDispatcherTableGrants: [{ table: 'synthetic', privileges: ['SELECT'] }],
   currentRuntimeV11RpcSignatures: pinned.rpcSignatures,
 }));
 const currentRuntimeV11ExtensionMembers = pinned.extensionMembers;
@@ -145,6 +153,14 @@ beforeEach(() => {
     restore: 'not_verified',
   });
   mocks.grant.mockResolvedValue(granted());
+  mocks.worker.mockResolvedValue({
+    workerRole: 'workout_gallery_rendition_worker',
+    grantedFunctions: ['public.synthetic_worker_rpc_v1(uuid)'],
+  });
+  mocks.dispatcher.mockResolvedValue({
+    dispatcherRole: 'workout_ai_dispatcher',
+    grantedTables: [{ table: 'synthetic', privileges: ['SELECT'] }],
+  });
 });
 describe('explicit disposable profile27 composition', () => {
   it('installs27 then named core baseline then exact V11 grants, without activation', async () => {
@@ -161,6 +177,17 @@ describe('explicit disposable profile27 composition', () => {
     );
     expect(mocks.baseline.mock.invocationCallOrder[0]).toBeLessThan(
       mocks.grant.mock.invocationCallOrder[0] ?? 0,
+    );
+    expect(mocks.worker).toHaveBeenCalledWith(
+      input.ownerConnectionString,
+      'workout_gallery_rendition_worker',
+    );
+    expect(mocks.dispatcher).toHaveBeenCalledWith(
+      input.ownerConnectionString,
+      'workout_ai_dispatcher',
+    );
+    expect(mocks.grant.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.worker.mock.invocationCallOrder[0] ?? 0,
     );
     expect(result).toMatchObject({
       fixtureMode: 'installed-current-profile27',
@@ -297,5 +324,26 @@ describe('explicit disposable profile27 composition', () => {
     ])
       expect(factory).toHaveBeenCalledWith(database);
     expect(mocks.oldOperations).not.toHaveBeenCalled();
+  });
+});
+
+describe('profile27 fixed principals', () => {
+  it('rejects a worker grant result that differs from the pinned worker RPCs', async () => {
+    mocks.worker.mockResolvedValue({
+      workerRole: 'workout_gallery_rendition_worker',
+      grantedFunctions: [],
+    });
+    await expect(setupIdentityInstalledCurrentRuntimeV11(input)).rejects.toThrow(
+      'IDENTITY_CURRENT_PROFILE_INVALID',
+    );
+  });
+  it('rejects a dispatcher grant result for another role', async () => {
+    mocks.dispatcher.mockResolvedValue({
+      dispatcherRole: 'other_role',
+      grantedTables: [{ table: 'synthetic', privileges: ['SELECT'] }],
+    });
+    await expect(setupIdentityInstalledCurrentRuntimeV11(input)).rejects.toThrow(
+      'IDENTITY_CURRENT_PROFILE_INVALID',
+    );
   });
 });

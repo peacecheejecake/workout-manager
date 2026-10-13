@@ -408,6 +408,8 @@ const fixedRoles = [
   'workout_coaching_worker',
   'workout_garmin_worker',
   'workout_course_thumbnail_worker',
+  'workout_gallery_rendition_worker',
+  'workout_ai_dispatcher',
 ] as const;
 const createdExternalRoles: string[] = [];
 let createdExternalDatabase = false;
@@ -607,6 +609,11 @@ try {
   });
   try {
     await createFixtureRole(admin, 'workout_runtime');
+    // Profile27's expected catalog always contains both fixed principals.
+    if (installedCurrentRuntimeV11) {
+      await createFixtureRole(admin, 'workout_gallery_rendition_worker');
+      await createFixtureRole(admin, 'workout_ai_dispatcher');
+    }
     // Profile27 preserves PostgreSQL's database-owner schema anchor, matching
     // the normal configured catalog recipe instead of the legacy fixture owner.
     if (!installedCurrentRuntimeV11)

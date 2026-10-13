@@ -24,7 +24,11 @@ import { dropIsolatedDatabase } from './drop-isolated-database.js';
 
 // Metadata and synthetic sequence/account rows only; no health or personal data.
 const adminUrl = z.string().min(1).parse(process.env['TEST_DATABASE_ADMIN_URL']);
-const pgDumpPath = z.string().min(1).parse(process.env['TEST_PG_DUMP_PATH']);
+// pg_dump 17 client, as other restore suites resolve their PostgreSQL binaries by default.
+const pgDumpPath = z
+  .string()
+  .min(1)
+  .parse(process.env['TEST_PG_DUMP_PATH'] ?? '/opt/homebrew/opt/postgresql@17/bin/pg_dump');
 const suffix = randomUUID().replaceAll('-', '').slice(0, 10);
 const owner = `c4_successor_owner_${suffix}`;
 const source = `c4_successor_source_${suffix}`;

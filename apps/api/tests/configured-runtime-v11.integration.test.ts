@@ -10,7 +10,13 @@ import { afterAll, beforeAll, expect, it } from 'vitest';
 import { migrate } from '@workout/server-persistence/migrate';
 import { installCurrentRuntimeV11 } from '@workout/server-persistence/current-runtime-installation-v11';
 import { grantCurrentRuntimeAppBaselineV2 } from '@workout/server-persistence/current-runtime-app-grants-v2';
-import { grantCurrentRuntimeV11Profile } from '@workout/server-persistence/current-runtime-grants-v11';
+import {
+  grantCurrentRuntimeV11Profile,
+  grantCurrentRuntimeV11GalleryWorker,
+  grantCurrentRuntimeV11AiDispatcher,
+  currentRuntimeV11GalleryWorkerRole,
+  currentRuntimeV11AiDispatcherRole,
+} from '@workout/server-persistence/current-runtime-grants-v11';
 import { createDatabase, type Transaction } from '@workout/server-persistence/database';
 import { createIdentityRepository } from '@workout/server-persistence/identity';
 import { createConsentRepository } from '@workout/server-persistence/repositories';
@@ -172,6 +178,14 @@ beforeAll(async () => {
     await admin.query(`CREATE DATABASE "${e.database}" OWNER "${e.owner}"`);
     databases.push(e.database);
   }
+  // The profile27 catalog always contains both fixed principals (cluster roles).
+  for (const role of [currentRuntimeV11GalleryWorkerRole, currentRuntimeV11AiDispatcherRole]) {
+    if ((await admin.query('SELECT 1 FROM pg_roles WHERE rolname=$1', [role])).rowCount) continue;
+    await admin.query(
+      `CREATE ROLE "${role}" LOGIN PASSWORD 'isolated' NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE`,
+    );
+    roles.push(role);
+  }
   for (const e of environments) {
     await migrate(url(e, e.owner), 107);
     if (e.kind === 'named') {
@@ -195,6 +209,13 @@ beforeAll(async () => {
           .parse(await grantCurrentRuntimeV11Profile(url(e, e.owner), e.runtime)).grantedFunctions
           .length,
       ).toBeGreaterThan(42);
+    if (e.kind === 'named') {
+      await grantCurrentRuntimeV11GalleryWorker(
+        url(e, e.owner),
+        currentRuntimeV11GalleryWorkerRole,
+      );
+      await grantCurrentRuntimeV11AiDispatcher(url(e, e.owner), currentRuntimeV11AiDispatcherRole);
+    }
   }
 }, 180000);
 afterAll(async () => {
@@ -506,10 +527,16 @@ fixtureIt(
       expect(albums.json()).toMatchObject({ items: [] });
       const renditions = await get(`/gallery/media/${randomUUID()}/renditions`);
       expect(renditions.statusCode).toBe(404);
-      expect(renditions.json()).toEqual({ error: { code: 'MEDIA_NOT_FOUND' } });
+      expect(renditions.json()).toEqual({
+        error: { code: 'MEDIA_NOT_FOUND' },
+        requestId: expect.any(String),
+      });
       const job = await get(`/ai-execution-jobs/${randomUUID()}`);
       expect(job.statusCode).toBe(404);
-      expect(job.json()).toEqual({ error: { code: 'JOB_NOT_FOUND' } });
+      expect(job.json()).toEqual({
+        error: { code: 'JOB_NOT_FOUND' },
+        requestId: expect.any(String),
+      });
       // The pooled V40 export covers the gallery members; renditions are derived and are
       // never part of the personal export (U1).
       const exported = await app.inject({

@@ -120,12 +120,13 @@ it('runtime roster: V10 roots42 + 7 navigation + 2 rendition reads; worker5 and 
     ...galleryNavigationRuntimeReadTablesV1.map((table) => ({ table, privileges: ['SELECT'] })),
     { table: 'ai_execution_job', privileges: ['SELECT', 'INSERT'] },
     { table: 'ai_synthetic_evidence_attestation', privileges: ['SELECT'] },
+    { table: 'ai_execution_job_disposition', privileges: ['SELECT'] },
   ]);
   expect(currentRuntimeV11AiDispatcherTableGrants).toEqual([
     { table: 'ai_execution_job_disposition', privileges: ['SELECT', 'INSERT'] },
   ]);
 });
-it('runtime grant: locks, verify, principal safety and RPC pins precede exactly 51 EXECUTE + 6 table grants', async () => {
+it('runtime grant: locks, verify, principal safety and RPC pins precede exactly 51 EXECUTE + 7 table grants', async () => {
   const f = fixture();
   const result = await grantCurrentRuntimeV11ProfileIn(f.tx, 'workout_runtime');
   expect(result).toMatchObject({
@@ -141,7 +142,7 @@ it('runtime grant: locks, verify, principal safety and RPC pins precede exactly 
   ]);
   expect(verify).toHaveBeenCalledOnce();
   const grants = f.statements.filter((s) => s.startsWith('GRANT'));
-  expect(grants).toHaveLength(57);
+  expect(grants).toHaveLength(58);
   expect(grants.slice(51)).toEqual([
     'GRANT SELECT ON public.gallery_album TO "workout_runtime"',
     'GRANT SELECT ON public.gallery_media_album_membership TO "workout_runtime"',
@@ -149,12 +150,13 @@ it('runtime grant: locks, verify, principal safety and RPC pins precede exactly 
     'GRANT SELECT ON public.gallery_album_deletion TO "workout_runtime"',
     'GRANT SELECT,INSERT ON public.ai_execution_job TO "workout_runtime"',
     'GRANT SELECT ON public.ai_synthetic_evidence_attestation TO "workout_runtime"',
+    'GRANT SELECT ON public.ai_execution_job_disposition TO "workout_runtime"',
   ]);
   const firstGrant = f.statements.findIndex((s) => s.startsWith('GRANT'));
   expect(f.statements.findIndex((s) => s.includes('AS safe FROM'))).toBeLessThan(firstGrant);
   expect(f.statements.findIndex((s) => s.startsWith('SELECT i.ordinal'))).toBeLessThan(firstGrant);
   expect(f.statements.at(-1)).toContain('AS functions');
-  expect(grants.join('\n')).not.toContain('disposition');
+  expect(grants.join('\n')).not.toMatch(/INSERT[^\n]*ai_execution_job_disposition/);
   expect(grants.join('\n')).not.toMatch(/claim_gallery|settle_gallery|restore_processing/);
 });
 it('unsafe principal, RPC drift, failed post-grant check and overlapping names fail closed', async () => {

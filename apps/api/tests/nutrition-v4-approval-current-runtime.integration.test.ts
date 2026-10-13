@@ -10,7 +10,13 @@ import {
 import { createDatabase, type Database } from '@workout/server-persistence/database';
 import { migrate } from '@workout/server-persistence/migrate';
 import { installCurrentRuntimeV11 } from '@workout/server-persistence/current-runtime-installation-v11';
-import { grantCurrentRuntimeV11Profile } from '@workout/server-persistence/current-runtime-grants-v11';
+import {
+  grantCurrentRuntimeV11Profile,
+  grantCurrentRuntimeV11GalleryWorker,
+  grantCurrentRuntimeV11AiDispatcher,
+  currentRuntimeV11GalleryWorkerRole,
+  currentRuntimeV11AiDispatcherRole,
+} from '@workout/server-persistence/current-runtime-grants-v11';
 import { grantCurrentRuntimeAppBaselineV2 } from '@workout/server-persistence/current-runtime-app-grants-v2';
 import { createConsentRepository } from '@workout/server-persistence/repositories';
 import {
@@ -140,12 +146,29 @@ beforeAll(
         );
         createdRoles.push(role);
       }
+      // The profile27 catalog always contains both fixed principals (cluster roles).
+      for (const role of [currentRuntimeV11GalleryWorkerRole, currentRuntimeV11AiDispatcherRole]) {
+        if ((await admin.query('SELECT 1 FROM pg_roles WHERE rolname=$1', [role])).rowCount)
+          continue;
+        await admin.query(
+          `CREATE ROLE "${role}" LOGIN PASSWORD 'isolated' NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE`,
+        );
+        createdRoles.push(role);
+      }
       await admin.query(`CREATE DATABASE "${databaseName}" OWNER "${ownerRole}"`);
       createdDatabase = true;
       await migrate(connection(ownerRole), 107);
       await installCurrentRuntimeV11(connection(ownerRole));
       await grantCurrentRuntimeAppBaselineV2(connection(ownerRole), runtimeRole, 'core');
       await grantCurrentRuntimeV11Profile(connection(ownerRole), runtimeRole);
+      await grantCurrentRuntimeV11GalleryWorker(
+        connection(ownerRole),
+        currentRuntimeV11GalleryWorkerRole,
+      );
+      await grantCurrentRuntimeV11AiDispatcher(
+        connection(ownerRole),
+        currentRuntimeV11AiDispatcherRole,
+      );
       database = createDatabase({ connectionString: connection(runtimeRole) });
     }),
   180000,

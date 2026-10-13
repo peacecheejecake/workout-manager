@@ -3,8 +3,8 @@
   "buildProofVersion": 3,
   "sourceBuildRevision": 1,
   "currentFunctionalExecution": "not_executed",
-  "sourceManifestSha256": "37c5b1c978895a7eb80b6fd02cae31ed58b2533eef7ec36a6fbc70d77f0b573f",
-  "manifestFileSha256": "749a00c055531fb2e1234e739e908e14d0cc3d8e0a709b4d2690378bc4abc6fd",
+  "sourceManifestSha256": "ede47ce0cc61c98019048b7f6c8733a5453c663ea4c7ad1596f492659e25857b",
+  "manifestFileSha256": "103ff2e654bf7da15b7b4065f208a739dfd8fcc93f1ac7b8867e020688fec93a",
   "manifestPath": "manifest.json",
   "profileVersion": 11,
   "runtimeStep": 27,
@@ -1909,12 +1909,12 @@
     },
     {
       "path": "scripts/identity-e2e.mts",
-      "sha256": "be480f278852fcb1a6d1fff39aea9eb2f1665d994f560a2567b8fdc51a153fa5",
+      "sha256": "4b54c4deebba2fbabd4c683a2cb8af89479e606d4975ddc4491036ab50a40ca6",
       "role": "dependency"
     },
     {
       "path": "scripts/identity-installed-current-runtime-v11.mts",
-      "sha256": "3862c53975943cd7304f983933f45e80e74982465abd7e38264bec91eb24a333",
+      "sha256": "3a9f5082bef74e65dd243661edc90a3950943f538a53ddb71b886d7e51ff7983",
       "role": "dependency"
     }
   ],

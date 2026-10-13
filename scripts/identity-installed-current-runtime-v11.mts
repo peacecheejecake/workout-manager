@@ -8,7 +8,13 @@ import {
 } from '@workout/server-persistence/current-runtime-installation-v11';
 import {
   grantCurrentRuntimeV11Profile,
+  grantCurrentRuntimeV11GalleryWorker,
+  grantCurrentRuntimeV11AiDispatcher,
   currentRuntimeV11RpcSignatures,
+  currentRuntimeV11WorkerRpcSignatures,
+  currentRuntimeV11AiDispatcherTableGrants,
+  currentRuntimeV11GalleryWorkerRole,
+  currentRuntimeV11AiDispatcherRole,
 } from '@workout/server-persistence/current-runtime-grants-v11';
 import {
   grantCurrentRuntimeAppBaselineV2,
@@ -113,7 +119,8 @@ function profile(value: unknown) {
   return parsed.data;
 }
 /** Fixed named production-baseline precursor only; no analysis INSERT,
- * worker membership (including the gallery rendition worker) or broad
+ * worker membership (the fixed gallery worker and AI dispatcher get only their own
+ * exact grants) or broad
  * snapshot/history UPDATE/DELETE supplements.
  * Baseline grants use separate existing transactions. Failure is not atomic
  * across the whole setup; the disposable caller must tear down the database.
@@ -178,6 +185,41 @@ export async function setupIdentityInstalledCurrentRuntimeV11(raw: unknown) {
     granted.processingAuthority !== 'none' ||
     granted.grantedFunctions.length !== currentRuntimeV11RpcSignatures.length ||
     JSON.stringify(granted.grantedFunctions) !== JSON.stringify(currentRuntimeV11RpcSignatures)
+  )
+    fail('IDENTITY_CURRENT_PROFILE_INVALID');
+  // The profile27 catalog always contains both fixed principals with their exact grants;
+  // the harness creates the roles, and the grant helpers verify the resulting ACLs.
+  const worker: unknown = await grantCurrentRuntimeV11GalleryWorker(
+    input.ownerConnectionString,
+    currentRuntimeV11GalleryWorkerRole,
+  );
+  const dispatcher: unknown = await grantCurrentRuntimeV11AiDispatcher(
+    input.ownerConnectionString,
+    currentRuntimeV11AiDispatcherRole,
+  );
+  const workerParsed = observedBound
+    .pipe(
+      z.looseObject({
+        workerRole: z.literal(currentRuntimeV11GalleryWorkerRole),
+        grantedFunctions: z.array(z.string()),
+      }),
+    )
+    .safeParse(worker);
+  const dispatcherParsed = observedBound
+    .pipe(
+      z.looseObject({
+        dispatcherRole: z.literal(currentRuntimeV11AiDispatcherRole),
+        grantedTables: z.array(z.unknown()),
+      }),
+    )
+    .safeParse(dispatcher);
+  if (
+    !workerParsed.success ||
+    !dispatcherParsed.success ||
+    JSON.stringify(workerParsed.data.grantedFunctions) !==
+      JSON.stringify(currentRuntimeV11WorkerRpcSignatures) ||
+    JSON.stringify(dispatcherParsed.data.grantedTables) !==
+      JSON.stringify(currentRuntimeV11AiDispatcherTableGrants)
   )
     fail('IDENTITY_CURRENT_PROFILE_INVALID');
   return Object.freeze({

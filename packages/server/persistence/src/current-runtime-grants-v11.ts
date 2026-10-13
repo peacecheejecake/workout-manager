@@ -27,7 +27,7 @@ import {
 // Profile27 (physical V11, source tip 148). Three disjoint principals:
 //  - the API runtime role: V10's 42 roots + 7 gallery navigation RPCs + 2 rendition read RPCs,
 //    SELECT on the 4 navigation read tables, SELECT/INSERT on ai_execution_job and SELECT on
-//    ai_synthetic_evidence_attestation. Restore admission stays read_/require_/lock_ only (the
+//    ai_synthetic_evidence_attestation and ai_execution_job_disposition. Restore admission stays read_/require_/lock_ only (the
 //    migrate.ts runtime grants; 147 replaces read_/require_ in place and keeps their ACL);
 //  - the gallery rendition worker (fixed name): the 5 worker RPCs only, no table privilege;
 //  - the M2-05b AI dispatcher (fixed name): SELECT/INSERT on ai_execution_job_disposition.
@@ -45,6 +45,11 @@ export const currentRuntimeV11RuntimeTableGrants: readonly TableGrant[] = Object
   }),
   Object.freeze({
     table: 'ai_synthetic_evidence_attestation',
+    privileges: Object.freeze(['SELECT'] as const),
+  }),
+  // Job reads report the restore-cancelled disposition (U5); only the dispatcher writes it.
+  Object.freeze({
+    table: 'ai_execution_job_disposition',
     privileges: Object.freeze(['SELECT'] as const),
   }),
 ]);
@@ -106,7 +111,13 @@ if (
       currentRuntimeV11RpcSignatures.includes(s) ||
       (currentRuntimeV11WorkerRpcSignatures as readonly string[]).includes(s),
   ) ||
-  [...currentRuntimeV11RuntimeTableGrants, ...currentRuntimeV11AiDispatcherTableGrants].some(
+  // Every grant stays within its table's delegable set; the dispatcher holds the whole set.
+  currentRuntimeV11RuntimeTableGrants.some(
+    (g) =>
+      g.privileges.length === 0 ||
+      g.privileges.some((p) => !(currentRuntimeV11TableDelegations[g.table] ?? []).includes(p)),
+  ) ||
+  currentRuntimeV11AiDispatcherTableGrants.some(
     (g) =>
       JSON.stringify(g.privileges) !==
       JSON.stringify(currentRuntimeV11TableDelegations[g.table] ?? null),

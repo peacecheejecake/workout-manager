@@ -188,6 +188,7 @@ it('runtime grant gives exactly 51 RPCs and 6 table privileges; restore admissio
   expect(held.functions).toEqual([...currentRuntimeV11RpcSignatures].sort());
   expect(held.tables).toEqual([
     'ai_execution_job:INSERT,SELECT',
+    'ai_execution_job_disposition:SELECT',
     'ai_synthetic_evidence_attestation:SELECT',
     'gallery_album:SELECT',
     'gallery_album_deletion:SELECT',
@@ -313,7 +314,7 @@ it('overlapping or unsafe principals are refused and leave no grant behind', asy
       'CURRENT_RUNTIME_V11_UNSAFE_ROLE',
     ],
     [
-      'runtime holding dispositions',
+      'runtime writing dispositions',
       `GRANT INSERT ON public.ai_execution_job_disposition TO "${otherRole}"`,
       (tx) => grantCurrentRuntimeV11ProfileIn(tx, otherRole),
       'CURRENT_RUNTIME_V11_UNSAFE_ROLE',
