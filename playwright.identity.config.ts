@@ -193,6 +193,8 @@ export default defineConfig({
       // the internal Vite preview keeps its public basemap deny policy.
       // The preview builds its own run-owned dist so the baked profile always matches.
       timeout: 120000,
+      // SIGTERM lets the preview close and remove that run-owned dist before the runner exits.
+      gracefulShutdown: { signal: 'SIGTERM', timeout: 30000 },
       env: {
         ...shellProfile.mobile,
         API_ORIGIN: identityApiOrigin,

@@ -1,4 +1,5 @@
 /** Identity-only frontend host. Vite preview keeps its public basemap deny policy. */
+import { rmSync } from 'node:fs';
 import { access, mkdtemp, rm } from 'node:fs/promises';
 import { createServer, request, type IncomingHttpHeaders, Server } from 'node:http';
 import { tmpdir } from 'node:os';
@@ -352,7 +353,14 @@ export async function runIdentityMobilePreview(): Promise<void> {
     webPort: identityWebPort,
     startPreview: async () => {
       const outDir = await buildIdentityMobileDist(directory, profile, build);
-      const removeDist = () => rm(outDir, { recursive: true, force: true });
+      // Vite's preview handles SIGTERM itself and calls process.exit() after closing, which
+      // would cut the async removal short; the exit hook removes the dist synchronously.
+      const removeOnExit = () => rmSync(outDir, { recursive: true, force: true });
+      process.once('exit', removeOnExit);
+      const removeDist = () =>
+        rm(outDir, { recursive: true, force: true }).finally(() =>
+          process.off('exit', removeOnExit),
+        );
       try {
         const owned = await preview({
           root: directory,
