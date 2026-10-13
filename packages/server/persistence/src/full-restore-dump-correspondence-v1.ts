@@ -217,20 +217,31 @@ export function compareDumpCorrespondenceV1(
 }
 
 /**
- * Runs pg_dump against an exported snapshot. Connection parameters go through
- * the environment (no password argument); the caller's exporting transaction
- * must stay open until this resolves.
+ * Runs pg_dump against an exported snapshot. Connection parameters, including an
+ * optional password for a password-authenticated (e.g. scram-sha-256) server, go
+ * only through the child's environment, never its arguments; the caller's
+ * exporting transaction must stay open until this resolves.
  */
 export async function runSnapshotDataDumpV1(input: {
   readonly pgDumpPath: string;
   readonly snapshotId: string;
-  readonly connection: Readonly<{ host: string; port?: number; user: string; database: string }>;
+  readonly connection: Readonly<{
+    host: string;
+    port?: number;
+    user: string;
+    database: string;
+    password?: string;
+  }>;
   readonly maxBytes: number;
   readonly timeoutMs: number;
 }): Promise<Uint8Array> {
   if (
     !/^\/[A-Za-z0-9._/@-]+\/pg_dump$/.test(input.pgDumpPath) ||
-    !/^[0-9A-F]{8}-[0-9A-F]{8}-[1-9][0-9]{0,9}$/.test(input.snapshotId)
+    !/^[0-9A-F]{8}-[0-9A-F]{8}-[1-9][0-9]{0,9}$/.test(input.snapshotId) ||
+    (input.connection.password !== undefined &&
+      (typeof input.connection.password !== 'string' ||
+        input.connection.password.length > 1024 ||
+        input.connection.password.includes('\0')))
   )
     fail('DUMP_INPUT_INVALID');
   const env: Record<string, string> = {
@@ -241,6 +252,7 @@ export async function runSnapshotDataDumpV1(input: {
     PGAPPNAME: 'wm-full-restore-dump-correspondence',
   };
   if (input.connection.port !== undefined) env['PGPORT'] = String(input.connection.port);
+  if (input.connection.password !== undefined) env['PGPASSWORD'] = input.connection.password;
   const child = spawn(
     input.pgDumpPath,
     [

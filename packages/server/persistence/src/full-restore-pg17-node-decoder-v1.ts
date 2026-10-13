@@ -351,7 +351,11 @@ export function decodePg17NodeTreeV1(input: unknown): DecodedPg17NodeTreeV1 {
         const octets: number[] = [];
         while (peek() !== ']') {
           if (octets.length >= MAX_DATUM) fail('NODE_BOUND_EXCEEDED');
-          octets.push(integer(-128, 255));
+          // outDatum prints each byte as `(int) (char) byte`; `char` is signed on some
+          // hosts (macOS arm64, x86-64) and unsigned on others (Linux aarch64), so the
+          // same byte arrives as -41 or 215. Normalize to the unsigned octet 0..255.
+          const octet = integer(-128, 255);
+          octets.push(octet < 0 ? octet + 256 : octet);
         }
         need(']');
         return Object.freeze({ isNull: false, length, octets: Object.freeze(octets) });

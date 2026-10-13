@@ -35,7 +35,7 @@ const source = `c4_successor_source_${suffix}`;
 const target = `c4_successor_target_${suffix}`;
 const admin = new Pool({ connectionString: adminUrl });
 const created: string[] = [];
-const EXPECTED_SHA256 = 'd4fe6ab8595fc8dcd071097cf1a3962738b4fc4af241a4b1cc644c92371a32b9';
+const EXPECTED_SHA256 = '67892899ed73ff33bf8b03be615ff3c43b17752f65414ca270a88d313195cfae';
 const comparator = createFullRestoreStructureComparatorV1({
   expectedBytes: new Uint8Array(
     readFileSync(
@@ -250,6 +250,8 @@ describe('pg_dump snapshot correspondence (real PostgreSQL)', () => {
       host,
       ...(port ? { port: Number(port) } : {}),
       user: decodeURIComponent(value.username),
+      // Password-authenticated servers (the pinned image over TCP) need it; env only.
+      ...(value.password ? { password: decodeURIComponent(value.password) } : {}),
       database: target,
     };
   };

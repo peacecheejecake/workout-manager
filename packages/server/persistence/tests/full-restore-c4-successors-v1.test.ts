@@ -246,6 +246,22 @@ describe('PG17 typed node decoder and catalog binding', () => {
     expect(code).toBe('NODE_TAG_UNSUPPORTED');
   });
 
+  it('decodes a datum byte identically whether the server printed char signed or unsigned', () => {
+    // 1 day as an interval: byte 0xD7 is `-41` from macOS arm64 and `215` from Linux aarch64.
+    const interval = (b: string) =>
+      `{CONST :consttype 1186 :consttypmod -1 :constcollid 0 :constlen 16 :constbyval false :constisnull false :location -1 :constvalue 16 [ 0 96 ${b} 29 20 0 0 0 0 0 0 0 0 0 0 0 ]}`;
+    const signed = decodePg17NodeTreeV1(interval('-41'));
+    const unsigned = decodePg17NodeTreeV1(interval('215'));
+    expect(signed.root).toEqual(unsigned.root);
+    expect((unsigned.root as { fields: Record<string, unknown> }).fields['constvalue']).toEqual({
+      isNull: false,
+      length: 16,
+      octets: [0, 96, 215, 29, 20, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    });
+    expect(decodeCode(interval('-129'))).toBe('NODE_VALUE_UNSUPPORTED');
+    expect(decodeCode(interval('256'))).toBe('NODE_VALUE_UNSUPPORTED');
+  });
+
   it('rejects unknown tags, fields, order, enums, bounds and trailing input', () => {
     expect(decodeCode('{SUBLINK :subLinkType 0}')).toBe('NODE_TAG_UNSUPPORTED');
     expect(decodeCode(CHECK_TREE.replace(':useOr true', ':useOr maybe'))).toBe(
@@ -504,7 +520,7 @@ describe('committed expected structure census', () => {
       new URL('../src/full-restore-expected-structure-v1/expected-structure.json', import.meta.url),
     ),
   );
-  const EXPECTED_SHA256 = 'd4fe6ab8595fc8dcd071097cf1a3962738b4fc4af241a4b1cc644c92371a32b9';
+  const EXPECTED_SHA256 = '67892899ed73ff33bf8b03be615ff3c43b17752f65414ca270a88d313195cfae';
   type Census = FullRestoreStructureV1 & {
     relations: {
       schema: string;
