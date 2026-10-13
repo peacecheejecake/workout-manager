@@ -275,7 +275,7 @@ it('overlapping or unsafe principals are refused and leave no grant behind', asy
       'runtime member of worker',
       `GRANT "${worker}" TO "${otherRole}"`,
       (tx) => grantCurrentRuntimeV11ProfileIn(tx, otherRole),
-      'CURRENT_RUNTIME_V11_UNSAFE_ROLE',
+      /CURRENT_RUNTIME_V11_(UNSAFE_ROLE|FUNCTION_DRIFT)/,
     ],
     [
       'worker member of runtime',
@@ -287,19 +287,19 @@ it('overlapping or unsafe principals are refused and leave no grant behind', asy
       'worker with a member',
       `GRANT "${worker}" TO "${otherRole}"`,
       (tx) => grantCurrentRuntimeV11GalleryWorkerIn(tx, worker),
-      'CURRENT_RUNTIME_V11_UNSAFE_ROLE',
+      /CURRENT_RUNTIME_V11_(UNSAFE_ROLE|FUNCTION_DRIFT)/,
     ],
     [
       'worker holding a runtime RPC',
       `GRANT EXECUTE ON FUNCTION public.create_gallery_album_v1(jsonb,text) TO "${worker}"`,
       (tx) => grantCurrentRuntimeV11GalleryWorkerIn(tx, worker),
-      'CURRENT_RUNTIME_V11_UNSAFE_ROLE',
+      /CURRENT_RUNTIME_V11_(UNSAFE_ROLE|FUNCTION_DRIFT)/,
     ],
     [
       'worker holding a navigation read',
       `GRANT SELECT ON public.gallery_album TO "${worker}"`,
       (tx) => grantCurrentRuntimeV11GalleryWorkerIn(tx, worker),
-      'CURRENT_RUNTIME_V11_UNSAFE_ROLE',
+      /CURRENT_RUNTIME_V11_(UNSAFE_ROLE|STRUCTURE_DRIFT)/,
     ],
     [
       'worker holding a parent table privilege',
@@ -311,13 +311,13 @@ it('overlapping or unsafe principals are refused and leave no grant behind', asy
       'runtime holding a worker RPC',
       `GRANT EXECUTE ON FUNCTION public.claim_gallery_rendition_v1(uuid,integer) TO "${otherRole}"`,
       (tx) => grantCurrentRuntimeV11ProfileIn(tx, otherRole),
-      'CURRENT_RUNTIME_V11_UNSAFE_ROLE',
+      /CURRENT_RUNTIME_V11_(UNSAFE_ROLE|FUNCTION_DRIFT)/,
     ],
     [
       'runtime writing dispositions',
       `GRANT INSERT ON public.ai_execution_job_disposition TO "${otherRole}"`,
       (tx) => grantCurrentRuntimeV11ProfileIn(tx, otherRole),
-      'CURRENT_RUNTIME_V11_UNSAFE_ROLE',
+      /CURRENT_RUNTIME_V11_(UNSAFE_ROLE|STRUCTURE_DRIFT)/,
     ],
     [
       'runtime writing attestations',
@@ -335,13 +335,13 @@ it('overlapping or unsafe principals are refused and leave no grant behind', asy
       'dispatcher holding a worker RPC',
       `GRANT EXECUTE ON FUNCTION public.settle_gallery_rendition_v1(text,uuid,uuid,jsonb) TO "${dispatcher}"`,
       (tx) => grantCurrentRuntimeV11AiDispatcherIn(tx, dispatcher),
-      'CURRENT_RUNTIME_V11_UNSAFE_ROLE',
+      /CURRENT_RUNTIME_V11_(UNSAFE_ROLE|FUNCTION_DRIFT)/,
     ],
     [
       'dispatcher holding jobs',
       `GRANT SELECT ON public.ai_execution_job TO "${dispatcher}"`,
       (tx) => grantCurrentRuntimeV11AiDispatcherIn(tx, dispatcher),
-      'CURRENT_RUNTIME_V11_UNSAFE_ROLE',
+      /CURRENT_RUNTIME_V11_(UNSAFE_ROLE|STRUCTURE_DRIFT)/,
     ],
     [
       'runtime named as the worker',
@@ -392,6 +392,73 @@ it('overlapping or unsafe principals are refused and leave no grant behind', asy
   } finally {
     await admin.query(`ALTER ROLE "${otherRole}" NOCREATEDB`);
   }
+}, 300000);
+it('a third role holding a worker RPC or a dispatcher-only privilege fails verification and every grant', async () => {
+  // P27-p1-2: the owner mistakenly delegates a fixed principal's privilege to another role.
+  // Installation verification (run first by every grant) must refuse it before any grant.
+  const injected: [string, string, string][] = [
+    [
+      'third role claims rendition jobs',
+      `GRANT EXECUTE ON FUNCTION public.claim_gallery_rendition_v1(uuid,integer) TO "${otherRole}"`,
+      'CURRENT_RUNTIME_V11_FUNCTION_DRIFT',
+    ],
+    [
+      'runtime role claims rendition jobs',
+      `GRANT EXECUTE ON FUNCTION public.claim_gallery_rendition_v1(uuid,integer) TO "${runtimeRole}"`,
+      'CURRENT_RUNTIME_V11_FUNCTION_DRIFT',
+    ],
+    [
+      'worker granted a runtime RPC',
+      `GRANT EXECUTE ON FUNCTION public.create_gallery_album_v1(jsonb,text) TO "${worker}"`,
+      'CURRENT_RUNTIME_V11_FUNCTION_DRIFT',
+    ],
+    [
+      'third role writes dispositions',
+      `GRANT INSERT ON public.ai_execution_job_disposition TO "${otherRole}"`,
+      'CURRENT_RUNTIME_V11_STRUCTURE_DRIFT',
+    ],
+    [
+      'worker reads a navigation table',
+      `GRANT SELECT ON public.gallery_album TO "${worker}"`,
+      'CURRENT_RUNTIME_V11_STRUCTURE_DRIFT',
+    ],
+    [
+      'dispatcher reads jobs',
+      `GRANT SELECT ON public.ai_execution_job TO "${dispatcher}"`,
+      'CURRENT_RUNTIME_V11_STRUCTURE_DRIFT',
+    ],
+  ];
+  for (const [label, setup, code] of injected)
+    await rollback(fresh, async (tx) => {
+      await tx.query(setup);
+      await rejected(tx, () => verifyCurrentRuntimeV11InstalledIn(tx), code);
+      await rejected(tx, () => grantCurrentRuntimeV11ProfileIn(tx, runtimeRole), code);
+      await rejected(tx, () => grantCurrentRuntimeV11GalleryWorkerIn(tx, worker), code);
+      await rejected(tx, () => grantCurrentRuntimeV11AiDispatcherIn(tx, dispatcher), code);
+      expect([label, (await privileges(fresh, otherRole)).functions]).toEqual([label, []]);
+    });
+  // A member of the granted worker (or dispatcher) inherits its tenant-wide reads.
+  await grantCurrentRuntimeV11GalleryWorker(url(fresh), worker);
+  await grantCurrentRuntimeV11AiDispatcher(url(fresh), dispatcher);
+  for (const principal of [worker, dispatcher]) {
+    await admin.query(`GRANT "${principal}" TO "${otherRole}"`);
+    try {
+      await rollback(fresh, async (tx) => {
+        await rejected(
+          tx,
+          () => verifyCurrentRuntimeV11InstalledIn(tx),
+          /CURRENT_RUNTIME_V11_(FUNCTION|STRUCTURE)_DRIFT/,
+        );
+      });
+    } finally {
+      await admin.query(`REVOKE "${principal}" FROM "${otherRole}"`);
+    }
+  }
+  await rollback(fresh, async (tx) => {
+    await expect(verifyCurrentRuntimeV11InstalledIn(tx)).resolves.toMatchObject({
+      runtimeStep: 27,
+    });
+  });
 }, 300000);
 it('committed profile26 runtime upgrades: V10 grant refuses profile27, V11 grant succeeds', async () => {
   await installCurrentRuntimeV11(url(upgrade));

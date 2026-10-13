@@ -13,7 +13,7 @@ import type { CurrentRuntimeInstallationTransaction } from './current-runtime-in
 export const galleryNavigationMemberV1 = Object.freeze({
   sourceDdlId: 143,
   filename: '143_gallery_albums.sql',
-  sha256: '8e1844a4032f35ef41657a7036e4367da0f908c42922d8766bba26a2c723b08a',
+  sha256: '2beb8a2c1872a4ade51cbc2ddec4a8d204b8213b249a5af6756e302c6cc99ab2',
 });
 export const galleryNavigationTablesV1 = Object.freeze([
   'gallery_album',
@@ -171,7 +171,7 @@ export const galleryNavigationFunctionPinsV1 = Object.freeze(
       [
         'public.set_gallery_media_navigation_v1(jsonb,text)',
         true,
-        '636f4aac10333f04a11f4df22a6912e748cf4763e6882d0e483779ff1f0976e7',
+        '5104a83de8fa5ebff1d6c91b1cbcfffa482a3731d05298eaade92f04c0b3704a',
       ],
       [
         'public.remove_gallery_navigation_deleted_media_v1(uuid,integer,timestamptz)',

@@ -18,12 +18,14 @@ import { createConsentRepository } from '../src/repositories.js';
 import { createAiSettingsRepository } from '../src/ai-settings.js';
 import { createCoachingRunRepository } from '../src/coaching-runs.js';
 import { createOperationsRepository } from '../src/operations.js';
+import { digestExecutionCatalog } from '@workout/server-coaching/coaching-execution-selection';
 import { prepareCoachingExecutionIn } from '../src/coaching-execution-preparation.js';
 import {
   AiExecutionJobError,
   createAiExecutionJobRepository,
   cancelRestoredAiExecutionJobIn,
   classifyAttestedSyntheticEvidenceIn,
+  digestFrozenExecutionDraft,
   exportAiExecutionJobsIn,
   readAiExecutionJobIn,
 } from '../src/ai-execution-jobs.js';
@@ -326,7 +328,16 @@ async function manualJob(
     { policy, registry, classifyEvidenceIn: async () => 'health' },
   );
   if (prepared.kind !== 'prepared') throw new Error(`unexpected ${prepared.code}`);
-  const { draft, selectionDigest } = prepared.frozen;
+  const { draft } = prepared.frozen;
+  // A forged catalog digest with a selection digest recomputed over it: internally
+  // consistent, so only the catalog binding can refuse it.
+  const forgedCatalogDigest = overrides['forgeCatalogDigest'];
+  const catalogDigest =
+    typeof forgedCatalogDigest === 'string' ? forgedCatalogDigest : draft.catalogDigest;
+  const selectionDigest =
+    typeof forgedCatalogDigest === 'string'
+      ? digestFrozenExecutionDraft({ ...draft, catalogDigest })
+      : prepared.frozen.selectionDigest;
   const runId = existingRunId ?? randomUUID();
   const source = { kind: 'provider', providerId: sol.providerId, modelId: sol.modelId };
   if (!existingRunId)
@@ -351,7 +362,7 @@ async function manualJob(
     payload_classification: draft.payloadClassification,
     settings_revision: draft.settingsRevision,
     catalog_revision: draft.catalogRevision,
-    catalog_digest: draft.catalogDigest,
+    catalog_digest: catalogDigest,
     policy_version: draft.policyVersion,
     disclosure_version: draft.disclosureVersion,
     recipient_id: draft.recipientId,
@@ -371,7 +382,11 @@ async function manualJob(
     receipt_key: `ai-execution:run:v1:${'a'.repeat(64)}`,
     request_digest: 'b'.repeat(64),
     athlete_id: tx.athleteId,
-    ...Object.fromEntries(Object.entries(overrides).filter(([key]) => key !== 'runSource')),
+    ...Object.fromEntries(
+      Object.entries(overrides).filter(
+        ([key]) => key !== 'runSource' && key !== 'forgeCatalogDigest',
+      ),
+    ),
   };
   const columns = Object.keys(row);
   await tx.query(
@@ -386,6 +401,16 @@ it('profile27 (installation v11): verification holds, FORCE RLS, no PUBLIC and r
   const client = await owner.connect();
   try {
     await client.query('BEGIN');
+    // The test-local dispatcher-only INSERT on the runtime role is itself refused (P27-p1-2);
+    // without it (rolled back) the committed profile27 verifies.
+    await client.query('SAVEPOINT local_grant');
+    await expect(verifyCurrentRuntimeV11InstalledIn(client as PoolClient)).rejects.toThrow(
+      'CURRENT_RUNTIME_V11_STRUCTURE_DRIFT',
+    );
+    await client.query('ROLLBACK TO SAVEPOINT local_grant');
+    await client.query(
+      `REVOKE INSERT ON public.ai_execution_job_disposition FROM "${runtimeRole}"`,
+    );
     const verified = await verifyCurrentRuntimeV11InstalledIn(client as PoolClient);
     expect(verified).toMatchObject({ profileVersion: 11, runtimeStep: 27, sourceDdlTip: 148 });
     await client.query('ROLLBACK');
@@ -742,6 +767,55 @@ it('SQL refuses model substitution and forged selection, consent or source facts
   expect(await facts(s.athleteId)).toMatchObject({ jobs: 0, runs: 0 });
 });
 
+it('SQL binds catalog_digest to the immutable live catalog definition (forged digest + recomputed selection digest)', async () => {
+  // P27-p1-1: with an exact receipt and unclaimed outbox event the forged job would commit
+  // unless the guard derives the canonical catalog digest from the definition itself.
+  const s = await scenario();
+  const forged = (catalogDigest: string) =>
+    database.tenant(s.athleteId, async (tx) => {
+      const made = await manualJob(tx, s, { forgeCatalogDigest: catalogDigest });
+      expect(made.row['catalog_digest']).toBe(catalogDigest);
+      await tx.query(
+        'INSERT INTO command_receipt(athlete_id,idempotency_key,request,result) VALUES($1,$2,$3::jsonb,$4::jsonb)',
+        [
+          s.athleteId,
+          made.row['receipt_key'],
+          JSON.stringify({ version: 1, sha256: 'b'.repeat(64) }),
+          JSON.stringify({
+            schemaVersion: 1,
+            commandVersion: 1,
+            jobId: made.jobId,
+            runId: made.runId,
+            selectionDigest: made.row['selection_digest'],
+          }),
+        ],
+      );
+      await tx.query(
+        `INSERT INTO outbox(athlete_id,id,idempotency_key,topic,payload)
+         VALUES($1,$2,$3,'coaching.execution_job_queued',$4::jsonb)`,
+        [
+          s.athleteId,
+          randomUUID(),
+          made.row['receipt_key'],
+          JSON.stringify({ schemaVersion: 1, jobId: made.jobId, runId: made.runId }),
+        ],
+      );
+      return made;
+    });
+  for (const digest of ['f'.repeat(64), '0'.repeat(64)])
+    await expect(forged(digest)).rejects.toThrow('AI_EXECUTION_JOB_CATALOG_DIGEST_INVALID');
+  expect(await facts(s.athleteId)).toMatchObject({ jobs: 0, runs: 0, receipts: 0, queued: 0 });
+  // The genuine canonical digest (TS digestExecutionCatalog) is the one SQL derives.
+  const job = await repository.create(s.athleteId, s.thread.id, s.command());
+  expect(
+    (
+      await inspector.query(
+        'SELECT catalog_digest FROM ai_execution_job WHERE athlete_id=$1 AND job_id=$2',
+        [s.athleteId, job.jobId],
+      )
+    ).rows,
+  ).toEqual([{ catalog_digest: digestExecutionCatalog(catalog) }]);
+});
 it('commit fails unless the exact receipt and unclaimed outbox event exist in the same transaction', async () => {
   const s = await scenario();
   await expect(database.tenant(s.athleteId, (tx) => manualJob(tx, s))).rejects.toThrow(

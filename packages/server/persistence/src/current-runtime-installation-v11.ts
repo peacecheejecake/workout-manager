@@ -43,6 +43,7 @@ import {
   galleryRenditionTablesV1,
   galleryRenditionApiFunctionsV1,
   galleryRenditionWorkerFunctionsV1,
+  galleryRenditionWorkerRoleV1,
 } from './gallery-rendition-pins-v1.js';
 
 // Profile27. Physical11 = parent V10 (physical33: V9 parent32 + 146) plus five extension
@@ -94,7 +95,7 @@ export const currentRuntimeV11ExtensionMembers = Object.freeze([
     extensionStep: 5,
     sourceDdlId: 148,
     filename: '148_ai_execution_job_store.sql',
-    sha256: 'cb835a2620a5727ce67529c29c743ab5af814f352ce7606cc97dc46893b40bf0',
+    sha256: 'aefbff30f62084084c22b692647d2543119d6e299f95a793c2bb9b2af75c43ca',
   }),
 ]);
 /** The 13 tables 143..148 add, all in public, all FORCE ROW LEVEL SECURITY. */
@@ -118,6 +119,19 @@ export const currentRuntimeV11TableDelegations = Object.freeze({
   ai_execution_job: ['SELECT', 'INSERT'],
   ai_synthetic_evidence_attestation: ['SELECT'],
   ai_execution_job_disposition: ['SELECT', 'INSERT'],
+} as Readonly<Record<string, readonly ('SELECT' | 'INSERT')[]>>);
+/** Fixed principal names. Non-owner EXECUTE on a worker RPC may be held only by the worker
+ * role and INSERT on ai_execution_job_disposition only by the dispatcher; neither principal
+ * may hold anything else on a V11 object, and a principal holding its privileges must have
+ * no members (no inherited path to tenant-wide rendition jobs or dispositions). */
+export const currentRuntimeV11GalleryWorkerRoleName = galleryRenditionWorkerRoleV1;
+export const currentRuntimeV11AiDispatcherRoleName = 'workout_ai_dispatcher';
+/** Table privileges only the dispatcher may hold, and everything the dispatcher may hold. */
+export const currentRuntimeV11DispatcherOnlyTablePrivileges = Object.freeze({
+  ai_execution_job_disposition: Object.freeze(['INSERT'] as const),
+} as Readonly<Record<string, readonly ('SELECT' | 'INSERT')[]>>);
+export const currentRuntimeV11DispatcherTableAllowance = Object.freeze({
+  ai_execution_job_disposition: Object.freeze(['SELECT', 'INSERT'] as const),
 } as Readonly<Record<string, readonly ('SELECT' | 'INSERT')[]>>);
 export type CurrentRuntimeV11FunctionAccess = 'owner' | 'runtime' | 'worker';
 export interface CurrentRuntimeV11FunctionPin {
@@ -505,7 +519,7 @@ const functionPinRows: readonly (readonly [
     true,
     'v',
     'runtime',
-    '636f4aac10333f04a11f4df22a6912e748cf4763e6882d0e483779ff1f0976e7',
+    '5104a83de8fa5ebff1d6c91b1cbcfffa482a3731d05298eaade92f04c0b3704a',
     '14b95763f2cfadae94f6d43da79aee8437ad11d3d8492d8a2e1dd0b59303b3d5',
   ],
   [
@@ -901,7 +915,7 @@ const functionPinRows: readonly (readonly [
     false,
     'v',
     'owner',
-    'c1df2012c8d0e75007dc5b7db4ff254bd94b16b3491cb0bda18a80ea8a502efb',
+    'bc3e04a581c76d05777a7378a6f2726333d8089a068cb82d66af48bee078c807',
     '51a0b37c47a7ec021fb7ce66a9c5b42c3f431a4b2807754b5f921e363f8d79b6',
   ],
   [
@@ -2495,10 +2509,17 @@ async function verifyV11Functions(tx: CurrentRuntimeInstallationTransaction) {
  ${metadataSql} AS "metadataSha256",
  coalesce(p.proconfig=ARRAY['search_path=pg_catalog, pg_temp'],false) AS "pinnedSearchPath",
  NOT EXISTS(SELECT 1 FROM aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a WHERE a.grantee<>p.proowner
-   AND (a.grantee=0 OR a.privilege_type<>'EXECUTE' OR a.is_grantable OR pin.value->>'access'='owner')) AS "safeAcl"
+   AND (a.grantee=0 OR a.privilege_type<>'EXECUTE' OR a.is_grantable OR pin.value->>'access'='owner'
+    OR (pin.value->>'access'='worker' AND a.grantee IS DISTINCT FROM (SELECT oid FROM pg_roles WHERE rolname=$2))
+    OR (pin.value->>'access'<>'worker' AND a.grantee IN (SELECT oid FROM pg_roles WHERE rolname IN ($2,$3)))
+    OR (pin.value->>'access'='worker' AND EXISTS(SELECT 1 FROM pg_auth_members m WHERE m.roleid=a.grantee)))) AS "safeAcl"
  FROM jsonb_array_elements($1::jsonb) WITH ORDINALITY pin(value,ordinal) JOIN pg_proc p ON p.oid=to_regprocedure(pin.value->>'signature')
  JOIN pg_language l ON l.oid=p.prolang JOIN pg_namespace n ON n.oid=p.pronamespace ORDER BY pin.ordinal`,
-    [JSON.stringify(pins)],
+    [
+      JSON.stringify(pins),
+      currentRuntimeV11GalleryWorkerRoleName,
+      currentRuntimeV11AiDispatcherRoleName,
+    ],
   );
   const parsed = z.array(v11FunctionRow).length(pins.length).safeParse(rows.rows);
   if (!parsed.success) fail('CURRENT_RUNTIME_V11_FUNCTION_DRIFT');
@@ -2563,10 +2584,23 @@ async function verifyV11Structure(tx: CurrentRuntimeInstallationTransaction) {
     `SELECT t.name AS table,coalesce(c.relrowsecurity AND c.relforcerowsecurity AND c.relkind='r' AND c.relpersistence='p',false) AS forced,
  coalesce(NOT EXISTS(SELECT 1 FROM aclexplode(coalesce(c.relacl,acldefault('r',c.relowner))) a WHERE a.grantee<>c.relowner
    AND (a.grantee=0 OR a.is_grantable
-    OR a.privilege_type NOT IN (SELECT jsonb_array_elements_text(coalesce($2::jsonb->t.name,'[]'::jsonb)))))
+    OR a.privilege_type NOT IN (SELECT jsonb_array_elements_text(coalesce($2::jsonb->t.name,'[]'::jsonb)))
+    OR a.grantee IN (SELECT oid FROM pg_roles WHERE rolname=$3)
+    OR (a.grantee IN (SELECT oid FROM pg_roles WHERE rolname=$4)
+     AND a.privilege_type NOT IN (SELECT jsonb_array_elements_text(coalesce($6::jsonb->t.name,'[]'::jsonb))))
+    OR (a.privilege_type IN (SELECT jsonb_array_elements_text(coalesce($5::jsonb->t.name,'[]'::jsonb)))
+     AND (a.grantee IS DISTINCT FROM (SELECT oid FROM pg_roles WHERE rolname=$4)
+      OR EXISTS(SELECT 1 FROM pg_auth_members m WHERE m.roleid=a.grantee)))))
   AND NOT EXISTS(SELECT 1 FROM pg_attribute a WHERE a.attrelid=c.oid AND a.attacl IS NOT NULL),false) AS "safeAcl"
  FROM unnest($1::text[]) WITH ORDINALITY t(name,ordinal) LEFT JOIN pg_class c ON c.oid=to_regclass('public.'||t.name) ORDER BY t.ordinal`,
-    [[...currentRuntimeV11Tables], JSON.stringify(currentRuntimeV11TableDelegations)],
+    [
+      [...currentRuntimeV11Tables],
+      JSON.stringify(currentRuntimeV11TableDelegations),
+      currentRuntimeV11GalleryWorkerRoleName,
+      currentRuntimeV11AiDispatcherRoleName,
+      JSON.stringify(currentRuntimeV11DispatcherOnlyTablePrivileges),
+      JSON.stringify(currentRuntimeV11DispatcherTableAllowance),
+    ],
   );
   if (!z.array(tableRow).length(currentRuntimeV11Tables.length).safeParse(tables.rows).success)
     fail('CURRENT_RUNTIME_V11_STRUCTURE_DRIFT');

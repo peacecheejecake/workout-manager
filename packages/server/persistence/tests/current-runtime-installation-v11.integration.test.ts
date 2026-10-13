@@ -493,6 +493,12 @@ const drift = [
     'GRANT EXECUTE ON FUNCTION public.claim_gallery_rendition_v1(uuid,integer) TO PUBLIC',
     'FUNCTION_DRIFT',
   ],
+  // P27-p1-2: a worker RPC delegated to any role but the fixed worker reads every tenant.
+  [
+    'worker RPC delegated to a non-worker role',
+    `GRANT EXECUTE ON FUNCTION public.claim_gallery_rendition_v1(uuid,integer) TO "${runtimeRole}"`,
+    'FUNCTION_DRIFT',
+  ],
   [
     'definer flipped',
     'ALTER FUNCTION public.guard_gallery_album_row_v1() SECURITY DEFINER',
@@ -525,6 +531,11 @@ const drift = [
     'STRUCTURE_DRIFT',
   ],
   ['PUBLIC SELECT', 'GRANT SELECT ON public.ai_execution_job TO PUBLIC', 'STRUCTURE_DRIFT'],
+  [
+    'disposition INSERT delegated to a non-dispatcher role',
+    `GRANT INSERT ON public.ai_execution_job_disposition TO "${runtimeRole}"`,
+    'STRUCTURE_DRIFT',
+  ],
   [
     'runtime UPDATE',
     `GRANT UPDATE ON public.ai_execution_job TO "${runtimeRole}"`,
@@ -669,9 +680,7 @@ fixtureIt('a delegated runtime RPC and the allowed table privileges still verify
     await tx.query(
       `GRANT EXECUTE ON FUNCTION public.create_gallery_album_v1(jsonb,text) TO "${runtimeRole}"`,
     );
-    await tx.query(
-      `GRANT SELECT,INSERT ON public.ai_execution_job_disposition TO "${runtimeRole}"`,
-    );
+    await tx.query(`GRANT SELECT ON public.ai_execution_job_disposition TO "${runtimeRole}"`);
     await tx.query(`GRANT SELECT ON public.gallery_album TO "${runtimeRole}"`);
     await expect(verifyCurrentRuntimeV11InstalledIn(tx)).resolves.toMatchObject({
       runtimeStep: 27,

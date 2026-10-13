@@ -63,7 +63,7 @@ it('pins parent physical33, five extension members in install order and logical2
       extensionStep: 1,
       sourceDdlId: 143,
       filename: '143_gallery_albums.sql',
-      sha256: '8e1844a4032f35ef41657a7036e4367da0f908c42922d8766bba26a2c723b08a',
+      sha256: '2beb8a2c1872a4ade51cbc2ddec4a8d204b8213b249a5af6756e302c6cc99ab2',
     },
     {
       extensionStep: 2,
@@ -87,7 +87,7 @@ it('pins parent physical33, five extension members in install order and logical2
       extensionStep: 5,
       sourceDdlId: 148,
       filename: '148_ai_execution_job_store.sql',
-      sha256: 'cb835a2620a5727ce67529c29c743ab5af814f352ce7606cc97dc46893b40bf0',
+      sha256: 'aefbff30f62084084c22b692647d2543119d6e299f95a793c2bb9b2af75c43ca',
     },
   ]);
   const encoding = JSON.stringify({

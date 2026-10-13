@@ -12,6 +12,9 @@ import {
   currentRuntimeV11KnownLedgers,
   currentRuntimeV11Tables,
   currentRuntimeV11TableDelegations,
+  currentRuntimeV11GalleryWorkerRoleName,
+  currentRuntimeV11AiDispatcherRoleName,
+  currentRuntimeV11DispatcherTableAllowance,
 } from './current-runtime-installation-v11.js';
 import type { CurrentRuntimeInstallationTransaction } from './current-runtime-installation.js';
 import {
@@ -32,8 +35,11 @@ import {
 //  - the gallery rendition worker (fixed name): the 5 worker RPCs only, no table privilege;
 //  - the M2-05b AI dispatcher (fixed name): SELECT/INSERT on ai_execution_job_disposition.
 // No role is created here; each grant refuses a role that overlaps another principal.
+// Every grant first runs the installation verification, which fails closed when any role
+// other than the fixed worker holds a worker RPC, any role other than the fixed dispatcher
+// holds a dispatcher-only table privilege, or either principal holding them has a member.
 export const currentRuntimeV11GalleryWorkerRole = galleryRenditionWorkerRoleV1;
-export const currentRuntimeV11AiDispatcherRole = 'workout_ai_dispatcher';
+export const currentRuntimeV11AiDispatcherRole = currentRuntimeV11AiDispatcherRoleName;
 type TableGrant = Readonly<{ table: string; privileges: readonly ('SELECT' | 'INSERT')[] }>;
 export const currentRuntimeV11RuntimeTableGrants: readonly TableGrant[] = Object.freeze([
   ...galleryNavigationRuntimeReadTablesV1.map((table) =>
@@ -122,7 +128,10 @@ if (
       JSON.stringify(g.privileges) !==
       JSON.stringify(currentRuntimeV11TableDelegations[g.table] ?? null),
   ) ||
-  Object.keys(currentRuntimeV11TableDelegations).length !== 7
+  Object.keys(currentRuntimeV11TableDelegations).length !== 7 ||
+  currentRuntimeV11GalleryWorkerRole !== currentRuntimeV11GalleryWorkerRoleName ||
+  allowance(currentRuntimeV11AiDispatcherTableGrants) !==
+    JSON.stringify(currentRuntimeV11DispatcherTableAllowance)
 )
   throw new Error('CURRENT_RUNTIME_V11_COMPILED_ROSTER_INVALID');
 

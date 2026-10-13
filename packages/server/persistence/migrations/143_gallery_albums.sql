@@ -698,22 +698,36 @@ REVOKE ALL ON FUNCTION public.delete_gallery_album_v1(jsonb,text) FROM PUBLIC;
 
 -- Explicit user command only: sets or clears one album membership and one saved
 -- exact course tuple under media access-revision CAS. Never derives either.
+-- A request that only removes links (every requested link is absent or equals the
+-- current one) creates nothing new: it is privacy detach and stays available under
+-- any restore control, like album deletion. Any new or changed link is authoring.
 CREATE FUNCTION public.set_gallery_media_navigation_v1(command jsonb,key text) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,pg_temp AS $$
 DECLARE tenant text:=public.lock_gallery_album_command_v1(); normalized jsonb; result jsonb;
  target uuid; expected integer; stamp timestamptz; head public.gallery_media_item%ROWTYPE;
  album jsonb; course jsonb; existing public.gallery_media_course_association%ROWTYPE;
+ current_album uuid;
 BEGIN
  normalized:=public.normalize_gallery_album_command_v1('set_media_navigation',command,key);
  result:=public.replay_gallery_album_command_v1('set_media_navigation',key,normalized);
  IF result IS NOT NULL THEN RETURN result; END IF;
- PERFORM public.require_gallery_navigation_authoring_v1();
  target:=(normalized->'command'->>'mediaItemId')::uuid;
  expected:=(normalized->'command'->>'expectedAccessRevision')::integer;
  album:=normalized->'command'->'albumMembership'; course:=normalized->'command'->'courseLink';
  SELECT * INTO head FROM public.gallery_media_item WHERE athlete_id=tenant AND id=target AND deleted_at IS NULL FOR UPDATE;
  IF NOT FOUND THEN RAISE EXCEPTION 'MEDIA_NOT_FOUND'; END IF;
  IF head.access_revision<>expected OR expected>=2147483646 THEN RAISE EXCEPTION 'MEDIA_ACCESS_CONFLICT'; END IF;
+ -- Decided under the media head lock: any new or changed link requires authoring.
+ IF jsonb_typeof(album)='object' OR jsonb_typeof(course)='object' THEN
+  SELECT m.album_id INTO current_album FROM public.gallery_media_album_membership m
+   WHERE m.athlete_id=tenant AND m.media_item_id=target;
+  SELECT * INTO existing FROM public.gallery_media_course_association
+   WHERE athlete_id=tenant AND media_item_id=target;
+  IF (jsonb_typeof(album)='object' AND (album->>'albumId')::uuid IS DISTINCT FROM current_album)
+   OR (jsonb_typeof(course)='object' AND (existing.course_id,existing.course_revision,existing.revision_id) IS DISTINCT FROM
+    ((course->>'courseId')::uuid,(course->>'courseRevision')::integer,(course->>'revisionId')::uuid))
+  THEN PERFORM public.require_gallery_navigation_authoring_v1(); END IF;
+ END IF;
  IF jsonb_typeof(album)='object' THEN
   INSERT INTO public.gallery_media_album_membership(athlete_id,media_item_id,album_id)
   VALUES(tenant,target,(album->>'albumId')::uuid)

@@ -151,7 +151,7 @@ CREATE FUNCTION public.guard_ai_execution_job_v1() RETURNS trigger
 LANGUAGE plpgsql SET search_path=pg_catalog,pg_temp AS $$
 DECLARE tenant text:=nullif(current_setting('app.athlete_id',true),'');
 DECLARE control jsonb; run record; settings record; app record; ai record;
-DECLARE live_revision integer; definition jsonb; canonical text;
+DECLARE live_revision integer; definition jsonb; canonical text; catalog_canonical text;
 BEGIN
  IF TG_OP='TRUNCATE' THEN RAISE EXCEPTION 'AI_EXECUTION_JOB_IMMUTABLE'; END IF;
  IF TG_OP='DELETE' THEN
@@ -233,6 +233,36 @@ BEGIN
     AND p->'recipient'->>'recipientId'=NEW.recipient_id
     AND p->'recipient'->>'disclosureVersion'=NEW.recipient_disclosure_version)
  THEN RAISE EXCEPTION 'AI_EXECUTION_JOB_CATALOG_STALE'; END IF;
+ -- catalog_digest is bound to the immutable live definition: the exact canonical
+ -- encoding of @workout/server-coaching digestExecutionCatalog (execution-catalog-v1,
+ -- sorted keys; approvedScopes, providers by providerId, models by modelId and purposes
+ -- are sorted sets). ai_settings_catalog_valid fixes every key, so this is total; a
+ -- definition it cannot encode exactly fails closed rather than trusting the writer.
+ catalog_canonical:=format('{"catalog":{"approvedScopes":%s,"catalogRevision":%s,"disclosureVersion":%s,"policyVersion":%s,"providers":%s,"recommendedDefault":%s,"recommendedSyntheticComparison":%s,"schemaVersion":%s},"definitionVersion":"execution-catalog-v1"}',
+  '['||coalesce((SELECT string_agg(x::text,',' ORDER BY x#>>'{}' COLLATE "C") FROM jsonb_array_elements(definition->'approvedScopes') x),'')||']',
+  ((definition->>'catalogRevision')::numeric)::bigint,
+  (definition->'disclosureVersion')::text,(definition->'policyVersion')::text,
+  '['||coalesce((SELECT string_agg(format('{"availability":%s,"displayName":%s,"models":%s,"providerId":%s,"recipient":%s,"selectable":%s}',
+    (SELECT '{'||string_agg(to_json(k)::text||':'||v::text,',' ORDER BY k COLLATE "C")||'}' FROM jsonb_each(p->'availability') e(k,v)),
+    (p->'displayName')::text,
+    '['||coalesce((SELECT string_agg(format('{"availability":%s,"displayName":%s,"modelId":%s,"purposes":%s,"selectable":%s}',
+      (SELECT '{'||string_agg(to_json(k)::text||':'||v::text,',' ORDER BY k COLLATE "C")||'}' FROM jsonb_each(m->'availability') e(k,v)),
+      (m->'displayName')::text,(m->'modelId')::text,
+      '['||coalesce((SELECT string_agg(u::text,',' ORDER BY u#>>'{}' COLLATE "C") FROM jsonb_array_elements(m->'purposes') u),'')||']',
+      (m->'selectable')::text),',' ORDER BY m->>'modelId' COLLATE "C") FROM jsonb_array_elements(p->'models') m),'')||']',
+    (p->'providerId')::text,
+    (SELECT '{'||string_agg(to_json(k)::text||':'||v::text,',' ORDER BY k COLLATE "C")||'}' FROM jsonb_each(p->'recipient') e(k,v)),
+    (p->'selectable')::text),',' ORDER BY p->>'providerId' COLLATE "C") FROM jsonb_array_elements(definition->'providers') p),'')||']',
+  CASE WHEN definition->'recommendedDefault'='null'::jsonb THEN 'null'
+   ELSE (SELECT '{'||string_agg(to_json(k)::text||':'||v::text,',' ORDER BY k COLLATE "C")||'}' FROM jsonb_each(definition->'recommendedDefault') e(k,v)) END,
+  '{"kind":'||(definition->'recommendedSyntheticComparison'->'kind')::text
+   ||CASE WHEN definition->'recommendedSyntheticComparison' ? 'selection' THEN ',"selection":'
+    ||(SELECT '{'||string_agg(to_json(k)::text||':'||v::text,',' ORDER BY k COLLATE "C")||'}' FROM jsonb_each(definition->'recommendedSyntheticComparison'->'selection') e(k,v))
+    ELSE '' END||'}',
+  ((definition->>'schemaVersion')::numeric)::bigint);
+ IF catalog_canonical IS NULL
+  OR NEW.catalog_digest IS DISTINCT FROM encode(sha256(convert_to(catalog_canonical,'UTF8')),'hex')
+ THEN RAISE EXCEPTION 'AI_EXECUTION_JOB_CATALOG_DIGEST_INVALID'; END IF;
  canonical:=format('{"definitionVersion":"execution-selection-v1","draft":{"binding":{"adapterBindingVersion":%s,"priceModelRef":%s,"priceVersion":%s,"purpose":%s,"selection":{"modelId":%s,"providerId":%s},"tokenizerVersion":%s,"vendorModelRef":%s},"catalogDigest":%s,"catalogRevision":%s,"disclosureVersion":%s,"payloadClassification":%s,"permissions":{"ai":{"digest":%s,"enabled":true,"revision":%s},"app":{"digest":%s,"enabled":true,"revision":%s}},"policyVersion":%s,"recipientDisclosureVersion":%s,"recipientId":%s,"schemaVersion":1,"settingsRevision":%s}}',
   to_json(NEW.adapter_binding_version)::text,to_json(NEW.price_model_ref)::text,to_json(NEW.price_version)::text,
   to_json(NEW.purpose)::text,to_json(NEW.model_id)::text,to_json(NEW.provider_id)::text,

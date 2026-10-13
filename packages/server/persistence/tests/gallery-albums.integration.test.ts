@@ -1223,6 +1223,17 @@ describe('Gallery navigation SQL143 extension on owned PostgreSQL', () => {
       const [mediaId] = await seedPlainMedia(athlete, [
         { createdAt: '2026-10-09T00:00:00.000001Z' },
       ]);
+      if (!mediaId) throw new Error('seed');
+      // Links authored while open; under CLOSED they may only be removed (P27-p1-3).
+      const kept = await create(athlete, '닫힘 전 연결 앨범');
+      const course = await seedCourse(athlete, 2);
+      const attached = await setNavigation(athlete, {
+        mediaItemId: mediaId,
+        expectedAccessRevision: 1,
+        albumMembership: { albumId: kept.id },
+        courseLink: course.first,
+      });
+      expect(attached.item.accessRevision).toBe(2);
       await pool('owner').query('SELECT public.close_restore_processing_exact(1,$1,$2,$3)', [
         randomUUID(),
         randomUUID(),
@@ -1250,12 +1261,50 @@ describe('Gallery navigation SQL143 extension on owned PostgreSQL', () => {
           }),
         'RESTORE_PROCESSING_CLOSED',
       );
+      // Attach or change is new authoring: refused, nothing written.
+      for (const body of [
+        { albumMembership: { albumId: album.id }, courseLink: null },
+        {
+          albumMembership: null,
+          courseLink: { ...course.first, courseRevision: 2, revisionId: revisionOf(course, 1) },
+        },
+        {
+          albumMembership: { albumId: kept.id },
+          courseLink: { ...course.first, courseRevision: 2, revisionId: revisionOf(course, 1) },
+        },
+      ])
+        await failure(
+          () =>
+            setNavigation(athlete, { mediaItemId: mediaId, expectedAccessRevision: 2, ...body }),
+          'RESTORE_PROCESSING_CLOSED',
+        );
+      // Privacy detach creates nothing new: clearing the course while keeping the exact
+      // current album, then clearing everything, both commit under CLOSED.
+      const courseCleared = await setNavigation(athlete, {
+        mediaItemId: mediaId,
+        expectedAccessRevision: 2,
+        albumMembership: { albumId: kept.id },
+        courseLink: null,
+      });
+      expect(courseCleared).toMatchObject({
+        albumMembership: { albumId: kept.id },
+        courseLink: null,
+      });
+      expect(courseCleared.item.accessRevision).toBe(3);
+      const detached = await setNavigation(athlete, {
+        mediaItemId: mediaId,
+        expectedAccessRevision: 3,
+        albumMembership: null,
+        courseLink: null,
+      });
+      expect(detached).toMatchObject({ albumMembership: null, courseLink: null });
+      expect(detached.item.accessRevision).toBe(4);
       await failure(
         () =>
           setNavigation(athlete, {
             mediaItemId: mediaId,
-            expectedAccessRevision: 1,
-            albumMembership: { albumId: album.id },
+            expectedAccessRevision: 4,
+            albumMembership: { albumId: kept.id },
             courseLink: null,
           }),
         'RESTORE_PROCESSING_CLOSED',
