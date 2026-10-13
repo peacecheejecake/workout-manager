@@ -236,7 +236,7 @@ function boundedPlain(raw: unknown) {
     if (bytes > MAX_BYTES) fail('CATALOG_WITNESS_LIMIT');
   }
   function visit(value: unknown, depth: number): void {
-    if (++visits > 250000 || depth > 32) fail('CATALOG_WITNESS_LIMIT');
+    if (++visits > 1000000 || depth > 32) fail('CATALOG_WITNESS_LIMIT');
     if (value === null || typeof value === 'boolean') return;
     if (typeof value === 'string') {
       string(value);
